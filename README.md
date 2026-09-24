@@ -32,8 +32,9 @@ all shipped with Ubuntu 24.04. No network, nothing to install.
 
 ## Use
 
-    office init ~/workshop     # build an office; prints the founding sitting's pack line
-    office status              # version, skew, profile complete or not, survey age
+    office init ~/offices/home # build an office; prints the founding session's pack line
+    office                     # walk in: the desk, this week, recent notes, slips
+    office status              # version, skew, profile, survey age, hung items
     office survey              # rewrite floor-plan/survey.md, report what changed
     office upgrade             # run pending migrations: dry run, then one commit
     office where               # the office a command here acts on
@@ -44,8 +45,39 @@ directory (found by walking up to floor-plan/manifest.toml), else the
 machine's default, kept in ~/.config/office-src/default-office. The
 first `office init` on a machine sets it.
 
-The script verbs note, open, desk, week, close and reopen are not built
-yet.
+### Every day
+
+    office note called the bank; rate locks Friday   # a timed line on today's notepad page
+    office open fix-login --title "Fix the login"    # a folder on the desk
+    office open house-hunt --thread < thread.txt     # ...seeded with the thread that started it
+    office desk                                      # open folders and their next moves
+    office week                                      # this week's calendar and its gaps
+    office close fix-login                           # to the filing cabinet
+    office reopen fix-login                          # back to the desk, history and all
+
+Each verb commits only the paths it touched. `office note` works in an
+unfounded office and in one that needs an upgrade; it warns and writes.
+A folder is named by the date and a slug and can be named by any unique
+part of that name.
+
+### Which sessions worked on a job
+
+When you pack a session for a folder by hand, pipe bale's report into
+the folder, so the id is never typed:
+
+    bale pack --json --include desk/2026-09-24-fix-login "Fix the login redirect" | office sessions fix-login -
+
+`office sessions fix-login` lists what is recorded. The folder keeps the
+id and any words you add with `-m`; it never copies what bale records
+about the session.
+
+### Hung items
+
+`office init` writes a `bale.toml` whose include group pulls the office's
+hung items (the profile and the survey, and whatever a renovation hangs)
+into any pack whose includes touch the office. Pack lines need no
+`--include` list for them. `office status` says when bale.toml no longer
+matches the floor plan.
 
 ## Layout
 
@@ -72,6 +104,12 @@ exactly when it ships a migration; every other release needs nothing
 done in any office. Each office records the release it was built from
 and the one it was last migrated to, and the command refuses loudly when
 the two sides disagree in a way it cannot work across.
+
+Only `office upgrade` writes an office's version stamp. A breaking
+release that needs judgment ships a renovation migration declaring what
+must be true once the renovation has landed; upgrade prints the
+renovation's pack line, the session does the work, and the next run of
+`office upgrade` checks the declaration and stamps the office.
 
 ## Tests
 

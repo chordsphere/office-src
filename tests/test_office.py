@@ -59,11 +59,12 @@ class Env:
         (self.home / ".gitconfig-empty").write_text("")
         self.office_bin = REPO / "bin" / "office"
 
-    def run(self, *args, cwd=None, extra=None, bin_path=None, check=None):
+    def run(self, *args, cwd=None, extra=None, bin_path=None, check=None, input=None):
         env = dict(self.env)
         env.update(extra or {})
         proc = subprocess.run([str(bin_path or self.office_bin), *args], cwd=cwd or self.home,
-                              env=env, capture_output=True, text=True, timeout=120)
+                              env=env, capture_output=True, text=True, timeout=120,
+                              input=input if input is not None else "")
         if check is not None and proc.returncode != check:
             raise AssertionError(f"office {' '.join(args)} exited {proc.returncode}, wanted {check}\n"
                                  f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
@@ -73,7 +74,7 @@ class Env:
         return subprocess.run(["git", "-C", str(root), *args], env=self.env,
                               capture_output=True, text=True, check=True).stdout
 
-    def init(self, name="workshop", **kw):
+    def init(self, name="sample", **kw):
         root = self.home / name
         self.run("init", str(root), check=0, **kw)
         return root
@@ -84,16 +85,22 @@ class Env:
 
     def fake_install(self, version, migrations=()):
         """A copy of this install at another version with synthetic
-        migrations: (version, kind, action, summary, script_body)."""
+        migrations: (version, kind, action, summary, script_body[, extra
+        TOML]). The real migrations are left out, so the synthetic
+        release line is all the runner sees."""
         inst = self.tmp / f"install-{version}"
         for part in INSTALL_PARTS:
             src = REPO / part
             (shutil.copytree if src.is_dir() else shutil.copy2)(src, inst / part)
+        for f in (inst / "migrations").iterdir():
+            if f.name != "README.md":
+                f.unlink()
         (inst / "VERSION").write_text(version + "\n")
-        for v, kind, action, summary, body in migrations:
+        for v, kind, action, summary, body, *extra in migrations:
             key = "script" if kind == "script" else "goal"
             (inst / "migrations" / f"{v}.toml").write_text(
-                f'version = "{v}"\nkind = "{kind}"\nsummary = "{summary}"\n{key} = "{action}"\n')
+                f'version = "{v}"\nkind = "{kind}"\nsummary = "{summary}"\n{key} = "{action}"\n'
+                + (extra[0] if extra else ""))
             if body is not None:
                 (inst / "migrations" / action).write_text(body)
         return inst / "bin" / "office"
@@ -247,7 +254,7 @@ class TestMigrationPlanning(unittest.TestCase):
 
     def test_order_and_pending(self):
         self.add("0.10.0.toml", 'version = "0.10.0"\nkind = "script"\nsummary = "b"\nscript = "b.sh"\n', "b.sh")
-        self.add("0.9.0.toml", 'version = "0.9.0"\nkind = "renovation"\nsummary = "a"\ngoal = "g"\n')
+        self.add("0.9.0.toml", 'version = "0.9.0"\nkind = "renovation"\nsummary = "a"\ngoal = "g"\n[landed]\npaths = ["x"]\n')
         self.assertEqual([m["version"] for m in h.load_migrations(self.dir, "0.10.0")], ["0.9.0", "0.10.0"])
         self.assertEqual([m["version"] for m in h.pending_migrations(self.dir, "0.9.0", "0.10.0")], ["0.10.0"])
 
@@ -268,7 +275,10 @@ class TestMigrationPlanning(unittest.TestCase):
         for body in ('version = "0.2.0"\nkind = "script"\nsummary = ""\nscript = "a.sh"\n',
                      'version = "0.2.0"\nkind = "magic"\nsummary = "s"\n',
                      'version = "0.2.0"\nkind = "script"\nsummary = "s"\nscript = "gone.sh"\n',
-                     'version = "0.2.0"\nkind = "renovation"\nsummary = "s"\n'):
+                     'version = "0.2.0"\nkind = "renovation"\nsummary = "s"\n',
+                     'version = "0.2.0"\nkind = "renovation"\nsummary = "s"\ngoal = "g"\n',
+                     'version = "0.2.0"\nkind = "renovation"\nsummary = "s"\ngoal = "g"\n[landed]\npaths = []\n',
+                     'version = "0.2.0"\nkind = "renovation"\nsummary = "s"\ngoal = "g"\n[landed]\nchecks = ["x"]\n'):
             self.add("0.2.0.toml", body)
             with self.assertRaises(h.HelperError, msg=body):
                 h.load_migrations(self.dir, "1.0.0")
@@ -287,14 +297,16 @@ class TestInit(unittest.TestCase):
         self.e = Env(self)
 
     def test_builds_commits_and_prints_one_founding_line(self):
-        root = self.e.home / "workshop"
+        root = self.e.home / "sample"
         proc = self.e.run("init", str(root), check=0)
         lines = proc.stdout.splitlines()
         self.assertEqual(len(lines), 1, proc.stdout)
         line = lines[0]
         self.assertIn("bale pack --context", line)
         self.assertIn(str(REPO / "doctrine"), line)
-        self.assertIn("bale pack --read-only --slug workshop-founding --include profile.md floor-plan", line)
+        self.assertIn("bale pack --slug sample-founding --include floor-plan --write profile.md notepad floor-plan", line)
+        self.assertNotIn("--read-only", line)
+        self.assertIn("real timezone", line)
         for sp in ("desk", "filing-cabinet", "notepad", "suggestion-box", "drawer"):
             self.assertTrue((root / sp).is_dir(), sp)
         for sp in ("handbook", "calendar", "rolodex", "clipboards", "letterhead"):
@@ -381,10 +393,10 @@ class TestFindingTheOffice(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn("not an office", proc.stderr)
 
-    def test_unbuilt_verbs_say_so(self):
-        proc = self.e.run("note", "hello", cwd=self.root)
+    def test_unknown_verb_refuses(self):
+        proc = self.e.run("frobnicate", cwd=self.root)
         self.assertEqual(proc.returncode, 1)
-        self.assertIn("not built yet", proc.stderr)
+        self.assertIn("unknown verb", proc.stderr)
 
 
 class TestStatusAndSurvey(unittest.TestCase):
@@ -455,17 +467,17 @@ class TestUpgrade(unittest.TestCase):
         self.assertIn("nothing to upgrade", proc.stderr)
 
     def test_additive_release_needs_nothing(self):
-        office = self.e.fake_install("0.1.5")
+        office = self.e.fake_install("0.2.5")
         out = self.e.run("status", cwd=self.root, bin_path=office, check=0).stdout
         self.assertIn("skew:       none", out)
         self.e.run("survey", cwd=self.root, bin_path=office, check=0)
 
     def test_behind_refuses_and_names_upgrade(self):
-        office = self.e.fake_install("0.2.0", [("0.2.0", "script", "0.2.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
+        office = self.e.fake_install("0.3.0", [("0.3.0", "script", "0.3.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
         proc = self.e.run("survey", cwd=self.root, bin_path=office)
         self.assertEqual(proc.returncode, 1)
         self.assertIn("run: office upgrade", proc.stderr)
-        self.assertIn("0.2.0: Adds a handbook.", proc.stderr)
+        self.assertIn("0.3.0: Adds a handbook.", proc.stderr)
         self.assertIn("BEHIND", self.e.run("status", cwd=self.root, bin_path=office, check=0).stdout)
 
     def test_ahead_refuses_outright(self):
@@ -477,25 +489,25 @@ class TestUpgrade(unittest.TestCase):
         self.assertIn("AHEAD", self.e.run("status", cwd=self.root, bin_path=office, check=0).stdout)
 
     def test_script_migrations_land_as_one_commit(self):
-        office = self.e.fake_install("0.3.0", [
-            ("0.2.0", "script", "0.2.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE),
-            ("0.3.0", "script", "0.3.0.sh", "Adds a drafting table.", "mkdir -p drafting-table && : > drafting-table/.keep\n"),
+        office = self.e.fake_install("0.4.0", [
+            ("0.3.0", "script", "0.3.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE),
+            ("0.4.0", "script", "0.4.0.sh", "Adds a drafting table.", "mkdir -p drafting-table && : > drafting-table/.keep\n"),
         ])
         before = len(self.e.git(self.root, "log", "--oneline").splitlines())
         self.e.run("upgrade", cwd=self.root, bin_path=office, check=0)
         self.assertEqual(len(self.e.git(self.root, "log", "--oneline").splitlines()), before + 1)
         msg = self.e.git(self.root, "log", "-1", "--format=%B")
-        self.assertIn(f"office upgrade: {VERSION} to 0.3.0", msg)
-        self.assertIn("- 0.2.0: Adds a handbook.", msg)
-        self.assertIn("- 0.3.0: Adds a drafting table.", msg)
-        self.assertEqual(self.stamp()["migrated_to"], "0.3.0")
+        self.assertIn(f"office upgrade: {VERSION} to 0.4.0", msg)
+        self.assertIn("- 0.3.0: Adds a handbook.", msg)
+        self.assertIn("- 0.4.0: Adds a drafting table.", msg)
+        self.assertEqual(self.stamp()["migrated_to"], "0.4.0")
         self.assertEqual(self.stamp()["built_from"], VERSION)
         self.assertTrue((self.root / "handbook/README.md").is_file())
         self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
         self.assertIn("nothing to upgrade", self.e.run("upgrade", cwd=self.root, bin_path=office, check=0).stderr)
 
     def test_dry_run_changes_nothing(self):
-        office = self.e.fake_install("0.2.0", [("0.2.0", "script", "0.2.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
+        office = self.e.fake_install("0.3.0", [("0.3.0", "script", "0.3.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
         head = self.e.git(self.root, "rev-parse", "HEAD")
         proc = self.e.run("upgrade", "--dry-run", cwd=self.root, bin_path=office, check=0)
         self.assertIn("dry run passed", proc.stderr)
@@ -507,7 +519,7 @@ class TestUpgrade(unittest.TestCase):
         (self.root / "notepad" / "2026-09-24-words.md").write_text("verbatim\n")
         self.e.git(self.root, "add", "-A")
         self.e.git(self.root, "commit", "-qm", "words")
-        office = self.e.fake_install("0.2.0", [("0.2.0", "script", "0.2.0.sh", "Tidies the notepad.",
+        office = self.e.fake_install("0.3.0", [("0.3.0", "script", "0.3.0.sh", "Tidies the notepad.",
                                                 "printf 'tidied\\n' > notepad/2026-09-24-words.md\n")])
         head = self.e.git(self.root, "rev-parse", "HEAD")
         proc = self.e.run("upgrade", cwd=self.root, bin_path=office)
@@ -518,32 +530,359 @@ class TestUpgrade(unittest.TestCase):
         self.assertEqual((self.root / "notepad" / "2026-09-24-words.md").read_text(), "verbatim\n")
 
     def test_failing_migration_leaves_the_office_alone(self):
-        office = self.e.fake_install("0.2.0", [("0.2.0", "script", "0.2.0.sh", "Breaks.", "mkdir -p x && exit 3\n")])
+        office = self.e.fake_install("0.3.0", [("0.3.0", "script", "0.3.0.sh", "Breaks.", "mkdir -p x && exit 3\n")])
         proc = self.e.run("upgrade", cwd=self.root, bin_path=office)
         self.assertEqual(proc.returncode, 1)
         self.assertFalse((self.root / "x").exists())
         self.assertEqual(self.stamp()["migrated_to"], VERSION)
 
     def test_dirty_office_refuses(self):
-        office = self.e.fake_install("0.2.0", [("0.2.0", "script", "0.2.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
+        office = self.e.fake_install("0.3.0", [("0.3.0", "script", "0.3.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
         (self.root / "desk" / "wip.md").write_text("wip\n")
         proc = self.e.run("upgrade", cwd=self.root, bin_path=office)
         self.assertEqual(proc.returncode, 1)
         self.assertIn("uncommitted changes", proc.stderr)
 
     def test_judgment_stops_at_a_renovation_pack_line(self):
-        office = self.e.fake_install("0.3.0", [
-            ("0.2.0", "script", "0.2.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE),
-            ("0.3.0", "renovation", "Write the new Budget section of the profile.", "Profiles gain a Budget section.", None),
+        office = self.e.fake_install("0.4.0", [
+            ("0.3.0", "script", "0.3.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE),
+            ("0.4.0", "renovation", "Write the new Budget section of the profile.", "Profiles gain a Budget section.", None,
+             '[landed]\nprofile_sections = ["Budget"]\n'),
         ])
         proc = self.e.run("upgrade", cwd=self.root, bin_path=office, check=0)
-        self.assertEqual(self.stamp()["migrated_to"], "0.2.0")
+        self.assertEqual(self.stamp()["migrated_to"], "0.3.0")
         lines = proc.stdout.splitlines()
         self.assertEqual(len(lines), 1, proc.stdout)
-        self.assertIn("bale pack --slug upgrade-0-3-0", lines[0])
+        self.assertIn("bale pack --slug upgrade-0-4-0", lines[0])
         self.assertIn("Write the new Budget section of the profile.", lines[0])
-        self.assertIn("set migrated_to in floor-plan/manifest.toml to 0.3.0", lines[0])
-        self.assertIn("- 0.2.0: Adds a handbook.", self.e.git(self.root, "log", "-1", "--format=%B"))
+        self.assertIn("the profile has these sections written: Budget", lines[0])
+        self.assertIn("Leave the version stamp alone", lines[0])
+        self.assertNotIn("set migrated_to", lines[0])
+        self.assertIn("run office upgrade again", proc.stderr)
+        self.assertIn("- 0.3.0: Adds a handbook.", self.e.git(self.root, "log", "-1", "--format=%B"))
+
+    def test_rerun_stamps_a_renovation_only_once_its_declaration_holds(self):
+        office = self.e.fake_install("0.3.0", [
+            ("0.3.0", "renovation", "Add the calendar space.", "Offices gain a calendar.", None,
+             '[landed]\npaths = ["calendar/plan.md"]\n'),
+        ])
+        self.e.run("upgrade", cwd=self.root, bin_path=office, check=0)
+        self.assertEqual(self.stamp()["migrated_to"], VERSION)
+        # The renovation session lands, without touching the stamp.
+        (self.root / "calendar").mkdir()
+        (self.root / "calendar/plan.md").write_text("# Plan\n")
+        self.e.git(self.root, "add", "-A")
+        self.e.git(self.root, "commit", "-qm", "renovation lands")
+        proc = self.e.run("upgrade", cwd=self.root, bin_path=office, check=0)
+        self.assertEqual(proc.stdout, "")
+        self.assertEqual(self.stamp()["migrated_to"], "0.3.0")
+        msg = self.e.git(self.root, "log", "-1", "--format=%B")
+        self.assertIn(f"office upgrade: {VERSION} to 0.3.0", msg)
+        self.assertIn("- 0.3.0: Offices gain a calendar. (renovation, checked)", msg)
+        self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
+
+    def test_a_renovation_must_declare_what_landing_means(self):
+        office = self.e.fake_install("0.3.0", [
+            ("0.3.0", "renovation", "Do something.", "Something.", None),
+        ])
+        proc = self.e.run("status", cwd=self.root, bin_path=office)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("[landed]", proc.stderr)
+
+    def test_the_real_0_2_0_migration_gives_an_old_office_its_include_group(self):
+        """The first real exercise of the runner: an office shaped the
+        way 0.1.0 built it (no bale.toml, stamped 0.1.0) upgrades to
+        this release in one commit, and capture works before it does."""
+        (self.root / "bale.toml").unlink()
+        manifest = self.root / "floor-plan/manifest.toml"
+        manifest.write_text(manifest.read_text().replace(f'"{VERSION}"', '"0.1.0"'))
+        self.e.git(self.root, "commit", "-qam", "as 0.1.0 built it")
+        proc = self.e.run("survey", cwd=self.root)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("0.2.0: Adds bale.toml", proc.stderr)
+        proc = self.e.run("note", "still works when behind", cwd=self.root, check=0)
+        self.assertIn("behind", proc.stderr)
+        self.e.run("upgrade", cwd=self.root, check=0)
+        self.assertEqual(self.stamp()["migrated_to"], "0.2.0")
+        self.assertEqual(self.stamp()["built_from"], "0.1.0")
+        group = tomllib.loads((self.root / "bale.toml").read_text())["pack"]
+        self.assertEqual(group["include_group"], "hung")
+        self.assertEqual(sorted(group["include_group_pulls"]), ["floor-plan/survey.md", "profile.md"])
+        self.assertIn("- 0.2.0: Adds bale.toml", self.e.git(self.root, "log", "-1", "--format=%B"))
+        self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
+        self.assertIn("matches the floor plan", self.e.run("status", cwd=self.root, check=0).stdout)
+
+
+# --- the everyday verbs ---------------------------------------------------------
+
+class TestCapture(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+        self.root = self.e.init()
+
+    def page(self):
+        pages = sorted((self.root / "notepad").glob("????-??-??.md"))
+        self.assertEqual(len(pages), 1, pages)
+        return pages[0]
+
+    def test_note_appends_dated_lines_and_commits_only_the_page(self):
+        (self.root / "desk" / "wip.md").write_text("mine\n")
+        self.e.run("note", "called", "the bank", cwd=self.root, check=0)
+        self.e.run("note", cwd=self.root, check=0, input="line one\n\nline two\n")
+        text = self.page().read_text()
+        self.assertRegex(text, r"(?m)^- \d\d:\d\d called the bank$")
+        self.assertRegex(text, r"(?m)^- \d\d:\d\d line one\n- \d\d:\d\d line two\n\Z")
+        self.assertTrue(text.startswith(f"# {self.page().stem}: notes\n"))
+        self.assertEqual(self.e.git(self.root, "status", "--porcelain").strip(), "?? desk/wip.md")
+        self.assertIn("office note:", self.e.git(self.root, "log", "-1", "--format=%s"))
+
+    def test_note_works_unfounded_and_only_warns(self):
+        proc = self.e.run("note", "first thought", cwd=self.root, check=0)
+        self.assertIn("unfounded", proc.stderr)
+
+    def test_note_works_when_behind_and_when_ahead(self):
+        behind = self.e.fake_install("0.3.0", [("0.3.0", "script", "0.3.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
+        proc = self.e.run("note", "behind", cwd=self.root, bin_path=behind, check=0)
+        self.assertIn("behind", proc.stderr)
+        ahead = self.e.fake_install("0.0.9")
+        proc = self.e.run("note", "ahead", cwd=self.root, bin_path=ahead, check=0)
+        self.assertIn("past office-src", proc.stderr)
+        self.assertIn("ahead", self.page().read_text())
+
+    def test_note_keeps_the_office_ascii_without_losing_words(self):
+        proc = self.e.run("note", "caf\u00e9 \u2014 ok", cwd=self.root, check=0)
+        line = self.page().read_text().splitlines()[-1]
+        self.assertTrue(line.isascii(), line)
+        self.assertIn("caf\\xe9 \\u2014 ok", line)
+        self.assertIn("backslash escapes", proc.stderr)
+
+    def test_empty_note_refuses(self):
+        proc = self.e.run("note", "   ", cwd=self.root)
+        self.assertEqual(proc.returncode, 1)
+
+    def test_note_uses_the_office_timezone(self):
+        manifest = self.root / "floor-plan/manifest.toml"
+        manifest.write_text(re.sub(r'timezone = ".*"', 'timezone = "Pacific/Kiritimati"', manifest.read_text()))
+        self.e.run("note", "far east", cwd=self.root, check=0)
+        want = subprocess.run(["date", "+%F"], env={"TZ": "Pacific/Kiritimati"}, capture_output=True, text=True).stdout.strip()
+        self.assertEqual(self.page().stem, want)
+
+
+class TestFolders(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+        self.root = self.e.init()
+        self.e.found(self.root)
+
+    def open(self, *args, **kw):
+        return self.e.run("open", *args, cwd=self.root, check=0, **kw).stdout.strip()
+
+    def test_open_makes_a_dated_folder_from_the_template(self):
+        folder = self.open("Fix Login!", "--title", "Fix the login page")
+        self.assertRegex(folder, r"^desk/\d{4}-\d{2}-\d{2}-fix-login$")
+        text = (self.root / folder / "folder.md").read_text()
+        self.assertTrue(text.startswith("# Fix the login page\n"))
+        self.assertIn("## Sessions", text)
+        self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
+
+    def test_open_seeds_a_thread_from_stdin(self):
+        folder = self.open("house-hunt", "--thread", input="From: agent\nThe house on Elm is back.\n")
+        thread = (self.root / folder / "thread.md").read_text()
+        self.assertIn("The house on Elm is back.", thread)
+
+    def test_open_refuses_a_duplicate(self):
+        self.open("job")
+        proc = self.e.run("open", "job", cwd=self.root)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("already on the desk", proc.stderr)
+
+    def test_desk_lists_next_moves(self):
+        self.assertIn("the desk is clear", self.e.run("desk", cwd=self.root, check=0).stdout)
+        folder = self.open("job")
+        out = self.e.run("desk", cwd=self.root, check=0).stdout
+        self.assertIn("next: (not written yet)", out)
+        f = self.root / folder / "folder.md"
+        f.write_text(f.read_text().replace("What happens next, and who moves.", "- Ask Sam for the logs."))
+        self.assertIn("next: Ask Sam for the logs.", self.e.run("desk", cwd=self.root, check=0).stdout)
+
+    def test_close_and_reopen_move_without_rewriting(self):
+        folder = self.open("job")
+        name = pathlib.Path(folder).name
+        f = self.root / folder / "folder.md"
+        f.write_text(f.read_text() + "\nWork in progress.\n")
+        before = f.read_bytes()
+        self.e.run("close", "job", cwd=self.root, check=0)
+        filed = self.root / "filing-cabinet" / name / "folder.md"
+        self.assertEqual(filed.read_bytes(), before)
+        self.assertFalse((self.root / folder).exists())
+        self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
+        self.e.run("reopen", name, cwd=self.root, check=0)
+        self.assertEqual(f.read_bytes(), before)
+        log = self.e.git(self.root, "log", "--follow", "--format=%s", "--", f"desk/{name}/folder.md")
+        self.assertIn("office open:", log)
+        self.assertIn("office close:", log)
+
+    def test_close_refuses_ambiguity_and_absence(self):
+        self.open("job-one")
+        self.open("job-two")
+        proc = self.e.run("close", "job", cwd=self.root)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("matches 2 folders", proc.stderr)
+        proc = self.e.run("close", "nothing", cwd=self.root)
+        self.assertEqual(proc.returncode, 1)
+
+
+class TestSessions(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+        self.root = self.e.init()
+        self.e.found(self.root)
+        self.folder = self.e.run("open", "job", cwd=self.root, check=0).stdout.strip()
+
+    def test_records_from_a_pack_report_and_never_twice(self):
+        report = 'noise\n{"session_id": "2026-09-24-job-001", "tarball": "x", "goal": "not copied"}\n'
+        self.e.run("sessions", "job", "-", "-m", "first pass", cwd=self.root, check=0, input=report)
+        proc = self.e.run("sessions", "job", "-", cwd=self.root, check=0, input=report)
+        self.assertIn("already recorded", proc.stderr)
+        text = (self.root / self.folder / "folder.md").read_text()
+        self.assertEqual(text.count("2026-09-24-job-001"), 1)
+        self.assertIn("- 2026-09-24-job-001: first pass\n", text)
+        self.assertNotIn("not copied", text)
+        self.assertEqual(self.e.run("sessions", "job", cwd=self.root, check=0).stdout,
+                         "- 2026-09-24-job-001: first pass\n")
+        self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
+
+    def test_records_in_a_filed_folder_and_by_plain_id(self):
+        self.e.run("close", "job", cwd=self.root, check=0)
+        self.e.run("sessions", "job", "2026-09-25-job-002", cwd=self.root, check=0)
+        self.assertIn("2026-09-25-job-002", (self.root / "filing-cabinet" / pathlib.Path(self.folder).name / "folder.md").read_text())
+
+    def test_bad_reports_refuse(self):
+        for report in ("", "not json\n", '{"tarball": "x"}\n'):
+            proc = self.e.run("sessions", "job", "-", cwd=self.root, input=report)
+            self.assertEqual(proc.returncode, 1, report)
+        proc = self.e.run("sessions", "job", "not-a-sid", cwd=self.root)
+        self.assertEqual(proc.returncode, 1)
+
+
+class TestPackReport(unittest.TestCase):
+    def test_named_keys_then_a_single_shaped_value(self):
+        self.assertEqual(h.sid_from_pack_report('{"session_id": "2026-09-24-a-b-001"}'), "2026-09-24-a-b-001")
+        self.assertEqual(h.sid_from_pack_report('{"sid": "2026-09-24-a-001"}'), "2026-09-24-a-001")
+        self.assertEqual(h.sid_from_pack_report('{"id": "2026-09-24-a-001", "n": 3}'), "2026-09-24-a-001")
+        with self.assertRaises(h.HelperError):
+            h.sid_from_pack_report('{"a": "2026-09-24-a-001", "b": "2026-09-24-b-001"}')
+
+
+class TestWeek(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+        self.root = self.e.init()
+
+    def test_no_calendar_names_the_renovation(self):
+        out = self.e.run("week", cwd=self.root, check=0).stdout
+        self.assertIn("no calendar", out)
+        self.assertIn("renovation", out)
+
+    def test_plan_against_record(self):
+        cal = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, cal)
+        (cal / "plan.md").write_text("# Plan\n\n- every weekday 09:30 Standup\n- 2026-09-25 14:00 Dentist\n"
+                                     "- 2026-10-02 10:00 Next week\n- sometime soon lunch\n")
+        (cal / "record.md").write_text("- 2026-09-21 09:30 Standup: held\n- 2026-09-22 Standup: short\n"
+                                       "- 2026-09-23 18:00 Called the agent\n")
+        lines, gaps = h.week_report(cal, "2026-09-24", "12:00", "UTC")
+        text = "\n".join(lines)
+        self.assertIn("week of 2026-09-21 to 2026-09-27", text)
+        self.assertIn("Mon 2026-09-21 09:30 Standup [recorded]", text)
+        self.assertIn("Wed 2026-09-23 09:30 Standup [GAP: nothing recorded]", text)
+        self.assertIn("Thu 2026-09-24 09:30 Standup [GAP: nothing recorded]", text)
+        self.assertIn("Fri 2026-09-25 09:30 Standup [planned]", text)
+        self.assertIn("Fri 2026-09-25 14:00 Dentist [planned]", text)
+        self.assertNotIn("Next week", text)
+        self.assertIn("Called the agent [recorded, not planned]", text)
+        self.assertIn("unreadable plan.md line", text)
+        self.assertEqual(gaps, 2)
+
+    def test_week_reads_the_office_calendar(self):
+        manifest = self.root / "floor-plan/manifest.toml"
+        manifest.write_text(manifest.read_text() + '\n[spaces.calendar]\npath = "calendar"\nhung = true\nfiled = false\n')
+        (self.root / "calendar").mkdir()
+        out = self.e.run("week", cwd=self.root, check=0).stdout
+        self.assertIn("week of", out)
+        self.assertIn("plan.md does not exist yet", out)
+
+
+class TestWalkingIn(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+        self.root = self.e.init()
+
+    def test_walking_in_shows_the_room(self):
+        self.e.run("open", "job", cwd=self.root, check=0)
+        self.e.run("note", "a thought", cwd=self.root, check=0)
+        (self.root / "suggestion-box" / "slow-survey.md").write_text("# slow\n")
+        out = self.e.run(cwd=self.root, check=0).stdout
+        for want in ("The sample office", "UNFOUNDED", "current with office-src", "On the desk:",
+                     "-job  next: (not written yet)", "no calendar", "a thought", "Suggestion box: 1 slip(s).",
+                     "From here: office note"):
+            self.assertIn(want, out)
+
+    def test_walking_in_from_anywhere_uses_the_default(self):
+        outside = self.e.tmp / "elsewhere"
+        outside.mkdir()
+        out = self.e.run(cwd=outside, check=0).stdout
+        self.assertIn(f"The sample office, {self.root}", out)
+
+    def test_walking_in_with_no_office_shows_help(self):
+        (self.e.home / ".config/office-src/default-office").unlink()
+        outside = self.e.tmp / "elsewhere"
+        outside.mkdir()
+        out = self.e.run(cwd=outside, check=0).stdout
+        self.assertIn("usage: office", out)
+        self.assertIn("office init PATH builds one", out)
+
+
+class TestIncludeGroup(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+        self.root = self.e.init()
+
+    def test_init_writes_a_group_of_spaces_and_hung_items(self):
+        group = tomllib.loads((self.root / "bale.toml").read_text())["pack"]
+        manifest = tomllib.loads((self.root / "floor-plan/manifest.toml").read_text())
+        self.assertEqual(sorted(group["include_group_triggers"]), sorted(s["path"] for s in manifest["spaces"].values()))
+        self.assertEqual(sorted(group["include_group_pulls"]), sorted(h.space_paths(manifest, "hung")))
+        for path in group["include_group_triggers"] + group["include_group_pulls"]:
+            self.assertTrue((self.root / path).exists(), path)
+        self.assertNotIn(".", group["include_group_triggers"])
+        (self.root / "bale.toml").read_text().encode("ascii")
+
+    def test_status_reports_drift(self):
+        manifest = self.root / "floor-plan/manifest.toml"
+        manifest.write_text(manifest.read_text() + '\n[spaces.calendar]\npath = "calendar"\nhung = true\nfiled = false\n')
+        (self.root / "calendar").mkdir()
+        out = self.e.run("status", cwd=self.root, check=0).stdout
+        self.assertIn("bale.toml differs from the floor plan", out)
+        self.assertIn("pulls: missing calendar", out)
+
+
+# --- office-src's own development record -----------------------------------------
+
+WORDS_PAGE = REPO / "claude/context/sittings/2026-09-23-office-construction-001.md"
+WORDS_SHA256 = "9c804c7dae8ee5056e571720bdc5defc42acd6a497fcc0299d87286aad930a64"
+
+
+class TestDevelopmentRecord(unittest.TestCase):
+    def test_the_planner_words_page_is_byte_exact(self):
+        import hashlib
+        self.assertEqual(hashlib.sha256(WORDS_PAGE.read_bytes()).hexdigest(), WORDS_SHA256)
+
+    def test_the_record_is_never_installed(self):
+        text = (REPO / "install.sh").read_text()
+        shipped = re.search(r"^SHIPPED=\((.*)\)$", text, re.M).group(1).split()
+        self.assertNotIn("cla" + "ude", shipped)
+        self.assertTrue(all(not s.startswith("cla" + "ude") for s in shipped))
 
 
 # --- install -------------------------------------------------------------------
