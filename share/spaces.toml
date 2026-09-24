@@ -1,0 +1,61 @@
+# The spaces an office can have. office init builds every space marked
+# base = true; the others arrive by renovation when real work asks for
+# them. doctrine/OFFICE.md section 5 says what each space is for.
+#
+# path   where the space lives inside the office
+# base   built by office init
+# hung   shipped with every office session: true for the whole space, or
+#        a list of paths inside it
+# filed  filed paper: never rewritten by a migration
+
+[spaces.profile]
+path = "profile.md"
+base = true
+hung = true
+
+[spaces.floor-plan]
+path = "floor-plan"
+base = true
+hung = ["floor-plan/survey.md"]
+
+[spaces.desk]
+path = "desk"
+base = true
+
+[spaces.filing-cabinet]
+path = "filing-cabinet"
+base = true
+filed = true
+
+[spaces.notepad]
+path = "notepad"
+base = true
+filed = true
+
+[spaces.suggestion-box]
+path = "suggestion-box"
+base = true
+
+[spaces.drawer]
+path = "drawer"
+base = true
+
+[spaces.handbook]
+path = "handbook"
+hung = ["handbook/README.md"]
+
+[spaces.clipboards]
+path = "clipboards"
+
+[spaces.calendar]
+path = "calendar"
+hung = true
+
+[spaces.rolodex]
+path = "rolodex"
+
+[spaces.letterhead]
+path = "letterhead"
+
+[spaces.drafting-table]
+path = "drafting-table"

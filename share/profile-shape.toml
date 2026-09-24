@@ -1,0 +1,38 @@
+# The required shape of an office profile. office status reads this to
+# tell a complete profile from a stub. A section is complete when it has
+# text outside comments and no line starting with TODO. Adding a section
+# here is a breaking release: it ships a renovation migration.
+
+shape = 1
+
+[[section]]
+heading = "Purpose"
+asks = "Why this office exists and what jobs come here."
+
+[[section]]
+heading = "Not for"
+asks = "What this office is not for, and where those things go instead."
+
+[[section]]
+heading = "Audiences"
+asks = "Who may read what this office's projects hold."
+
+[[section]]
+heading = "Site"
+asks = "Machine, root, timezone, where the repo is pushed, and where it must never go, including anywhere an audience can read."
+
+[[section]]
+heading = "House rules"
+asks = "This office's own rules, on top of the rules every office keeps."
+
+[[section]]
+heading = "When to open a session here"
+asks = "This office's threshold within the doctrine's shape."
+
+[[section]]
+heading = "Spaces in use"
+asks = "Which spaces this office uses beyond the base, and why."
+
+[[section]]
+heading = "Founding"
+asks = "The date and the founding sitting's session id."

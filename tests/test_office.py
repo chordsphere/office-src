@@ -1,0 +1,701 @@
+"""Tests for office-src: the helper as units, the office command end to
+end, the migration runner through synthetic migrations, the installer,
+and the text rules for what lands in an office.
+
+Every test works under its own temporary HOME; nothing touches the real
+home directory, config or offices. Run with:
+
+    PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
+"""
+
+import datetime as dt
+import os
+import pathlib
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import textwrap
+import tomllib
+import unittest
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "lib"))
+import office_helper as h  # noqa: E402
+
+VERSION = (REPO / "VERSION").read_text().strip()
+INSTALL_PARTS = ("bin", "lib", "share", "templates", "doctrine", "migrations", "VERSION")
+
+
+def filled_profile(name="test"):
+    """A profile with every required section written."""
+    shape = tomllib.loads((REPO / "share/profile-shape.toml").read_text())
+    parts = [f"# Profile: {name}", ""]
+    for s in shape["section"]:
+        parts += [f"## {s['heading']}", "", "Written at the founding sitting.", ""]
+    return "\n".join(parts)
+
+
+class Env:
+    """A scratch HOME with a git identity and no global git config."""
+
+    def __init__(self, test):
+        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="office-test-"))
+        test.addCleanup(shutil.rmtree, self.tmp, True)
+        self.home = self.tmp / "home"
+        self.home.mkdir()
+        self.env = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "HOME": str(self.home),
+            "XDG_CONFIG_HOME": str(self.home / ".config"),
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": str(self.home / ".gitconfig-empty"),
+            "GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "test@example.com",
+            "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.com",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "LC_ALL": "C.UTF-8",
+        }
+        (self.home / ".gitconfig-empty").write_text("")
+        self.office_bin = REPO / "bin" / "office"
+
+    def run(self, *args, cwd=None, extra=None, bin_path=None, check=None):
+        env = dict(self.env)
+        env.update(extra or {})
+        proc = subprocess.run([str(bin_path or self.office_bin), *args], cwd=cwd or self.home,
+                              env=env, capture_output=True, text=True, timeout=120)
+        if check is not None and proc.returncode != check:
+            raise AssertionError(f"office {' '.join(args)} exited {proc.returncode}, wanted {check}\n"
+                                 f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
+        return proc
+
+    def git(self, root, *args):
+        return subprocess.run(["git", "-C", str(root), *args], env=self.env,
+                              capture_output=True, text=True, check=True).stdout
+
+    def init(self, name="workshop", **kw):
+        root = self.home / name
+        self.run("init", str(root), check=0, **kw)
+        return root
+
+    def found(self, root):
+        (root / "profile.md").write_text(filled_profile())
+        self.git(root, "commit", "-qam", "found")
+
+    def fake_install(self, version, migrations=()):
+        """A copy of this install at another version with synthetic
+        migrations: (version, kind, action, summary, script_body)."""
+        inst = self.tmp / f"install-{version}"
+        for part in INSTALL_PARTS:
+            src = REPO / part
+            (shutil.copytree if src.is_dir() else shutil.copy2)(src, inst / part)
+        (inst / "VERSION").write_text(version + "\n")
+        for v, kind, action, summary, body in migrations:
+            key = "script" if kind == "script" else "goal"
+            (inst / "migrations" / f"{v}.toml").write_text(
+                f'version = "{v}"\nkind = "{kind}"\nsummary = "{summary}"\n{key} = "{action}"\n')
+            if body is not None:
+                (inst / "migrations" / action).write_text(body)
+        return inst / "bin" / "office"
+
+
+# --- helper units -----------------------------------------------------------
+
+class TestVersions(unittest.TestCase):
+    def test_compare_is_numeric_not_lexical(self):
+        self.assertEqual(h.compare_versions("0.10.0", "0.9.0"), 1)
+        self.assertEqual(h.compare_versions("1.0.0", "1.0.0"), 0)
+        self.assertEqual(h.compare_versions("0.1.0", "0.1.1"), -1)
+
+    def test_rejects_malformed(self):
+        for bad in ("1.0", "v1.0.0", "1.0.0-rc1", ""):
+            with self.assertRaises(h.HelperError):
+                h.parse_version(bad)
+
+    def test_version_file_is_valid(self):
+        h.parse_version(VERSION)
+
+
+class TestFloorPlan(unittest.TestCase):
+    def setUp(self):
+        self.catalog = tomllib.loads((REPO / "share/spaces.toml").read_text())
+
+    def test_render_parses_and_stamps(self):
+        text = h.render_manifest(self.catalog, "w", "0.1.0", "2026-09-24T00:00:00Z", "UTC")
+        data = tomllib.loads(text)
+        self.assertEqual(h.office_stamp(data), {"built_from": "0.1.0", "migrated_to": "0.1.0"})
+        base = {k for k, v in self.catalog["spaces"].items() if v.get("base")}
+        self.assertEqual(set(data["spaces"]), base)
+        text.encode("ascii")
+
+    def test_filed_and_hung_paths(self):
+        data = tomllib.loads(h.render_manifest(self.catalog, "w", "0.1.0", "x", "UTC"))
+        self.assertEqual(sorted(h.space_paths(data, "filed")), ["filing-cabinet", "notepad"])
+        self.assertIn("profile.md", h.space_paths(data, "hung"))
+        self.assertIn("floor-plan/survey.md", h.space_paths(data, "hung"))
+
+    def test_older_shape_without_migrated_to_is_tolerated(self):
+        self.assertEqual(h.office_stamp({"office": {"built_from": "0.1.0"}})["migrated_to"], "0.1.0")
+        self.assertEqual(h.office_stamp({"office": {"built_from": "0.1.0"}, "extra": {}})["built_from"], "0.1.0")
+
+    def test_no_stamp_refuses(self):
+        with self.assertRaises(h.HelperError):
+            h.office_stamp({"office": {"name": "x"}})
+
+    def test_set_migrated_keeps_every_other_byte(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = pathlib.Path(d, "m.toml")
+            original = '# keep me\n[office]\nbuilt_from = "0.1.0"\nmigrated_to = "0.1.0"\n\n[spaces.desk]\npath = "desk"\n'
+            p.write_text(original)
+            h.set_migrated_to(p, "0.3.0")
+            self.assertEqual(p.read_text(), original.replace('migrated_to = "0.1.0"', 'migrated_to = "0.3.0"'))
+
+    def test_set_migrated_adds_the_key_to_an_older_shape(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = pathlib.Path(d, "m.toml")
+            p.write_text('[office]\nbuilt_from = "0.1.0"\n[spaces.desk]\npath = "desk"\n')
+            h.set_migrated_to(p, "0.2.0")
+            data = tomllib.loads(p.read_text())
+            self.assertEqual(data["office"]["migrated_to"], "0.2.0")
+            self.assertEqual(data["spaces"]["desk"]["path"], "desk")
+
+
+class TestProfile(unittest.TestCase):
+    def setUp(self):
+        self.shape = tomllib.loads((REPO / "share/profile-shape.toml").read_text())
+        self.dir = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir)
+
+    def check(self, text):
+        p = self.dir / "profile.md"
+        p.write_text(text)
+        return h.check_profile(p, self.shape)
+
+    def test_template_is_a_stub(self):
+        missing, blank = self.check((REPO / "templates/profile.md").read_text())
+        self.assertEqual(missing, [])
+        self.assertEqual(blank, [s["heading"] for s in self.shape["section"]])
+
+    def test_filled_is_complete(self):
+        self.assertEqual(self.check(filled_profile()), ([], []))
+
+    def test_none_written_out_counts(self):
+        text = filled_profile().replace("Written at the founding sitting.", "None. This office has no extra rules.")
+        self.assertEqual(self.check(text), ([], []))
+
+    def test_comment_only_section_is_blank(self):
+        text = filled_profile().replace("## Site\n\nWritten at the founding sitting.", "## Site\n\n<!-- hint -->")
+        self.assertEqual(self.check(text), ([], ["Site"]))
+
+    def test_leftover_todo_is_blank(self):
+        text = filled_profile().replace("## Audiences\n\nWritten", "## Audiences\n\nTODO: finish\nWritten")
+        self.assertEqual(self.check(text), ([], ["Audiences"]))
+
+    def test_missing_section_and_missing_file(self):
+        text = filled_profile().replace("## Founding", "## Something else")
+        self.assertEqual(self.check(text), (["Founding"], []))
+        missing, _ = h.check_profile(self.dir / "absent.md", self.shape)
+        self.assertEqual(len(missing), len(self.shape["section"]))
+
+
+class TestSurveyRender(unittest.TestCase):
+    FACTS = [("Survey", "surveyed_at", "2026-09-24T00:00:00Z"), ("Tools", "git", "2.43"),
+             ("Tools", "node", "v24")]
+
+    def test_first_survey(self):
+        page, changes, first = h.render_survey(self.FACTS, None)
+        self.assertTrue(first)
+        self.assertIn("First survey of this office.", page)
+        page.encode("ascii")
+
+    def test_rerun_reports_changes_but_not_the_timestamp(self):
+        page, _, _ = h.render_survey(self.FACTS, None)
+        new = [("Survey", "surveyed_at", "2026-09-25T00:00:00Z"), ("Tools", "git", "2.44"),
+               ("Tools", "R", "4.5")]
+        page2, changes, first = h.render_survey(new, page)
+        self.assertFalse(first)
+        self.assertEqual(changes, ["added tools.R: 4.5", "changed tools.git: 2.43 to 2.44",
+                                   "removed tools.node (was: v24)"])
+        self.assertIn("- changed tools.git: 2.43 to 2.44", page2)
+
+    def test_previous_changes_section_is_not_read_as_facts(self):
+        page, _, _ = h.render_survey(self.FACTS, None)
+        page2, _, _ = h.render_survey(self.FACTS[:2], page)
+        _, changes, _ = h.render_survey(self.FACTS[:2], page2)
+        self.assertEqual(changes, [])
+
+    def test_non_ascii_is_replaced(self):
+        page, _, _ = h.render_survey([("Tools", "x", "caf\u00e9 \u2014 ok")], None)
+        page.encode("ascii")
+
+    def test_age(self):
+        page, _, _ = h.render_survey(self.FACTS, None)
+        now = dt.datetime(2026, 9, 27, tzinfo=dt.timezone.utc)
+        stamp, delta = h.survey_age(page, now)
+        self.assertEqual(h.describe_age(delta), "3 days old")
+
+
+class TestMigrationPlanning(unittest.TestCase):
+    def setUp(self):
+        self.dir = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir)
+
+    def add(self, name, body, script=None):
+        (self.dir / name).write_text(textwrap.dedent(body))
+        if script:
+            (self.dir / script).write_text("true\n")
+
+    def test_order_and_pending(self):
+        self.add("0.10.0.toml", 'version = "0.10.0"\nkind = "script"\nsummary = "b"\nscript = "b.sh"\n', "b.sh")
+        self.add("0.9.0.toml", 'version = "0.9.0"\nkind = "renovation"\nsummary = "a"\ngoal = "g"\n')
+        self.assertEqual([m["version"] for m in h.load_migrations(self.dir, "0.10.0")], ["0.9.0", "0.10.0"])
+        self.assertEqual([m["version"] for m in h.pending_migrations(self.dir, "0.9.0", "0.10.0")], ["0.10.0"])
+
+    def test_skew_states(self):
+        self.add("0.2.0.toml", 'version = "0.2.0"\nkind = "script"\nsummary = "s"\nscript = "a.sh"\n', "a.sh")
+        self.assertEqual(h.skew("0.3.0", "0.2.0", self.dir)[0], "ahead")
+        self.assertEqual(h.skew("0.1.0", "0.2.0", self.dir)[0], "behind")
+        self.assertEqual(h.skew("0.2.0", "0.2.0", self.dir)[0], "current")
+        self.assertEqual(h.skew("0.2.0", "0.2.5", self.dir)[0], "current")
+
+    def test_invalid_migrations_refuse(self):
+        cases = {
+            "0.2.0.toml": 'version = "0.2.1"\nkind = "script"\nsummary = "s"\nscript = "a.sh"\n',
+        }
+        self.add("0.2.0.toml", cases["0.2.0.toml"], "a.sh")
+        with self.assertRaises(h.HelperError):
+            h.load_migrations(self.dir, "1.0.0")
+        for body in ('version = "0.2.0"\nkind = "script"\nsummary = ""\nscript = "a.sh"\n',
+                     'version = "0.2.0"\nkind = "magic"\nsummary = "s"\n',
+                     'version = "0.2.0"\nkind = "script"\nsummary = "s"\nscript = "gone.sh"\n',
+                     'version = "0.2.0"\nkind = "renovation"\nsummary = "s"\n'):
+            self.add("0.2.0.toml", body)
+            with self.assertRaises(h.HelperError, msg=body):
+                h.load_migrations(self.dir, "1.0.0")
+        self.add("0.2.0.toml", 'version = "0.2.0"\nkind = "script"\nsummary = "s"\nscript = "a.sh"\n')
+        with self.assertRaises(h.HelperError):
+            h.load_migrations(self.dir, "0.1.0")
+
+    def test_this_install_ships_valid_migrations(self):
+        h.load_migrations(REPO / "migrations", VERSION)
+
+
+# --- the office command -------------------------------------------------------
+
+class TestInit(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+
+    def test_builds_commits_and_prints_one_founding_line(self):
+        root = self.e.home / "workshop"
+        proc = self.e.run("init", str(root), check=0)
+        lines = proc.stdout.splitlines()
+        self.assertEqual(len(lines), 1, proc.stdout)
+        line = lines[0]
+        self.assertIn("bale pack --context", line)
+        self.assertIn(str(REPO / "doctrine"), line)
+        self.assertIn("bale pack --read-only --slug workshop-founding --include profile.md floor-plan", line)
+        for sp in ("desk", "filing-cabinet", "notepad", "suggestion-box", "drawer"):
+            self.assertTrue((root / sp).is_dir(), sp)
+        for sp in ("handbook", "calendar", "rolodex", "clipboards", "letterhead"):
+            self.assertFalse((root / sp).exists(), sp)
+        manifest = tomllib.loads((root / "floor-plan/manifest.toml").read_text())
+        self.assertEqual(manifest["office"]["built_from"], VERSION)
+        self.assertEqual(manifest["office"]["migrated_to"], VERSION)
+        self.assertIn("First survey of this office.", (root / "floor-plan/survey.md").read_text())
+        self.assertIn("## Purpose", (root / "profile.md").read_text())
+        self.assertEqual(len(self.e.git(root, "log", "--oneline").splitlines()), 1)
+        self.assertEqual(self.e.git(root, "status", "--porcelain"), "")
+        self.assertEqual((self.e.home / ".config/office-src/default-office").read_text().strip(), str(root))
+
+    def test_never_copies_tool_files_into_the_office(self):
+        root = self.e.init()
+        files = self.e.git(root, "ls-files").split()
+        for f in files:
+            self.assertFalse(f.startswith(("bin/", "lib/", "templates/", "doctrine/", "migrations/", "share/")), f)
+            self.assertNotEqual(pathlib.Path(f).name, "OFFICE.md")
+
+    def test_refusals(self):
+        root = self.e.init()
+        cases = {
+            str(self.e.home): "home directory",
+            str(root): "already an office",
+            str(root / "desk" / "inner"): "inside the office",
+        }
+        busy = self.e.home / "busy"
+        busy.mkdir()
+        (busy / "x").write_text("x")
+        cases[str(busy)] = "not empty"
+        repo = self.e.home / "proj"
+        repo.mkdir()
+        self.e.git(repo, "init", "-q")
+        cases[str(repo / "office")] = "inside the git repo"
+        for path, why in cases.items():
+            proc = self.e.run("init", path)
+            self.assertEqual(proc.returncode, 1, path)
+            self.assertIn(why, proc.stderr, path)
+
+    def test_refuses_without_a_git_identity_before_building(self):
+        self.e.env = {k: v for k, v in self.e.env.items() if not k.startswith(("GIT_AUTHOR", "GIT_COMMITTER"))}
+        (self.e.home / ".gitconfig-empty").write_text("[user]\n\tuseConfigOnly = true\n")
+        proc = self.e.run("init", str(self.e.home / "w"))
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("identity", proc.stderr)
+        self.assertFalse((self.e.home / "w").exists())
+
+    def test_second_office_does_not_steal_the_default(self):
+        first = self.e.init("one")
+        self.e.init("two")
+        self.assertEqual(self.e.run("default", check=0).stdout.strip(), str(first))
+
+
+class TestFindingTheOffice(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+        self.root = self.e.init()
+
+    def test_walks_up_from_a_subdirectory(self):
+        sub = self.root / "desk" / "a" / "b"
+        sub.mkdir(parents=True)
+        self.assertEqual(self.e.run("where", cwd=sub, check=0).stdout.strip(), str(self.root))
+
+    def test_env_override_and_default_fallback(self):
+        other = self.e.init("other", extra=None)
+        self.assertEqual(self.e.run("where", cwd=self.root, extra={"OFFICE_ROOT": str(other)}, check=0).stdout.strip(), str(other))
+        outside = self.e.tmp / "elsewhere"
+        outside.mkdir()
+        proc = self.e.run("where", cwd=outside, check=0)
+        self.assertEqual(proc.stdout.strip(), str(self.root))
+        self.assertIn("default", proc.stderr)
+
+    def test_no_office_and_no_default(self):
+        (self.e.home / ".config/office-src/default-office").unlink()
+        outside = self.e.tmp / "elsewhere"
+        outside.mkdir()
+        proc = self.e.run("where", cwd=outside)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("office default PATH", proc.stderr)
+
+    def test_default_refuses_a_non_office(self):
+        proc = self.e.run("default", str(self.e.tmp))
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("not an office", proc.stderr)
+
+    def test_unbuilt_verbs_say_so(self):
+        proc = self.e.run("note", "hello", cwd=self.root)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("not built yet", proc.stderr)
+
+
+class TestStatusAndSurvey(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+        self.root = self.e.init()
+
+    def test_status_unfounded_then_founded(self):
+        out = self.e.run("status", cwd=self.root, check=0).stdout
+        self.assertIn("INCOMPLETE; this office is unfounded", out)
+        self.assertIn("blank: Purpose", out)
+        self.assertIn("skew:       none", out)
+        self.e.found(self.root)
+        out = self.e.run("status", cwd=self.root, check=0).stdout
+        self.assertIn("profile:    complete", out)
+
+    def test_unfounded_warning_on_survey(self):
+        proc = self.e.run("survey", cwd=self.root, check=0)
+        self.assertIn("unfounded", proc.stderr)
+        self.e.found(self.root)
+        self.assertNotIn("unfounded", self.e.run("survey", cwd=self.root, check=0).stderr)
+
+    def test_rerun_reports_no_changes_and_commits_only_the_page(self):
+        (self.root / "desk" / "scratch.md").write_text("mine\n")
+        proc = self.e.run("survey", cwd=self.root, check=0)
+        self.assertEqual(proc.stdout.strip(), "no changes since the previous survey")
+        self.assertEqual(self.e.git(self.root, "status", "--porcelain").strip(), "?? desk/scratch.md")
+        self.assertIn("office survey: 0 facts changed", self.e.git(self.root, "log", "-1", "--format=%s"))
+
+    def test_office_survey_steps(self):
+        steps = self.root / "drawer" / "survey"
+        steps.mkdir()
+        (steps / "crontab.sh").write_text("#!/usr/bin/env bash\necho 'jobs: 3'\necho 'a loose line'\n")
+        (steps / "crontab.sh").chmod(0o755)
+        (steps / "slow.sh").write_text("#!/usr/bin/env bash\nsleep 5\n")
+        (steps / "slow.sh").chmod(0o755)
+        (steps / "idle.sh").write_text("echo nope\n")
+        proc = self.e.run("survey", cwd=self.root, extra={"OFFICE_STEP_TIMEOUT": "1"}, check=0)
+        page = (self.root / "floor-plan/survey.md").read_text()
+        self.assertIn("## Office step: crontab.sh", page)
+        self.assertIn("- jobs: 3", page)
+        self.assertIn("- line 2: a loose line", page)
+        self.assertIn("timed out after 1s", page)
+        self.assertIn("- skipped: not executable", page)
+        self.assertIn("added office step: crontab.sh.jobs: 3", proc.stdout)
+
+    def test_no_commit_flag(self):
+        head = self.e.git(self.root, "rev-parse", "HEAD")
+        self.e.run("survey", "--no-commit", cwd=self.root, check=0)
+        self.assertEqual(self.e.git(self.root, "rev-parse", "HEAD"), head)
+
+
+# --- versioning and upgrade ---------------------------------------------------
+
+MIGRATION_ADD_SPACE = "mkdir -p handbook && printf 'front page\\n' > handbook/README.md\n"
+
+
+class TestUpgrade(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+        self.root = self.e.init()
+
+    def stamp(self):
+        return tomllib.loads((self.root / "floor-plan/manifest.toml").read_text())["office"]
+
+    def test_nothing_to_do_when_current(self):
+        proc = self.e.run("upgrade", cwd=self.root, check=0)
+        self.assertIn("nothing to upgrade", proc.stderr)
+
+    def test_additive_release_needs_nothing(self):
+        office = self.e.fake_install("0.1.5")
+        out = self.e.run("status", cwd=self.root, bin_path=office, check=0).stdout
+        self.assertIn("skew:       none", out)
+        self.e.run("survey", cwd=self.root, bin_path=office, check=0)
+
+    def test_behind_refuses_and_names_upgrade(self):
+        office = self.e.fake_install("0.2.0", [("0.2.0", "script", "0.2.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
+        proc = self.e.run("survey", cwd=self.root, bin_path=office)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("run: office upgrade", proc.stderr)
+        self.assertIn("0.2.0: Adds a handbook.", proc.stderr)
+        self.assertIn("BEHIND", self.e.run("status", cwd=self.root, bin_path=office, check=0).stdout)
+
+    def test_ahead_refuses_outright(self):
+        office = self.e.fake_install("0.0.9")
+        for verb in ("survey", "upgrade"):
+            proc = self.e.run(verb, cwd=self.root, bin_path=office)
+            self.assertEqual(proc.returncode, 1, verb)
+            self.assertIn("past the installed office-src 0.0.9", proc.stderr)
+        self.assertIn("AHEAD", self.e.run("status", cwd=self.root, bin_path=office, check=0).stdout)
+
+    def test_script_migrations_land_as_one_commit(self):
+        office = self.e.fake_install("0.3.0", [
+            ("0.2.0", "script", "0.2.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE),
+            ("0.3.0", "script", "0.3.0.sh", "Adds a drafting table.", "mkdir -p drafting-table && : > drafting-table/.keep\n"),
+        ])
+        before = len(self.e.git(self.root, "log", "--oneline").splitlines())
+        self.e.run("upgrade", cwd=self.root, bin_path=office, check=0)
+        self.assertEqual(len(self.e.git(self.root, "log", "--oneline").splitlines()), before + 1)
+        msg = self.e.git(self.root, "log", "-1", "--format=%B")
+        self.assertIn(f"office upgrade: {VERSION} to 0.3.0", msg)
+        self.assertIn("- 0.2.0: Adds a handbook.", msg)
+        self.assertIn("- 0.3.0: Adds a drafting table.", msg)
+        self.assertEqual(self.stamp()["migrated_to"], "0.3.0")
+        self.assertEqual(self.stamp()["built_from"], VERSION)
+        self.assertTrue((self.root / "handbook/README.md").is_file())
+        self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
+        self.assertIn("nothing to upgrade", self.e.run("upgrade", cwd=self.root, bin_path=office, check=0).stderr)
+
+    def test_dry_run_changes_nothing(self):
+        office = self.e.fake_install("0.2.0", [("0.2.0", "script", "0.2.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
+        head = self.e.git(self.root, "rev-parse", "HEAD")
+        proc = self.e.run("upgrade", "--dry-run", cwd=self.root, bin_path=office, check=0)
+        self.assertIn("dry run passed", proc.stderr)
+        self.assertEqual(self.e.git(self.root, "rev-parse", "HEAD"), head)
+        self.assertFalse((self.root / "handbook").exists())
+        self.assertEqual(self.stamp()["migrated_to"], VERSION)
+
+    def test_filed_paper_is_never_rewritten(self):
+        (self.root / "notepad" / "2026-09-24-words.md").write_text("verbatim\n")
+        self.e.git(self.root, "add", "-A")
+        self.e.git(self.root, "commit", "-qm", "words")
+        office = self.e.fake_install("0.2.0", [("0.2.0", "script", "0.2.0.sh", "Tidies the notepad.",
+                                                "printf 'tidied\\n' > notepad/2026-09-24-words.md\n")])
+        head = self.e.git(self.root, "rev-parse", "HEAD")
+        proc = self.e.run("upgrade", cwd=self.root, bin_path=office)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("touched filed paper", proc.stderr)
+        self.assertIn("was not touched", proc.stderr)
+        self.assertEqual(self.e.git(self.root, "rev-parse", "HEAD"), head)
+        self.assertEqual((self.root / "notepad" / "2026-09-24-words.md").read_text(), "verbatim\n")
+
+    def test_failing_migration_leaves_the_office_alone(self):
+        office = self.e.fake_install("0.2.0", [("0.2.0", "script", "0.2.0.sh", "Breaks.", "mkdir -p x && exit 3\n")])
+        proc = self.e.run("upgrade", cwd=self.root, bin_path=office)
+        self.assertEqual(proc.returncode, 1)
+        self.assertFalse((self.root / "x").exists())
+        self.assertEqual(self.stamp()["migrated_to"], VERSION)
+
+    def test_dirty_office_refuses(self):
+        office = self.e.fake_install("0.2.0", [("0.2.0", "script", "0.2.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
+        (self.root / "desk" / "wip.md").write_text("wip\n")
+        proc = self.e.run("upgrade", cwd=self.root, bin_path=office)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("uncommitted changes", proc.stderr)
+
+    def test_judgment_stops_at_a_renovation_pack_line(self):
+        office = self.e.fake_install("0.3.0", [
+            ("0.2.0", "script", "0.2.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE),
+            ("0.3.0", "renovation", "Write the new Budget section of the profile.", "Profiles gain a Budget section.", None),
+        ])
+        proc = self.e.run("upgrade", cwd=self.root, bin_path=office, check=0)
+        self.assertEqual(self.stamp()["migrated_to"], "0.2.0")
+        lines = proc.stdout.splitlines()
+        self.assertEqual(len(lines), 1, proc.stdout)
+        self.assertIn("bale pack --slug upgrade-0-3-0", lines[0])
+        self.assertIn("Write the new Budget section of the profile.", lines[0])
+        self.assertIn("set migrated_to in floor-plan/manifest.toml to 0.3.0", lines[0])
+        self.assertIn("- 0.2.0: Adds a handbook.", self.e.git(self.root, "log", "-1", "--format=%B"))
+
+
+# --- install -------------------------------------------------------------------
+
+class TestInstall(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+        self.src = self.e.tmp / "office-src"
+        shutil.copytree(REPO, self.src, ignore=shutil.ignore_patterns(".git", ".bale", "__pycache__"))
+        self.e.git(self.src, "init", "-q")
+        self.e.git(self.src, "add", "-A")
+        self.e.git(self.src, "commit", "-qm", "src")
+        self.prefix = self.e.tmp / "share" / "office-src"
+        self.bindir = self.e.tmp / "bin"
+
+    def install(self, *extra):
+        return subprocess.run([str(self.src / "install.sh"), "--prefix", str(self.prefix),
+                               "--bin-dir", str(self.bindir), *extra],
+                              env=self.e.env, capture_output=True, text=True, timeout=60)
+
+    def test_installs_links_and_knows_its_version(self):
+        proc = self.install()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(f"office-src {VERSION}", proc.stdout)
+        stamp = (self.prefix / "INSTALLED").read_text()
+        self.assertIn(f"version: {VERSION}", stamp)
+        self.assertTrue((self.bindir / "office").is_symlink())
+        self.assertFalse((self.prefix / "tests").exists())
+        out = subprocess.run([str(self.bindir / "office"), "version"], env=self.e.env,
+                             capture_output=True, text=True).stdout
+        self.assertIn(str(self.prefix), out)
+
+    def test_installed_command_builds_an_office_reading_the_install(self):
+        self.assertEqual(self.install().returncode, 0)
+        proc = self.e.run("init", str(self.e.home / "w"), bin_path=self.bindir / "office", check=0)
+        self.assertIn(str(self.prefix / "doctrine"), proc.stdout)
+
+    def test_reinstall_replaces_and_uncommitted_work_is_left_out(self):
+        self.assertEqual(self.install().returncode, 0)
+        (self.prefix / "stray").write_text("x")
+        (self.src / "VERSION").write_text("9.9.9\n")
+        proc = self.install()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("uncommitted changes", proc.stderr)
+        self.assertFalse((self.prefix / "stray").exists())
+        self.assertEqual((self.prefix / "VERSION").read_text().strip(), VERSION)
+
+    def test_refuses_a_prefix_that_is_not_an_install(self):
+        self.prefix.mkdir(parents=True)
+        (self.prefix / "keep").write_text("mine")
+        proc = self.install()
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("not an office-src install", proc.stderr)
+        self.assertTrue((self.prefix / "keep").exists())
+
+
+# --- text rules ------------------------------------------------------------------
+
+# Split so this file does not trip its own checks.
+MODEL_NAMES = ["cla" + "ude", "anth" + "ropic", "open" + "ai", "chat" + "gpt", "gem" + "ini", "g" + "pt-", "copi" + "lot", "ll" + "ama"]
+OFFICE_SPECIFIC = ["med" + "gen", "zago" + "odma", "mm" + "ge", "iu" + "pui", "github." + "iu", "i" + "u health",
+                   "sh" + "iny", "chord" + "sphere", "m10" + "_"]
+FINGERPRINTS = [r"^\s*note:", r"^\s*important:", r"in summary", r"why this file exists"]
+
+
+def office_bound_text():
+    """Text that lands in an office or ships with every office session."""
+    return [REPO / "doctrine/OFFICE.md", *sorted((REPO / "templates").glob("*.md"))]
+
+
+OWN_DIRS = ("bin", "lib", "share", "templates", "doctrine", "migrations", "tests")
+OWN_FILES = ("VERSION", "README.md", "RELEASES.md", "install.sh", ".gitignore")
+
+
+def own_text():
+    """Everything office-src's repo holds, except this file. Named
+    explicitly rather than walked from the root, because a validation
+    staging copy puts its own files beside the tree."""
+    skip = pathlib.Path(__file__).resolve()
+    out = [REPO / f for f in OWN_FILES]
+    for d in OWN_DIRS:
+        out += [p for p in sorted((REPO / d).rglob("*"))
+                if p.is_file() and "__pycache__" not in p.relative_to(REPO).parts and p.resolve() != skip]
+    return out
+
+
+class TestText(unittest.TestCase):
+    def test_office_bound_text_is_ascii(self):
+        for p in office_bound_text():
+            for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+                self.assertTrue(line.isascii(), f"{p.name}:{n}: {line!r}")
+
+    def test_office_bound_text_has_no_fingerprints(self):
+        for p in office_bound_text():
+            for n, line in enumerate(p.read_text().splitlines(), 1):
+                for pat in FINGERPRINTS:
+                    self.assertIsNone(re.search(pat, line, re.I), f"{p.name}:{n}: {line!r}")
+
+    def test_names_no_model_and_no_office(self):
+        self.assertGreaterEqual(len(own_text()), 20)
+        for p in own_text():
+            text = p.read_text(encoding="utf-8", errors="replace").lower()
+            for word in MODEL_NAMES + OFFICE_SPECIFIC:
+                self.assertNotIn(word, text, f"{p.relative_to(REPO)} names {word!r}")
+
+    def test_profile_template_matches_the_shape(self):
+        shape = tomllib.loads((REPO / "share/profile-shape.toml").read_text())
+        headings = re.findall(r"^## (.+)$", (REPO / "templates/profile.md").read_text(), re.M)
+        self.assertEqual(headings, [s["heading"] for s in shape["section"]])
+        doctrine = (REPO / "doctrine/OFFICE.md").read_text()
+        for s in shape["section"]:
+            self.assertIn(f"- {s['heading']}:", doctrine)
+
+    def test_doctrine_space_table_matches_the_catalog(self):
+        catalog = tomllib.loads((REPO / "share/spaces.toml").read_text())["spaces"]
+        doctrine = (REPO / "doctrine/OFFICE.md").read_text()
+        spaces = doctrine.split("## 5. Spaces", 1)[1].split("## 6.", 1)[0]
+        rows = re.findall(r"^\| ([a-z.-]+/?) \| [^|]+ \| (yes|renovation) \|", spaces, re.M)
+        table = {path.rstrip("/"): base == "yes" for path, base in rows}
+        self.assertEqual(table, {s["path"]: bool(s.get("base")) for s in catalog.values()})
+
+    def test_doctrine_verb_table_covers_the_declarations(self):
+        verbs = tomllib.loads((REPO / "share/verbs.toml").read_text())["verbs"]
+        doctrine = (REPO / "doctrine/OFFICE.md").read_text()
+        table = " ".join(re.findall(r"^\| ([a-z, ]+) \|", doctrine, re.M))
+        for name in verbs:
+            self.assertRegex(table, rf"\b{name}\b", name)
+
+    def test_help_lists_every_built_script_verb(self):
+        verbs = tomllib.loads((REPO / "share/verbs.toml").read_text())["verbs"]
+        usage = subprocess.run([str(REPO / "bin/office"), "help"], capture_output=True, text=True).stdout
+        for name, v in verbs.items():
+            if v["kind"] == "script":
+                self.assertIn(name, usage, name)
+
+    def test_bale_office_line_is_verbatim(self):
+        line = ("The line between bale and office. Test: is this about a session or about a job? "
+                "bale records everything from pack to close inside one repo, including lineage between sessions. "
+                "The office records the person and the job across repos and time: why a session was opened, "
+                "the planner's words, what was decided, what is next, which sessions belong to which job. "
+                "A folder points at session ids; it never copies what bale records. "
+                "Where bale lacks a session-shaped fact, that is a slip for bale-src, not an office workaround. "
+                "Two bale doctrine limits bind: bale is \"not a master-changelog system\" (AGENT.md section 7), "
+                "and a dashboard \"renders the stats; it never owns them\" (PLANNER.md section 17).")
+        doctrine = " ".join((REPO / "doctrine/OFFICE.md").read_text().split())
+        self.assertIn(line, doctrine)
+
+    def test_shell_syntax(self):
+        for p in (REPO / "bin/office", REPO / "install.sh"):
+            proc = subprocess.run(["bash", "-n", str(p)], capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()

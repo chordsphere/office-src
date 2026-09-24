@@ -1,0 +1,112 @@
+# What each verb is, what it ships and where it lands. The office command
+# reads the built verbs from here as they arrive. A verb never runs,
+# schedules or carries a session: an office-session or project-session
+# verb only prints the pack line.
+#
+# kind    script | office-session | project-session
+# built   whether the office command has it yet
+# ships   what rides with the session (office sessions also ship the hung
+#         items and the doctrine)
+# writes  where it lands
+
+[verbs.init]
+kind = "script"
+built = true
+writes = ["the new office"]
+
+[verbs.survey]
+kind = "script"
+built = true
+writes = ["floor-plan/survey.md"]
+
+[verbs.status]
+kind = "script"
+built = true
+writes = []
+
+[verbs.upgrade]
+kind = "script"
+built = true
+writes = ["live structure named by each migration", "floor-plan/manifest.toml"]
+
+[verbs.where]
+kind = "script"
+built = true
+writes = []
+
+[verbs.default]
+kind = "script"
+built = true
+writes = ["the per-machine default office setting"]
+
+[verbs.note]
+kind = "script"
+built = false
+writes = ["notepad"]
+
+[verbs.open]
+kind = "script"
+built = false
+writes = ["desk"]
+
+[verbs.desk]
+kind = "script"
+built = false
+writes = []
+
+[verbs.week]
+kind = "script"
+built = false
+writes = []
+
+[verbs.close]
+kind = "script"
+built = false
+writes = ["desk", "filing-cabinet"]
+
+[verbs.reopen]
+kind = "script"
+built = false
+writes = ["filing-cabinet", "desk"]
+
+[verbs.founding]
+kind = "office-session"
+built = true
+ships = ["profile.md", "floor-plan"]
+writes = []
+
+[verbs.work]
+kind = "office-session"
+built = false
+ships = ["desk/{folder}", "handbook/{systems}", "rolodex/{people}", "letterhead"]
+writes = ["desk/{folder}"]
+
+[verbs.build]
+kind = "project-session"
+built = false
+ships = ["desk/{folder}", "handbook/{systems}"]
+writes = ["{project}"]
+
+[verbs.prep]
+kind = "office-session"
+built = false
+ships = ["clipboards/{series}", "handbook/{systems}", "rolodex/{attendees}"]
+writes = ["clipboards/{series}"]
+
+[verbs.meeting]
+kind = "office-session"
+built = false
+ships = ["clipboards/{series}", "handbook/{systems}", "rolodex/{attendees}"]
+writes = ["clipboards/{series}", "desk"]
+
+[verbs.cleanup]
+kind = "office-session"
+built = false
+ships = ["desk", "notepad", "suggestion-box", "handbook"]
+writes = ["desk", "filing-cabinet", "handbook", "rolodex", "calendar", "suggestion-box"]
+
+[verbs.renovate]
+kind = "office-session"
+built = false
+ships = ["floor-plan", "suggestion-box"]
+writes = ["floor-plan", "suggestion-box", "{spaces being changed}"]
