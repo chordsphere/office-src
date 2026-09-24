@@ -6,7 +6,8 @@
 # kind    script | office-session | project-session
 # built   whether the office command has it yet
 # ships   what rides with the session (office sessions also ship the hung
-#         items and the doctrine)
+#         items, which the office's bale.toml include group pulls, and the
+#         doctrine)
 # writes  where it lands
 
 [verbs.init]
@@ -41,39 +42,44 @@ writes = ["the per-machine default office setting"]
 
 [verbs.note]
 kind = "script"
-built = false
+built = true
 writes = ["notepad"]
 
 [verbs.open]
 kind = "script"
-built = false
+built = true
 writes = ["desk"]
 
 [verbs.desk]
 kind = "script"
-built = false
+built = true
 writes = []
 
 [verbs.week]
 kind = "script"
-built = false
+built = true
 writes = []
 
 [verbs.close]
 kind = "script"
-built = false
+built = true
 writes = ["desk", "filing-cabinet"]
 
 [verbs.reopen]
 kind = "script"
-built = false
+built = true
 writes = ["filing-cabinet", "desk"]
+
+[verbs.sessions]
+kind = "script"
+built = true
+writes = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md"]
 
 [verbs.founding]
 kind = "office-session"
 built = true
-ships = ["profile.md", "floor-plan"]
-writes = []
+ships = ["floor-plan"]
+writes = ["profile.md", "notepad", "floor-plan"]
 
 [verbs.work]
 kind = "office-session"

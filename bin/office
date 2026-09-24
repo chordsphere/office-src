@@ -20,6 +20,7 @@ DEFAULT_FILE="$CONFIG_DIR/default-office"
 MANIFEST_REL="floor-plan/manifest.toml"
 SURVEY_REL="floor-plan/survey.md"
 PROFILE_REL="profile.md"
+BALE_TOML_REL="bale.toml"
 STEP_TIMEOUT="${OFFICE_STEP_TIMEOUT:-10}"
 VERSION_TIMEOUT=5
 
@@ -229,20 +230,27 @@ doctrine_context_cmd() {
   printf '(cd %s && bale pack --context)' "$(shq "$DOCTRINE_DIR")"
 }
 
+# The founding session is scoped, so one trip lands the profile, the
+# occupant's words from the founding conversation as a notepad page, and
+# the office's real timezone. The include group in bale.toml pulls the
+# hung items (profile.md, the survey) once floor-plan is included.
 founding_line() {
   local root="$1" name="$2" slug
   slug="$(slugify "$name")-founding"
-  printf '%s && cd %s && bale pack --read-only --slug %s --include %s floor-plan --no-readme %s\n' \
+  printf '%s && cd %s && bale pack --slug %s --include floor-plan --write %s notepad floor-plan --no-readme %s\n' \
     "$(doctrine_context_cmd)" "$(shq "$root")" "$slug" "$PROFILE_REL" \
-    "$(shq "Founding sitting for the $name office: write its profile with the occupant, section by section, following the doctrine that rides beside this request, and author the one session that lands profile.md")"
+    "$(shq "Found the $name office: write its profile with the occupant section by section, file the occupant's words from this conversation as a notepad page, and set the office's real timezone in the floor plan and the profile's Site section, asking the occupant rather than trusting the machine clock")"
 }
 
+# Only office upgrade writes the version stamp. The renovation session
+# does the work; a re-run of office upgrade checks the migration's
+# declaration and stamps the office when it holds.
 renovation_line() {
-  local root="$1" version="$2" goal="$3" slug
+  local root="$1" version="$2" goal="$3" landed="$4" slug
   slug="upgrade-$(slugify "$version")"
   printf '%s && cd %s && bale pack --slug %s --no-readme %s\n' \
     "$(doctrine_context_cmd)" "$(shq "$root")" "$slug" \
-    "$(shq "Renovate this office for office-src $version: $goal When it lands, set migrated_to in $MANIFEST_REL to $version.")"
+    "$(shq "Renovate this office for office-src $version: $goal Done means $landed. Leave the version stamp alone; office upgrade checks this and stamps the office.")"
 }
 
 # --- verbs -------------------------------------------------------------------
@@ -302,16 +310,19 @@ cmd_init() {
 
   log "first survey"
   write_survey "$root" | sed 's/^/[office] survey: /' >&2
+  # After the survey, so the survey page is on disk to be a pull.
+  helper render-bale-toml "$root/$MANIFEST_REL" --root "$root" > "$root/$BALE_TOML_REL" || die "could not write $BALE_TOML_REL"
+  debug "wrote $BALE_TOML_REL: the include group that pulls the hung items"
 
   git -C "$root" init -q -b main || die "git init failed in $root"
   git -C "$root" add -A && git -C "$root" commit -q -m "office init: $name (office-src $version)" \
     || die "the first commit failed; $root is partial, remove it with: rm -rf $(printf '%q' "$root")"
-  log "committed the skeleton, the profile stub and the first survey"
+  log "committed the skeleton, the profile stub, bale.toml and the first survey"
 
   if [ "$set_default" = "1" ] && [ ! -f "$DEFAULT_FILE" ]; then
     mkdir -p "$CONFIG_DIR" && printf '%s\n' "$root" > "$DEFAULT_FILE" && log "made $root this machine's default office"
   fi
-  log "the office is unfounded until its profile is written; the line below packs the founding sitting"
+  log "the office is unfounded until its profile is written; the line below packs the founding session"
   log "attach $DOCTRINE_DIR/.bale/outbox/context-doctrine.tar.gz beside the request it opens"
   founding_line "$root" "$name"
 }
@@ -370,6 +381,13 @@ cmd_status() {
     *) printf 'profile:    could not be checked\n' ;;
   esac
   printf 'survey:     %s\n' "$(helper survey-age "$root/$SURVEY_REL" 2>/dev/null || printf 'unreadable')"
+  local drift
+  drift="$(helper include-group-check "$root/$MANIFEST_REL" "$root/$BALE_TOML_REL" "$root")"
+  case $? in
+    0) printf 'hung items: bale.toml include group matches the floor plan\n' ;;
+    3) printf 'hung items: bale.toml differs from the floor plan\n'; printf '%s\n' "$drift" | sed 's/^/  /' ;;
+    *) printf 'hung items: could not compare bale.toml with the floor plan\n' ;;
+  esac
 }
 
 # Run planned migrations in a target office. Arguments: target, plan file.
@@ -377,16 +395,25 @@ cmd_status() {
 # 10 when it stopped at a renovation (whose line is the last printed),
 # 1 on failure.
 run_migrations() {
-  local target="$1" plan="$2" version kind action summary filed changed
+  local target="$1" plan="$2" version kind action summary landed filed changed
   mapfile -t filed < <(helper spaces "$target/$MANIFEST_REL" filed)
-  while IFS=$'\t' read -r version kind action summary; do
+  while IFS=$'\t' read -r version kind action summary landed; do
     [ -n "$version" ] || continue
     if [ "$kind" = "renovation" ]; then
-      printf 'renovation\t%s\t%s\t%s\n' "$version" "$action" "$summary"
+      local unmet
+      if unmet="$(helper landed "$version" "$MIGRATIONS" "$(install_version)" "$target")"; then
+        log "migration $version is a renovation and its declaration holds: $landed"
+        helper set-migrated "$target/$MANIFEST_REL" "$version" || return 1
+        printf 'verified\t%s\t%s (renovation, checked)\n' "$version" "$summary"
+        continue
+      fi
+      [ -n "$unmet" ] || { log "could not check renovation $version"; return 1; }
+      printf '%s\n' "$unmet" | sed "s/^/[office]   $version not landed yet: /" >&2
+      printf 'renovation\t%s\t%s\t%s\t%s\n' "$version" "$action" "$summary" "$landed"
       return 10
     fi
     log "migration $version: $summary"
-    if ! (cd "$target" && OFFICE_ROOT="$target" OFFICE_MIGRATION="$version" timeout 300 bash "$MIGRATIONS/$action") >&2; then
+    if ! (cd "$target" && OFFICE_ROOT="$target" OFFICE_MIGRATION="$version" OFFICE_SRC="$OFFICE_SRC" timeout 300 bash "$MIGRATIONS/$action") >&2; then
       log "migration $version failed in $target"
       return 1
     fi
@@ -446,7 +473,7 @@ cmd_upgrade() {
     git -C "$root" reset -q --hard HEAD && git -C "$root" clean -qfd
     die "the upgrade failed after the dry run passed; $root was reset to its last commit"
   fi
-  applied="$(grep '^applied' "$scratch/real.out" || true)"
+  applied="$(grep -E '^(applied|verified)' "$scratch/real.out" || true)"
   if [ -n "$applied" ]; then
     msg="$scratch/msg"
     {
@@ -458,13 +485,277 @@ cmd_upgrade() {
     sed 's/^/[office]   /' "$msg" >&2
   fi
   if [ "$rc" -eq 10 ]; then
-    local line version goal
+    local line version goal landed
     line="$(grep '^renovation' "$scratch/real.out" | head -n 1)"
-    version="$(printf '%s' "$line" | cut -f2)"; goal="$(printf '%s' "$line" | cut -f3)"
+    version="$(printf '%s' "$line" | cut -f2)"; goal="$(printf '%s' "$line" | cut -f3)"; landed="$(printf '%s' "$line" | cut -f5)"
     log "migration $version needs judgment, so it is a renovation session, not a script; the line below packs it"
+    log "when that session has landed, run office upgrade again: it checks the renovation and stamps the office"
     log "attach $DOCTRINE_DIR/.bale/outbox/context-doctrine.tar.gz beside the request it opens"
-    renovation_line "$root" "$version" "$goal"
+    renovation_line "$root" "$version" "$goal" "$landed"
   fi
+}
+
+# --- the everyday verbs --------------------------------------------------------
+#
+# Script verbs: the office command alone, in seconds, no session and no
+# network. Each commits exactly the paths it touched, so the occupant's
+# other work in progress is never swept into a verb's commit.
+
+# The office's timezone from its floor plan, checked against the zone
+# database; a bad or missing zone falls back to UTC, loudly.
+office_tz() {
+  local root="$1" tz
+  tz="$(helper get "$root/$MANIFEST_REL" office.timezone --default UTC 2>/dev/null)" || tz="UTC"
+  if [ "$tz" != "UTC" ] && [ ! -e "/usr/share/zoneinfo/$tz" ]; then
+    warn "the floor plan's timezone '$tz' is not in /usr/share/zoneinfo; using UTC"
+    tz="UTC"
+  fi
+  printf '%s' "$tz"
+}
+
+office_date() { TZ="$1" date +%F; }
+office_time() { TZ="$1" date +%H:%M; }
+
+# Commit only the named paths. Returns 1 (after a warning) when there is
+# no repo or git refuses; the change on disk stands either way.
+commit_paths() {
+  local root="$1" msg="$2"; shift 2
+  if ! git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    warn "$root is not a git repo; nothing committed"; return 1
+  fi
+  git -C "$root" add -A -- "$@" 2>/dev/null || { warn "git add failed for: $*"; return 1; }
+  if git -C "$root" diff --cached --quiet -- "$@"; then debug "nothing to commit for: $*"; return 0; fi
+  if ! git -C "$root" commit -q -m "$msg" -- "$@" >/dev/null 2>&1; then
+    warn "git could not commit ($msg); the change is on disk, uncommitted"; return 1
+  fi
+  debug "committed: $msg"
+}
+
+# Skew for capture: warn, never refuse. Capture is instant and dumb.
+warn_on_skew() {
+  local root="$1" report state
+  report="$(skew_report "$root" 2>/dev/null)" || { warn "could not read this office's version stamp"; return 0; }
+  state="$(printf '%s\n' "$report" | head -n 1)"
+  case "$state" in
+    behind) warn "this office is behind office-src $(install_version) (run: office upgrade); noting anyway" ;;
+    ahead) warn "this office was migrated past office-src $(install_version); noting anyway" ;;
+  esac
+  return 0
+}
+
+has_space() {  # has_space ROOT KEY: is the space in this office's floor plan?
+  helper get "$1/$MANIFEST_REL" "spaces.$2.path" >/dev/null 2>&1
+}
+
+# A folder by exact name or by a unique part of its name, in one space.
+find_folder() {
+  local root="$1" space="$2" want="$3" d matches=()
+  [ -n "$want" ] || die "name a folder"
+  if [ -d "$root/$space/$want" ]; then printf '%s' "$want"; return 0; fi
+  for d in "$root/$space"/*/; do
+    [ -d "$d" ] || continue
+    d="$(basename "$d")"
+    case "$d" in *"$want"*) matches+=("$d") ;; esac
+  done
+  case "${#matches[@]}" in
+    1) printf '%s' "${matches[0]}" ;;
+    0) die "no folder matching '$want' in $space/" ;;
+    *) die "'$want' matches ${#matches[@]} folders in $space/: ${matches[*]}" ;;
+  esac
+}
+
+cmd_note() {
+  local root tz day now page text line n=0
+  case "${1:-}" in -h|--help) printf 'usage: office note TEXT...   (or lines on stdin)\n'; return 0 ;; esac
+  root="$(resolve_office)" || exit 1
+  warn_on_skew "$root"
+  warn_if_unfounded "$root"
+  if [ $# -gt 0 ]; then text="$*"
+  elif [ ! -t 0 ]; then text="$(cat)"
+  else die "nothing to note: give the text as arguments or on stdin"; fi
+  [ -n "${text//[[:space:]]/}" ] || die "nothing to note: the text is empty"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"; now="$(office_time "$tz")"
+  page="notepad/$day.md"
+  mkdir -p "$root/notepad" || die "cannot create $root/notepad"
+  if [ ! -f "$root/$page" ]; then
+    helper render-template "$TEMPLATES/notepad-page.md" "date=$day" "title=notes" > "$root/$page" \
+      || die "could not start $page"
+    printf '\n' >> "$root/$page"
+  fi
+  text="$(printf '%s' "$text" | helper ascii-escape)"
+  while IFS= read -r line; do
+    [ -n "${line//[[:space:]]/}" ] || continue
+    printf -- '- %s %s\n' "$now" "$line" >> "$root/$page" || die "could not append to $page"
+    n=$((n + 1))
+  done <<< "$text"
+  log "noted $n line(s) in $page"
+  commit_paths "$root" "office note: $day $now" "$page" || true
+}
+
+cmd_open() {
+  local slug="" title="" thread=0 root tz day name folder
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --title) [ $# -ge 2 ] || die "--title needs a value"; title="$2"; shift 2 ;;
+      --thread) thread=1; shift ;;
+      -h|--help) printf 'usage: office open SLUG [--title TITLE] [--thread < pasted-thread]\n'; return 0 ;;
+      -*) die "unknown option for open: $1" ;;
+      *) [ -z "$slug" ] || die "open takes one slug (quote a title with --title)"; slug="$1"; shift ;;
+    esac
+  done
+  [ -n "$slug" ] || die "open needs a short slug for the job, e.g.: office open fix-login"
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  warn_if_unfounded "$root"
+  slug="$(slugify "$slug")"; [ -n "$slug" ] || die "the slug has no letters or digits"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  name="$day-$slug"; folder="desk/$name"
+  [ ! -e "$root/$folder" ] || die "already on the desk: $folder"
+  [ ! -e "$root/filing-cabinet/$name" ] || die "already filed: filing-cabinet/$name (office reopen $name)"
+  [ -n "$title" ] || title="$slug"
+  title="$(printf '%s' "$title" | helper ascii-escape)"
+  mkdir -p "$root/$folder" || die "cannot create $folder"
+  helper render-template "$TEMPLATES/folder.md" "title=$title" > "$root/$folder/folder.md" || die "could not write $folder/folder.md"
+  if [ "$thread" = "1" ]; then
+    [ ! -t 0 ] || die "--thread reads the pasted thread on stdin"
+    { printf '# Thread that started this job\n\nPasted when the folder was opened, verbatim.\n\n'; helper ascii-escape; } > "$root/$folder/thread.md" \
+      || die "could not write $folder/thread.md"
+    log "seeded $folder/thread.md from stdin"
+  fi
+  log "opened $folder"
+  commit_paths "$root" "office open: $name" "$folder" || true
+  printf '%s\n' "$folder"
+}
+
+cmd_desk() {
+  local root d name summary nxt sessions n=0
+  case "${1:-}" in -h|--help) printf 'usage: office desk\n'; return 0 ;; esac
+  root="$(resolve_office)" || exit 1
+  for d in "$root"/desk/*/; do
+    [ -d "$d" ] || continue
+    name="$(basename "$d")"; n=$((n + 1))
+    if [ ! -f "$d/folder.md" ]; then printf '%s  (no folder.md)\n' "$name"; continue; fi
+    if summary="$(helper folder-summary "$d/folder.md" "$TEMPLATES/folder.md")"; then
+      nxt="$(printf '%s' "$summary" | cut -f1)"; sessions="$(printf '%s' "$summary" | cut -f2)"
+      printf '%s  next: %s  (sessions: %s)\n' "$name" "$nxt" "$sessions"
+    else
+      printf '%s  (folder.md could not be read)\n' "$name"
+    fi
+  done
+  [ "$n" -gt 0 ] || printf 'the desk is clear\n'
+}
+
+cmd_week() {
+  local root tz
+  case "${1:-}" in -h|--help) printf 'usage: office week\n'; return 0 ;; esac
+  root="$(resolve_office)" || exit 1
+  if ! has_space "$root" calendar; then
+    printf 'this office has no calendar. A renovation adds one: an office session that adds the calendar space to the floor plan (doctrine section 5).\n'
+    return 0
+  fi
+  tz="$(office_tz "$root")"
+  helper week "$root/calendar" --today "$(office_date "$tz")" --now "$(office_time "$tz")" --tz "$tz" \
+    || die "could not read the calendar in $root/calendar"
+}
+
+# Moving a folder is not rewriting it: the bytes move, git keeps the
+# history, and anything uncommitted in the folder moves with it.
+move_folder() {
+  local verb="$1" from="$2" to="$3" want="$4" root name
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  name="$(find_folder "$root" "$from" "$want")" || exit 1
+  [ ! -e "$root/$to/$name" ] || die "$to/$name already exists; not overwriting it"
+  mkdir -p "$root/$to" || die "cannot create $to"
+  mv "$root/$from/$name" "$root/$to/$name" || die "could not move $from/$name to $to/"
+  log "moved $from/$name to $to/"
+  commit_paths "$root" "office $verb: $name" "$from/$name" "$to/$name" || true
+}
+
+cmd_close() {
+  case "${1:-}" in -h|--help|"") printf 'usage: office close FOLDER\n'; [ -n "${1:-}" ]; return ;; esac
+  move_folder close desk filing-cabinet "$1"
+}
+
+cmd_reopen() {
+  case "${1:-}" in -h|--help|"") printf 'usage: office reopen FOLDER\n'; [ -n "${1:-}" ]; return ;; esac
+  move_folder reopen filing-cabinet desk "$1"
+}
+
+# Record which sessions worked on a folder's job. The id comes from
+# bale, never typed: `bale pack --json ... | office sessions FOLDER -`
+# reads the pack report. The session verbs of a later release call
+# record_session the same way.
+record_session() {
+  local root="$1" folder="$2" sid="$3" words="$4" out rc
+  out="$(helper record-session "$root/$folder/folder.md" "$sid" ${words:+--words "$words"})"; rc=$?
+  case $rc in
+    0) log "recorded $sid in $folder"; commit_paths "$root" "office sessions: $sid in $(basename "$folder")" "$folder/folder.md" || true ;;
+    4) log "$sid is already recorded in $folder" ;;
+    *) die "could not record $sid in $folder/folder.md" ;;
+  esac
+}
+
+cmd_sessions() {
+  local want="" source="" words="" root space name sid
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -m) [ $# -ge 2 ] || die "-m needs a few words"; words="$2"; shift 2 ;;
+      -h|--help) printf 'usage: office sessions FOLDER [SID | -] [-m WORDS]\n  with - the id is read from a bale pack --json report on stdin\n'; return 0 ;;
+      *) if [ -z "$want" ]; then want="$1"; elif [ -z "$source" ]; then source="$1"; else die "too many arguments"; fi; shift ;;
+    esac
+  done
+  [ -n "$want" ] || die "name a folder"
+  root="$(resolve_office)" || exit 1
+  space=desk
+  if ! name="$( (find_folder "$root" desk "$want") 2>/dev/null)"; then
+    space=filing-cabinet; name="$(find_folder "$root" filing-cabinet "$want")" || exit 1
+  fi
+  [ -f "$root/$space/$name/folder.md" ] || die "$space/$name has no folder.md"
+  if [ -z "$source" ]; then
+    helper folder-summary "$root/$space/$name/folder.md" "$TEMPLATES/folder.md" >/dev/null || die "could not read $space/$name/folder.md"
+    awk '/^## Sessions/{on=1; next} /^## /{on=0} on && /^- /' "$root/$space/$name/folder.md"
+    return 0
+  fi
+  if [ "$source" = "-" ]; then
+    sid="$(helper pack-sid)" || die "no session id recorded in $space/$name"
+  else
+    sid="$source"
+  fi
+  record_session "$root" "$space/$name" "$sid" "$words"
+}
+
+# Walking in: `office` with no arguments.
+walk_in() {
+  local root name tz report state slips notes founded
+  if ! root="$(resolve_office 2>/dev/null)"; then
+    usage
+    printf '\nNot inside an office, and this machine has no default office. office init PATH builds one.\n'
+    return 0
+  fi
+  name="$(helper get "$root/$MANIFEST_REL" office.name --default "(unnamed)")"
+  tz="$(office_tz "$root")"
+  report="$(skew_report "$root" 2>/dev/null)" && state="$(printf '%s\n' "$report" | head -n 1)" || state="unreadable"
+  if helper profile-check "$root/$PROFILE_REL" "$SHAPE" >/dev/null 2>&1; then founded="founded"; else founded="UNFOUNDED (profile incomplete: office status)"; fi
+  case "$state" in
+    current) state="current with office-src $(install_version)" ;;
+    behind) state="BEHIND office-src $(install_version) (run: office upgrade)" ;;
+    ahead) state="AHEAD of office-src $(install_version) (install a newer office-src)" ;;
+    *) state="version stamp unreadable" ;;
+  esac
+  printf 'The %s office, %s\n' "$name" "$root"
+  printf '%s, %s %s. %s; %s.\n\n' "$(TZ="$tz" date '+%A %F')" "$(office_time "$tz")" "$tz" "$founded" "$state"
+
+  printf 'On the desk:\n'
+  OFFICE_ROOT="$root" cmd_desk | sed 's/^/  /'
+  printf '\nThis week:\n'
+  OFFICE_ROOT="$root" cmd_week | sed 's/^/  /'
+  printf '\nNotepad, last lines:\n'
+  notes="$(helper recent-notes "$root/notepad" 3 2>/dev/null)"
+  if [ -n "$notes" ]; then printf '%s\n' "$notes" | sed 's/^/  /'; else printf '  nothing noted yet\n'; fi
+  slips="$(find "$root/suggestion-box" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+  printf '\nSuggestion box: %s slip(s).\n' "$slips"
+  printf '\nFrom here: office note TEXT, office open SLUG, office close FOLDER, office desk, office week, office status. office help lists everything.\n'
 }
 
 cmd_where() {
@@ -503,17 +794,26 @@ usage() {
   cat <<EOF
 office-src $(install_version): builds and keeps offices.
 
-usage: office VERB [args]
+usage: office [VERB [args]]
 
-  init PATH       build an office and print its founding sitting's pack line
+  (no verb)       walk in: the desk, this week, recent notes, slips
+  note TEXT       append a dated line to the notepad (works unfounded or behind)
+  open SLUG       start a folder on the desk; --thread seeds it from stdin
+  desk            open folders and each one's next move
+  week            this week's calendar and its gaps
+  close FOLDER    move a folder to the filing cabinet
+  reopen FOLDER   bring a folder back to the desk, history and all
+  sessions FOLDER [SID|-]
+                  list or record the sessions that worked on a folder;
+                  - reads a bale pack --json report on stdin
+
+  init PATH       build an office and print its founding session's pack line
   survey          rewrite floor-plan/survey.md and report what changed
-  status          version, skew, profile and survey age (read-only)
+  status          version, skew, profile, survey age, hung items (read-only)
   upgrade         run pending migrations, dry run first, one commit
   where           print the office a command here would act on
   default [PATH]  show or set this machine's default office
   version         print the installed version
-
-Not built yet: note, open, desk, week, close, reopen.
 
 A command acts on OFFICE_ROOT if set, else the office around the working
 directory, else this machine's default. The doctrine is
@@ -522,8 +822,8 @@ EOF
 }
 
 main() {
-  local verb="${1:-help}"
-  [ $# -gt 0 ] && shift
+  if [ $# -eq 0 ]; then walk_in; return; fi
+  local verb="$1"; shift
   case "$verb" in
     init) cmd_init "$@" ;;
     survey) cmd_survey "$@" ;;
@@ -531,9 +831,15 @@ main() {
     upgrade) cmd_upgrade "$@" ;;
     where) cmd_where "$@" ;;
     default) cmd_default "$@" ;;
+    note) cmd_note "$@" ;;
+    open) cmd_open "$@" ;;
+    desk) cmd_desk "$@" ;;
+    week) cmd_week "$@" ;;
+    close) cmd_close "$@" ;;
+    reopen) cmd_reopen "$@" ;;
+    sessions) cmd_sessions "$@" ;;
     version|--version|-V) cmd_version ;;
     help|--help|-h) usage ;;
-    note|open|desk|week|close|reopen) die "office $verb is not built yet (see the verb table in $DOCTRINE_DIR/OFFICE.md)" ;;
     *) usage >&2; die "unknown verb: $verb" ;;
   esac
 }

@@ -17,15 +17,24 @@ The TOML file:
     script = "0.2.0.sh"        # script kind: run by bash from the office root
     goal = "..."               # renovation kind: the renovation session's goal
 
+    [landed]                   # renovation kind: what must be true once it has landed
+    paths = ["calendar/plan.md"]          # paths that exist
+    profile_sections = ["Budget"]         # profile sections present and written
+
 A script migration runs with the office root as its working directory
-and OFFICE_ROOT and OFFICE_MIGRATION set. It changes live structure
+and OFFICE_ROOT, OFFICE_MIGRATION and OFFICE_SRC (the install) set. It changes live structure
 only. It must never touch filed paper (spaces with filed = true in the
 office's floor plan); office upgrade checks after every migration and
 refuses one that did. It must be safe to run on a scratch clone, because
 office upgrade rehearses every migration there first.
 
 A migration that needs judgment, such as a new required profile section,
-is a renovation. office upgrade stops before it and prints the pack line
-for a renovation session, which sets migrated_to when it lands.
+is a renovation. It declares, under [landed], what must be true once the
+renovation has landed; at least one of the two keys is required. office
+upgrade checks the declaration: when it does not hold yet, upgrade stops
+there and prints the pack line for a renovation session. The session does
+the work and leaves the version stamp alone. The next run of office
+upgrade finds the declaration holds, stamps the office and carries on.
+Only office upgrade ever writes migrated_to.
 
 A migration's version is never newer than the install's VERSION.

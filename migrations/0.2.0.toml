@@ -1,0 +1,4 @@
+version = "0.2.0"
+kind = "script"
+summary = "Adds bale.toml with the include group that makes every pack from the office ship its hung items."
+script = "0.2.0.sh"
