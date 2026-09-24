@@ -1,0 +1,541 @@
+#!/usr/bin/env bash
+# office: builds and keeps offices. See doctrine/OFFICE.md in the install.
+#
+# Everything the command reads about itself (templates, doctrine, space
+# catalog, profile shape, migrations) comes from the install this script
+# sits in, found through its own path, so an upgraded install upgrades
+# every office's tools without touching any office.
+
+set -uo pipefail
+
+OFFICE_SRC="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+HELPER="$OFFICE_SRC/lib/office_helper.py"
+CATALOG="$OFFICE_SRC/share/spaces.toml"
+SHAPE="$OFFICE_SRC/share/profile-shape.toml"
+TEMPLATES="$OFFICE_SRC/templates"
+MIGRATIONS="$OFFICE_SRC/migrations"
+DOCTRINE_DIR="$OFFICE_SRC/doctrine"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/office-src"
+DEFAULT_FILE="$CONFIG_DIR/default-office"
+MANIFEST_REL="floor-plan/manifest.toml"
+SURVEY_REL="floor-plan/survey.md"
+PROFILE_REL="profile.md"
+STEP_TIMEOUT="${OFFICE_STEP_TIMEOUT:-10}"
+VERSION_TIMEOUT=5
+
+log()   { printf '[office] %s\n' "$*" >&2; }
+warn()  { printf '[office] warning: %s\n' "$*" >&2; }
+die()   { printf '[office] error: %s\n' "$*" >&2; exit 1; }
+debug() { [ "${OFFICE_DEBUG:-0}" = "1" ] && printf '[office] debug: %s\n' "$*" >&2; return 0; }
+
+helper() { python3 "$HELPER" "$@"; }
+
+# Single-quote a word for a printed command line.
+shq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+
+# Escape a value for the right-hand side of a sed s|||.
+sed_rhs() { printf '%s' "$1" | sed 's/[&|\\]/\\&/g'; }
+
+TMP_PATHS=()
+cleanup_tmp() { [ "${#TMP_PATHS[@]}" -gt 0 ] && rm -rf "${TMP_PATHS[@]}"; return 0; }
+trap cleanup_tmp EXIT
+
+install_version() {
+  local v
+  v="$(head -n 1 "$OFFICE_SRC/VERSION" 2>/dev/null)" || die "install has no VERSION file: $OFFICE_SRC"
+  [ -n "$v" ] || die "install VERSION is empty: $OFFICE_SRC/VERSION"
+  printf '%s' "$v"
+}
+
+require_tools() {
+  local t
+  for t in "$@"; do
+    command -v "$t" >/dev/null 2>&1 || die "$t is required and not on PATH"
+  done
+}
+
+# --- finding the office ----------------------------------------------------
+
+# Walk up from a directory to the nearest office, the way git finds .git.
+find_office_from() {
+  local dir
+  dir="$(readlink -f "$1" 2>/dev/null)" || return 1
+  while :; do
+    if [ -f "$dir/$MANIFEST_REL" ]; then printf '%s' "$dir"; return 0; fi
+    [ "$dir" = "/" ] && return 1
+    dir="$(dirname "$dir")"
+  done
+}
+
+# OFFICE_ROOT, then the office around the working directory, then this
+# machine's default. Each source is reported so a surprise is traceable.
+resolve_office() {
+  local root
+  if [ -n "${OFFICE_ROOT:-}" ]; then
+    [ -f "$OFFICE_ROOT/$MANIFEST_REL" ] || die "OFFICE_ROOT is not an office (no $MANIFEST_REL): $OFFICE_ROOT"
+    debug "office from OFFICE_ROOT: $OFFICE_ROOT"
+    readlink -f "$OFFICE_ROOT"; return 0
+  fi
+  if root="$(find_office_from "$PWD")"; then
+    debug "office found above the working directory: $root"
+    printf '%s' "$root"; return 0
+  fi
+  if [ -f "$DEFAULT_FILE" ]; then
+    root="$(head -n 1 "$DEFAULT_FILE")"
+    [ -f "$root/$MANIFEST_REL" ] || die "this machine's default office is gone or not an office: $root (set another with: office default PATH)"
+    log "not inside an office; using this machine's default, $root"
+    printf '%s' "$root"; return 0
+  fi
+  die "not inside an office and this machine has no default office (set one with: office default PATH)"
+}
+
+# --- version skew ----------------------------------------------------------
+
+# Prints the skew state and any pending migrations (helper format).
+skew_report() {
+  local root="$1" office_v
+  office_v="$(helper stamp "$root/$MANIFEST_REL" migrated_to)" || die "cannot read the version stamp in $root/$MANIFEST_REL"
+  helper skew "$office_v" "$(install_version)" "$MIGRATIONS" || die "cannot plan migrations from $MIGRATIONS"
+}
+
+# Refuse loudly on skew in either direction; commands that act on the
+# office's shape call this before touching it.
+require_current() {
+  local root="$1" report state office_v
+  report="$(skew_report "$root")" || exit 1
+  state="$(printf '%s\n' "$report" | head -n 1)"
+  office_v="$(helper stamp "$root/$MANIFEST_REL" migrated_to)"
+  case "$state" in
+    current) return 0 ;;
+    ahead) die "this office was migrated to $office_v, past the installed office-src $(install_version); install $office_v or later before using it" ;;
+    behind)
+      log "this office is at $office_v and office-src $(install_version) has breaking releases it has not taken:"
+      printf '%s\n' "$report" | tail -n +2 | cut -f1,4 | sed 's/\t/: /; s/^/[office]   /' >&2
+      die "run: office upgrade" ;;
+    *) die "unexpected skew state: $state" ;;
+  esac
+}
+
+warn_if_unfounded() {
+  local root="$1" out
+  out="$(helper profile-check "$root/$PROFILE_REL" "$SHAPE")"
+  case $? in
+    0) return 0 ;;
+    3) warn "this office is unfounded: its profile is incomplete (office status)" ;;
+    *) warn "could not check the profile against the required shape" ;;
+  esac
+}
+
+# --- survey ----------------------------------------------------------------
+
+fact() { printf '%s\t%s\t%s\n' "$1" "$2" "$3"; }
+
+tool_version() {
+  local t="$1" out
+  if ! command -v "$t" >/dev/null 2>&1; then printf 'not found'; return; fi
+  case "$t" in
+    R) out="$(timeout "$VERSION_TIMEOUT" R --version 2>&1 | head -n 1)" ;;
+    *) out="$(timeout "$VERSION_TIMEOUT" "$t" --version 2>&1 | head -n 1)" ;;
+  esac
+  [ -n "$out" ] || out="no version output (or timed out after ${VERSION_TIMEOUT}s)"
+  printf '%s (%s)' "$out" "$(command -v "$t")"
+}
+
+gather_facts() {
+  local root="$1" os tz mounts n step name out
+  fact Survey surveyed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  fact Survey office_root "$root"
+
+  os="$(. /etc/os-release 2>/dev/null && printf '%s' "${PRETTY_NAME:-unknown}")"
+  fact Machine hostname "$(hostname 2>/dev/null || printf 'unknown')"
+  fact Machine os "${os:-unknown (no /etc/os-release)}"
+  fact Machine kernel "$(uname -srm 2>/dev/null)"
+  if grep -qi microsoft /proc/version 2>/dev/null; then fact Machine class "WSL"
+  elif [ -f /.dockerenv ]; then fact Machine class "container"
+  else fact Machine class "host (not WSL, no container marker)"; fi
+  fact Machine login_shell "${SHELL:-unset}"
+  fact Machine bash "$BASH_VERSION"
+
+  for t in bale git python3 R quarto node; do fact Tools "$t" "$(tool_version "$t")"; done
+
+  tz="$(cat /etc/timezone 2>/dev/null || readlink /etc/localtime 2>/dev/null | sed 's#.*/zoneinfo/##')"
+  fact Timezone system "${tz:-unknown}"
+  fact Timezone TZ "${TZ:-unset}"
+  fact Timezone zone_offset "$(date '+%Z %z')"
+
+  # Mount points by name only: /proc/mounts is a list, never a walk.
+  mounts="$(awk '$3 !~ /^(proc|sysfs|devtmpfs|devpts|tmpfs|cgroup2?|mqueue|securityfs|debugfs|tracefs|pstore|bpf|hugetlbfs|configfs|fusectl|autofs|binfmt_misc|nsfs|rpc_pipefs|efivarfs|ramfs|squashfs)$/ {print $2 "\t" $3}' /proc/mounts 2>/dev/null | sort -u)"
+  n="$(printf '%s\n' "$mounts" | grep -c . || true)"
+  if [ "$n" -eq 0 ]; then
+    fact Mounts none "no /proc/mounts or no real filesystems listed"
+  else
+    printf '%s\n' "$mounts" | head -n 40 | while IFS=$'\t' read -r target fstype; do fact Mounts "$target" "$fstype"; done
+    [ "$n" -gt 40 ] && fact Mounts truncated "$n mount points, showing 40"
+  fi
+
+  if command -v bale >/dev/null 2>&1; then
+    fact bale on_path "$(command -v bale)"
+    fact bale install "$(readlink -f "$(command -v bale)")"
+  else
+    fact bale on_path "not found"
+  fi
+  fact office-src install "$OFFICE_SRC"
+  fact office-src version "$(install_version)"
+  fact office-src on_path "$(command -v office 2>/dev/null || printf 'not on PATH')"
+
+  if [ -d "$root/drawer/survey" ]; then
+    for step in "$root"/drawer/survey/*; do
+      [ -f "$step" ] || continue
+      name="$(basename "$step")"
+      if [ ! -x "$step" ]; then fact "Office step: $name" skipped "not executable"; continue; fi
+      out="$(cd "$root" && timeout "$STEP_TIMEOUT" "$step" 2>&1)"
+      case $? in
+        0) ;;
+        124) fact "Office step: $name" error "timed out after ${STEP_TIMEOUT}s" ;;
+        *) fact "Office step: $name" error "exited nonzero" ;;
+      esac
+      n=0
+      while IFS= read -r line && [ "$n" -lt 40 ]; do
+        n=$((n + 1))
+        if [[ "$line" =~ ^([^:]+):[[:space:]]*(.*)$ ]]; then
+          fact "Office step: $name" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+        elif [ -n "$line" ]; then
+          fact "Office step: $name" "line $n" "$line"
+        fi
+      done <<< "$out"
+      [ "$(printf '%s\n' "$out" | wc -l)" -gt 40 ] && fact "Office step: $name" truncated "output capped at 40 lines"
+    done
+  fi
+}
+
+# Write the survey page; print the change report on stdout.
+write_survey() {
+  local root="$1" facts
+  facts="$(mktemp)" || die "cannot make a temp file for the survey"
+  gather_facts "$root" > "$facts"
+  if ! helper survey-render --facts "$facts" --previous "$root/$SURVEY_REL" --out "$root/$SURVEY_REL"; then
+    rm -f "$facts"; die "could not write $root/$SURVEY_REL"
+  fi
+  rm -f "$facts"
+}
+
+# --- pack lines --------------------------------------------------------------
+
+slugify() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/--*/-/g; s/^-//; s/-$//'; }
+
+# The doctrine rides as a context tarball made in the install; include
+# groups only pull paths inside the repo being packed.
+doctrine_context_cmd() {
+  printf '(cd %s && bale pack --context)' "$(shq "$DOCTRINE_DIR")"
+}
+
+founding_line() {
+  local root="$1" name="$2" slug
+  slug="$(slugify "$name")-founding"
+  printf '%s && cd %s && bale pack --read-only --slug %s --include %s floor-plan --no-readme %s\n' \
+    "$(doctrine_context_cmd)" "$(shq "$root")" "$slug" "$PROFILE_REL" \
+    "$(shq "Founding sitting for the $name office: write its profile with the occupant, section by section, following the doctrine that rides beside this request, and author the one session that lands profile.md")"
+}
+
+renovation_line() {
+  local root="$1" version="$2" goal="$3" slug
+  slug="upgrade-$(slugify "$version")"
+  printf '%s && cd %s && bale pack --slug %s --no-readme %s\n' \
+    "$(doctrine_context_cmd)" "$(shq "$root")" "$slug" \
+    "$(shq "Renovate this office for office-src $version: $goal When it lands, set migrated_to in $MANIFEST_REL to $version.")"
+}
+
+# --- verbs -------------------------------------------------------------------
+
+cmd_init() {
+  local path="" name="" set_default=1 parent root anc
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --name) [ $# -ge 2 ] || die "--name needs a value"; name="$2"; shift 2 ;;
+      --no-default) set_default=0; shift ;;
+      -h|--help) usage_init; return 0 ;;
+      -*) die "unknown option for init: $1" ;;
+      *) [ -z "$path" ] || die "init takes one path"; path="$1"; shift ;;
+    esac
+  done
+  [ -n "$path" ] || { usage_init; die "init needs a path"; }
+  require_tools git python3 timeout
+
+  root="$(readlink -m "$path")"
+  [ "$root" != "/" ] || die "refusing to make an office of /"
+  [ "$root" != "$(readlink -m "$HOME")" ] || die "refusing to make an office of the home directory itself; bale refuses it too"
+  if [ -f "$root/$MANIFEST_REL" ]; then die "already an office: $root"; fi
+  anc="$root"; while [ ! -e "$anc" ]; do anc="$(dirname "$anc")"; done
+  [ -d "$anc" ] || die "not a directory: $anc"
+  if parent="$(find_office_from "$anc")"; then die "$root would sit inside the office at $parent"; fi
+  if git -C "$anc" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    die "$root is inside the git repo at $(git -C "$anc" rev-parse --show-toplevel); an office is its own repo"
+  fi
+  if [ -e "$root" ] && [ -n "$(ls -A "$root" 2>/dev/null)" ]; then
+    die "$root exists and is not empty; init builds into an empty or new directory, and things move in after"
+  fi
+  git var GIT_COMMITTER_IDENT >/dev/null 2>&1 || die "git has no identity to commit with; set it once with: git config --global user.name 'Your Name' && git config --global user.email you@example.com"
+
+  [ -n "$name" ] || name="$(basename "$root")"
+  [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "office name must be letters, digits, dot, dash or underscore: $name"
+  local version built_at tz sp
+  version="$(install_version)"
+  built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  tz="$(cat /etc/timezone 2>/dev/null || readlink /etc/localtime 2>/dev/null | sed 's#.*/zoneinfo/##')"
+  tz="${tz:-UTC}"
+
+  log "building office '$name' at $root from office-src $version"
+  mkdir -p "$root/floor-plan" || die "cannot create $root"
+  helper render-manifest "$CATALOG" --name "$name" --version "$version" --built-at "$built_at" --timezone "$tz" > "$root/$MANIFEST_REL" \
+    || die "could not write the floor plan; $root is partial, remove it with: rm -rf $(printf '%q' "$root")"
+  while IFS= read -r sp; do
+    case "$sp" in
+      "$PROFILE_REL"|floor-plan) ;;
+      *) mkdir -p "$root/$sp" && : > "$root/$sp/.keep" || die "cannot create space $sp" ;;
+    esac
+    debug "space: $sp"
+  done < <(helper base-spaces "$CATALOG")
+  sed -e "s|{{name}}|$(sed_rhs "$name")|g" -e "s|{{root}}|$(sed_rhs "$root")|g" -e "s|{{timezone}}|$(sed_rhs "$tz")|g" \
+      -e "s|{{machine}}|$(sed_rhs "$(hostname 2>/dev/null || printf unknown)")|g" -e "s|{{date}}|${built_at%%T*}|g" \
+      "$TEMPLATES/profile.md" > "$root/$PROFILE_REL" || die "could not write the profile stub"
+  printf '.bale/\n' > "$root/.gitignore"
+
+  log "first survey"
+  write_survey "$root" | sed 's/^/[office] survey: /' >&2
+
+  git -C "$root" init -q -b main || die "git init failed in $root"
+  git -C "$root" add -A && git -C "$root" commit -q -m "office init: $name (office-src $version)" \
+    || die "the first commit failed; $root is partial, remove it with: rm -rf $(printf '%q' "$root")"
+  log "committed the skeleton, the profile stub and the first survey"
+
+  if [ "$set_default" = "1" ] && [ ! -f "$DEFAULT_FILE" ]; then
+    mkdir -p "$CONFIG_DIR" && printf '%s\n' "$root" > "$DEFAULT_FILE" && log "made $root this machine's default office"
+  fi
+  log "the office is unfounded until its profile is written; the line below packs the founding sitting"
+  log "attach $DOCTRINE_DIR/.bale/outbox/context-doctrine.tar.gz beside the request it opens"
+  founding_line "$root" "$name"
+}
+
+cmd_survey() {
+  local commit=1 root
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-commit) commit=0; shift ;;
+      -h|--help) printf 'usage: office survey [--no-commit]\n'; return 0 ;;
+      *) die "unknown option for survey: $1" ;;
+    esac
+  done
+  require_tools python3 timeout
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  warn_if_unfounded "$root"
+  log "surveying $(hostname 2>/dev/null) for $root"
+  local report
+  report="$(write_survey "$root")" || exit 1
+  printf '%s\n' "$report"
+  if [ "$commit" = "1" ] && git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git -C "$root" add -- "$SURVEY_REL"
+    if git -C "$root" diff --cached --quiet -- "$SURVEY_REL"; then
+      log "survey page unchanged in git"
+    else
+      git -C "$root" commit -q -m "office survey: $(printf '%s\n' "$report" | grep -c '^\(added\|removed\|changed\) ' || true) facts changed" -- "$SURVEY_REL" || die "could not commit $SURVEY_REL"
+      log "committed $SURVEY_REL"
+    fi
+  fi
+}
+
+cmd_status() {
+  local root report state office_v built profile rc
+  root="$(resolve_office)" || exit 1
+  report="$(skew_report "$root")" || exit 1
+  state="$(printf '%s\n' "$report" | head -n 1)"
+  office_v="$(helper stamp "$root/$MANIFEST_REL" migrated_to)"
+  built="$(helper stamp "$root/$MANIFEST_REL" built_from)"
+  printf 'office:     %s\n' "$root"
+  printf 'name:       %s\n' "$(helper get "$root/$MANIFEST_REL" office.name --default "(unnamed)")"
+  printf 'install:    office-src %s at %s\n' "$(install_version)" "$OFFICE_SRC"
+  printf 'built from: %s\n' "$built"
+  printf 'migrated:   %s\n' "$office_v"
+  case "$state" in
+    current) printf 'skew:       none\n' ;;
+    ahead)   printf 'skew:       AHEAD; office migrated past this install; install %s or later\n' "$office_v" ;;
+    behind)  printf 'skew:       BEHIND; run: office upgrade\n'
+             printf '%s\n' "$report" | tail -n +2 | cut -f1,2,4 | sed 's/\t/ (/; s/\t/): /; s/^/  pending:  /' ;;
+  esac
+  profile="$(helper profile-check "$root/$PROFILE_REL" "$SHAPE")"; rc=$?
+  case $rc in
+    0) printf 'profile:    complete\n' ;;
+    3) printf 'profile:    INCOMPLETE; this office is unfounded\n'
+       printf '%s\n' "$profile" | sed 's/^/  /' ;;
+    *) printf 'profile:    could not be checked\n' ;;
+  esac
+  printf 'survey:     %s\n' "$(helper survey-age "$root/$SURVEY_REL" 2>/dev/null || printf 'unreadable')"
+}
+
+# Run planned migrations in a target office. Arguments: target, plan file.
+# Prints the applied lines to stdout. Returns 0 when every migration ran,
+# 10 when it stopped at a renovation (whose line is the last printed),
+# 1 on failure.
+run_migrations() {
+  local target="$1" plan="$2" version kind action summary filed changed
+  mapfile -t filed < <(helper spaces "$target/$MANIFEST_REL" filed)
+  while IFS=$'\t' read -r version kind action summary; do
+    [ -n "$version" ] || continue
+    if [ "$kind" = "renovation" ]; then
+      printf 'renovation\t%s\t%s\t%s\n' "$version" "$action" "$summary"
+      return 10
+    fi
+    log "migration $version: $summary"
+    if ! (cd "$target" && OFFICE_ROOT="$target" OFFICE_MIGRATION="$version" timeout 300 bash "$MIGRATIONS/$action") >&2; then
+      log "migration $version failed in $target"
+      return 1
+    fi
+    if [ "${#filed[@]}" -gt 0 ]; then
+      changed="$(git -C "$target" status --porcelain -- "${filed[@]}")"
+      if [ -n "$changed" ]; then
+        log "migration $version touched filed paper, which is never rewritten:"
+        printf '%s\n' "$changed" | sed 's/^/[office]   /' >&2
+        return 1
+      fi
+    fi
+    helper set-migrated "$target/$MANIFEST_REL" "$version" || return 1
+    printf 'applied\t%s\t%s\n' "$version" "$summary"
+  done < "$plan"
+  return 0
+}
+
+cmd_upgrade() {
+  local dry=0 root report state office_v plan scratch rc applied msg
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --dry-run) dry=1; shift ;;
+      -h|--help) printf 'usage: office upgrade [--dry-run]\n'; return 0 ;;
+      *) die "unknown option for upgrade: $1" ;;
+    esac
+  done
+  require_tools git python3 timeout
+  root="$(resolve_office)" || exit 1
+  report="$(skew_report "$root")" || exit 1
+  state="$(printf '%s\n' "$report" | head -n 1)"
+  office_v="$(helper stamp "$root/$MANIFEST_REL" migrated_to)"
+  case "$state" in
+    ahead) die "this office was migrated to $office_v, past the installed office-src $(install_version); install $office_v or later" ;;
+    current) log "nothing to upgrade: office at $office_v, office-src $(install_version), no migrations pending"; return 0 ;;
+  esac
+  git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$root is not a git repo; an upgrade lands as a commit"
+  [ -z "$(git -C "$root" status --porcelain)" ] || die "$root has uncommitted changes; commit them first so the upgrade is one clean commit"
+
+  plan="$(mktemp)" && scratch="$(mktemp -d)" || die "cannot make temp space for the upgrade"
+  TMP_PATHS+=("$plan" "$scratch")
+  printf '%s\n' "$report" | tail -n +2 > "$plan"
+  log "upgrading $root from $office_v to office-src $(install_version); pending:"
+  cut -f1,2,4 "$plan" | sed 's/\t/ (/; s/\t/): /; s/^/[office]   /' >&2
+
+  log "dry run on a scratch clone"
+  git clone -q "$root" "$scratch/office" || die "could not clone $root for the dry run"
+  run_migrations "$scratch/office" "$plan" > "$scratch/dry.out"; rc=$?
+  [ "$rc" -eq 1 ] && die "the dry run failed; $root was not touched"
+  log "dry run passed"
+  if [ "$dry" = "1" ]; then
+    log "dry run only; nothing changed in $root"
+    return 0
+  fi
+
+  run_migrations "$root" "$plan" > "$scratch/real.out"; rc=$?
+  if [ "$rc" -eq 1 ]; then
+    git -C "$root" reset -q --hard HEAD && git -C "$root" clean -qfd
+    die "the upgrade failed after the dry run passed; $root was reset to its last commit"
+  fi
+  applied="$(grep '^applied' "$scratch/real.out" || true)"
+  if [ -n "$applied" ]; then
+    msg="$scratch/msg"
+    {
+      printf 'office upgrade: %s to %s\n\n' "$office_v" "$(helper stamp "$root/$MANIFEST_REL" migrated_to)"
+      printf '%s\n' "$applied" | cut -f2,3 | sed 's/\t/: /; s/^/- /'
+    } > "$msg"
+    git -C "$root" add -A && git -C "$root" commit -q -F "$msg" || die "could not commit the upgrade in $root"
+    log "committed the upgrade:"
+    sed 's/^/[office]   /' "$msg" >&2
+  fi
+  if [ "$rc" -eq 10 ]; then
+    local line version goal
+    line="$(grep '^renovation' "$scratch/real.out" | head -n 1)"
+    version="$(printf '%s' "$line" | cut -f2)"; goal="$(printf '%s' "$line" | cut -f3)"
+    log "migration $version needs judgment, so it is a renovation session, not a script; the line below packs it"
+    log "attach $DOCTRINE_DIR/.bale/outbox/context-doctrine.tar.gz beside the request it opens"
+    renovation_line "$root" "$version" "$goal"
+  fi
+}
+
+cmd_where() {
+  resolve_office; printf '\n'
+}
+
+cmd_default() {
+  local root
+  if [ $# -eq 0 ]; then
+    [ -f "$DEFAULT_FILE" ] || die "this machine has no default office (set one with: office default PATH)"
+    head -n 1 "$DEFAULT_FILE"; return 0
+  fi
+  root="$(readlink -f "$1" 2>/dev/null)" || die "no such path: $1"
+  [ -f "$root/$MANIFEST_REL" ] || die "not an office (no $MANIFEST_REL): $root"
+  mkdir -p "$CONFIG_DIR" && printf '%s\n' "$root" > "$DEFAULT_FILE" || die "cannot write $DEFAULT_FILE"
+  log "this machine's default office is now $root"
+}
+
+cmd_version() {
+  printf 'office-src %s (%s)\n' "$(install_version)" "$OFFICE_SRC"
+  [ -f "$OFFICE_SRC/INSTALLED" ] && sed 's/^/  /' "$OFFICE_SRC/INSTALLED"
+  return 0
+}
+
+usage_init() {
+  cat <<'EOF'
+usage: office init [--name NAME] [--no-default] PATH
+Builds an office at PATH (new or empty): the base spaces, a profile stub,
+the version stamp, a first survey and a first commit. Prints the pack line
+for the founding sitting. Makes PATH this machine's default office when
+there is none yet, unless --no-default.
+EOF
+}
+
+usage() {
+  cat <<EOF
+office-src $(install_version): builds and keeps offices.
+
+usage: office VERB [args]
+
+  init PATH       build an office and print its founding sitting's pack line
+  survey          rewrite floor-plan/survey.md and report what changed
+  status          version, skew, profile and survey age (read-only)
+  upgrade         run pending migrations, dry run first, one commit
+  where           print the office a command here would act on
+  default [PATH]  show or set this machine's default office
+  version         print the installed version
+
+Not built yet: note, open, desk, week, close, reopen.
+
+A command acts on OFFICE_ROOT if set, else the office around the working
+directory, else this machine's default. The doctrine is
+$DOCTRINE_DIR/OFFICE.md.
+EOF
+}
+
+main() {
+  local verb="${1:-help}"
+  [ $# -gt 0 ] && shift
+  case "$verb" in
+    init) cmd_init "$@" ;;
+    survey) cmd_survey "$@" ;;
+    status) cmd_status "$@" ;;
+    upgrade) cmd_upgrade "$@" ;;
+    where) cmd_where "$@" ;;
+    default) cmd_default "$@" ;;
+    version|--version|-V) cmd_version ;;
+    help|--help|-h) usage ;;
+    note|open|desk|week|close|reopen) die "office $verb is not built yet (see the verb table in $DOCTRINE_DIR/OFFICE.md)" ;;
+    *) usage >&2; die "unknown verb: $verb" ;;
+  esac
+}
+
+main "$@"
