@@ -85,6 +85,17 @@ def space_paths(manifest, prop):
     return out
 
 
+def render_flag_or_list(value):
+    """A space property as the floor plan writes it. `hung` and `filed`
+    take the same two shapes: true or false for the whole space, or a
+    list of paths inside it. Anything else is a catalog defect."""
+    if isinstance(value, list):
+        return "[" + ", ".join(f'"{v}"' for v in value) + "]"
+    if value is True or value is False:
+        return "true" if value else "false"
+    raise HelperError(f"a space property must be true, false or a list of paths, not {value!r}")
+
+
 def render_manifest(spaces_catalog, name, version, built_at, timezone):
     """The floor plan a new office starts with: its stamp and the base
     spaces from the install's catalog."""
@@ -105,12 +116,8 @@ def render_manifest(spaces_catalog, name, version, built_at, timezone):
         if not space.get("base", False):
             continue
         lines += ["", f"[spaces.{key}]", f'path = "{space["path"]}"']
-        hung = space.get("hung", False)
-        if isinstance(hung, list):
-            lines.append("hung = [" + ", ".join(f'"{h}"' for h in hung) + "]")
-        else:
-            lines.append(f"hung = {'true' if hung else 'false'}")
-        lines.append(f"filed = {'true' if space.get('filed', False) else 'false'}")
+        for prop in ("hung", "filed"):
+            lines.append(f"{prop} = {render_flag_or_list(space.get(prop, False))}")
     return "\n".join(lines) + "\n"
 
 

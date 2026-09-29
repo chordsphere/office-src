@@ -1,7 +1,15 @@
 # {{title}}
 
+- status: {{status}}
+- queued: {{queued}}
+
 One job. Open folders sit on the desk; closing one moves it to the
-filing cabinet. Named by date and a short slug.
+filing cabinet. Named by date and a short slug. The lines above are
+the folder's facts, one field per line, written by the office command
+and never by hand: its status and the date it was queued today, and its
+number, class, size, lane, source, blueprint and gates when the verbs
+that mint them arrive. A field the command cannot fill is left out
+rather than left blank.
 
 ## Asked
 
@@ -33,3 +41,16 @@ few words each.
 ## Next
 
 What happens next, and who moves.
+
+## Riders
+
+Riders this folder's next session carries, each with its text, moved
+in from the drafting table's riders page.
+
+## History
+
+One event per line, dated, appended and never rewritten: what happened
+to this folder and when. The status line above always agrees with the
+last state-changing line here.
+
+- {{queued}} queued: office open

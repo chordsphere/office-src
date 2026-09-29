@@ -6,7 +6,10 @@
 # base   built by office init
 # hung   shipped with every office session: true for the whole space, or
 #        a list of paths inside it
-# filed  filed paper: never rewritten by a migration
+# filed  filed paper: never rewritten by a migration, and grown only at
+#        its end (doctrine section 15). true for the whole space, or a
+#        list of paths inside it; a path may hold a glob, as git reads
+#        one, for pages a space files under many directories
 
 [spaces.profile]
 path = "profile.md"
@@ -57,5 +60,9 @@ path = "rolodex"
 [spaces.letterhead]
 path = "letterhead"
 
+# Part live, part filed: the ledgers and the close reports are filed, the
+# registers and the front page are live, and digest.md is derived.
 [spaces.drafting-table]
 path = "drafting-table"
+filed = ["drafting-table/rulings.md", "drafting-table/evidence.md",
+         "drafting-table/watch-log.md", "drafting-table/blueprints/*/close.md"]

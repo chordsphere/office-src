@@ -28,6 +28,18 @@ VERSION = (REPO / "VERSION").read_text().strip()
 INSTALL_PARTS = ("bin", "lib", "share", "templates", "doctrine", "migrations", "VERSION")
 
 
+def later(minor, patch=0):
+    """A synthetic release past this install. The upgrade tests name
+    their future releases relative to VERSION, so a real release bump
+    never turns a test's 'later install' into the current one."""
+    major, mi, _ = h.parse_version(VERSION)
+    return f"{major}.{mi + minor}.{patch}"
+
+
+NEXT, AFTER = later(1), later(2)   # the next two synthetic breaking releases
+PATCH = later(0, 5)                # a synthetic additive release past this one
+
+
 def filled_profile(name="test"):
     """A profile with every required section written."""
     shape = tomllib.loads((REPO / "share/profile-shape.toml").read_text())
@@ -88,7 +100,7 @@ class Env:
         migrations: (version, kind, action, summary, script_body[, extra
         TOML]). The real migrations are left out, so the synthetic
         release line is all the runner sees."""
-        inst = self.tmp / f"install-{version}"
+        inst = pathlib.Path(tempfile.mkdtemp(prefix=f"install-{version}-", dir=self.tmp))
         for part in INSTALL_PARTS:
             src = REPO / part
             (shutil.copytree if src.is_dir() else shutil.copy2)(src, inst / part)
@@ -140,6 +152,36 @@ class TestFloorPlan(unittest.TestCase):
         self.assertEqual(sorted(h.space_paths(data, "filed")), ["filing-cabinet", "notepad"])
         self.assertIn("profile.md", h.space_paths(data, "hung"))
         self.assertIn("floor-plan/survey.md", h.space_paths(data, "hung"))
+
+    def test_filed_takes_a_list_like_hung(self):
+        """The drafting-table is part live, part filed: the catalog lists
+        its filed paths, and a floor plan carrying that list yields them
+        from space_paths the way a hung list does."""
+        table = self.catalog["spaces"]["drafting-table"]
+        self.assertIsInstance(table["filed"], list)
+        self.assertNotIn("base", table)
+        for p in table["filed"]:
+            self.assertTrue(p.startswith("drafting-table/"), p)
+        self.assertIn("drafting-table/rulings.md", table["filed"])
+        self.assertIn("drafting-table/blueprints/*/close.md", table["filed"])
+        plan = tomllib.loads(h.render_manifest(self.catalog, "w", "0.1.0", "x", "UTC"))
+        plan["spaces"]["drafting-table"] = table
+        filed = h.space_paths(plan, "filed")
+        self.assertIn("notepad", filed)
+        for p in table["filed"]:
+            self.assertIn(p, filed)
+        self.assertNotIn("drafting-table", filed)
+
+    def test_render_manifest_writes_a_filed_list(self):
+        catalog = {"spaces": {"ledgers": {"path": "ledgers", "base": True,
+                                          "filed": ["ledgers/a.md", "ledgers/b/*.md"]}}}
+        data = tomllib.loads(h.render_manifest(catalog, "w", "0.1.0", "x", "UTC"))
+        self.assertEqual(data["spaces"]["ledgers"]["filed"], ["ledgers/a.md", "ledgers/b/*.md"])
+        self.assertIs(data["spaces"]["ledgers"]["hung"], False)
+        self.assertEqual(h.render_flag_or_list(True), "true")
+        self.assertEqual(h.render_flag_or_list([]), "[]")
+        with self.assertRaises(h.HelperError):
+            h.render_flag_or_list("yes")
 
     def test_older_shape_without_migrated_to_is_tolerated(self):
         self.assertEqual(h.office_stamp({"office": {"built_from": "0.1.0"}})["migrated_to"], "0.1.0")
@@ -467,17 +509,17 @@ class TestUpgrade(unittest.TestCase):
         self.assertIn("nothing to upgrade", proc.stderr)
 
     def test_additive_release_needs_nothing(self):
-        office = self.e.fake_install("0.2.5")
+        office = self.e.fake_install(PATCH)
         out = self.e.run("status", cwd=self.root, bin_path=office, check=0).stdout
         self.assertIn("skew:       none", out)
         self.e.run("survey", cwd=self.root, bin_path=office, check=0)
 
     def test_behind_refuses_and_names_upgrade(self):
-        office = self.e.fake_install("0.3.0", [("0.3.0", "script", "0.3.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
+        office = self.e.fake_install(NEXT, [(NEXT, "script", f"{NEXT}.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
         proc = self.e.run("survey", cwd=self.root, bin_path=office)
         self.assertEqual(proc.returncode, 1)
         self.assertIn("run: office upgrade", proc.stderr)
-        self.assertIn("0.3.0: Adds a handbook.", proc.stderr)
+        self.assertIn(f"{NEXT}: Adds a handbook.", proc.stderr)
         self.assertIn("BEHIND", self.e.run("status", cwd=self.root, bin_path=office, check=0).stdout)
 
     def test_ahead_refuses_outright(self):
@@ -489,25 +531,25 @@ class TestUpgrade(unittest.TestCase):
         self.assertIn("AHEAD", self.e.run("status", cwd=self.root, bin_path=office, check=0).stdout)
 
     def test_script_migrations_land_as_one_commit(self):
-        office = self.e.fake_install("0.4.0", [
-            ("0.3.0", "script", "0.3.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE),
-            ("0.4.0", "script", "0.4.0.sh", "Adds a drafting table.", "mkdir -p drafting-table && : > drafting-table/.keep\n"),
+        office = self.e.fake_install(AFTER, [
+            (NEXT, "script", f"{NEXT}.sh", "Adds a handbook.", MIGRATION_ADD_SPACE),
+            (AFTER, "script", f"{AFTER}.sh", "Adds a drafting table.", "mkdir -p drafting-table && : > drafting-table/.keep\n"),
         ])
         before = len(self.e.git(self.root, "log", "--oneline").splitlines())
         self.e.run("upgrade", cwd=self.root, bin_path=office, check=0)
         self.assertEqual(len(self.e.git(self.root, "log", "--oneline").splitlines()), before + 1)
         msg = self.e.git(self.root, "log", "-1", "--format=%B")
-        self.assertIn(f"office upgrade: {VERSION} to 0.4.0", msg)
-        self.assertIn("- 0.3.0: Adds a handbook.", msg)
-        self.assertIn("- 0.4.0: Adds a drafting table.", msg)
-        self.assertEqual(self.stamp()["migrated_to"], "0.4.0")
+        self.assertIn(f"office upgrade: {VERSION} to {AFTER}", msg)
+        self.assertIn(f"- {NEXT}: Adds a handbook.", msg)
+        self.assertIn(f"- {AFTER}: Adds a drafting table.", msg)
+        self.assertEqual(self.stamp()["migrated_to"], AFTER)
         self.assertEqual(self.stamp()["built_from"], VERSION)
         self.assertTrue((self.root / "handbook/README.md").is_file())
         self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
         self.assertIn("nothing to upgrade", self.e.run("upgrade", cwd=self.root, bin_path=office, check=0).stderr)
 
     def test_dry_run_changes_nothing(self):
-        office = self.e.fake_install("0.3.0", [("0.3.0", "script", "0.3.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
+        office = self.e.fake_install(NEXT, [(NEXT, "script", f"{NEXT}.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
         head = self.e.git(self.root, "rev-parse", "HEAD")
         proc = self.e.run("upgrade", "--dry-run", cwd=self.root, bin_path=office, check=0)
         self.assertIn("dry run passed", proc.stderr)
@@ -519,7 +561,7 @@ class TestUpgrade(unittest.TestCase):
         (self.root / "notepad" / "2026-09-24-words.md").write_text("verbatim\n")
         self.e.git(self.root, "add", "-A")
         self.e.git(self.root, "commit", "-qm", "words")
-        office = self.e.fake_install("0.3.0", [("0.3.0", "script", "0.3.0.sh", "Tidies the notepad.",
+        office = self.e.fake_install(NEXT, [(NEXT, "script", f"{NEXT}.sh", "Tidies the notepad.",
                                                 "printf 'tidied\\n' > notepad/2026-09-24-words.md\n")])
         head = self.e.git(self.root, "rev-parse", "HEAD")
         proc = self.e.run("upgrade", cwd=self.root, bin_path=office)
@@ -529,41 +571,73 @@ class TestUpgrade(unittest.TestCase):
         self.assertEqual(self.e.git(self.root, "rev-parse", "HEAD"), head)
         self.assertEqual((self.root / "notepad" / "2026-09-24-words.md").read_text(), "verbatim\n")
 
+    def test_a_part_filed_space_refuses_writes_to_its_filed_list_only(self):
+        """The drafting-table files a list of paths, not the whole space.
+        upgrade's filed-paper check reads the list, glob included: a
+        migration that grows a ledger or a close report is refused and
+        rolled back; one that writes a live page in the same space lands."""
+        catalog = tomllib.loads((REPO / "share/spaces.toml").read_text())["spaces"]["drafting-table"]
+        manifest = self.root / "floor-plan/manifest.toml"
+        manifest.write_text(manifest.read_text() + '\n[spaces.drafting-table]\npath = "drafting-table"\nhung = false\n'
+                            f'filed = {h.render_flag_or_list(catalog["filed"])}\n')
+        table = self.root / "drafting-table"
+        (table / "blueprints" / "2026-09-29-arc").mkdir(parents=True)
+        (table / "rulings.md").write_text("# Rulings\n")
+        (table / "agenda.md").write_text("# Agenda\n")
+        (table / "blueprints" / "2026-09-29-arc" / "close.md").write_text("# Close\n")
+        self.e.git(self.root, "add", "-A")
+        self.e.git(self.root, "commit", "-qm", "a drafting table")
+        head = self.e.git(self.root, "rev-parse", "HEAD")
+        for path in ("drafting-table/rulings.md", "drafting-table/blueprints/2026-09-29-arc/close.md"):
+            office = self.e.fake_install(NEXT, [(NEXT, "script", f"{NEXT}.sh", "Grows a ledger.",
+                                                 f"printf 'more\\n' >> {path}\n")])
+            proc = self.e.run("upgrade", cwd=self.root, bin_path=office)
+            self.assertEqual(proc.returncode, 1, path)
+            self.assertIn("touched filed paper", proc.stderr, path)
+            self.assertIn(path, proc.stderr)
+            self.assertEqual(self.e.git(self.root, "rev-parse", "HEAD"), head)
+        office = self.e.fake_install(NEXT, [(NEXT, "script", f"{NEXT}.sh", "Rewrites the agenda.",
+                                             "printf 'live\\n' > drafting-table/agenda.md\n")])
+        self.e.run("upgrade", cwd=self.root, bin_path=office, check=0)
+        self.assertEqual(self.stamp()["migrated_to"], NEXT)
+        self.assertEqual((table / "agenda.md").read_text(), "live\n")
+        self.assertEqual((table / "rulings.md").read_text(), "# Rulings\n")
+
     def test_failing_migration_leaves_the_office_alone(self):
-        office = self.e.fake_install("0.3.0", [("0.3.0", "script", "0.3.0.sh", "Breaks.", "mkdir -p x && exit 3\n")])
+        office = self.e.fake_install(NEXT, [(NEXT, "script", f"{NEXT}.sh", "Breaks.", "mkdir -p x && exit 3\n")])
         proc = self.e.run("upgrade", cwd=self.root, bin_path=office)
         self.assertEqual(proc.returncode, 1)
         self.assertFalse((self.root / "x").exists())
         self.assertEqual(self.stamp()["migrated_to"], VERSION)
 
     def test_dirty_office_refuses(self):
-        office = self.e.fake_install("0.3.0", [("0.3.0", "script", "0.3.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
+        office = self.e.fake_install(NEXT, [(NEXT, "script", f"{NEXT}.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
         (self.root / "desk" / "wip.md").write_text("wip\n")
         proc = self.e.run("upgrade", cwd=self.root, bin_path=office)
         self.assertEqual(proc.returncode, 1)
         self.assertIn("uncommitted changes", proc.stderr)
 
     def test_judgment_stops_at_a_renovation_pack_line(self):
-        office = self.e.fake_install("0.4.0", [
-            ("0.3.0", "script", "0.3.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE),
-            ("0.4.0", "renovation", "Write the new Budget section of the profile.", "Profiles gain a Budget section.", None,
+        office = self.e.fake_install(AFTER, [
+            (NEXT, "script", f"{NEXT}.sh", "Adds a handbook.", MIGRATION_ADD_SPACE),
+            (AFTER, "renovation", "Write the new Budget section of the profile.", "Profiles gain a Budget section.", None,
              '[landed]\nprofile_sections = ["Budget"]\n'),
         ])
         proc = self.e.run("upgrade", cwd=self.root, bin_path=office, check=0)
-        self.assertEqual(self.stamp()["migrated_to"], "0.3.0")
+        self.assertEqual(self.stamp()["migrated_to"], NEXT)
         lines = proc.stdout.splitlines()
         self.assertEqual(len(lines), 1, proc.stdout)
-        self.assertIn("bale pack --slug upgrade-0-4-0", lines[0])
+        self.assertIn(f"bale pack --slug upgrade-{AFTER.replace('.', '-')}", lines[0])
         self.assertIn("Write the new Budget section of the profile.", lines[0])
         self.assertIn("the profile has these sections written: Budget", lines[0])
         self.assertIn("Leave the version stamp alone", lines[0])
         self.assertNotIn("set migrated_to", lines[0])
         self.assertIn("run office upgrade again", proc.stderr)
-        self.assertIn("- 0.3.0: Adds a handbook.", self.e.git(self.root, "log", "-1", "--format=%B"))
+        self.assertIn(f"- {NEXT}: Adds a handbook.", self.e.git(self.root, "log", "-1", "--format=%B"))
 
     def test_rerun_stamps_a_renovation_only_once_its_declaration_holds(self):
-        office = self.e.fake_install("0.3.0", [
-            ("0.3.0", "renovation", "Add the calendar space.", "Offices gain a calendar.", None,
+        office = self.e.fake_install(NEXT, [
+            (NEXT, "renovation", "Add the calendar space.", "Offices gain a calendar.", None,
              '[landed]\npaths = ["calendar/plan.md"]\n'),
         ])
         self.e.run("upgrade", cwd=self.root, bin_path=office, check=0)
@@ -575,15 +649,15 @@ class TestUpgrade(unittest.TestCase):
         self.e.git(self.root, "commit", "-qm", "renovation lands")
         proc = self.e.run("upgrade", cwd=self.root, bin_path=office, check=0)
         self.assertEqual(proc.stdout, "")
-        self.assertEqual(self.stamp()["migrated_to"], "0.3.0")
+        self.assertEqual(self.stamp()["migrated_to"], NEXT)
         msg = self.e.git(self.root, "log", "-1", "--format=%B")
-        self.assertIn(f"office upgrade: {VERSION} to 0.3.0", msg)
-        self.assertIn("- 0.3.0: Offices gain a calendar. (renovation, checked)", msg)
+        self.assertIn(f"office upgrade: {VERSION} to {NEXT}", msg)
+        self.assertIn(f"- {NEXT}: Offices gain a calendar. (renovation, checked)", msg)
         self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
 
     def test_a_renovation_must_declare_what_landing_means(self):
-        office = self.e.fake_install("0.3.0", [
-            ("0.3.0", "renovation", "Do something.", "Something.", None),
+        office = self.e.fake_install(NEXT, [
+            (NEXT, "renovation", "Do something.", "Something.", None),
         ])
         proc = self.e.run("status", cwd=self.root, bin_path=office)
         self.assertEqual(proc.returncode, 1)
@@ -641,7 +715,7 @@ class TestCapture(unittest.TestCase):
         self.assertIn("unfounded", proc.stderr)
 
     def test_note_works_when_behind_and_when_ahead(self):
-        behind = self.e.fake_install("0.3.0", [("0.3.0", "script", "0.3.0.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
+        behind = self.e.fake_install(NEXT, [(NEXT, "script", f"{NEXT}.sh", "Adds a handbook.", MIGRATION_ADD_SPACE)])
         proc = self.e.run("note", "behind", cwd=self.root, bin_path=behind, check=0)
         self.assertIn("behind", proc.stderr)
         ahead = self.e.fake_install("0.0.9")
@@ -683,6 +757,43 @@ class TestFolders(unittest.TestCase):
         text = (self.root / folder / "folder.md").read_text()
         self.assertTrue(text.startswith("# Fix the login page\n"))
         self.assertIn("## Sessions", text)
+        self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
+
+    def test_open_writes_only_the_fields_it_can_fill(self):
+        """The field block carries status and the queued date, both
+        known at open, and no line for a field a later verb mints: a
+        blank number would be a wrong fact, not a missing one."""
+        folder = self.open("job")
+        text = (self.root / folder / "folder.md").read_text()
+        day = pathlib.Path(folder).name[:10]
+        self.assertTrue(text.startswith(f"# job\n\n- status: queued\n- queued: {day}\n\n"), text[:80])
+        fields = re.findall(r"^- ([a-z ]+): ", text.split("\n## ", 1)[0], re.M)
+        self.assertEqual(fields, ["status", "queued"])
+        self.assertNotIn("{{", text)
+        self.assertIn("\n## Riders\n", text)
+        self.assertTrue(text.endswith(f"\n## History\n\nOne event per line, dated, appended and never rewritten: what happened\n"
+                                      f"to this folder and when. The status line above always agrees with the\n"
+                                      f"last state-changing line here.\n\n- {day} queued: office open\n"), text[-300:])
+        self.assertEqual(re.findall(r"^- \d{4}-\d{2}-\d{2} (\w+):", text, re.M), ["queued"])
+
+    def test_the_0_2_0_verbs_still_serve_a_folder_without_the_field_block(self):
+        """A folder opened by 0.2.0 has no field block, no Riders and no
+        History; desk, sessions, close and reopen keep working on it."""
+        folder = self.open("old")
+        f = self.root / folder / "folder.md"
+        text = f.read_text()
+        head, rest = text.split("\n## Asked", 1)
+        text = "# old\n\nOne job.\n\n## Asked" + rest.split("\n## Riders", 1)[0]
+        f.write_text(text.replace("What happens next, and who moves.", "- Ship it."))
+        self.e.git(self.root, "commit", "-qam", "as 0.2.0 wrote it")
+        self.assertNotIn("- status:", f.read_text())
+        self.assertIn("next: Ship it.  (sessions: 0)", self.e.run("desk", cwd=self.root, check=0).stdout)
+        self.e.run("sessions", "old", "2026-09-25-old-001", cwd=self.root, check=0)
+        self.assertIn("next: Ship it.  (sessions: 1)", self.e.run("desk", cwd=self.root, check=0).stdout)
+        self.assertEqual(self.e.run("sessions", "old", cwd=self.root, check=0).stdout, "- 2026-09-25-old-001\n")
+        self.e.run("close", "old", cwd=self.root, check=0)
+        self.e.run("reopen", "old", cwd=self.root, check=0)
+        self.assertIn("- 2026-09-25-old-001", f.read_text())
         self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
 
     def test_open_seeds_a_thread_from_stdin(self):
@@ -869,14 +980,22 @@ class TestIncludeGroup(unittest.TestCase):
 
 # --- office-src's own development record -----------------------------------------
 
-WORDS_PAGE = REPO / "claude/context/sittings/2026-09-23-office-construction-001.md"
-WORDS_SHA256 = "9c804c7dae8ee5056e571720bdc5defc42acd6a497fcc0299d87286aad930a64"
+SITTINGS = REPO / "claude/context/sittings"
+# Each sitting's page is write-once: its sha256 as landed, by session id.
+WORDS_SHA256 = {
+    "2026-09-23-office-construction-001": "9c804c7dae8ee5056e571720bdc5defc42acd6a497fcc0299d87286aad930a64",
+    "2026-09-29-continue-plan-002": "6d1097bb8986ebafdc8902db26019d3ce1f0ba2eaa174917b08345cc850f5c4a",
+}
 
 
 class TestDevelopmentRecord(unittest.TestCase):
-    def test_the_planner_words_page_is_byte_exact(self):
+    def test_the_planner_words_pages_are_byte_exact(self):
         import hashlib
-        self.assertEqual(hashlib.sha256(WORDS_PAGE.read_bytes()).hexdigest(), WORDS_SHA256)
+        for sid, sha in WORDS_SHA256.items():
+            self.assertEqual(hashlib.sha256((SITTINGS / f"{sid}.md").read_bytes()).hexdigest(), sha, sid)
+
+    def test_every_sitting_page_is_pinned(self):
+        self.assertEqual(sorted(p.stem for p in SITTINGS.glob("*.md")), sorted(WORDS_SHA256))
 
     def test_the_record_is_never_installed(self):
         text = (REPO / "install.sh").read_text()
@@ -949,8 +1068,10 @@ FINGERPRINTS = [r"^\s*note:", r"^\s*important:", r"in summary", r"why this file 
 
 
 def office_bound_text():
-    """Text that lands in an office or ships with every office session."""
-    return [REPO / "doctrine/OFFICE.md", *sorted((REPO / "templates").glob("*.md"))]
+    """Text that lands in an office or ships with every office session:
+    the doctrine and its checks, and every template."""
+    return [REPO / "doctrine/OFFICE.md", *sorted((REPO / "doctrine/checks").glob("*.sh")),
+            *sorted((REPO / "templates").glob("*.md"))]
 
 
 OWN_DIRS = ("bin", "lib", "share", "templates", "doctrine", "migrations", "tests")
@@ -1030,8 +1151,15 @@ class TestText(unittest.TestCase):
         doctrine = " ".join((REPO / "doctrine/OFFICE.md").read_text().split())
         self.assertIn(line, doctrine)
 
+    def test_append_rule_is_verbatim_and_names_its_check(self):
+        doctrine = " ".join((REPO / "doctrine/OFFICE.md").read_text().split())
+        self.assertIn("Appending is not rewriting: a filed page grows at its end, and the bytes "
+                      "already filed never change.", doctrine)
+        self.assertIn("doctrine/checks/filed-append-only.sh", doctrine)
+        self.assertTrue((REPO / "doctrine/checks/filed-append-only.sh").is_file())
+
     def test_shell_syntax(self):
-        for p in (REPO / "bin/office", REPO / "install.sh"):
+        for p in (REPO / "bin/office", REPO / "install.sh", *sorted((REPO / "doctrine/checks").glob("*.sh"))):
             proc = subprocess.run(["bash", "-n", str(p)], capture_output=True, text=True)
             self.assertEqual(proc.returncode, 0, proc.stderr)
 
