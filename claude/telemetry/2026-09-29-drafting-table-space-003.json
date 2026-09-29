@@ -1,0 +1,301 @@
+{
+  "record_version": 1,
+  "session_id": "2026-09-29-drafting-table-space-003",
+  "created_at": "2026-09-29T23:15:00+00:00",
+  "attempts": [
+    {
+      "at": "2026-09-29T23:15:00+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "claude/context/front-sheet.md",
+        "claude/context/sittings",
+        "doctrine",
+        "lib",
+        "share/spaces.toml",
+        "templates",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-09-29-drafting-table-space-003.log",
+      "bundle": {
+        "stem": "2026-09-29-drafting-table-space",
+        "brief_sha256": "bffbc27c4419f85bc132ca246544b629df8a6b119e36ac410aa6aad0dae2577d",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "98728e84899bf11a67c614c6a7f48ec7ba8767fc4d7b2c5b0b83292e792c9318"
+      },
+      "provenance": {
+        "work_class": "mixed",
+        "packer": "chordsphere",
+        "packed_at": "2026-09-29T23:15:00+00:00"
+      }
+    },
+    {
+      "at": "2026-09-29T23:55:17+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-09-29-drafting-table-space-003.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "unit tests (python3 -m unittest discover -s tests)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "sitting page byte-exact (sha256 of claude/context/sittings/2026-09-29-continue-plan-002.md)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "doctrine append rule verbatim and the drafting-table row": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "catalog filed list and the new templates": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "agnostic grep (no office or machine named outside claude/)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "filed-append-only.sh smoke run": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "unit tests (python3 -m unittest discover -s tests)": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "sitting page byte-exact (sha256 of claude/context/sittings/2026-09-29-continue-plan-002.md)": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "doctrine append rule verbatim and the drafting-table row": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "catalog filed list and the new templates": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "agnostic grep (no office or machine named outside claude/)": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "filed-append-only.sh smoke run": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "file syntax (bash -n, py_compile, tomllib, VERSION is 0.3.0)",
+          "unit tests (python3 -m unittest discover -s tests)",
+          "sitting page byte-exact (sha256 of claude/context/sittings/2026-09-29-continue-plan-002.md)",
+          "doctrine append rule verbatim and the drafting-table row",
+          "catalog filed list and the new templates",
+          "agnostic grep (no office or machine named outside claude/)",
+          "filed-append-only.sh smoke run",
+          "doctrine/checks/filed-append-only.sh is executable"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "claude/context/front-sheet.md",
+        "claude/context/sittings",
+        "doctrine",
+        "lib",
+        "share/spaces.toml",
+        "templates",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "claude/context/sittings/2026-09-29-continue-plan-002.md",
+        "doctrine/OFFICE.md",
+        "doctrine/checks/filed-append-only.sh",
+        "lib/office_helper.py",
+        "share/spaces.toml",
+        "templates/blueprint.md",
+        "templates/close-report.md",
+        "templates/drafting-table-README.md",
+        "templates/drafting-table-agenda.md",
+        "templates/drafting-table-evidence.md",
+        "templates/drafting-table-moves.md",
+        "templates/drafting-table-riders.md",
+        "templates/drafting-table-rulings.md",
+        "templates/drafting-table-watch-log.md",
+        "templates/drafting-table-watches.md",
+        "templates/folder.md",
+        "tests/test_filed_append_only.py",
+        "tests/test_office.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.45",
+            "contract_docs": {
+              "AGENT.md": "dd22b82cf4b3dc146fa813a862ab03c32d0b94faf8bab5e51218e6cdd5578fed",
+              "TARBALL.md": "59ece7fde0adb7dd5c5f5d902d5cf1078c4562cebb82925aa529df19f22d1c8c",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "5af584b98ed0591b57fbb146baf1441f8130a894e050882d22b3cd62c5cd17d5"
+            },
+            "packer": "chordsphere",
+            "work_class": "mixed",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-09-29T23:15:00+00:00",
+            "base_files": {
+              "README.md": "bd99cfa553c930c9baf654f35e1a674bb01d5d232648650d743500e8b6e6027c",
+              "RELEASES.md": "39068b23517657f27e5f82957020904d0a2aef52f53daf89104579d3e2721814",
+              "VERSION": "1f930dd1f133c1f97a94fe3acb8db34372cf4c01ffdb2b3ff4ca72f9494121e9",
+              "bin/office": "693aef0c5cc9d81e0aece44bf5382abfe41363fc426be1e587a76f4495d709bb",
+              "claude/context/front-sheet.md": "f2d31f6621db346bdf32493d305a9c1f16ac2501bdc9293fe8a3c77ca7c608ba",
+              "claude/context/sittings/2026-09-23-office-construction-001.md": "9c804c7dae8ee5056e571720bdc5defc42acd6a497fcc0299d87286aad930a64",
+              "doctrine/OFFICE.md": "ae4bd090787a1286f1dd43ee88874e067f04d08a851beae7c6bd44d6e5183317",
+              "lib/office_helper.py": "dd70ad5406c08e56f94adfb01bcd3c48489eaae1ce5fa65fcfdfb1994eaed580",
+              "share/spaces.toml": "f81c859ff197e6d5da8232f3241d8b94eabc9b0046dc40faeec0fc8527e409d1",
+              "templates/clipboard-series.md": "a5d9eb92961bd491b10225321c7564ba0afd3bbb8d9bedd6913f26be36866f22",
+              "templates/clipboard-sheet.md": "3a49bc3bc432964a963d3a8167ab19ac237119f309d9f1943c9313c9e61bd769",
+              "templates/folder.md": "af5168657a4291fb249c984dd2285729547d6facc86662a96d745fefbe76545e",
+              "templates/handbook-chapter.md": "90c939906c6aa4c1615e75b7a904b61c1b7afa67d1e97853bbc1c410e6c06b96",
+              "templates/notepad-page.md": "692df506823206c9db5f7153bf90aa0bf46014ad80fe2962163a5997f8e065de",
+              "templates/profile.md": "c57c886d2d71ff7c07969282a6778da8f0c7a6e352f08021ce50574ce4c7a708",
+              "templates/rolodex-card.md": "833635ca21cc16ed318ae9a8103c9afc8fd8e98027a1fa4eb013cee9cf386833",
+              "templates/suggestion-slip.md": "c78eae20d323be8a290f7d1edce2cd2103f355001db5b0fb19499c2e8e95a250",
+              "tests/test_office.py": "b869ee3df1f33b4c9f046dd247e82482771c500faf60cf41656a6f1ae579b6fa"
+            },
+            "model_identity": "anthropic:claude-fable-5.1"
+          },
+          "linkage": {
+            "kind": "probe",
+            "point": "pre-read",
+            "depends_on": null
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "The office-bound text rule (ASCII only, pinned by the suite) outranks 'carry the templates as written': the blueprint's arrows, section signs and middle dots are spelled ->, 'section N' and ' - ' in the templates.",
+            "The blueprint's folder.md illustration (field block directly under the title) wins over its sentence 'below the title and the template's existing sentence'; the brief says 'the field block under the title' too.",
+            "A drafting-table page skeleton carries its illustrative records inside fenced blocks only, so a copied page states no false fact."
+          ],
+          "judgment_calls": [
+            "Skeleton file names: templates/drafting-table-<page>.md, flat in templates/ so the suite's office-bound text checks (a top-level glob) cover them; blueprint.md and close-report.md as the brief names them.",
+            "office open writes exactly two field lines (status, queued) and one History line '- DATE queued: office open'; no line for a field a later verb mints.",
+            "filed-append-only.sh interface: PATH=SIZE:SHA256, PATH=@BASEFILE (measure from a base copy) or PATH=new per argument, --root DIR, everything above a marker line is the pasteable fragment (a function), the tail runs it as a script.",
+            "The suite's synthetic future versions (0.3.0/0.4.0/0.2.5 literals) were made relative to VERSION as NEXT/AFTER/PATCH, since the 0.3.0 bump made the old literals the current release; fake_install now makes a unique directory per call.",
+            "Doctrine homes: the desk-order line went into section 5's Folders paragraph, the commandeered-goal line into section 7 after the wizard rule, the space rules into a new 'Drafting table.' paragraph in section 5 (no new numbered section, so cites stay stable).",
+            "run_migrations got a comment only: git's pathspec already expands the glob and ignores a path that does not exist yet (checked), so upgrade's reading of the list needed no code."
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [
+            "blueprints/drafting-table.md and nisaba-seed.md (the nisaba-src context tarball the brief said rode beside the request did not arrive; fetched by a paste-back probe)",
+            ".gitignore (the suite's own-text check reads it; a local stand-in was used to run the suite and is not shipped)"
+          ],
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md core (META through 11.2)",
+            "README.md (the brief, whole)",
+            "TARBALL.md sections 1, 2, 4, 5.1-5.4, 7, 8, 10.1, 10.2",
+            "blueprints/drafting-table.md (whole, via probe)",
+            "nisaba-seed.md sections 2 and 8 (via probe)",
+            "doctrine/OFFICE.md",
+            "bin/office",
+            "lib/office_helper.py",
+            "tests/test_office.py",
+            "share/spaces.toml",
+            "share/verbs.toml",
+            "templates/*",
+            "README.md",
+            "RELEASES.md",
+            "install.sh",
+            "migrations/*",
+            "claude/INDEX.md",
+            "claude/context/front-sheet.md",
+            "claude/context/sittings/2026-09-23-office-construction-001.md",
+            "tools/craft_response.py (usage and probe scaffold)",
+            "tools/response_lint.py (schema)"
+          ],
+          "compaction_occurred": {
+            "occurred": false,
+            "disclosure_ref": null
+          }
+        }
+      },
+      "log": ".bale/logs/2026-09-29-drafting-table-space-003.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-09-29T23:55:17+00:00",
+  "outcome": "applied"
+}
