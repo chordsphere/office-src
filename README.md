@@ -86,10 +86,11 @@ matches the floor plan.
 | bin/office | the command (bash) |
 | lib/office_helper.py | TOML, profile, survey and migration helpers (python3, standard library) |
 | doctrine/OFFICE.md | how every office works |
-| share/spaces.toml | every space an office can have; the base ones are the default floor plan |
+| doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |
+| share/spaces.toml | every space an office can have; the base ones are the default floor plan; a space files itself whole or as a list of paths |
 | share/profile-shape.toml | the profile's required sections |
 | share/verbs.toml | what each verb ships and where it lands |
-| templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page |
+| templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), copied in by the renovation that adds the space |
 | migrations/ | one file per breaking release; format in migrations/README.md |
 | RELEASES.md | release notes |
 | tests/ | the test suite |

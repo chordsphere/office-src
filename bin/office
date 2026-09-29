@@ -396,6 +396,9 @@ cmd_status() {
 # 1 on failure.
 run_migrations() {
   local target="$1" plan="$2" version kind action summary landed filed changed
+  # Filed paper, one pathspec per line: a whole space, or the paths a
+  # part-filed space lists (a path may hold a glob, which git expands;
+  # a path that does not exist yet matches nothing and refuses nothing).
   mapfile -t filed < <(helper spaces "$target/$MANIFEST_REL" filed)
   while IFS=$'\t' read -r version kind action summary landed; do
     [ -n "$version" ] || continue
@@ -615,7 +618,12 @@ cmd_open() {
   [ -n "$title" ] || title="$slug"
   title="$(printf '%s' "$title" | helper ascii-escape)"
   mkdir -p "$root/$folder" || die "cannot create $folder"
-  helper render-template "$TEMPLATES/folder.md" "title=$title" > "$root/$folder/folder.md" || die "could not write $folder/folder.md"
+  # The folder's field block holds only what open can fill without
+  # guessing: its status and the day it was queued, in the office's
+  # zone. The fields the other verbs mint (number, class, size, lane,
+  # source, blueprint, gates) get no line until those verbs write them.
+  helper render-template "$TEMPLATES/folder.md" "title=$title" "status=queued" "queued=$day" > "$root/$folder/folder.md" \
+    || die "could not write $folder/folder.md"
   if [ "$thread" = "1" ]; then
     [ ! -t 0 ] || die "--thread reads the pasted thread on stdin"
     { printf '# Thread that started this job\n\nPasted when the folder was opened, verbatim.\n\n'; helper ascii-escape; } > "$root/$folder/thread.md" \

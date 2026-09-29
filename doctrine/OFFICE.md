@@ -150,7 +150,7 @@ of spaces is share/spaces.toml.
 | calendar/ | when things happen, and what actually happened | renovation | yes | no |
 | rolodex/ | how to deal with each person | renovation | no | no |
 | letterhead/ | how anything leaving the office must look and sound | renovation | no | no |
-| drafting-table/ | blueprints for work too big for one folder | renovation | no | no |
+| drafting-table/ | blueprints for work too big for one folder, and the ledgers around them: rulings, evidence, watches, riders, the agenda | renovation | no | a list |
 
 Folders, desk and filing cabinet. A folder is one job: a directory named
 by date and a short slug, holding folder.md (from the install's folder
@@ -161,6 +161,13 @@ as the folder's next move. Closing a folder moves it to the filing
 cabinet; reopening brings it back with its history, so the next session
 starts knowing what was asked, answered and built. Moving a folder is not
 rewriting it: the bytes move as they are, and git keeps the history.
+Under its title a folder carries its facts as field lines, written by
+the office command and never by hand: its status and the date it was
+queued, and, as the verbs that mint them arrive, its number, class,
+size, lane, source, blueprint and gates. A field the command cannot
+fill is left out rather than left blank. Its History section is one
+dated line per event, appended and never rewritten. The order of the
+desk is computed from what the folders say, and nobody writes one.
 
 Clipboards. A recurring meeting gets a clipboard because it never ends:
 the series (purpose, attendees, cadence, which chapters it concerns), the
@@ -192,6 +199,23 @@ Rolodex. One card per person, as a guide for responding to them.
 
 Letterhead. The rules for anything that leaves the office: code style,
 prose style, what must never appear, and the occupant's voice.
+
+Drafting table. Blueprints for work too big for one folder, one arc
+each, with the ledgers a planning sitting rules in: the rulings ledger,
+the evidence ledger, the watches register and its log, the riders page,
+the agenda, and the desk moves a sitting decided. The space is part
+live, part filed: the ledgers, the watch log and the close reports are
+filed paper, and the floor plan lists them. Its templates are the
+install's; a renovation copies them in when the space arrives. A fact
+lands once, on the folder, blueprint or ledger record it belongs to,
+and everything else cites it by id; the same fact restated in two
+records is a defect. A ruling on the ledger is reopened only by a
+sitting that names it, and a reopening is a new ruling that supersedes;
+the earlier record is never touched. The evidence ledger admits only
+what live traffic earned: a record names a session id or a notepad
+page, or it is refused. An eye-watch no sitting has looked at is
+reported, never silently aged. Closed blueprints stay on the table;
+nothing is condensed.
 
 Notepad. The occupant's words, verbatim and dated. Never edited.
 Structuring them into folders, cards and chapters is cleanup's job.
@@ -265,6 +289,17 @@ Kinds:
 
 Session verbs are done by hand a few times before the command learns
 them.
+
+A verb is a wizard on a terminal. It walks the occupant through
+whatever it was not given, and it explains an argument it does not
+understand rather than refusing it. Every question a verb asks has a
+flag twin, so the same invocation can be typed in full without being
+asked anything. With piped input a verb never asks: it refuses what it
+was not given and names the flag.
+
+A session whose goal the occupant overrides midway keeps the override
+words on its notepad page, and the new ask becomes a new folder or
+blueprint, never an exception counted against the old one.
 
 Walking in is `office` with no verb, from inside an office or anywhere on
 the machine (the per-machine default). It shows the office's name, the
@@ -430,7 +465,26 @@ install catches up.
 
 ## 15. Filed paper
 
-Filed paper (the filing cabinet and the notepad) is never rewritten, by
-a session or by a migration. Only live structure migrates. `office
-upgrade` checks this after every migration and rolls the office back if
-filed paper changed.
+Filed paper (the filing cabinet, the notepad, and the drafting table's
+ledgers and close reports) is never rewritten, by a session or by a
+migration. Only live structure migrates. `office upgrade` checks this
+after every migration and rolls the office back if filed paper changed.
+The floor plan says what is filed: a whole space, or a list of paths
+inside one.
+
+Appending is not rewriting: a filed page grows at its end, and the
+bytes already filed never change. A correction, an amendment or a
+later state is a new record that points back, and the reader renders
+the current state. That is how the notepad already works, and the
+drafting table's ledgers work the same way. A filed folder in the
+filing cabinet keeps the older rule: it moves whole, and only the
+office command adds lines inside its sections.
+
+A session that writes a filed page proves it in its validation: for a
+page that existed when the request was packed, the first bytes of the
+page as staged, as many as the shipped copy had, hash to what the
+request stamped for it; a page the session created has no base. The
+check is `doctrine/checks/filed-append-only.sh`, which rides with the
+doctrine into every office session, and the worker fills in its paths,
+sizes and hashes from its own request. A script that appends to filed
+paper makes the same check before it commits.

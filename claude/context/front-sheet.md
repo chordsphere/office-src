@@ -26,6 +26,17 @@ or carries a session.
 
 ## Recent changes
 
+- 0.3.0 (session 2026-09-29-drafting-table-space-003): the
+  drafting-table's contents in the install: the catalog files a list of
+  paths inside the space and `office upgrade` reads it; templates for a
+  blueprint, its close report and every drafting-table page; the folder
+  template's field block, Riders and History, with `office open` writing
+  the status and the queued date; `doctrine/checks/filed-append-only.sh`
+  for sessions that write filed pages; and the doctrine lines the space
+  needs, the append rule, one home per fact, and wizards over flags.
+  Additive: no migration, no office needs anything done. Nothing is
+  copied into an office yet; that is the renovation's job, and the
+  verbs come in the sessions after this one.
 - 0.2.0 (session 2026-09-24-office-src-verbs-002): the everyday verbs and
   walking in; folders record session ids from `bale pack --json`; init
   writes bale.toml so every pack ships the hung items; the founding
