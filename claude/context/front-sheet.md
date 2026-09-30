@@ -26,6 +26,15 @@ or carries a session.
 
 ## Recent changes
 
+- 0.3.1 (session 2026-09-29-verb-table-columns-004): every verb in
+  `share/verbs.toml` declares `lands`, `attended` and `trigger`, and the
+  catalog registers the blueprint's session kinds (`sitting`, `chat`,
+  `blueprint-close`, `digest`, `review`, `check`, `retry`), all
+  `built = false`. The rule, no declared landing means no unattended
+  spawn, is refused by the suite and reported by `office status`, which
+  also reports a hung page that is also filed (session 1's rider,
+  consumed here). Nothing consumes the keys yet beyond the check.
+  Additive: no migration, no office needs anything done.
 - 0.3.0 (session 2026-09-29-drafting-table-space-003): the
   drafting-table's contents in the install: the catalog files a list of
   paths inside the space and `office upgrade` reads it; templates for a

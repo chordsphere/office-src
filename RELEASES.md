@@ -4,6 +4,28 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.3.1
+
+Additive: no migration, nothing to do in any office.
+
+Every verb in share/verbs.toml declares three more keys: lands, what
+is guaranteed to exist after the verb succeeds; attended, whether a
+person must be present; and trigger, what may set it off, from a closed
+vocabulary (manual, before-sitting, after-sitting, after-build, on-hold,
+on-correctable-hold, schedule). The rule they carry: a session kind
+with attended = false must declare a landing. The catalog also
+registers the session kinds the drafting-table blueprint declares
+ahead of the command, sitting, chat, blueprint-close, digest, review,
+check and retry, every one built = false; cleanup now ships and writes
+drafting-table/riders.md. Nothing in the command consumes the keys yet
+beyond the check: they are a registry for the shell and for whoever
+spawns sessions. The test suite refuses a catalog that breaks the rule,
+names a trigger outside the vocabulary or lands a path outside the
+verb's writes, and refuses a space catalog whose filed or hung lists
+hold anything but pages or globs inside the space, or a hung page that
+is also filed. office status reports both from the installed catalogs
+in one more line.
+
 ## 0.3.0
 
 Additive: no migration, nothing to do in any office.

@@ -7,12 +7,13 @@ library only. Every subcommand prints its result on stdout, logs to
 stderr with an [office] prefix, and exits 0 on success, 1 on a refusal
 the caller should report, 2 on a usage or internal error, and 3 where a
 subcommand documents a second outcome (an incomplete profile, an unmet
-renovation declaration, include-group drift), and 4 when record-session
-finds the id already recorded.
+renovation declaration, include-group drift, a catalog defect), and 4
+when record-session finds the id already recorded.
 """
 
 import argparse
 import datetime as dt
+import fnmatch
 import pathlib
 import re
 import sys
@@ -455,6 +456,157 @@ def include_group_drift(manifest, bale_toml_path, root):
     return out
 
 
+# --- the install's catalogs (share/verbs.toml, share/spaces.toml) -----------
+#
+# Two catalogs, one check, shared by the test suite (which refuses a
+# catalog that breaks it) and office status (which reports the installed
+# one). The verbs catalog carries the rule that no session kind without a
+# declared landing may run unattended; the space catalog has two
+# list-valued properties with different meanings, and nothing else
+# cross-checks them.
+
+VERB_KINDS = ("script", "office-session", "project-session")
+SESSION_KINDS = ("office-session", "project-session")
+TRIGGERS = ("manual", "before-sitting", "after-sitting", "after-build",
+            "on-hold", "on-correctable-hold", "schedule")
+VERB_KEYS = ("lands", "attended", "trigger")
+PLACEHOLDER_RE = re.compile(r"\{[^{}]*\}")
+
+
+def is_path_entry(entry):
+    """A writes or lands entry is a path (or a path pattern) when, with its
+    {placeholders} taken out, nothing in it is whitespace: "desk/{folder}"
+    and "{project}" are paths; "the new office" is prose."""
+    if not isinstance(entry, str) or not entry.strip():
+        return False
+    return not any(ch.isspace() for ch in PLACEHOLDER_RE.sub("", entry))
+
+
+def falls_inside(lands, writes):
+    """Does a lands path fall inside a writes path? Equal, or under it, one
+    segment at a time; a writes segment that is only a placeholder stands
+    for any segment, and placeholders elsewhere compare by position."""
+    def segments(p):
+        return [PLACEHOLDER_RE.sub("{}", s) for s in p.strip("/").split("/") if s]
+    ls, ws = segments(lands), segments(writes)
+    if len(ws) > len(ls):
+        return False
+    return all(w == "{}" or w == l for w, l in zip(ws, ls))
+
+
+def string_list(value):
+    return isinstance(value, list) and all(isinstance(v, str) and v.strip() for v in value)
+
+
+def verb_catalog_problems(catalog):
+    """(problems, unchecked) for a verbs catalog.
+
+    problems: every defect, one line each, a catalog with any of them is
+    refused. unchecked: the lands entries the check could not place,
+    because every writes entry of that verb is prose; they are reported,
+    never counted as defects."""
+    problems, unchecked = [], []
+    verbs = catalog.get("verbs")
+    if not isinstance(verbs, dict) or not verbs:
+        return ["no [verbs] table"], []
+    for name, verb in sorted(verbs.items()):
+        if not isinstance(verb, dict):
+            problems.append(f"{name}: not a table")
+            continue
+        kind = verb.get("kind")
+        if kind not in VERB_KINDS:
+            problems.append(f"{name}: kind must be one of {', '.join(VERB_KINDS)}, not {kind!r}")
+        if not isinstance(verb.get("built"), bool):
+            problems.append(f"{name}: built must be true or false")
+        for key in VERB_KEYS:
+            if key not in verb:
+                problems.append(f"{name}: no {key} key")
+        writes = verb.get("writes", [])
+        if not string_list(writes):
+            problems.append(f"{name}: writes must be a list of non-empty strings")
+            writes = []
+        lands = verb.get("lands", [])
+        if not string_list(lands):
+            if "lands" in verb:
+                problems.append(f"{name}: lands must be a list of non-empty strings")
+            lands = []
+        attended = verb.get("attended")
+        if "attended" in verb and not isinstance(attended, bool):
+            problems.append(f"{name}: attended must be true or false")
+        trigger = verb.get("trigger")
+        if "trigger" in verb:
+            if not string_list(trigger) or not trigger:
+                problems.append(f"{name}: trigger must be a non-empty list of strings")
+            else:
+                for t in trigger:
+                    if t not in TRIGGERS:
+                        problems.append(f"{name}: trigger {t!r} is not one of {', '.join(TRIGGERS)}")
+        if kind in SESSION_KINDS and attended is False and not lands:
+            problems.append(f"{name}: an unattended session kind with no declared landing; "
+                            f"declare lands or set attended = true")
+        path_writes = [w for w in writes if is_path_entry(w)]
+        for entry in lands:
+            if not is_path_entry(entry):
+                problems.append(f"{name}: lands entry {entry!r} is prose, not a path or a pattern")
+            elif not path_writes:
+                unchecked.append(f"{name}: lands {entry!r} could not be placed; every writes entry is prose")
+            elif not any(falls_inside(entry, w) for w in path_writes):
+                problems.append(f"{name}: lands {entry!r} falls inside none of writes {path_writes}")
+    return problems, unchecked
+
+
+def glob_or_page(entry, space_path):
+    """A filed or hung list entry names a page inside the space, or a glob
+    (as git reads one) over pages inside it."""
+    return (isinstance(entry, str) and entry.startswith(space_path + "/")
+            and len(entry) > len(space_path) + 1 and not any(ch.isspace() for ch in entry))
+
+
+def space_catalog_problems(catalog):
+    """Every defect in a spaces catalog, one line each: a filed or hung
+    value that is not true, false or a list of pages or globs inside the
+    space; and a hung path that is also filed (a hung filed page would
+    ship into every session and be append-only at once, which is a
+    deliberate line, not a default)."""
+    problems = []
+    spaces = catalog.get("spaces")
+    if not isinstance(spaces, dict) or not spaces:
+        return ["no [spaces] table"]
+    for name, space in sorted(spaces.items()):
+        if not isinstance(space, dict) or not isinstance(space.get("path"), str) or not space["path"].strip():
+            problems.append(f"{name}: needs a path")
+            continue
+        path = space["path"].rstrip("/")
+        values = {}
+        for prop in ("hung", "filed"):
+            value = space.get(prop, False)
+            if isinstance(value, bool):
+                values[prop] = value
+            elif isinstance(value, list):
+                bad = [v for v in value if not glob_or_page(v, path)]
+                for v in bad:
+                    problems.append(f"{name}: {prop} entry {v!r} is not a page or a glob inside {path}/")
+                values[prop] = [v for v in value if v not in bad]
+            else:
+                problems.append(f"{name}: {prop} must be true, false or a list of paths, not {value!r}")
+                values[prop] = False
+        hung, filed = values["hung"], values["filed"]
+        if hung is True and filed is True:
+            problems.append(f"{name}: the whole space is hung and filed at once")
+        elif hung is True and isinstance(filed, list):
+            for f in filed:
+                problems.append(f"{name}: filed {f!r} is inside a space hung whole")
+        elif isinstance(hung, list) and filed is True:
+            for h in hung:
+                problems.append(f"{name}: hung {h!r} is inside a space filed whole")
+        elif isinstance(hung, list) and isinstance(filed, list):
+            for h in hung:
+                for f in filed:
+                    if h == f or fnmatch.fnmatchcase(h, f) or fnmatch.fnmatchcase(f, h):
+                        problems.append(f"{name}: hung {h!r} is also filed ({f!r})")
+    return problems
+
+
 # --- sessions in folders ----------------------------------------------------
 
 SID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*-\d{3}$")
@@ -768,6 +920,19 @@ def cmd_include_group_check(a):
     return 3 if drift else 0
 
 
+def cmd_catalog_check(a):
+    """Both catalogs at once: defects on stdout, exit 3 when there are
+    any; the lands entries no path could place are reported on stderr,
+    so a prose writes is visible without being a refusal."""
+    problems, unchecked = verb_catalog_problems(read_toml(a.verbs))
+    problems += space_catalog_problems(read_toml(a.spaces))
+    for line in unchecked:
+        log(f"unchecked: {line}")
+    for line in problems:
+        print(line)
+    return 3 if problems else 0
+
+
 def cmd_pack_sid(a):
     print(sid_from_pack_report(sys.stdin.read()))
 
@@ -842,6 +1007,8 @@ def main(argv=None):
     p.add_argument("--pack-only", action="store_true"); p.set_defaults(fn=cmd_render_bale_toml)
     p = sub.add_parser("include-group-check"); p.add_argument("manifest"); p.add_argument("bale_toml")
     p.add_argument("root"); p.set_defaults(fn=cmd_include_group_check)
+    p = sub.add_parser("catalog-check"); p.add_argument("verbs"); p.add_argument("spaces")
+    p.set_defaults(fn=cmd_catalog_check)
     p = sub.add_parser("pack-sid"); p.set_defaults(fn=cmd_pack_sid)
     p = sub.add_parser("record-session"); p.add_argument("folder_md"); p.add_argument("sid")
     p.add_argument("--words"); p.set_defaults(fn=cmd_record_session)

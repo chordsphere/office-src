@@ -978,6 +978,215 @@ class TestIncludeGroup(unittest.TestCase):
         self.assertIn("pulls: missing calendar", out)
 
 
+# --- the install's catalogs ---------------------------------------------------------
+
+# The kinds share/verbs.toml declares ahead of the command, as a registry
+# for the shell and for whoever spawns sessions. Blueprint section 6 of
+# the drafting-table declares them; the verbs session builds them.
+DECLARED_KINDS = ("sitting", "chat", "cleanup", "blueprint-close", "digest", "review", "check", "retry")
+
+
+def verbs_catalog():
+    return tomllib.loads((REPO / "share/verbs.toml").read_text(encoding="utf-8"))
+
+
+def spaces_catalog():
+    return tomllib.loads((REPO / "share/spaces.toml").read_text())
+
+
+class TestCatalogs(unittest.TestCase):
+    """The rule: a session kind with attended = false must declare a
+    landing. The suite refuses a shipped catalog that breaks it, and the
+    same helper walks the space catalog for a hung page that is also
+    filed. office status reports both from the installed catalogs."""
+
+    def test_every_verb_declares_the_three_keys(self):
+        for name, verb in verbs_catalog()["verbs"].items():
+            for key in ("lands", "attended", "trigger"):
+                self.assertIn(key, verb, f"{name} has no {key}")
+            self.assertIsInstance(verb["lands"], list, name)
+            self.assertIsInstance(verb["attended"], bool, name)
+            self.assertTrue(verb["trigger"], f"{name} has an empty trigger")
+            for t in verb["trigger"]:
+                self.assertIn(t, h.TRIGGERS, f"{name}: {t}")
+            self.assertIn(verb["kind"], h.VERB_KINDS, name)
+
+    def test_the_shipped_verbs_catalog_holds(self):
+        """No offender in the shipped catalog; the only lands the check
+        cannot place against a path are init's, whose writes is prose."""
+        problems, unchecked = h.verb_catalog_problems(verbs_catalog())
+        self.assertEqual(problems, [])
+        self.assertEqual(sorted(u.split(":")[0] for u in unchecked), ["init", "init"])
+        self.assertEqual(sorted(verbs_catalog()["verbs"]["init"]["lands"]), ["floor-plan/manifest.toml", "profile.md"])
+
+    def test_the_rule_refuses_an_unattended_kind_with_no_landing(self):
+        verbs = verbs_catalog()
+        verbs["verbs"]["cleanup"]["lands"] = []
+        problems, _ = h.verb_catalog_problems(verbs)
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("cleanup: an unattended session kind with no declared landing", problems[0])
+        # attended = true lifts the rule, whatever lands says.
+        verbs["verbs"]["cleanup"]["attended"] = True
+        self.assertEqual(h.verb_catalog_problems(verbs)[0], [])
+        # A script may be unattended with no landing: it spawns nothing.
+        verbs = verbs_catalog()
+        verbs["verbs"]["digest"]["lands"] = []
+        self.assertEqual(h.verb_catalog_problems(verbs)[0], [])
+
+    def test_the_check_refuses_bad_keys_and_a_landing_outside_writes(self):
+        verbs = verbs_catalog()
+        v = verbs["verbs"]
+        v["note"]["trigger"] = ["manual", "weekly"]
+        v["open"]["lands"] = ["notepad/{date}.md"]
+        v["close"]["lands"] = ["the moved folder"]
+        del v["week"]["attended"]
+        v["desk"]["attended"] = "yes"
+        v["survey"]["trigger"] = []
+        v["where"]["kind"] = "cron"
+        problems, _ = h.verb_catalog_problems(verbs)
+        want = ["note: trigger 'weekly'", "open: lands 'notepad/{date}.md' falls inside none of writes ['desk']",
+                "close: lands entry 'the moved folder' is prose", "week: no attended key", "desk: attended must be",
+                "survey: trigger must be a non-empty list", "where: kind must be one of"]
+        for w in want:
+            self.assertTrue(any(w in p for p in problems), f"{w!r} not reported in {problems}")
+        self.assertEqual(len(problems), len(want), problems)
+        self.assertEqual(h.verb_catalog_problems({})[0], ["no [verbs] table"])
+
+    def test_placeholders_and_prefixes(self):
+        self.assertTrue(h.falls_inside("notepad/{date}-{slug}.md", "notepad"))
+        self.assertTrue(h.falls_inside("desk/{name}/folder.md", "desk/{folder}"))
+        self.assertTrue(h.falls_inside("{project}", "{project}"))
+        self.assertTrue(h.falls_inside("floor-plan/manifest.toml", "{spaces being changed}"))
+        self.assertFalse(h.falls_inside("notepad", "notepad/{date}.md"))
+        self.assertFalse(h.falls_inside("desktop/a", "desk"))
+        self.assertTrue(h.is_path_entry("desk/{member folders}"))
+        self.assertFalse(h.is_path_entry("the new office"))
+        self.assertFalse(h.is_path_entry(""))
+
+    def test_the_existing_verbs_took_the_keys_as_ruled(self):
+        """Blueprint section 6: every script attended, manual, lands equal
+        to writes ([] when read-only) except sessions, which a harness
+        also runs; build attended until a build kind with a landing is
+        proven by hand."""
+        v = verbs_catalog()["verbs"]
+        prose = {"init", "upgrade", "default"}
+        for name, verb in v.items():
+            if verb["kind"] != "script" or name in DECLARED_KINDS:
+                continue
+            if name == "sessions":
+                self.assertFalse(verb["attended"])
+                self.assertEqual(verb["trigger"], ["manual", "after-build"])
+            else:
+                self.assertTrue(verb["attended"], name)
+                self.assertEqual(verb["trigger"], ["manual"], name)
+            if name not in prose:
+                self.assertEqual(verb["lands"], verb["writes"], name)
+        for name in ("founding", "work", "prep", "meeting", "renovate", "build"):
+            self.assertTrue(v[name]["attended"], name)
+        self.assertEqual(v["build"]["lands"], [])
+
+    def test_the_declared_kinds_are_registered_and_not_built(self):
+        v = verbs_catalog()["verbs"]
+        for name in DECLARED_KINDS:
+            self.assertIn(name, v)
+            self.assertFalse(v[name]["built"], name)
+        self.assertEqual(v["sitting"]["lands"], ["notepad/{date}-{slug}.md"])
+        self.assertEqual(v["cleanup"]["attended"], False)
+        self.assertEqual(v["cleanup"]["trigger"], ["after-build", "after-sitting", "schedule"])
+        self.assertIn("drafting-table/riders.md", v["cleanup"]["ships"])
+        self.assertIn("drafting-table/riders.md", v["cleanup"]["writes"])
+        self.assertEqual(v["digest"]["kind"], "script")
+        self.assertEqual(v["blueprint-close"]["kind"], "office-session")
+        for name in ("review", "check", "retry"):
+            self.assertEqual(v[name]["kind"], "project-session", name)
+            self.assertEqual(v[name]["lands"], [], name)
+            self.assertTrue(v[name]["attended"], name)
+        self.assertEqual(v["review"]["trigger"], ["on-hold"])
+        self.assertEqual(v["retry"]["trigger"], ["on-correctable-hold"])
+        # Session 4 declares the other scripts of the blueprint's table.
+        for name in ("watches", "watches-check", "moves", "riders", "rulings", "evidence"):
+            self.assertNotIn(name, v)
+
+    def test_the_shipped_spaces_catalog_holds(self):
+        """The rider from session 1: filed and hung are both lists of
+        paths with different meanings. Today's catalog has no hung page
+        that is also filed; this is the calibration point."""
+        self.assertEqual(h.space_catalog_problems(spaces_catalog()), [])
+
+    def test_a_hung_filed_page_is_refused(self):
+        spaces = spaces_catalog()
+        spaces["spaces"]["drafting-table"]["hung"] = ["drafting-table/rulings.md"]
+        problems = h.space_catalog_problems(spaces)
+        self.assertEqual(problems, ["drafting-table: hung 'drafting-table/rulings.md' is also filed ('drafting-table/rulings.md')"])
+        spaces["spaces"]["drafting-table"]["hung"] = ["drafting-table/blueprints/arc/close.md"]
+        self.assertIn("is also filed ('drafting-table/blueprints/*/close.md')", h.space_catalog_problems(spaces)[0])
+        spaces = spaces_catalog()
+        spaces["spaces"]["notepad"]["hung"] = True
+        self.assertEqual(h.space_catalog_problems(spaces), ["notepad: the whole space is hung and filed at once"])
+        spaces = spaces_catalog()
+        spaces["spaces"]["floor-plan"]["filed"] = True
+        self.assertEqual(h.space_catalog_problems(spaces), ["floor-plan: hung 'floor-plan/survey.md' is inside a space filed whole"])
+
+    def test_a_filed_or_hung_entry_must_be_a_page_or_glob_inside_the_space(self):
+        spaces = spaces_catalog()
+        spaces["spaces"]["drafting-table"]["filed"] += ["notepad/x.md", "drafting-table/a page.md", "drafting-table/"]
+        spaces["spaces"]["handbook"]["hung"] = "README.md"
+        problems = h.space_catalog_problems(spaces)
+        self.assertEqual(len(problems), 4, problems)
+        for want in ("filed entry 'notepad/x.md'", "filed entry 'drafting-table/a page.md'", "filed entry 'drafting-table/'",
+                     "handbook: hung must be true, false or a list"):
+            self.assertTrue(any(want in p for p in problems), want)
+        self.assertEqual(h.space_catalog_problems({"spaces": {}}), ["no [spaces] table"])
+
+    def test_catalog_check_subcommand(self):
+        with tempfile.TemporaryDirectory() as d:
+            verbs, spaces = pathlib.Path(d, "verbs.toml"), pathlib.Path(d, "spaces.toml")
+            shutil.copy(REPO / "share/verbs.toml", verbs)
+            shutil.copy(REPO / "share/spaces.toml", spaces)
+            cmd = [sys.executable, "-B", str(REPO / "lib/office_helper.py"), "catalog-check", str(verbs), str(spaces)]
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(proc.stdout, "")
+            self.assertIn("unchecked: init: lands", proc.stderr)
+            verbs.write_text(verbs.read_text().replace('trigger = ["after-build", "after-sitting", "schedule"]',
+                                                       'trigger = ["after-build", "nightly"]'))
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 3)
+            self.assertIn("cleanup: trigger 'nightly'", proc.stdout)
+            verbs.write_text("not toml [")
+            self.assertEqual(subprocess.run(cmd, capture_output=True, text=True).returncode, 1)
+
+
+class TestStatusReportsTheCatalogs(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+        self.root = self.e.init()
+
+    def test_status_says_the_installed_catalogs_hold(self):
+        out = self.e.run("status", cwd=self.root, check=0).stdout
+        self.assertIn("catalogs:   every unattended session kind declares a landing; no hung page is filed", out)
+
+    def test_status_reports_an_offender_in_the_install(self):
+        """An office on a broken install hears about it: the check reads
+        the install's catalogs, never the office."""
+        office = self.e.fake_install(PATCH)
+        verbs = office.parent.parent / "share" / "verbs.toml"
+        text = verbs.read_text(encoding="utf-8")
+        self.assertIn('\nlands = ["desk/{folder}/folder.md"]\nattended = false\n', text)
+        verbs.write_text(text.replace('\nlands = ["desk/{folder}/folder.md"]\nattended = false\n', '\nlands = []\nattended = false\n'),
+                         encoding="utf-8")
+        spaces = office.parent.parent / "share" / "spaces.toml"
+        spaces.write_text(spaces.read_text().replace('path = "notepad"\nbase = true\nfiled = true',
+                                                     'path = "notepad"\nbase = true\nhung = true\nfiled = true'))
+        proc = self.e.run("status", cwd=self.root, bin_path=office, check=0)
+        self.assertIn(f"catalogs:   DEFECT in the install at {office.parent.parent}", proc.stdout)
+        self.assertIn("  cleanup: an unattended session kind with no declared landing", proc.stdout)
+        self.assertIn("  notepad: the whole space is hung and filed at once", proc.stdout)
+        verbs.write_text("[verbs\n")
+        proc = self.e.run("status", cwd=self.root, bin_path=office, check=0)
+        self.assertIn("catalogs:   could not be checked", proc.stdout)
+
+
 # --- office-src's own development record -----------------------------------------
 
 SITTINGS = REPO / "claude/context/sittings"
@@ -1126,18 +1335,29 @@ class TestText(unittest.TestCase):
         self.assertEqual(table, {s["path"]: bool(s.get("base")) for s in catalog.values()})
 
     def test_doctrine_verb_table_covers_the_declarations(self):
-        verbs = tomllib.loads((REPO / "share/verbs.toml").read_text())["verbs"]
+        """Every verb the catalog declares has a row in the doctrine's verb
+        table, except a kind declared ahead of the command (DECLARED_KINDS),
+        which may wait for its row until it is built: a built verb with no
+        doctrine row is a defect either way. Every row names a declared
+        verb."""
+        verbs = verbs_catalog()["verbs"]
         doctrine = (REPO / "doctrine/OFFICE.md").read_text()
-        table = " ".join(re.findall(r"^\| ([a-z, ]+) \|", doctrine, re.M))
-        for name in verbs:
-            self.assertRegex(table, rf"\b{name}\b", name)
+        cells = re.findall(r"^\| ([a-z, -]+) \|", doctrine, re.M)
+        named = {n.strip() for cell in cells for n in cell.split(",")}
+        for name, verb in verbs.items():
+            if name in DECLARED_KINDS and not verb["built"] and name not in named:
+                continue
+            self.assertIn(name, named, f"{name} has no row in the doctrine's verb table")
+        for name in named - {"verb", "path"}:
+            self.assertIn(name, verbs, f"the doctrine's verb table names {name}, which the catalog does not declare")
 
     def test_help_lists_every_built_script_verb(self):
-        verbs = tomllib.loads((REPO / "share/verbs.toml").read_text())["verbs"]
+        verbs = verbs_catalog()["verbs"]
         usage = subprocess.run([str(REPO / "bin/office"), "help"], capture_output=True, text=True).stdout
         for name, v in verbs.items():
-            if v["kind"] == "script":
+            if v["kind"] == "script" and v["built"]:
                 self.assertIn(name, usage, name)
+        self.assertNotIn("digest", usage)
 
     def test_bale_office_line_is_verbatim(self):
         line = ("The line between bale and office. Test: is this about a session or about a job? "

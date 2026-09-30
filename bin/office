@@ -11,6 +11,7 @@ set -uo pipefail
 OFFICE_SRC="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 HELPER="$OFFICE_SRC/lib/office_helper.py"
 CATALOG="$OFFICE_SRC/share/spaces.toml"
+VERBS="$OFFICE_SRC/share/verbs.toml"
 SHAPE="$OFFICE_SRC/share/profile-shape.toml"
 TEMPLATES="$OFFICE_SRC/templates"
 MIGRATIONS="$OFFICE_SRC/migrations"
@@ -387,6 +388,17 @@ cmd_status() {
     0) printf 'hung items: bale.toml include group matches the floor plan\n' ;;
     3) printf 'hung items: bale.toml differs from the floor plan\n'; printf '%s\n' "$drift" | sed 's/^/  /' ;;
     *) printf 'hung items: could not compare bale.toml with the floor plan\n' ;;
+  esac
+  # The install's catalogs, not the office's: a verb declared unattended
+  # with no landing, or a hung page that is also filed, is a defect in
+  # office-src that every office on this install should hear about.
+  local defects
+  defects="$(helper catalog-check "$VERBS" "$CATALOG" 2>/dev/null)"
+  case $? in
+    0) printf 'catalogs:   every unattended session kind declares a landing; no hung page is filed\n' ;;
+    3) printf 'catalogs:   DEFECT in the install at %s (share/verbs.toml, share/spaces.toml)\n' "$OFFICE_SRC"
+       printf '%s\n' "$defects" | sed 's/^/  /' ;;
+    *) printf 'catalogs:   could not be checked\n' ;;
   esac
 }
 
@@ -817,7 +829,7 @@ usage: office [VERB [args]]
 
   init PATH       build an office and print its founding session's pack line
   survey          rewrite floor-plan/survey.md and report what changed
-  status          version, skew, profile, survey age, hung items (read-only)
+  status          version, skew, profile, survey age, hung items, catalogs (read-only)
   upgrade         run pending migrations, dry run first, one commit
   where           print the office a command here would act on
   default [PATH]  show or set this machine's default office

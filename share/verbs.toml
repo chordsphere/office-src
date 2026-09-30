@@ -1,118 +1,277 @@
-# What each verb is, what it ships and where it lands. The office command
-# reads the built verbs from here as they arrive. A verb never runs,
-# schedules or carries a session: an office-session or project-session
-# verb only prints the pack line.
+# What each verb is, what it ships, where it lands, whether a person must
+# be present and what may set it off. The office command reads the built
+# verbs from here as they arrive. A verb never runs, schedules or carries
+# a session: an office-session or project-session verb only prints the
+# pack line.
 #
-# kind    script | office-session | project-session
-# built   whether the office command has it yet
-# ships   what rides with the session (office sessions also ship the hung
-#         items, which the office's bale.toml include group pulls, and the
-#         doctrine)
-# writes  where it lands
+# kind      script | office-session | project-session
+# built     whether the office command has it yet
+# ships     what rides with the session (office sessions also ship the
+#           hung items, which the office's bale.toml include group pulls,
+#           and the doctrine)
+# writes    where it may land: paths, patterns, or prose where the verb
+#           writes something no path names
+# lands     what is guaranteed to exist, created or changed, after the
+#           verb succeeds: paths or patterns, each inside one of the
+#           verb's writes; [] when nothing is guaranteed
+# attended  true when a person must be present while it runs (answering,
+#           carrying, deciding); false when it can run with nobody there
+# trigger   what may set it off, a list from a closed vocabulary:
+#           manual, before-sitting, after-sitting, after-build, on-hold,
+#           on-correctable-hold, schedule. What a schedule is, its cadence
+#           and where it is declared, is not the office's to say; the
+#           office only says a verb may be scheduled.
+#
+# The rule: no declared landing, no unattended spawn. A session-kind verb
+# (office-session, project-session) with attended = false must have a
+# non-empty lands. The test suite refuses a catalog that breaks it and
+# office status reports one in the installed catalog. Scripts declare
+# the keys too, for parity and for the shell, but spawn nothing.
+#
+# A pattern's braces stand for a value filled in when the verb runs:
+# desk/{folder}, notepad/{date}-{slug}.md. A lands entry falls inside a
+# writes entry when it is that path or a path under it, a placeholder
+# segment in writes standing for any segment.
+#
+# Nothing in the office command consumes lands, attended or trigger yet
+# beyond the check. The consumers are whoever spawns sessions (a
+# harness, before it spawns anything) and the shell; the keys are
+# declared now so this catalog is a registry they can walk. A declared
+# kind with built = false is a registry entry, not a verb the command
+# has; it arrives by hand a few times before the command learns it.
 
 [verbs.init]
 kind = "script"
 built = true
 writes = ["the new office"]
+lands = ["floor-plan/manifest.toml", "profile.md"]
+attended = true
+trigger = ["manual"]
 
 [verbs.survey]
 kind = "script"
 built = true
 writes = ["floor-plan/survey.md"]
+lands = ["floor-plan/survey.md"]
+attended = true
+trigger = ["manual"]
 
 [verbs.status]
 kind = "script"
 built = true
 writes = []
+lands = []
+attended = true
+trigger = ["manual"]
 
 [verbs.upgrade]
 kind = "script"
 built = true
 writes = ["live structure named by each migration", "floor-plan/manifest.toml"]
+lands = ["floor-plan/manifest.toml"]
+attended = true
+trigger = ["manual"]
 
 [verbs.where]
 kind = "script"
 built = true
 writes = []
+lands = []
+attended = true
+trigger = ["manual"]
 
 [verbs.default]
 kind = "script"
 built = true
 writes = ["the per-machine default office setting"]
+lands = []
+attended = true
+trigger = ["manual"]
 
 [verbs.note]
 kind = "script"
 built = true
 writes = ["notepad"]
+lands = ["notepad"]
+attended = true
+trigger = ["manual"]
 
 [verbs.open]
 kind = "script"
 built = true
 writes = ["desk"]
+lands = ["desk"]
+attended = true
+trigger = ["manual"]
 
 [verbs.desk]
 kind = "script"
 built = true
 writes = []
+lands = []
+attended = true
+trigger = ["manual"]
 
 [verbs.week]
 kind = "script"
 built = true
 writes = []
+lands = []
+attended = true
+trigger = ["manual"]
 
 [verbs.close]
 kind = "script"
 built = true
 writes = ["desk", "filing-cabinet"]
+lands = ["desk", "filing-cabinet"]
+attended = true
+trigger = ["manual"]
 
 [verbs.reopen]
 kind = "script"
 built = true
 writes = ["filing-cabinet", "desk"]
+lands = ["filing-cabinet", "desk"]
+attended = true
+trigger = ["manual"]
 
+# A harness also runs sessions when it packs or applies, so it is the
+# one script that runs with nobody there.
 [verbs.sessions]
 kind = "script"
 built = true
 writes = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md"]
+lands = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md"]
+attended = false
+trigger = ["manual", "after-build"]
 
 [verbs.founding]
 kind = "office-session"
 built = true
 ships = ["floor-plan"]
 writes = ["profile.md", "notepad", "floor-plan"]
+lands = ["profile.md", "notepad/{date}-{slug}.md", "floor-plan/manifest.toml"]
+attended = true
+trigger = ["manual"]
 
 [verbs.work]
 kind = "office-session"
 built = false
 ships = ["desk/{folder}", "handbook/{systems}", "rolodex/{people}", "letterhead"]
 writes = ["desk/{folder}"]
+lands = ["desk/{folder}/folder.md"]
+attended = true
+trigger = ["manual"]
 
+# Attended until a build kind with a declared landing is proven by hand.
 [verbs.build]
 kind = "project-session"
 built = false
 ships = ["desk/{folder}", "handbook/{systems}"]
 writes = ["{project}"]
+lands = []
+attended = true
+trigger = ["manual"]
 
 [verbs.prep]
 kind = "office-session"
 built = false
 ships = ["clipboards/{series}", "handbook/{systems}", "rolodex/{attendees}"]
 writes = ["clipboards/{series}"]
+lands = ["clipboards/{series}"]
+attended = true
+trigger = ["manual"]
 
 [verbs.meeting]
 kind = "office-session"
 built = false
 ships = ["clipboards/{series}", "handbook/{systems}", "rolodex/{attendees}"]
 writes = ["clipboards/{series}", "desk"]
-
-[verbs.cleanup]
-kind = "office-session"
-built = false
-ships = ["desk", "notepad", "suggestion-box", "handbook"]
-writes = ["desk", "filing-cabinet", "handbook", "rolodex", "calendar", "suggestion-box"]
+lands = ["clipboards/{series}"]
+attended = true
+trigger = ["manual"]
 
 [verbs.renovate]
 kind = "office-session"
 built = false
 ships = ["floor-plan", "suggestion-box"]
 writes = ["floor-plan", "suggestion-box", "{spaces being changed}"]
+lands = ["floor-plan/manifest.toml"]
+attended = true
+trigger = ["manual"]
+
+# The kinds below are declared ahead of the command: a registry for the
+# shell and for whoever spawns sessions, built by hand until the verbs
+# session and the harness build them.
+
+[verbs.sitting]
+kind = "office-session"
+built = false
+ships = ["drafting-table", "desk"]
+writes = ["drafting-table", "notepad"]
+lands = ["notepad/{date}-{slug}.md"]
+attended = true
+trigger = ["manual"]
+
+[verbs.chat]
+kind = "office-session"
+built = false
+ships = ["desk/{folder}"]
+writes = ["desk/{folder}"]
+lands = ["desk/{folder}/transcript.md"]   # where it lands is Q-3, open
+attended = true
+trigger = ["manual"]
+
+[verbs.cleanup]
+kind = "office-session"
+built = false
+ships = ["desk", "notepad", "suggestion-box", "handbook", "drafting-table/riders.md"]
+writes = ["desk", "filing-cabinet", "handbook", "rolodex", "calendar", "suggestion-box", "drafting-table/riders.md"]
+lands = ["desk/{folder}/folder.md"]
+attended = false
+trigger = ["after-build", "after-sitting", "schedule"]
+
+[verbs.blueprint-close]
+kind = "office-session"   # a sitting scoped to one blueprint (§3.3)
+built = false
+ships = ["drafting-table/blueprints/{id}", "desk/{member folders}", "drafting-table/rulings.md", "drafting-table/evidence.md", "drafting-table/watches.md"]
+writes = ["drafting-table", "notepad"]
+lands = ["drafting-table/blueprints/{id}/close.md", "notepad/{date}-{slug}.md"]
+attended = true
+trigger = ["manual"]
+
+[verbs.digest]
+kind = "script"
+built = false
+writes = ["drafting-table/digest.md"]
+lands = ["drafting-table/digest.md"]
+attended = false
+trigger = ["before-sitting", "manual"]
+
+[verbs.review]
+kind = "project-session"
+built = false
+ships = ["the held staging diff", "the HOLD's evidence"]
+writes = ["{project}"]
+lands = []        # seed: a triage record (correctable, escalate, fixture defect); twine-src places it
+attended = true
+trigger = ["on-hold"]
+
+[verbs.check]
+kind = "project-session"
+built = false
+ships = ["the landed change", "the brief"]   # never the oracle
+writes = ["{project}"]
+lands = []        # seed: an independent verdict as a claims block; twine-src places it
+attended = true   # seed: false, once lands names a path (the rule below)
+trigger = ["after-build"]                     # by policy (effort); Q-6
+
+[verbs.retry]
+kind = "project-session"
+built = false
+ships = ["the failure context", "the spec"]   # never oracle mechanics (PLANNER.md §5)
+writes = ["{project}"]
+lands = []        # seed: the corrected response, with corrects: lineage; twine-src places it
+attended = true   # seed: false, once lands names a path
+trigger = ["on-correctable-hold"]
