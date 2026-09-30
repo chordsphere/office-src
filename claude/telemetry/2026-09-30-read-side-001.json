@@ -1,0 +1,408 @@
+{
+  "record_version": 1,
+  "session_id": "2026-09-30-read-side-001",
+  "created_at": "2026-09-30T13:48:52+00:00",
+  "attempts": [
+    {
+      "at": "2026-09-30T13:48:52+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "claude/context/front-sheet.md",
+        "doctrine",
+        "lib",
+        "share",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-09-30-read-side-001.log",
+      "bundle": {
+        "stem": "2026-09-30-read-side",
+        "brief_sha256": "88d957eaebc8ae47f79df03a18812ad0246513381f12e718cd9c4d32a17f141d",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "f1466da46b7b86e97b6aacf95b6b1cab9ec811d55291765a1968b6549a110ff9"
+      },
+      "provenance": {
+        "work_class": "mixed",
+        "packer": "chordsphere",
+        "packed_at": "2026-09-30T13:48:52+00:00"
+      }
+    },
+    {
+      "at": "2026-09-30T23:29:52+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-09-30-read-side-001.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "unit tests (python3 -m unittest discover -s tests)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "agnostic grep (no office, machine or model named outside the development record)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "doctrine lines for sections 10 and 13, as blueprint section 4 words them": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "fixtures byte-exact to the probe's per-line sha256": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "additive release 0.4.0 with no migration": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "pack report read from its contract's sid key, with no guessing": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "no bytecode left in the tree": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "unit tests (python3 -m unittest discover -s tests)": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "agnostic grep (no office, machine or model named outside the development record)": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "doctrine lines for sections 10 and 13, as blueprint section 4 words them": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "fixtures byte-exact to the probe's per-line sha256": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "additive release 0.4.0 with no migration": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "pack report read from its contract's sid key, with no guessing": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "no bytecode left in the tree": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "file syntax (bash -n, python ast, TOML, JSON)",
+          "unit tests (python3 -m unittest discover -s tests)",
+          "agnostic grep (no office, machine or model named outside the development record)",
+          "doctrine lines for sections 10 and 13, as blueprint section 4 words them",
+          "fixtures byte-exact to the probe's per-line sha256",
+          "additive release 0.4.0 with no migration",
+          "pack report read from its contract's sid key, with no guessing",
+          "no bytecode left in the tree",
+          "bin/office is executable"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "claude/context/front-sheet.md",
+        "doctrine",
+        "lib",
+        "share",
+        "tests"
+      ],
+      "overridden_paths": [
+        "claude/INDEX.md",
+        "claude/fixtures/bale-0.4.45/README.md",
+        "claude/fixtures/bale-0.4.45/anywhere/version.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_json_work-class_meta.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_json_work-class_mixed.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-01-01-no-such-session-001_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-core-001_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-core-001_since_2026-09-01_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-verbs-002_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-smoothing-003_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-continue-plan-002_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-drafting-table-sitting-001_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-drafting-table-space-003_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-verb-table-columns-004_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-30-read-side-001_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/status_json.json",
+        "claude/fixtures/bale-0.4.45/test-office/status_json.json"
+      ],
+      "overridden_path_sources": {
+        "claude/INDEX.md": "prompt",
+        "claude/fixtures/bale-0.4.45/README.md": "prompt",
+        "claude/fixtures/bale-0.4.45/anywhere/version.json": "prompt",
+        "claude/fixtures/bale-0.4.45/office-src/stats_json.json": "prompt",
+        "claude/fixtures/bale-0.4.45/office-src/stats_json_work-class_meta.json": "prompt",
+        "claude/fixtures/bale-0.4.45/office-src/stats_json_work-class_mixed.json": "prompt",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-01-01-no-such-session-001_json.json": "prompt",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-core-001_json.json": "prompt",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-core-001_since_2026-09-01_json.json": "prompt",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-verbs-002_json.json": "prompt",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-smoothing-003_json.json": "prompt",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-continue-plan-002_json.json": "prompt",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-drafting-table-sitting-001_json.json": "prompt",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-drafting-table-space-003_json.json": "prompt",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-verb-table-columns-004_json.json": "prompt",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-30-read-side-001_json.json": "prompt",
+        "claude/fixtures/bale-0.4.45/office-src/status_json.json": "prompt",
+        "claude/fixtures/bale-0.4.45/test-office/status_json.json": "prompt"
+      },
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/INDEX.md",
+        "claude/context/front-sheet.md",
+        "claude/fixtures/bale-0.4.45/README.md",
+        "claude/fixtures/bale-0.4.45/anywhere/version.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_json_work-class_meta.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_json_work-class_mixed.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-01-01-no-such-session-001_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-core-001_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-core-001_since_2026-09-01_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-verbs-002_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-smoothing-003_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-continue-plan-002_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-drafting-table-sitting-001_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-drafting-table-space-003_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-verb-table-columns-004_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-30-read-side-001_json.json",
+        "claude/fixtures/bale-0.4.45/office-src/status_json.json",
+        "claude/fixtures/bale-0.4.45/test-office/status_json.json",
+        "doctrine/OFFICE.md",
+        "lib/office_bale.py",
+        "lib/office_helper.py",
+        "share/bale-consumption.toml",
+        "share/verbs.toml",
+        "tests/test_office.py",
+        "tests/test_read_side.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.45",
+            "contract_docs": {
+              "AGENT.md": "dd22b82cf4b3dc146fa813a862ab03c32d0b94faf8bab5e51218e6cdd5578fed",
+              "TARBALL.md": "59ece7fde0adb7dd5c5f5d902d5cf1078c4562cebb82925aa529df19f22d1c8c",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "5af584b98ed0591b57fbb146baf1441f8130a894e050882d22b3cd62c5cd17d5"
+            },
+            "packer": "chordsphere",
+            "work_class": "mixed",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-09-30T13:48:52+00:00",
+            "base_files": {
+              "README.md": "8744a738a79c3feda789eeb17c306042783a09ea6888549f642d5c6b148d5296",
+              "RELEASES.md": "be45c8f68b47dfe455ffdc6f0b103ee5a7f8137a146ef745fa436856d5ec5cf3",
+              "VERSION": "79e3f22ca37c7fdf4c29ae3648d6b008c3cb6547260a453409275470919dc674",
+              "bin/office": "fabe79740e68e867053ed9079138826fa6e47e2a3f7bfddb88e80ddcd6c117dd",
+              "claude/context/front-sheet.md": "6f9eb181087905ffdffee9cee874ce6f1dd213971e2be9242d5c847260ecc5b1",
+              "doctrine/OFFICE.md": "227ac852344566dde3f223b8c862b56ef8c0a2181edc9d8e0761f8a6151c72f7",
+              "doctrine/checks/filed-append-only.sh": "0f52ed5870f32c3d985e032fc99df071e256f7cad2e343d9dba8b6a2e7099e95",
+              "lib/office_helper.py": "dbdc7c50e41a8de0b9b57f1f9a72c394a80bf576c5b022641361f7edb1802e28",
+              "share/profile-shape.toml": "42245342f7f64086db352e5a5e0f02b3ed47fa5c785d0f13348a567d40e1d930",
+              "share/spaces.toml": "f76750a30fa15d37777ef27f297531a6abba66794523d8930ace43b5c4a8d920",
+              "share/verbs.toml": "b2eccb261f3d4b25747b08bad06de5c5141955b01ac2850b56ec32f5cf982f26",
+              "tests/test_filed_append_only.py": "9daf033c18db0969190168fb2276dd835c3abd71a56f5bd01d0d6f0edd76d45b",
+              "tests/test_office.py": "f2129ab5185823e350c11ee5dac86435ea904f47fb884812c98f6f7613e45528"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          },
+          "linkage": {
+            "kind": "probe",
+            "point": "pre-read",
+            "depends_on": null
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "the version trail reads two ways: applied sessions whose change set held a VERSION file, and bale's contract-doc epochs",
+            "a project's sessions are enumerated from bale status's outbox list plus its open sessions, the fullest list a --json surface carries",
+            "the consumption manifest's range is a floor only (0.4.45), because bale's key contracts are additive"
+          ],
+          "judgment_calls": [
+            "the ledger, last-landed-by and version-trail renderings are flags on office projects, not office sessions",
+            "the reader is a sibling module, lib/office_bale.py",
+            "fixtures live under the development record, out of forecast, so the agnostic test stays green without being weakened",
+            "the doctrine's em dashes are spelled ' -- ' to keep OFFICE.md ASCII",
+            "the pack report's id is read from sid only; session_id, never in bale's contract, now refuses"
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [],
+          "compaction_occurred": {
+            "occurred": false
+          },
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md",
+            "README.md",
+            "TARBALL.md sections 1, 2, 4, 5, 7, 10",
+            "claude/context/front-sheet.md",
+            "claude/INDEX.md",
+            "README.md",
+            "bin/office",
+            "lib/office_helper.py",
+            "doctrine/OFFICE.md",
+            "share/verbs.toml",
+            "tests/test_office.py",
+            "RELEASES.md",
+            "tools/craft_response.py (probe and response modes)"
+          ],
+          "forecast_departures": [
+            {
+              "path": "claude/INDEX.md",
+              "why": "the development record's map must list the new fixtures directory it now holds"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/README.md",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/anywhere/version.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/office-src/stats_json.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/office-src/stats_json_work-class_meta.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/office-src/stats_json_work-class_mixed.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-01-01-no-such-session-001_json.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-core-001_json.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-core-001_since_2026-09-01_json.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-verbs-002_json.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-smoothing-003_json.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-continue-plan-002_json.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-drafting-table-sitting-001_json.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-drafting-table-space-003_json.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-verb-table-columns-004_json.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-30-read-side-001_json.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/office-src/status_json.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            },
+            {
+              "path": "claude/fixtures/bale-0.4.45/test-office/status_json.json",
+              "why": "real bale output captured by this session's probe; it names the machine and its paths, which office-src never does outside the development record, so the suite's fixtures live here and not in tests/ (the constraint that the agnostic test stays green)"
+            }
+          ]
+        }
+      },
+      "log": ".bale/logs/2026-09-30-read-side-001.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-09-30T23:29:52+00:00",
+  "outcome": "applied"
+}
