@@ -1,0 +1,214 @@
+{
+  "record_version": 1,
+  "session_id": "2026-09-29-verb-table-columns-004",
+  "created_at": "2026-09-29T23:58:52+00:00",
+  "attempts": [
+    {
+      "at": "2026-09-29T23:58:52+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "claude/context/front-sheet.md",
+        "lib",
+        "share/verbs.toml",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-09-29-verb-table-columns-004.log",
+      "bundle": {
+        "stem": "2026-09-29-verb-table-columns",
+        "brief_sha256": "03539b437f95ecf7af0aa2a6e71f98541dc2b68142aaefc5f8b57772d35b8989",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "5bc9068c16d5659c7090741a0c659993440161d18c5a42819a16b58dad00e678"
+      },
+      "provenance": {
+        "work_class": "mixed",
+        "packer": "chordsphere",
+        "packed_at": "2026-09-29T23:58:52+00:00"
+      }
+    },
+    {
+      "at": "2026-09-30T00:32:45+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-09-29-verb-table-columns-004.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "unittest suite": {
+            "value": "pass",
+            "claim_basis": "predicted"
+          },
+          "session assertions: catalog rule": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "unittest suite": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "session assertions: catalog rule": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "file syntax (bash, python, toml)",
+          "unittest suite",
+          "session assertions: catalog rule",
+          "bin/office is executable"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "claude/context/front-sheet.md",
+        "lib",
+        "share/verbs.toml",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "lib/office_helper.py",
+        "share/verbs.toml",
+        "tests/test_office.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.45",
+            "contract_docs": {
+              "AGENT.md": "dd22b82cf4b3dc146fa813a862ab03c32d0b94faf8bab5e51218e6cdd5578fed",
+              "TARBALL.md": "59ece7fde0adb7dd5c5f5d902d5cf1078c4562cebb82925aa529df19f22d1c8c",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "5af584b98ed0591b57fbb146baf1441f8130a894e050882d22b3cd62c5cd17d5"
+            },
+            "packer": "chordsphere",
+            "work_class": "mixed",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-09-29T23:58:52+00:00",
+            "base_files": {
+              "README.md": "9704188bb315129a44ceaffd69fe4fba9a721bf444790c02f06aaa79b00d3c9f",
+              "RELEASES.md": "b899048b7038768ef7d1cce42b3ae2c6076f712a2f9c1768ebb5bcf99b0d00ed",
+              "VERSION": "d915cc95d6ca8f47ae297713ed46d4e5c5d99ddd29fc3c61e263bdf305f2b5b0",
+              "bin/office": "80269b232a1ba28de4fbf9f62fe01fd15b2925c0efd524a788bffe208c2ec0f6",
+              "claude/context/front-sheet.md": "a3d0bba66948734ec2d47f1cbbae27eb6ac5dd0a5e4d7700a6a6416c17a994ce",
+              "lib/office_helper.py": "22291cf4af3096cf947ae042744572b2b076b7ad9ed556d185b9d590bc90cbed",
+              "share/verbs.toml": "92ba87cf162664292b89714b2c1696be0f76732d71d634b7d4aa75c0a6e1d7a5",
+              "tests/test_filed_append_only.py": "9daf033c18db0969190168fb2276dd835c3abd71a56f5bd01d0d6f0edd76d45b",
+              "tests/test_office.py": "0407941fdf17a0b531aada808d869511dfeeab79092f752e1770cadf90d59984"
+            },
+            "model_identity": "anthropic:claude-fable-5.1"
+          },
+          "linkage": {
+            "kind": "probe",
+            "point": "pre-build",
+            "depends_on": null
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "lands for the existing session kinds (founding, work, prep, meeting, renovate) are the worker's choice; the blueprint says any lands holds for them",
+            "office status reports a catalog defect and still exits 0, like skew BEHIND and include-group drift; the refusal is the suite's"
+          ],
+          "judgment_calls": [
+            "the doctrine-table test exempts a declared-ahead kind only while built = false, instead of adding rows to doctrine/OFFICE.md (session 1's landing, out of scope)",
+            "test_help_lists_every_built_script_verb narrowed to built script verbs so digest (script, built = false) does not fail it",
+            "blueprint section 6's block kept verbatim including its non-ASCII section signs; verbs.toml is not office-bound text",
+            "init's lands are floor-plan/manifest.toml and profile.md as the brief rules; upgrade lands floor-plan/manifest.toml; default lands nothing in the office",
+            "a lands entry is a path when, with {placeholders} removed, it has no whitespace; a placeholder-only writes segment matches any segment"
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [
+            "blueprints/drafting-table.md and nisaba-seed.md (the context tarball the brief names did not reach the chat; read through a probe)",
+            "templates/, migrations/, install.sh (the suite renders them; read through the same probe so the suite could run here)"
+          ],
+          "compaction_occurred": {
+            "occurred": false,
+            "disclosure_ref": null
+          },
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md META through 11.2",
+            "README.md (the brief)",
+            "TARBALL.md sections 1, 2, 5, 7, 3, 4, 10",
+            "context: share/verbs.toml, share/spaces.toml, share/profile-shape.toml, bin/office, lib/office_helper.py, tests/test_office.py, doctrine/OFFICE.md sections 6 and 7, README.md, RELEASES.md, claude/context/front-sheet.md",
+            "probe output: blueprint sections 3, 5, 6, 8; seed section 5 and N7; templates, migrations, install.sh"
+          ],
+          "light_blocks": 0
+        }
+      },
+      "log": ".bale/logs/2026-09-29-verb-table-columns-004.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-09-30T00:32:45+00:00",
+  "outcome": "applied"
+}
