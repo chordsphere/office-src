@@ -4,6 +4,39 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.4.0
+
+Additive: no migration, nothing to do in any office. An office without
+a [projects] table keeps working and says it scopes no projects.
+
+The read side. An office names the projects it scopes in its floor
+plan's new [projects] table, a name and the path of each project's repo
+on this machine, written by the new verb: `office projects` lists them
+and `office projects add NAME PATH` adds one, a wizard on a terminal
+that asks for what it was not given, refuses without it when piped, and
+checks the path is the top of a git repo bale runs in (a .bale/
+directory or a bale.toml), saying which it found. office init writes no
+table; the founding session or the occupant adds the projects.
+
+lib/office_bale.py is the reader: the only code that runs bale, through
+its --json surfaces only (status, stats, a session's dossier), in the
+project's directory with stdin closed, never reading .bale/ and never
+writing. share/bale-consumption.toml is its contract with bale: every
+verb, flag and key it reads, written from a probe of bale 0.4.45, which
+is the floor. office status reports the installed bale against it, a
+line and never a refusal, and whether each project in scope can be
+read. On it, the renderings: walking in shows the sessions in flight in
+the office's projects, each with the folder that names it; `office
+sessions FOLDER` shows each recorded session's outcome, dates, claims
+beside verdicts and exchange rounds; `office projects --ledger`,
+`--landed PATH` and `--versions` render the trust ledger per work class,
+the last applied session that landed a path, and the version trail.
+Nothing rendered is ever written into an office. The pack report's
+session id is read from its `sid` key, which bale's pack contract names;
+the guess at an id-shaped value is gone. The doctrine says that reading
+is not copying, that where a report and the records part the records
+stand, and that a number that can go stale is computed where it is shown.
+
 ## 0.3.1
 
 Additive: no migration, nothing to do in any office.

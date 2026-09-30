@@ -1,0 +1,15 @@
+{
+ "argv": [
+  "status",
+  "--json"
+ ],
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"status\", \"version\": \"0.4.45\", \"sid\": null, \"repo\": {\"root\": \"/home/chordsphere/test-office\", \"branch\": \"main\", \"tree_clean\": true, \"tree_change_count\": 0, \"bale_initialised\": false}, \"session\": {\"state\": \"idle\", \"goal\": null, \"expects_probe\": null, \"clarification\": null}, \"staging\": {\"present\": false, \"path\": \"/home/chordsphere/test-office/.bale/staging\", \"sessions\": {}, \"stale\": []}, \"outbox\": [], \"applied\": {\"count\": 0, \"latest\": null}, \"sessions\": [], \"scopes\": {}, \"integration_lock\": null, \"config\": {\"project\": \"/home/chordsphere/test-office/bale.toml\", \"global\": \"/home/chordsphere/bale/user/bale.toml\", \"hooks_wired\": [\"post_pack\"], \"search_paths\": 1, \"baleignore\": false, \"summary_failed\": false}}"
+ ],
+ "stderr": [],
+ "stdout_sha256": [
+  "3000b295e85e3063ba81fed31c34c8d74110f3586772ed55413714a05dec3908"
+ ],
+ "captured": "probe of session 2026-09-30-read-side-001, section 8: bale 0.4.45 run in the machine's default office, idle (the probe printed no hash for this line; it was computed from the pasted line)"
+}

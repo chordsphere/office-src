@@ -1,0 +1,17 @@
+{
+ "argv": [
+  "stats",
+  "--sid",
+  "2026-09-30-read-side-001",
+  "--json"
+ ],
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"dossier\", \"session_id\": \"2026-09-30-read-side-001\", \"found\": true, \"record\": {\"record_version\": 1, \"created_at\": \"2026-09-30T13:48:52+00:00\", \"updated_at\": \"2026-09-30T13:48:52+00:00\", \"outcome\": \"opened\", \"work_class\": \"mixed\", \"packer\": \"chordsphere\", \"in_flight\": true, \"closure\": null, \"read_only\": false, \"crash_debris\": false}, \"attempts\": [{\"at\": \"2026-09-30T13:48:52+00:00\", \"command\": \"pack\", \"outcome\": \"opened\", \"closure_reason\": null, \"tarball\": null, \"scope_kind\": \"write-forecast\", \"scope\": [\"README.md\", \"RELEASES.md\", \"VERSION\", \"bin\", \"claude/context/front-sheet.md\", \"doctrine\", \"lib\", \"share\", \"tests\"], \"change_paths\": [], \"overridden_paths\": [], \"required_check_overrides\": [], \"base_drift_overrides\": [], \"forecast_drift_paths\": null, \"validation\": null, \"checkpoint\": null, \"linkage\": null, \"clarification\": null, \"diagnostics\": null, \"provenance\": {\"work_class\": \"mixed\", \"packer\": \"chordsphere\", \"packed_at\": \"2026-09-30T13:48:52+00:00\"}, \"superseded_by\": null, \"swept_by\": null, \"cause\": null, \"bundle\": {\"stem\": \"2026-09-30-read-side\", \"brief_sha256\": \"88d957eaebc8ae47f79df03a18812ad0246513381f12e718cd9c4d32a17f141d\", \"checkpoint_sha256\": null, \"manifest_sha256\": \"f1466da46b7b86e97b6aacf95b6b1cab9ec811d55291765a1968b6549a110ff9\"}, \"log\": \".bale/logs/2026-09-30-read-side-001.log\"}], \"lineage\": {\"superseded_by\": null, \"superseded_from\": [], \"corrects\": null, \"corrected_by\": []}}"
+ ],
+ "stderr": [],
+ "stdout_sha256": [
+  "04b214963c25f01da47dfe03a0007abc5d719340547e78cdf81aa1eae66a0c20"
+ ],
+ "captured": "probe of session 2026-09-30-read-side-001, section 5: bale 0.4.45 run in the office-src checkout; the line's sha256 is the one the probe printed beside it"
+}

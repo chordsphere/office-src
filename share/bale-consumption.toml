@@ -1,0 +1,125 @@
+# What the office reads from bale, and nothing else. Every bale verb and
+# flag the office calls, every JSON key it reads, and the bale version
+# the reads were written against. lib/office_bale.py builds each call's
+# argv from this file and reads every key through one accessor that
+# refuses a key not declared here; the test suite walks the reader's
+# source against it and replays real bale output captured by a probe,
+# so a bale release that moves a key fails a test, not a walk-in.
+#
+# The office reads bale only through these --json surfaces, in the
+# project's directory, with stdin closed: never .bale/, never a prompt.
+# It never writes what bale records. A datum the office needs and bale
+# does not stamp is a slip for bale-src, never a scrape and never a
+# guess (doctrine section 10).
+#
+# floor      the installed bale the surfaces were probed on. bale's key
+#            contracts are additive (existing keys are never renamed or
+#            removed), so every later bale should serve these reads; an
+#            older one may not. office status reports a bale below the
+#            floor as a line, never a refusal.
+# argv       the call, {placeholders} filled when it runs
+# optional   flags added, in this order, when their value is given
+# contract   where bale keeps the surface's key contract
+# outcome    the value of the line's outcome key on success
+# keys       every key the office reads: a.b is b inside a; a[].b is b
+#            inside each element of the list a; a.*.b is b inside every
+#            value of the map a
+
+[bale]
+floor = "0.4.45"
+probed_in = "2026-09-30-read-side-001"
+
+[surfaces.version]
+argv = ["--version"]
+format = "text"
+pattern = '^bale (\d+\.\d+\.\d+)$'
+contract = "bale --version: one line, bale X.Y.Z"
+
+[surfaces.status]
+argv = ["status", "--json"]
+contract = "format_status_json's docstring, bin/bale_report.py"
+outcome = "status"
+keys = [
+  "outcome",
+  "version",
+  "sessions",   # every open sid, oldest first
+  "scopes",     # open sid -> its write forecast; [] marks a read-only session
+  "outbox",     # every request tarball name: the fullest list of a repo's sids a surface carries
+]
+
+[surfaces.stats]
+argv = ["stats", "--json"]
+optional = [["--work-class", "{work_class}"]]
+contract = "format_stats_json's docstring, bin/bale_report.py"
+outcome = "stats"
+keys = [
+  "outcome",
+  "classes",
+  "classes.*.sessions",
+  "classes.*.response_attempts",
+  "classes.*.held_attempts",
+  "classes.*.hold_rate",
+  "classes.*.checks",
+  "classes.*.checks_agree",
+  "classes.*.checks_na",
+  "classes.*.agreement_rate",
+  "classes.*.bailout_sessions",
+  "classes.*.sessions_with_response_attempt",
+  "closure_mix",
+  "closure_mix.applied",
+  "doc_epochs",
+  "doc_epochs.*.first_created_at",
+  "doc_epochs.*.sessions",
+  "doc_epochs.*.applied",
+  "doc_epochs.*.in_flight",
+]
+
+# One session. --work-class and --since are refused beside --sid.
+[surfaces.dossier]
+argv = ["stats", "--sid", "{sid}", "--json"]
+contract = "format_session_dossier_json's docstring, bin/bale_report.py"
+outcome = "dossier"
+keys = [
+  "outcome",
+  "session_id",
+  "found",
+  "parse_failure",             # on found = false only
+  "filtered_record_version",   # on found = false only
+  "record",
+  "record.created_at",
+  "record.updated_at",
+  "record.outcome",
+  "record.work_class",
+  "record.in_flight",
+  "record.read_only",
+  "record.closure",
+  "record.closure.unlock_reason",
+  "attempts",
+  "attempts[].at",
+  "attempts[].command",
+  "attempts[].outcome",
+  "attempts[].change_paths",
+  "attempts[].validation",
+  "attempts[].validation.state",
+  "attempts[].validation.checks",
+  "attempts[].validation.checks[].check",
+  "attempts[].validation.checks[].claim",
+  "attempts[].validation.checks[].verdict",
+  "attempts[].validation.checks[].agreement",
+  "attempts[].clarification",
+  "attempts[].clarification.rounds",
+  "attempts[].linkage",
+  "attempts[].linkage.kind",
+  "attempts[].linkage.point",
+  "lineage",
+  "lineage.superseded_by",
+]
+
+# The office never runs bale pack; it reads the report the occupant pipes
+# into office sessions FOLDER - (lib/office_helper.py, sid_from_pack_report).
+[surfaces.pack]
+calls = false
+argv = ["pack", "--json"]
+contract = "format_pack_json's docstring, bin/bale_report.py"
+outcome = "packed"
+keys = ["sid"]

@@ -14,8 +14,11 @@ office is on its own, and office-src reaches it only through `office
 upgrade`. Every day: `office` to walk in, `office note` to capture a
 line, `office open`, `desk`, `close` and `reopen` for folders, `office
 week` for the calendar, and `office sessions` to record which sessions
-worked on a job. `office status`, `survey` and `upgrade` look after the
-office itself.
+worked on a job and see how each one went. `office projects` names the
+projects an office scopes and shows what bale records about them: the
+trust ledger, who last landed a file, the version trail. Walking in
+shows the sessions open in those projects. `office status`, `survey` and
+`upgrade` look after the office itself.
 
 ## Who uses it, where and when it runs
 
@@ -26,6 +29,19 @@ or carries a session.
 
 ## Recent changes
 
+- 0.4.0 (session 2026-09-30-read-side-001): the read side. The floor
+  plan's `[projects]` table and `office projects` (list, `add`, and the
+  `--ledger`, `--landed PATH` and `--versions` renderings); the reader,
+  `lib/office_bale.py`, which runs bale's `--json` surfaces and nothing
+  else; `share/bale-consumption.toml`, every bale verb, flag and key the
+  office reads, written from a probe of bale 0.4.45; the walk-in's In
+  flight list; `office sessions FOLDER` with outcomes, claims beside
+  verdicts and exchange rounds; `office status` lines for bale and the
+  projects; OFFICE.md's section 10 and 13 lines. The pack report's id
+  is read from `sid`, its contract's key, with no guessing. The suite's
+  bale is a fake replaying the probe's captured lines, kept in
+  `claude/fixtures/`. Additive: no migration, no office needs anything
+  done.
 - 0.3.1 (session 2026-09-29-verb-table-columns-004): every verb in
   `share/verbs.toml` declares `lands`, `attended` and `trigger`, and the
   catalog registers the blueprint's session kinds (`sitting`, `chat`,
@@ -61,10 +77,18 @@ or carries a session.
 - The doctrine's ride-along context pack (`bale pack --context` run in
   the install) has not been run for real yet; the first founding line
   will be its first run.
-- Which key of `bale pack --json` carries the session id was not read
-  from bale's key contract. `office sessions` reads `session_id`, then
-  `sid`, then a single id-shaped value with a warning, and refuses loudly
-  when it finds none.
+- bale does not stamp everything the read side and the watches want.
+  Slips for bale-src, from the 0.4.0 probe (session
+  2026-09-30-read-side-001's notes): no HOLD cause class; no marker
+  telling a deliberate checkpoint-amendment accept from an override;
+  the session dossier leaves out the bale version each session ran
+  under, and the self-reported round counts; no `--json` surface lists
+  every session in a repo (the office enumerates the outbox); and
+  `bale status` gives a lifecycle state for one open session only. The
+  renderings say "not on bale's dossier" where they would show one.
+- The version trail is read two ways (applied sessions that landed a
+  VERSION file, and bale's contract-doc epochs), pending a ruling on
+  what the blueprint's "version landmark" meant.
 - The calendar's two-page format is the tool's first guess; the first
   office with a calendar will tell whether it fits.
 - Offices on WSL report the machine's zone (UTC on chordsphere) until

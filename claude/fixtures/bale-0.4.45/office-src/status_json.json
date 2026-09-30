@@ -1,0 +1,15 @@
+{
+ "argv": [
+  "status",
+  "--json"
+ ],
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"status\", \"version\": \"0.4.45\", \"sid\": \"2026-09-29-continue-plan-002\", \"repo\": {\"root\": \"/home/chordsphere/office-src\", \"branch\": \"master\", \"tree_clean\": false, \"tree_change_count\": 2, \"bale_initialised\": true}, \"session\": {\"state\": \"packed\", \"goal\": \"let's continue work from nisaba's plan. If the next direction is unclear, let's discuss it. Dogfooding is especially important with this project, because office's entire purpose is user facing. I've attached bale-src as a context tarball as well, but read it lightly.\", \"expects_probe\": \"agent-decides\", \"clarification\": null}, \"staging\": {\"present\": true, \"path\": \"/home/chordsphere/office-src/.bale/staging\", \"sessions\": {\"2026-09-29-continue-plan-002\": {\"present\": false, \"path\": \"/home/chordsphere/office-src/.bale/staging/2026-09-29-continue-plan-002\", \"strategy\": \"working-tree\", \"untracked_inputs\": []}, \"2026-09-30-read-side-001\": {\"present\": false, \"path\": \"/home/chordsphere/office-src/.bale/staging/2026-09-30-read-side-001\", \"strategy\": \"working-tree\", \"untracked_inputs\": []}}, \"stale\": [\"2026-09-29-verb-table-columns-004\"]}, \"outbox\": [\"request-2026-09-24-office-src-core-001.tar.gz\", \"request-2026-09-24-office-src-verbs-002.tar.gz\", \"request-2026-09-24-smoothing-003.tar.gz\", \"request-2026-09-29-continue-plan-002.tar.gz\", \"request-2026-09-29-drafting-table-sitting-001.tar.gz\", \"request-2026-09-29-drafting-table-space-003.tar.gz\", \"request-2026-09-29-verb-table-columns-004.tar.gz\", \"request-2026-09-30-read-side-001.tar.gz\"], \"applied\": {\"count\": 4, \"latest\": \"2026-09-29-verb-table-columns-004\"}, \"sessions\": [\"2026-09-29-continue-plan-002\", \"2026-09-30-read-side-001\"], \"scopes\": {\"2026-09-29-continue-plan-002\": [], \"2026-09-30-read-side-001\": [\"README.md\", \"RELEASES.md\", \"VERSION\", \"bin\", \"claude/context/front-sheet.md\", \"doctrine\", \"lib\", \"share\", \"tests\"]}, \"integration_lock\": null, \"config\": {\"project\": null, \"global\": \"/home/chordsphere/bale/user/bale.toml\", \"hooks_wired\": [\"post_pack\"], \"search_paths\": 1, \"baleignore\": false, \"summary_failed\": false}}"
+ ],
+ "stderr": [],
+ "stdout_sha256": [
+  "27eac51b1d88eb33837fe8d98713c8e1fc7d1c928b14de6bdb60205c541ec652"
+ ],
+ "captured": "probe of session 2026-09-30-read-side-001, section 5: bale 0.4.45 run in the office-src checkout; the line's sha256 is the one the probe printed beside it"
+}

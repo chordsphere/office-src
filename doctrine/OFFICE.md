@@ -35,7 +35,8 @@ line, `office open` starts a folder, `office desk` lists what is open,
 `office reopen` move a folder to the filing cabinet and back. `office
 survey` rewrites the page of machine facts. `office status` says whether
 the office matches the installed tool. `office upgrade` brings an office
-up to a new release, one commit per office.
+up to a new release, one commit per office. `office projects` lists the
+projects in the office's scope and renders what bale records about them.
 
 The office never runs a session. It only says what a session should carry
 and where it lands, and prints the pack line. bale carries the session.
@@ -123,6 +124,8 @@ section, with a few words if the occupant gives them (`-m`). Until the
 session verbs arrive, sessions for a folder are packed by hand this way,
 and the session verbs will record through the same step. The folder
 points at session ids; it never copies what bale records about a session.
+`office sessions FOLDER` lists them with what bale records about each,
+rendered on every run (section 10).
 
 After a project session lands, the office side (the folder, and the
 front sheet of any handbook chapter the change touched) is brought up to
@@ -132,7 +135,8 @@ office.
 ## 5. Spaces
 
 The floor plan (floor-plan/manifest.toml) lists the spaces an office
-has. `office init` builds the base spaces. The others are added by a
+has, and, in its [projects] table, the projects it scopes on this
+machine (section 10). `office init` builds the base spaces. The others are added by a
 renovation session when real work asks for them. The install's catalog
 of spaces is share/spaces.toml.
 
@@ -279,6 +283,7 @@ Kinds:
 | week | script: this week's calendar and its gaps | yes |
 | close, reopen | script: move a folder to the filing cabinet and back | yes |
 | sessions | script: list or record the sessions that worked on a folder | yes |
+| projects | script: list the projects this office scopes, add one, render what bale records about them | yes |
 | founding | office session: the profile, the occupant's words, the timezone | yes, via init |
 | work | office session: answer, draft, probe, decide, deliver | by hand |
 | build | project session: change a project for a folder | by hand |
@@ -304,6 +309,7 @@ blueprint, never an exception counted against the old one.
 Walking in is `office` with no verb, from inside an office or anywhere on
 the machine (the per-machine default). It shows the office's name, the
 date and time in its timezone, whether it is founded and current, the
+sessions in flight in its projects and the folder each belongs to, the
 folders on the desk with their next moves, this week and its gaps, the
 last notepad lines, how many slips are in the suggestion box, and the
 verbs to reach for. It only reads.
@@ -357,6 +363,34 @@ Where bale lacks a session-shaped fact, that is a slip for bale-src, not
 an office workaround. Two bale doctrine limits bind: bale is "not a
 master-changelog system" (AGENT.md section 7), and a dashboard "renders
 the stats; it never owns them" (PLANNER.md section 17).
+
+The office reads bale's records and renders them. Reading is not
+copying: a rendering is derived, recomputed on every run, never edited,
+and never cited as a source -- a citation names the sid, and the
+rendering is how a reader follows it. A rendering written to a page (the
+digest) is overwritten on every run, like the survey.
+
+Where a report and the records it summarizes part, the records stand,
+and the difference is written down, never smoothed.
+
+The projects an office scopes are its floor plan's [projects] table: a
+name and the path of each project's repo on this machine, absolute or
+under the home directory, written by `office projects add` and never by
+hand. An office with no table scopes nothing, and every rendering says
+so rather than showing an empty screen as if it were true. A project on
+another machine is not read. The office reads each project's records
+only through bale's --json surfaces, run in the project's directory with
+no prompt, never by parsing .bale/, and it never writes what bale
+records. The install's share/bale-consumption.toml names every bale verb,
+flag and key the office reads and the bale version they were written
+against; `office status` reports a bale outside that range. What it
+renders: on the walk-in, the sessions in flight and the folder each
+belongs to; in `office sessions FOLDER`, each session with its outcome,
+dates, claims beside verdicts and exchange rounds; in `office projects`,
+the trust ledger per work class (the evidence a trust grant would be made
+on; the office holds no grant), the last applied session that landed a
+path, and the version trail. Wherever a count the records compute sits
+beside one written down, both are printed.
 
 The office scales with whatever carries sessions by staying on its side
 of that line. It supplies what a carrier lacks (which job, what context,
@@ -425,6 +459,9 @@ An office adds its own steps as executables in drawer/survey/. Each runs
 from the office root under a timeout, and its output (best written as
 `key: value` lines) becomes a section of the page. The same rules apply:
 facts only, shallow, fast.
+
+A number that can go stale is computed where it is shown -- by a survey
+step or the digest -- and never written down as a standing count.
 
 ## 14. Versioning and upgrades
 
