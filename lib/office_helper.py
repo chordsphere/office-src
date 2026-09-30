@@ -7,15 +7,18 @@ library only. Every subcommand prints its result on stdout, logs to
 stderr with an [office] prefix, and exits 0 on success, 1 on a refusal
 the caller should report, 2 on a usage or internal error, and 3 where a
 subcommand documents a second outcome (an incomplete profile, an unmet
-renovation declaration, include-group drift, a catalog defect), and 4
+renovation declaration, include-group drift, a catalog defect, a
+project in the floor plan that cannot be read), and 4
 when record-session finds the id already recorded.
 """
 
 import argparse
 import datetime as dt
 import fnmatch
+import os
 import pathlib
 import re
+import subprocess
 import sys
 import tomllib
 
@@ -104,7 +107,8 @@ def render_manifest(spaces_catalog, name, version, built_at, timezone):
         "# Floor plan of this office. The office command finds an office by",
         "# this file and reads it on every run. Only office upgrade writes",
         "# migrated_to. The founding session sets the timezone; renovation",
-        "# sessions change the spaces. Nothing else should change it.",
+        "# sessions change the spaces; office projects add writes the",
+        "# [projects] table. Nothing else should change it.",
         "",
         "[office]",
         f'name = "{name}"',
@@ -610,15 +614,16 @@ def space_catalog_problems(catalog):
 # --- sessions in folders ----------------------------------------------------
 
 SID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*-\d{3}$")
-PACK_SID_KEYS = ("session_id", "sid")
+# bale's key contract for `bale pack --json` (the format_pack_json
+# docstring in bale's bin/bale_report.py) names the session id `sid`, a
+# stable key; share/bale-consumption.toml records the read.
+PACK_SID_KEY = "sid"
 
 
 def sid_from_pack_report(text):
-    """The minted session id in a `bale pack --json` report.
-
-    Reads the named keys first. If neither is there, a single top-level
-    string that looks like a session id is taken, with a warning, so a
-    renamed key degrades loudly instead of recording nothing."""
+    """The minted session id in a `bale pack --json` report: its `sid`
+    key, which bale's pack contract names. Anything else refuses and
+    names the keys it saw, so a moved key fails loudly, never by guess."""
     import json
     lines = [l for l in text.splitlines() if l.strip()]
     if not lines:
@@ -629,17 +634,158 @@ def sid_from_pack_report(text):
         raise HelperError(f"the last line on stdin is not a JSON pack report ({exc})")
     if not isinstance(report, dict):
         raise HelperError("the pack report is not a JSON object")
-    for key in PACK_SID_KEYS:
-        value = report.get(key)
-        if isinstance(value, str) and SID_RE.match(value):
-            return value
-    found = [v for v in report.values() if isinstance(v, str) and SID_RE.match(v)]
-    if len(set(found)) == 1:
-        log(f"warning: the pack report has no {' or '.join(PACK_SID_KEYS)} key; "
-            f"took the one session-id-shaped value, {found[0]}")
-        return found[0]
-    raise HelperError("could not find the session id in the pack report; keys seen: "
-                      + ", ".join(sorted(report)))
+    value = report.get(PACK_SID_KEY)
+    if isinstance(value, str) and SID_RE.match(value):
+        return value
+    if PACK_SID_KEY in report:
+        raise HelperError(f"the pack report's {PACK_SID_KEY} is not a session id: {value!r}")
+    raise HelperError(f"the pack report has no {PACK_SID_KEY} key, which bale's pack contract names; "
+                      "keys seen: " + ", ".join(sorted(report)))
+
+
+def folder_session_lines(folder_md):
+    """(sid, words) for each id line in a folder's Sessions section, in
+    order. Lines that are not `- SID[: words]` are not sessions."""
+    lines = pathlib.Path(folder_md).read_text(encoding="utf-8").splitlines()
+    start, end = section_bounds(lines, "Sessions")
+    out = []
+    if start is None:
+        return out
+    for line in lines[start + 1:end]:
+        if not line.startswith("- "):
+            continue
+        sid, _, words = line[2:].partition(":")
+        if SID_RE.match(sid.strip()):
+            out.append((sid.strip(), words.strip()))
+    return out
+
+
+# --- projects this office scopes ------------------------------------------
+
+PROJECT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+def expand_project_path(path):
+    """A [projects] path on this machine: absolute, or ~-relative to the
+    running user's home. Anything else is refused, because a relative
+    path would mean something different from every directory."""
+    if path.startswith("~/") or path == "~":
+        return pathlib.Path(os.path.expanduser(path))
+    if path.startswith("/"):
+        return pathlib.Path(path)
+    raise HelperError(f"a project path must be absolute or start with ~/, not {path!r}")
+
+
+def read_projects(manifest):
+    """The floor plan's [projects] table as a list of entries sorted by
+    name, or None when the office has no table (it scopes nothing).
+
+    Each entry is a dict: name, path (as written), resolved (a Path, or
+    None) and problem (None, or why the entry cannot be read). A broken
+    entry is reported, never dropped."""
+    table = manifest.get("projects")
+    if table is None:
+        return None
+    if not isinstance(table, dict):
+        raise HelperError("the floor plan's projects is not a table")
+    out = []
+    for name, entry in sorted(table.items()):
+        item = {"name": name, "path": None, "resolved": None, "problem": None}
+        if not PROJECT_NAME_RE.match(name):
+            item["problem"] = "the name must be letters, digits, dash or underscore"
+        elif not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            item["problem"] = 'no path = "..." in its entry'
+        else:
+            item["path"] = entry["path"]
+            try:
+                item["resolved"] = expand_project_path(entry["path"])
+            except HelperError as exc:
+                item["problem"] = str(exc)
+        out.append(item)
+    return out
+
+
+def check_project_dir(resolved):
+    """(ok, text): is the path the top of a git repo that bale has run in
+    (a .bale/ directory) or is set up for (a bale.toml)? The text says
+    which it found, or what is wrong. Existence checks only: nothing
+    inside .bale/ is read."""
+    p = pathlib.Path(resolved)
+    if not p.exists():
+        return False, f"no such directory on this machine: {p}"
+    if not p.is_dir():
+        return False, f"not a directory: {p}"
+    try:
+        top = subprocess.run(["git", "-C", str(p), "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"could not ask git about {p}: {exc}"
+    if top.returncode != 0:
+        return False, f"not a git repo: {p}"
+    if pathlib.Path(top.stdout.strip()).resolve() != p.resolve():
+        return False, f"{p} is inside the git repo at {top.stdout.strip()}; name the repo's top instead"
+    has_dir, has_toml = (p / ".bale").is_dir(), (p / "bale.toml").is_file()
+    if not has_dir and not has_toml:
+        return False, (f"{p} is a git repo bale has not run in: no .bale/ directory and no bale.toml "
+                       "(bale pack there once, or bale config init)")
+    found = " and ".join(x for x, y in ((".bale/", has_dir), ("bale.toml", has_toml)) if y)
+    missing = " and ".join(x for x, y in ((".bale/", has_dir), ("bale.toml", has_toml)) if not y)
+    return True, f"a git repo with {found}" + (f", no {missing}" if missing else "")
+
+
+def toml_basic_string(text):
+    """A TOML basic string that keeps the floor plan ASCII: quotes,
+    backslashes and control characters escaped, anything outside ASCII
+    as a \\uXXXX escape, which a TOML reader turns back into the same
+    character."""
+    out = []
+    for ch in text:
+        o = ord(ch)
+        if ch in ('"', "\\"):
+            out.append("\\" + ch)
+        elif o < 0x20 or o == 0x7F:
+            out.append(f"\\u{o:04X}")
+        elif o > 0x7F:
+            out.append(f"\\u{o:04X}" if o <= 0xFFFF else f"\\U{o:08X}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def add_project(manifest_path, name, path):
+    """Append [projects.NAME] with its path to the floor plan, keeping
+    every other byte. Returns (stored path, what the check found).
+
+    A relative path is resolved against the working directory and stored
+    absolute. Refuses a bad name, a name already listed, a path another
+    entry already names, and a path that is not a repo bale runs in."""
+    if not PROJECT_NAME_RE.match(name):
+        raise HelperError(f"a project name must be letters, digits, dash or underscore: {name!r}")
+    if not path.strip():
+        raise HelperError("the project path is empty")
+    stored = path if (path.startswith("/") or path.startswith("~/")) else str(pathlib.Path(os.path.abspath(path)))
+    stored = stored.rstrip("/") or "/"
+    resolved = expand_project_path(stored)
+    manifest = read_toml(manifest_path)
+    existing = read_projects(manifest) or []
+    for item in existing:
+        if item["name"] == name:
+            raise HelperError(f"{name} is already in this office's [projects], at {item['path']}")
+        if item["resolved"] is not None and item["resolved"].resolve() == resolved.resolve():
+            raise HelperError(f"{stored} is already in this office's [projects], as {item['name']}")
+    ok, found = check_project_dir(resolved)
+    if not ok:
+        raise HelperError(found)
+    text = pathlib.Path(manifest_path).read_text(encoding="ascii")
+    block = []
+    if not text.endswith("\n"):
+        block.append("")
+    if manifest.get("projects") is None:
+        block += ["", "# The projects this office scopes on this machine: a name and the path",
+                  "# of its repo, absolute or ~-relative. office projects add writes them."]
+    block += ["", f"[projects.{name}]", f"path = {toml_basic_string(stored)}"]
+    pathlib.Path(manifest_path).write_text(text + "\n".join(block) + "\n", encoding="ascii")
+    return stored, found
 
 
 def section_bounds(lines, heading):
@@ -937,6 +1083,37 @@ def cmd_pack_sid(a):
     print(sid_from_pack_report(sys.stdin.read()))
 
 
+def cmd_projects(a):
+    """One line per project: name, path as written, and what the check
+    found. Exit 3 when any entry cannot be read; an office with no
+    table says so on stdout and exits 0."""
+    projects = read_projects(read_toml(a.manifest))
+    if projects is None:
+        print("this office scopes no projects: its floor plan has no [projects] table "
+              "(office projects add NAME PATH adds one)")
+        return 0
+    if not projects:
+        print("this office scopes no projects: its [projects] table lists none "
+              "(office projects add NAME PATH adds one)")
+        return 0
+    width = max(len(p["name"]) for p in projects)
+    bad = 0
+    for p in projects:
+        if p["problem"]:
+            ok, text = False, p["problem"]
+        else:
+            ok, text = check_project_dir(p["resolved"])
+        bad += not ok
+        print(f"{p['name']:<{width}}  {p['path'] or '(no path)'}  "
+              + (f"({text})" if ok else f"CANNOT BE READ: {text}"))
+    return 3 if bad else 0
+
+
+def cmd_project_add(a):
+    stored, found = add_project(a.manifest, a.name, a.path)
+    print(f"added {a.name}: {stored} ({found})")
+
+
 def cmd_record_session(a):
     if not record_session(a.folder_md, a.sid, a.words):
         print("already recorded")
@@ -1010,6 +1187,9 @@ def main(argv=None):
     p = sub.add_parser("catalog-check"); p.add_argument("verbs"); p.add_argument("spaces")
     p.set_defaults(fn=cmd_catalog_check)
     p = sub.add_parser("pack-sid"); p.set_defaults(fn=cmd_pack_sid)
+    p = sub.add_parser("projects"); p.add_argument("manifest"); p.set_defaults(fn=cmd_projects)
+    p = sub.add_parser("project-add"); p.add_argument("manifest"); p.add_argument("name")
+    p.add_argument("path"); p.set_defaults(fn=cmd_project_add)
     p = sub.add_parser("record-session"); p.add_argument("folder_md"); p.add_argument("sid")
     p.add_argument("--words"); p.set_defaults(fn=cmd_record_session)
     p = sub.add_parser("folder-summary"); p.add_argument("folder_md"); p.add_argument("template")

@@ -146,6 +146,17 @@ lands = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md"]
 attended = false
 trigger = ["manual", "after-build"]
 
+# Lists the projects the office scopes and renders what bale records
+# about them, reading only; `office projects add` is the one writer of
+# the floor plan's [projects] table.
+[verbs.projects]
+kind = "script"
+built = true
+writes = ["floor-plan/manifest.toml"]
+lands = ["floor-plan/manifest.toml"]
+attended = true
+trigger = ["manual"]
+
 [verbs.founding]
 kind = "office-session"
 built = true

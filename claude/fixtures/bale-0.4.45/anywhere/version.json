@@ -1,0 +1,14 @@
+{
+ "argv": [
+  "--version"
+ ],
+ "exit": 0,
+ "stdout": [
+  "bale 0.4.45"
+ ],
+ "stderr": [],
+ "stdout_sha256": [
+  "1bd5479e780b577dd978d8d6611a21d4d3dde6b71bcf4034fc4d608367bc34bc"
+ ],
+ "captured": "probe of session 2026-09-30-read-side-001, section 1: `bale --version` (the probe printed no hash for this line; it was computed from the pasted line)"
+}

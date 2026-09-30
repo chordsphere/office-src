@@ -26,15 +26,17 @@ On another machine, clone and run the same line:
     git clone <remote> ~/office-src && ~/office-src/install.sh
 
 Requirements: bash, coreutils, git, python3 (3.11 or later, for tomllib),
-all shipped with Ubuntu 24.04. No network, nothing to install.
+all shipped with Ubuntu 24.04. No network, nothing to install. The read
+side (below) runs bale when it is on the PATH; without it, every
+rendering says bale is missing and the rest of the command works.
 
 `office version` prints the installed version and where it came from.
 
 ## Use
 
     office init ~/offices/home # build an office; prints the founding session's pack line
-    office                     # walk in: the desk, this week, recent notes, slips
-    office status              # version, skew, profile, survey age, hung items, catalogs
+    office                     # walk in: sessions in flight, the desk, this week, recent notes, slips
+    office status              # version, skew, profile, survey age, hung items, catalogs, bale, projects
     office survey              # rewrite floor-plan/survey.md, report what changed
     office upgrade             # run pending migrations: dry run, then one commit
     office where               # the office a command here acts on
@@ -67,9 +69,28 @@ the folder, so the id is never typed:
 
     bale pack --json --include desk/2026-09-24-fix-login "Fix the login redirect" | office sessions fix-login -
 
-`office sessions fix-login` lists what is recorded. The folder keeps the
-id and any words you add with `-m`; it never copies what bale records
-about the session.
+`office sessions fix-login` lists what is recorded, and under each id
+what bale records about the session: its outcome, dates, claims beside
+verdicts and exchange rounds. The folder keeps the id and any words you
+add with `-m`; it never copies what bale records about the session.
+
+### The projects an office scopes, and what bale records about them
+
+    office projects                          # the projects this office scopes
+    office projects add office-src ~/office-src   # add one (asks on a terminal for what it was not given)
+    office projects --ledger                 # trust ledger per project and work class
+    office projects --landed bin/office      # the last applied session that landed a path
+    office projects office-src --versions    # the version trail of one project
+
+The floor plan's [projects] table names each project and the path of its
+repo on this machine; `office projects add` writes it, and checks the
+path is the top of a git repo bale runs in. Walking in shows the sessions
+open in those projects and the folder whose Sessions section names each.
+Everything here is read from bale's `--json` surfaces in each project and
+rendered on every run, never copied into the office; the bale verbs,
+flags and keys it reads are listed in share/bale-consumption.toml, with
+the bale version they were written against, and `office status` says
+when the installed bale is older than that.
 
 ### Hung items
 
@@ -84,11 +105,13 @@ matches the floor plan.
 | path | what |
 |---|---|
 | bin/office | the command (bash) |
-| lib/office_helper.py | TOML, profile, survey and migration helpers (python3, standard library) |
+| lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library) |
+| lib/office_bale.py | the read side: the only code that runs bale, through its --json surfaces, and the renderings built on it |
 | doctrine/OFFICE.md | how every office works |
 | doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |
 | share/spaces.toml | every space an office can have; the base ones are the default floor plan; a space files itself whole or as a list of paths |
 | share/profile-shape.toml | the profile's required sections |
+| share/bale-consumption.toml | every bale verb, flag and JSON key the office reads, and the bale version they were written against |
 | share/verbs.toml | what each verb ships, where it lands, whether a person must be present and what may set it off; a session kind with no declared landing may not run unattended |
 | templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), copied in by the renovation that adds the space |
 | migrations/ | one file per breaking release; format in migrations/README.md |
@@ -118,3 +141,6 @@ renovation's pack line, the session does the work, and the next run of
 
 The suite builds offices, installs and synthetic migrations under
 temporary directories and never touches your home directory or offices.
+bale need not be installed: the read side's tests put a fake bale first
+on the PATH that replays real bale output captured by a probe, kept in
+the development record, and refuses anything it did not capture.

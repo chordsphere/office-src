@@ -1,0 +1,17 @@
+{
+ "argv": [
+  "stats",
+  "--sid",
+  "2026-09-24-office-src-core-001",
+  "--since",
+  "2026-09-01",
+  "--json"
+ ],
+ "exit": 1,
+ "stdout": [],
+ "stderr": [
+  "[bale] error: --sid renders one session's dossier and does not compose with --since (those filter the aggregate report); drop it or drop --sid"
+ ],
+ "stdout_sha256": [],
+ "captured": "probe of session 2026-09-30-read-side-001, section 5: bale 0.4.45 run in the office-src checkout; the line's sha256 is the one the probe printed beside it"
+}

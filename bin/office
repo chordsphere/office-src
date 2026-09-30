@@ -10,6 +10,9 @@ set -uo pipefail
 
 OFFICE_SRC="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 HELPER="$OFFICE_SRC/lib/office_helper.py"
+# The read side: the only code that runs bale, through the --json
+# surfaces share/bale-consumption.toml declares.
+READER="$OFFICE_SRC/lib/office_bale.py"
 CATALOG="$OFFICE_SRC/share/spaces.toml"
 VERBS="$OFFICE_SRC/share/verbs.toml"
 SHAPE="$OFFICE_SRC/share/profile-shape.toml"
@@ -31,6 +34,8 @@ die()   { printf '[office] error: %s\n' "$*" >&2; exit 1; }
 debug() { [ "${OFFICE_DEBUG:-0}" = "1" ] && printf '[office] debug: %s\n' "$*" >&2; return 0; }
 
 helper() { python3 "$HELPER" "$@"; }
+# -B: the reader imports the helper, and an install is never written to.
+reader() { python3 -B "$READER" "$@"; }
 
 # Single-quote a word for a printed command line.
 shq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
@@ -400,6 +405,10 @@ cmd_status() {
        printf '%s\n' "$defects" | sed 's/^/  /' ;;
     *) printf 'catalogs:   could not be checked\n' ;;
   esac
+  # The read side: which bale is installed against the version the
+  # office's reads were written for, and whether each project in scope
+  # can be read. Lines, never a refusal.
+  reader status-lines "$root" || printf 'bale:       the read side could not be checked\n'
 }
 
 # Run planned migrations in a target office. Arguments: target, plan file.
@@ -734,8 +743,15 @@ cmd_sessions() {
   [ -f "$root/$space/$name/folder.md" ] || die "$space/$name has no folder.md"
   if [ -z "$source" ]; then
     helper folder-summary "$root/$space/$name/folder.md" "$TEMPLATES/folder.md" >/dev/null || die "could not read $space/$name/folder.md"
-    awk '/^## Sessions/{on=1; next} /^## /{on=0} on && /^- /' "$root/$space/$name/folder.md"
-    return 0
+    # Each recorded id, then what bale's records say about it: outcome,
+    # dates, claims beside verdicts, exchange rounds. Rendered on every
+    # run and never written into the folder.
+    reader folder-sessions "$root" "$root/$space/$name/folder.md"
+    case $? in
+      0) return 0 ;;
+      3) die "some of this office's projects could not be read; the lines above say why" ;;
+      *) die "could not render the sessions of $space/$name" ;;
+    esac
   fi
   if [ "$source" = "-" ]; then
     sid="$(helper pack-sid)" || die "no session id recorded in $space/$name"
@@ -743,6 +759,92 @@ cmd_sessions() {
     sid="$source"
   fi
   record_session "$root" "$space/$name" "$sid" "$words"
+}
+
+# The projects this office scopes, and what bale records about them.
+# The floor plan's [projects] table names each project and its repo on
+# this machine; `office projects add` is the only writer. The renderings
+# read bale's records through the read side and write nothing.
+usage_projects() {
+  cat <<'EOF'
+usage: office projects                       list the projects this office scopes
+       office projects add [NAME] [PATH]     add one (asks for what it was not given)
+                           [--name NAME] [--path PATH]
+       office projects [NAME] --ledger       trust ledger per work class
+       office projects [NAME] --landed PATH  the last applied session that landed PATH
+       office projects [NAME] --versions     the version trail
+NAME narrows a rendering to one project; without it every project is read.
+PATH for --landed is relative to the project's root, e.g. bin/office.
+EOF
+}
+
+cmd_projects_add() {
+  local name="" path="" root default missing=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --name) [ $# -ge 2 ] || die "--name needs a value"; name="$2"; shift 2 ;;
+      --path) [ $# -ge 2 ] || die "--path needs a value"; path="$2"; shift 2 ;;
+      -h|--help) usage_projects; return 0 ;;
+      -*) usage_projects >&2; die "office projects add does not know $1; it takes a name and a path, as words or as --name and --path" ;;
+      *) if [ -z "$name" ]; then name="$1"; elif [ -z "$path" ]; then path="$1"; else die "office projects add takes a name and a path, and got more: $1"; fi; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ -z "$name" ] || [ -z "$path" ]; then
+    if [ -t 0 ]; then
+      # A wizard on a terminal: ask for what was not given (doctrine
+      # section 7); every question has its flag twin.
+      if [ -z "$path" ]; then
+        read -r -p "Path to the project's git repo on this machine (--path): " path || die "no path given"
+      fi
+      if [ -z "$name" ]; then
+        default="$(slugify "$(basename "${path%/}")")"
+        read -r -p "Name for it in this office (--name) [$default]: " name || die "no name given"
+        name="${name:-$default}"
+      fi
+    else
+      [ -n "$name" ] || missing+=("--name NAME")
+      [ -n "$path" ] || missing+=("--path PATH")
+      die "stdin is not a terminal, so nothing is asked; give ${missing[*]}"
+    fi
+  fi
+  [ -n "$name" ] && [ -n "$path" ] || die "a project needs a name and a path"
+  helper project-add "$root/$MANIFEST_REL" "$name" "$path" || exit 1
+  commit_paths "$root" "office projects: add $name" "$MANIFEST_REL" || true
+}
+
+cmd_projects() {
+  local name="" mode="" landed="" root rc
+  case "${1:-}" in add) shift; cmd_projects_add "$@"; return ;; esac
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --ledger|--versions) [ -z "$mode" ] || die "one rendering at a time: $mode or $1"; mode="$1"; shift ;;
+      --landed) [ -z "$mode" ] || die "one rendering at a time: $mode or $1"
+                [ $# -ge 2 ] || die "--landed needs a path, relative to the project's root"
+                mode="$1"; landed="$2"; shift 2 ;;
+      -h|--help) usage_projects; return 0 ;;
+      -*) usage_projects >&2; die "office projects does not know $1" ;;
+      *) [ -z "$name" ] || die "name one project, or none for all"; name="$1"; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  if [ -z "$mode" ]; then
+    [ -z "$name" ] || die "a project name narrows a rendering: add --ledger, --landed PATH or --versions"
+    helper projects "$root/$MANIFEST_REL"; rc=$?
+  else
+    case "$mode" in
+      --ledger) reader ledger "$root" ${name:+--project "$name"} ;;
+      --versions) reader versions "$root" ${name:+--project "$name"} ;;
+      --landed) reader landed "$root" "$landed" ${name:+--project "$name"} ;;
+    esac
+    rc=$?
+  fi
+  case $rc in
+    0) return 0 ;;
+    3) die "some of this office's projects could not be read; the lines above say why" ;;
+    *) exit 1 ;;
+  esac
 }
 
 # Walking in: `office` with no arguments.
@@ -766,7 +868,16 @@ walk_in() {
   printf 'The %s office, %s\n' "$name" "$root"
   printf '%s, %s %s. %s; %s.\n\n' "$(TZ="$tz" date '+%A %F')" "$(office_time "$tz")" "$tz" "$founded" "$state"
 
-  printf 'On the desk:\n'
+  # In flight: one line per session open in the projects this office
+  # scopes, and the folder that names it. Never fails the walk-in.
+  printf 'In flight:\n'
+  local flight
+  flight="$(reader in-flight "$root")"
+  case $? in
+    0|3) printf '%s\n' "$flight" | sed 's/^/  /' ;;
+    *) printf '  could not be read (OFFICE_DEBUG=1 office for why)\n' ;;
+  esac
+  printf '\nOn the desk:\n'
   OFFICE_ROOT="$root" cmd_desk | sed 's/^/  /'
   printf '\nThis week:\n'
   OFFICE_ROOT="$root" cmd_week | sed 's/^/  /'
@@ -775,7 +886,7 @@ walk_in() {
   if [ -n "$notes" ]; then printf '%s\n' "$notes" | sed 's/^/  /'; else printf '  nothing noted yet\n'; fi
   slips="$(find "$root/suggestion-box" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
   printf '\nSuggestion box: %s slip(s).\n' "$slips"
-  printf '\nFrom here: office note TEXT, office open SLUG, office close FOLDER, office desk, office week, office status. office help lists everything.\n'
+  printf '\nFrom here: office note TEXT, office open SLUG, office close FOLDER, office desk, office week, office projects, office status. office help lists everything.\n'
 }
 
 cmd_where() {
@@ -816,7 +927,7 @@ office-src $(install_version): builds and keeps offices.
 
 usage: office [VERB [args]]
 
-  (no verb)       walk in: the desk, this week, recent notes, slips
+  (no verb)       walk in: sessions in flight, the desk, this week, recent notes, slips
   note TEXT       append a dated line to the notepad (works unfounded or behind)
   open SLUG       start a folder on the desk; --thread seeds it from stdin
   desk            open folders and each one's next move
@@ -825,7 +936,10 @@ usage: office [VERB [args]]
   reopen FOLDER   bring a folder back to the desk, history and all
   sessions FOLDER [SID|-]
                   list or record the sessions that worked on a folder;
-                  - reads a bale pack --json report on stdin
+                  - reads a bale pack --json report on stdin; listing shows
+                  each session's outcome from bale's records
+  projects        list the projects this office scopes; add NAME PATH adds one;
+                  --ledger, --landed PATH, --versions render bale's records
 
   init PATH       build an office and print its founding session's pack line
   survey          rewrite floor-plan/survey.md and report what changed
@@ -858,6 +972,7 @@ main() {
     close) cmd_close "$@" ;;
     reopen) cmd_reopen "$@" ;;
     sessions) cmd_sessions "$@" ;;
+    projects) cmd_projects "$@" ;;
     version|--version|-V) cmd_version ;;
     help|--help|-h) usage ;;
     *) usage >&2; die "unknown verb: $verb" ;;

@@ -790,7 +790,9 @@ class TestFolders(unittest.TestCase):
         self.assertIn("next: Ship it.  (sessions: 0)", self.e.run("desk", cwd=self.root, check=0).stdout)
         self.e.run("sessions", "old", "2026-09-25-old-001", cwd=self.root, check=0)
         self.assertIn("next: Ship it.  (sessions: 1)", self.e.run("desk", cwd=self.root, check=0).stdout)
-        self.assertEqual(self.e.run("sessions", "old", cwd=self.root, check=0).stdout, "- 2026-09-25-old-001\n")
+        listing = self.e.run("sessions", "old", cwd=self.root, check=0).stdout
+        self.assertEqual(listing.splitlines()[0], "- 2026-09-25-old-001")
+        self.assertIn("scopes no projects", listing)
         self.e.run("close", "old", cwd=self.root, check=0)
         self.e.run("reopen", "old", cwd=self.root, check=0)
         self.assertIn("- 2026-09-25-old-001", f.read_text())
@@ -851,7 +853,7 @@ class TestSessions(unittest.TestCase):
         self.folder = self.e.run("open", "job", cwd=self.root, check=0).stdout.strip()
 
     def test_records_from_a_pack_report_and_never_twice(self):
-        report = 'noise\n{"session_id": "2026-09-24-job-001", "tarball": "x", "goal": "not copied"}\n'
+        report = 'noise\n{"outcome": "packed", "sid": "2026-09-24-job-001", "tarball": "x", "goal": "not copied"}\n'
         self.e.run("sessions", "job", "-", "-m", "first pass", cwd=self.root, check=0, input=report)
         proc = self.e.run("sessions", "job", "-", cwd=self.root, check=0, input=report)
         self.assertIn("already recorded", proc.stderr)
@@ -859,8 +861,9 @@ class TestSessions(unittest.TestCase):
         self.assertEqual(text.count("2026-09-24-job-001"), 1)
         self.assertIn("- 2026-09-24-job-001: first pass\n", text)
         self.assertNotIn("not copied", text)
-        self.assertEqual(self.e.run("sessions", "job", cwd=self.root, check=0).stdout,
-                         "- 2026-09-24-job-001: first pass\n")
+        listing = self.e.run("sessions", "job", cwd=self.root, check=0).stdout
+        self.assertTrue(listing.startswith("- 2026-09-24-job-001: first pass\n"), listing)
+        self.assertIn("scopes no projects", listing)
         self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
 
     def test_records_in_a_filed_folder_and_by_plain_id(self):
@@ -869,7 +872,7 @@ class TestSessions(unittest.TestCase):
         self.assertIn("2026-09-25-job-002", (self.root / "filing-cabinet" / pathlib.Path(self.folder).name / "folder.md").read_text())
 
     def test_bad_reports_refuse(self):
-        for report in ("", "not json\n", '{"tarball": "x"}\n'):
+        for report in ("", "not json\n", '{"tarball": "x"}\n', '{"session_id": "2026-09-24-job-001"}\n'):
             proc = self.e.run("sessions", "job", "-", cwd=self.root, input=report)
             self.assertEqual(proc.returncode, 1, report)
         proc = self.e.run("sessions", "job", "not-a-sid", cwd=self.root)
@@ -877,12 +880,17 @@ class TestSessions(unittest.TestCase):
 
 
 class TestPackReport(unittest.TestCase):
-    def test_named_keys_then_a_single_shaped_value(self):
-        self.assertEqual(h.sid_from_pack_report('{"session_id": "2026-09-24-a-b-001"}'), "2026-09-24-a-b-001")
-        self.assertEqual(h.sid_from_pack_report('{"sid": "2026-09-24-a-001"}'), "2026-09-24-a-001")
-        self.assertEqual(h.sid_from_pack_report('{"id": "2026-09-24-a-001", "n": 3}'), "2026-09-24-a-001")
-        with self.assertRaises(h.HelperError):
-            h.sid_from_pack_report('{"a": "2026-09-24-a-001", "b": "2026-09-24-b-001"}')
+    def test_the_contracts_sid_key_and_nothing_guessed(self):
+        """bale's pack contract (format_pack_json) names the id `sid`; a
+        report without it refuses and names the keys it saw."""
+        self.assertEqual(h.sid_from_pack_report('[bale] packed\n{"outcome": "packed", "sid": "2026-09-24-a-b-001"}'),
+                         "2026-09-24-a-b-001")
+        for report, words in (('{"session_id": "2026-09-24-a-001"}', "keys seen: session_id"),
+                              ('{"id": "2026-09-24-a-001", "n": 3}', "no sid key"),
+                              ('{"sid": "not-an-id"}', "not a session id")):
+            with self.assertRaises(h.HelperError) as cm:
+                h.sid_from_pack_report(report)
+            self.assertIn(words, str(cm.exception))
 
 
 class TestWeek(unittest.TestCase):
@@ -934,7 +942,8 @@ class TestWalkingIn(unittest.TestCase):
         self.e.run("note", "a thought", cwd=self.root, check=0)
         (self.root / "suggestion-box" / "slow-survey.md").write_text("# slow\n")
         out = self.e.run(cwd=self.root, check=0).stdout
-        for want in ("The sample office", "UNFOUNDED", "current with office-src", "On the desk:",
+        for want in ("The sample office", "UNFOUNDED", "current with office-src", "In flight:",
+                     "this office scopes no projects", "On the desk:",
                      "-job  next: (not written yet)", "no calendar", "a thought", "Suggestion box: 1 slip(s).",
                      "From here: office note"):
             self.assertIn(want, out)
