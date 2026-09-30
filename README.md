@@ -34,7 +34,7 @@ all shipped with Ubuntu 24.04. No network, nothing to install.
 
     office init ~/offices/home # build an office; prints the founding session's pack line
     office                     # walk in: the desk, this week, recent notes, slips
-    office status              # version, skew, profile, survey age, hung items
+    office status              # version, skew, profile, survey age, hung items, catalogs
     office survey              # rewrite floor-plan/survey.md, report what changed
     office upgrade             # run pending migrations: dry run, then one commit
     office where               # the office a command here acts on
@@ -89,7 +89,7 @@ matches the floor plan.
 | doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |
 | share/spaces.toml | every space an office can have; the base ones are the default floor plan; a space files itself whole or as a list of paths |
 | share/profile-shape.toml | the profile's required sections |
-| share/verbs.toml | what each verb ships and where it lands |
+| share/verbs.toml | what each verb ships, where it lands, whether a person must be present and what may set it off; a session kind with no declared landing may not run unattended |
 | templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), copied in by the renovation that adds the space |
 | migrations/ | one file per breaking release; format in migrations/README.md |
 | RELEASES.md | release notes |
