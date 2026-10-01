@@ -581,8 +581,9 @@ def build_world(owner):
     folder = w.root / w.folder
     folder.mkdir(parents=True)
     (folder / "folder.md").write_text(h.render_template(
-        (REPO / "templates/folder.md").read_text(), {"title": "read side", "status": "queued",
-                                                     "queued": "2026-09-29"}))
+        (REPO / "templates/folder.md").read_text(), {"title": "read side", "number": "1", "status": "queued",
+                                                     "queued": "2026-09-29",
+                                                     "history": "2026-09-29 queued: office open"}))
     h.record_session(folder / "folder.md", APPLIED[2], "space and templates")
     h.record_session(folder / "folder.md", OPEN_WORKER)
     h.record_session(folder / "folder.md", MISS_SID, "never ran")

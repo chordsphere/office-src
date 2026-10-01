@@ -43,6 +43,63 @@ shq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 # Escape a value for the right-hand side of a sed s|||.
 sed_rhs() { printf '%s' "$1" | sed 's/[&|\\]/\\&/g'; }
 
+# --- asking --------------------------------------------------------------------
+#
+# A verb is a wizard on a terminal (doctrine section 7): it asks for what
+# it was not given, every question names its flag twin, `?` explains the
+# field rather than refusing it, and an answer the field does not take is
+# explained and asked again. Piped input is never asked anything; the
+# verb refuses what it was not given and names the flag.
+
+can_ask() { [ -t 0 ]; }
+
+# ask VAR PROMPT DEFAULT REQUIRED HELP [FIELD]
+# PROMPT names the flag twin. DEFAULT is taken on a plain return; with no
+# default a plain return skips, unless REQUIRED is 1. HELP is what `?`
+# prints; FIELD, when given, is the folder field the answer is checked
+# and normalized as (the helper's closed vocabularies).
+ask() {
+  local __var="$1" prompt="$2" def="$3" required="$4" help="$5" field="${6:-}" answer norm shown="$2"
+  if [ -n "$def" ]; then shown="$shown [$def]"
+  elif [ "$required" != "1" ]; then shown="$shown [return skips]"; fi
+  while :; do
+    IFS= read -r -p "$shown: " answer || die "no answer given to: $prompt"
+    answer="$(printf '%s' "$answer" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    if [ "$answer" = "?" ]; then printf '%s\n' "$help" | fold -s -w 76 | sed 's/^/  /' >&2; continue; fi
+    if [ -z "$answer" ]; then
+      if [ -n "$def" ]; then answer="$def"
+      elif [ "$required" = "1" ]; then printf '  an answer is needed here; ? explains it\n' >&2; continue
+      else printf -v "$__var" '%s' ""; return 0; fi
+    fi
+    if [ -z "$field" ]; then printf -v "$__var" '%s' "$answer"; return 0; fi
+    if norm="$(helper normalize-field "$field" -- "$answer" 2>&1)"; then printf -v "$__var" '%s' "$norm"; return 0; fi
+    printf '  %s\n' "${norm#\[office\] error: }" >&2
+  done
+}
+
+field_help() { helper field-help "$1" 2>/dev/null | sed 's/^[^:]*: //'; }
+
+# ask_field VAR FIELD FLAG QUESTION [DEFAULT] [REQUIRED]
+ask_field() {
+  ask "$1" "$4 ($3)" "${5:-}" "${6:-0}" "$(field_help "$2")" "$2"
+}
+
+# check_field VAR FIELD FLAG: normalize a value given as a flag. A value
+# the field does not take is explained; on a terminal the field is then
+# asked (the return is 2, so the caller asks), piped it refuses.
+check_field() {
+  local __var="$1" field="$2" flag="$3" norm
+  [ -n "${!__var}" ] || return 0
+  if norm="$(helper normalize-field "$field" -- "${!__var}" 2>&1)"; then printf -v "$__var" '%s' "$norm"; return 0; fi
+  norm="${norm#\[office\] error: }"
+  if can_ask; then
+    printf '[office] %s %s: %s\n' "$flag" "$(shq "${!__var}")" "$norm" >&2
+    printf -v "$__var" '%s' ""
+    return 2
+  fi
+  die "$flag: $norm"
+}
+
 TMP_PATHS=()
 cleanup_tmp() { [ "${#TMP_PATHS[@]}" -gt 0 ] && rm -rf "${TMP_PATHS[@]}"; return 0; }
 trap cleanup_tmp EXIT
@@ -261,19 +318,44 @@ renovation_line() {
 
 # --- verbs -------------------------------------------------------------------
 
+# The install's own catalogs, checked before anything is built from
+# them: office status reports a defect and exits 0, office init refuses.
+require_sound_install() {
+  local defects rc
+  defects="$(helper catalog-check "$VERBS" "$CATALOG" 2>/dev/null)"; rc=$?
+  case $rc in
+    0) debug "the install's catalogs hold: $VERBS, $CATALOG" ;;
+    3) log "the install at $OFFICE_SRC has a defect in its catalogs (share/verbs.toml, share/spaces.toml):"
+       printf '%s\n' "$defects" | sed 's/^/[office]   /' >&2
+       die "refusing to build an office from a defective install; fix office-src and run install.sh again" ;;
+    *) die "could not check the install's catalogs ($VERBS, $CATALOG); refusing to build an office from them" ;;
+  esac
+}
+
 cmd_init() {
   local path="" name="" set_default=1 parent root anc
   while [ $# -gt 0 ]; do
     case "$1" in
       --name) [ $# -ge 2 ] || die "--name needs a value"; name="$2"; shift 2 ;;
+      --path) [ $# -ge 2 ] || die "--path needs a value"; [ -z "$path" ] || die "init takes one path"; path="$2"; shift 2 ;;
       --no-default) set_default=0; shift ;;
       -h|--help) usage_init; return 0 ;;
-      -*) die "unknown option for init: $1" ;;
+      -*) usage_init >&2; die "office init does not know $1; it takes a path, --name and --no-default" ;;
       *) [ -z "$path" ] || die "init takes one path"; path="$1"; shift ;;
     esac
   done
-  [ -n "$path" ] || { usage_init; die "init needs a path"; }
   require_tools git python3 timeout
+  require_sound_install
+  if [ -z "$path" ]; then
+    can_ask || { usage_init >&2; die "init needs a path: office init PATH (or --path PATH); piped input is never asked"; }
+    ask path "Where to build the office, a new or empty directory (--path)" "" 1 \
+      "The directory the office is built in: new, or empty. It becomes its own git repo, so it may not sit inside another repo or another office, and it may not be your home directory itself."
+    case "$path" in "~"|"~/"*) path="$HOME${path#\~}" ;; esac
+    if [ -z "$name" ]; then
+      ask name "Name for the office (--name)" "$(basename "$(readlink -m "$path")")" 0 \
+        "What the office is called on the walk-in and in its founding session's slug: letters, digits, dot, dash or underscore."
+    fi
+  fi
 
   root="$(readlink -m "$path")"
   [ "$root" != "/" ] || die "refusing to make an office of /"
@@ -405,6 +487,15 @@ cmd_status() {
        printf '%s\n' "$defects" | sed 's/^/  /' ;;
     *) printf 'catalogs:   could not be checked\n' ;;
   esac
+  # The desk's facts: every folder's status agrees with its History's
+  # last state-changing line, and the numbers are minted once each.
+  helper folder-check "$root" 2>/dev/null
+  case $? in 0|3) ;; *) printf 'folders:    could not be checked\n' ;; esac
+  # Filed pages only grow at their end: git's history of every filed
+  # page the floor plan lists, the net for a hand edit that went
+  # through neither bale nor a script.
+  helper filed-check "$root" 2>/dev/null
+  case $? in 0|3) ;; *) printf 'filed:      could not be checked (is the office a git repo?)\n' ;; esac
   # The read side: which bale is installed against the version the
   # office's reads were written for, and whether each project in scope
   # can be read. Lines, never a refusal.
@@ -571,11 +662,20 @@ has_space() {  # has_space ROOT KEY: is the space in this office's floor plan?
   helper get "$1/$MANIFEST_REL" "spaces.$2.path" >/dev/null 2>&1
 }
 
-# A folder by exact name or by a unique part of its name, in one space.
+# A folder by exact name, by a unique part of its name, or by its number
+# (`folder N`, or N alone when no folder has that number and the digits
+# are part of a name), in one space.
 find_folder() {
-  local root="$1" space="$2" want="$3" d matches=()
+  local root="$1" space="$2" want="$3" d rel matches=()
   [ -n "$want" ] || die "name a folder"
   if [ -d "$root/$space/$want" ]; then printf '%s' "$want"; return 0; fi
+  if [[ "$want" =~ ^(folder[[:space:]]+|#)?[0-9]+$ ]]; then
+    if rel="$(helper folder-by-number "$root" "$want" 2>/dev/null)"; then
+      [ "${rel%%/*}" = "$space" ] || die "$want is $rel, not in $space/"
+      printf '%s' "${rel#*/}"; return 0
+    fi
+    [[ "$want" =~ ^[0-9]+$ ]] || die "no $want on the desk or in the filing cabinet"
+  fi
   for d in "$root/$space"/*/; do
     [ -d "$d" ] || continue
     d="$(basename "$d")"
@@ -586,6 +686,23 @@ find_folder() {
     0) die "no folder matching '$want' in $space/" ;;
     *) die "'$want' matches ${#matches[@]} folders in $space/: ${matches[*]}" ;;
   esac
+}
+
+# On a terminal, a folder a verb was not given: the folders it could
+# mean, then the question. Piped, the verb refuses before this.
+ask_folder() {
+  local __var="$1" root="$2" space="$3" verb="$4" d n=0 number
+  printf 'Folders in %s/:\n' "$space" >&2
+  for d in "$root/$space"/*/; do
+    [ -d "$d" ] || continue
+    n=$((n + 1))
+    number=""
+    [ -f "$d/folder.md" ] && number="$(helper folder-facts "$d/folder.md" 2>/dev/null | sed -n 's/^number\t//p')"
+    printf '  %s%s\n' "${number:+folder $number  }" "$(basename "$d")" >&2
+  done
+  [ "$n" -gt 0 ] || die "nothing in $space/ to $verb"
+  ask "$__var" "Which folder: a unique part of its name, or folder N (office $verb FOLDER)" "" 1 \
+    "The folder to $verb: its directory name, any part of it that names only one folder, or its number as folder N."
 }
 
 cmd_note() {
@@ -616,62 +733,186 @@ cmd_note() {
   commit_paths "$root" "office note: $day $now" "$page" || true
 }
 
+usage_open() {
+  cat <<'USAGE'
+usage: office open [SLUG] [--title TITLE] [--size SIZE] [--lane LANE] [--source SOURCE]
+                   [--class CLASS] [--blueprint ID] [--linked GATE]... [--after GATE]...
+                   [--serializes-after GATE]... [--consumer GATE]...
+                   [--candidate | --filed --sid SID] [--thread < pasted-thread]
+Starts a folder on the desk: numbered one more than the highest number on
+the desk and in the filing cabinet, status queued, the day it was queued,
+and every field it is given. --candidate opens it as a candidate; --filed
+--sid SID files it straight into the filing cabinet, done at that session.
+On a terminal it asks for the title, size, lane and source it was not
+given: a plain return skips one, and ? explains it. Piped, it never asks.
+The fields, and what each takes:
+USAGE
+  helper field-help all | grep -v -e '^status:' -e '^queued:' -e '^number:' -e '^sid:' | fold -s -w 76 | sed 's/^/  /'
+}
+
+# The one-writer rule: a verb that mints a folder number refuses while
+# the office's own bale registry shows an open session whose forecast
+# holds where the number lands. An office bale has never run in has no
+# registry, and nothing to refuse; a registry that cannot be read is
+# said loudly and does not stop capture.
+require_one_writer() {
+  local root="$1" target="$2" out rc
+  out="$(reader writers "$root" "$target")"; rc=$?
+  case $rc in
+    0) debug "one-writer rule: no open session in this office's registry holds $target" ;;
+    3) printf '%s\n' "$out" | sed 's/^/[office]   /' >&2
+       die "an open session holds $target, so no folder number is minted beside it (the one-writer rule); open the folder once that session is applied or closed" ;;
+    *) warn "bale's registry in this office could not be read (the line above says why); minting without the one-writer check" ;;
+  esac
+}
+
+# A slug made from a title: at most 40 characters, cut at a word.
+short_slug() {
+  local s
+  s="$(slugify "$1")"
+  if [ "${#s}" -gt 40 ]; then
+    s="${s:0:41}"; s="${s%-*}"; s="${s:0:40}"
+  fi
+  printf '%s' "$s"
+}
+
 cmd_open() {
-  local slug="" title="" thread=0 root tz day name folder
+  local slug="" title="" thread=0 candidate=0 filed=0 sid="" size="" lane="" source="" class="" blueprint=""
+  local after=() serializes=() consumer=() linked=() root tz day name folder number space status verb text asked=0
+  local raw_title=""
+  local v i
   while [ $# -gt 0 ]; do
     case "$1" in
-      --title) [ $# -ge 2 ] || die "--title needs a value"; title="$2"; shift 2 ;;
+      --title|--size|--lane|--source|--class|--blueprint|--sid|--after|--serializes-after|--consumer|--linked)
+        [ $# -ge 2 ] || die "$1 needs a value (office open --help explains it)"
+        case "$1" in
+          --title) title="$2" ;; --size) size="$2" ;; --lane) lane="$2" ;; --source) source="$2" ;;
+          --class) class="$2" ;; --blueprint) blueprint="$2" ;; --sid) sid="$2" ;;
+          --after) after+=("$2") ;; --serializes-after) serializes+=("$2") ;;
+          --consumer) consumer+=("$2") ;; --linked) linked+=("$2") ;;
+        esac
+        shift 2 ;;
       --thread) thread=1; shift ;;
-      -h|--help) printf 'usage: office open SLUG [--title TITLE] [--thread < pasted-thread]\n'; return 0 ;;
-      -*) die "unknown option for open: $1" ;;
+      --candidate) candidate=1; shift ;;
+      --filed) filed=1; shift ;;
+      -h|--help) usage_open; return 0 ;;
+      -*) usage_open >&2; die "office open does not know $1; the flags above are what it takes" ;;
       *) [ -z "$slug" ] || die "open takes one slug (quote a title with --title)"; slug="$1"; shift ;;
     esac
   done
-  [ -n "$slug" ] || die "open needs a short slug for the job, e.g.: office open fix-login"
+  [ "$candidate" = 0 ] || [ "$filed" = 0 ] || die "--candidate and --filed are two different births; give one"
+  [ -z "$sid" ] || [ "$filed" = 1 ] || die "--sid goes with --filed: a folder born done at that session"
   root="$(resolve_office)" || exit 1
   require_current "$root"
   warn_if_unfounded "$root"
-  slug="$(slugify "$slug")"; [ -n "$slug" ] || die "the slug has no letters or digits"
-  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
-  name="$day-$slug"; folder="desk/$name"
-  [ ! -e "$root/$folder" ] || die "already on the desk: $folder"
-  [ ! -e "$root/filing-cabinet/$name" ] || die "already filed: filing-cabinet/$name (office reopen $name)"
+
+  # Flags first: a value a field does not take is explained, then asked
+  # on a terminal and refused when piped.
+  raw_title="$title"
+  check_field title title --title; check_field size size --size; check_field lane lane --lane
+  check_field source source --source; check_field sid sid --sid
+  check_field class class --class || ask_field class class --class "Class: bale's work class for its sessions" "" 1
+  check_field blueprint blueprint --blueprint || ask_field blueprint blueprint --blueprint "Blueprint id, YYYY-MM-DD-slug" "" 1
+  for i in "${!after[@]}"; do v="${after[$i]}"; check_field v after --after || ask_field v after --after "Gate: what must be done first" "" 1; after[$i]="$v"; done
+  for i in "${!serializes[@]}"; do v="${serializes[$i]}"; check_field v serializes-after --serializes-after || ask_field v serializes-after --serializes-after "Serializes after which folder" "" 1; serializes[$i]="$v"; done
+  for i in "${!consumer[@]}"; do v="${consumer[$i]}"; check_field v consumer --consumer || ask_field v consumer --consumer "Consumer that will carry it" "" 1; consumer[$i]="$v"; done
+  for i in "${!linked[@]}"; do v="${linked[$i]}"; check_field v linked --linked || ask_field v linked --linked "Linked folder" "" 1; linked[$i]="$v"; done
+
+  if can_ask && [ "$thread" = 0 ]; then
+    # The wizard: what matters to the desk, in four answers at most.
+    if [ -z "$title" ]; then
+      ask raw_title "Title, in a few words (--title)" "$slug" 1 "$(field_help title)"; asked=1
+      title="$(helper normalize-field title -- "$raw_title")" || die "--title: the title is empty"
+    fi
+    if [ -z "$size" ]; then ask_field size size --size "Size: small, medium or high"; asked=1; fi
+    if [ -z "$lane" ]; then ask_field lane lane --lane "Lane: the project and paths, as project: paths"; asked=1; fi
+    if [ -z "$source" ]; then ask_field source source --source "Source: where the job came from"; asked=1; fi
+    if [ "$filed" = 1 ] && [ -z "$sid" ]; then ask_field sid sid --sid "Session id it was done in" "" 1; asked=1; fi
+    [ "$asked" = 0 ] || log "other fields take flags: --class, --blueprint, --after, --serializes-after, --consumer, --linked (office open --help explains each)"
+  else
+    [ -n "$slug" ] || [ -n "$title" ] || die "open needs a slug or a title: office open SLUG, or --title TITLE; piped input is never asked"
+    [ "$filed" = 0 ] || [ -n "$sid" ] || die "--filed needs --sid SID, the session the job was done in; piped input is never asked"
+  fi
   [ -n "$title" ] || title="$slug"
-  title="$(printf '%s' "$title" | helper ascii-escape)"
+  # The slug comes from the words as typed, before the title was kept
+  # as one ASCII line: an escape is no part of a directory name.
+  [ -n "$slug" ] || slug="$(short_slug "${raw_title:-$title}")"
+  slug="$(slugify "$slug")"; [ -n "$slug" ] || die "the slug has no letters or digits (give one: office open SLUG)"
+
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  name="$day-$slug"
+  [ ! -e "$root/desk/$name" ] || die "already on the desk: desk/$name"
+  [ ! -e "$root/filing-cabinet/$name" ] || die "already filed: filing-cabinet/$name (office reopen $name)"
+  if [ "$filed" = 1 ]; then
+    space=filing-cabinet; status=done; verb=done; text="office open --filed, done at $sid"
+  elif [ "$candidate" = 1 ]; then
+    space=desk; status=candidate; verb=candidate; text="office open --candidate"
+  else
+    space=desk; status=queued; verb=queued; text="office open"
+  fi
+  folder="$space/$name"
+  require_one_writer "$root" "$space"
+  number="$(helper next-number "$root")" || die "no folder number could be minted; the line above says why"
+
+  local args=("title=$title" "number=$number" "status=$status" "queued=$day" "class=$class" "size=$size"
+              "lane=$lane" "source=$source" "blueprint=$blueprint" "history=$day $verb: $text")
+  for v in "${linked[@]}"; do args+=("linked=$v"); done
+  for v in "${after[@]}"; do args+=("after=$v"); done
+  for v in "${serializes[@]}"; do args+=("serializes_after=$v"); done
+  for v in "${consumer[@]}"; do args+=("consumer=$v"); done
   mkdir -p "$root/$folder" || die "cannot create $folder"
-  # The folder's field block holds only what open can fill without
-  # guessing: its status and the day it was queued, in the office's
-  # zone. The fields the other verbs mint (number, class, size, lane,
-  # source, blueprint, gates) get no line until those verbs write them.
-  helper render-template "$TEMPLATES/folder.md" "title=$title" "status=queued" "queued=$day" > "$root/$folder/folder.md" \
-    || die "could not write $folder/folder.md"
+  helper render-template "$TEMPLATES/folder.md" "${args[@]}" > "$root/$folder/folder.md" \
+    || { rm -rf "${root:?}/$folder"; die "could not write $folder/folder.md"; }
+  if [ "$filed" = 1 ]; then
+    helper record-session "$root/$folder/folder.md" "$sid" >/dev/null || die "could not record $sid in $folder/folder.md"
+  fi
   if [ "$thread" = "1" ]; then
     [ ! -t 0 ] || die "--thread reads the pasted thread on stdin"
     { printf '# Thread that started this job\n\nPasted when the folder was opened, verbatim.\n\n'; helper ascii-escape; } > "$root/$folder/thread.md" \
       || die "could not write $folder/thread.md"
     log "seeded $folder/thread.md from stdin"
   fi
-  log "opened $folder"
-  commit_paths "$root" "office open: $name" "$folder" || true
+  log "opened $folder as folder $number, $status"
+  commit_paths "$root" "office open: $name (folder $number)" "$folder" || true
   printf '%s\n' "$folder"
 }
 
+# The desk's groups: In flight, Ready, Parked, Candidates (doctrine
+# section 5). A gate that cleared since the last walk-in says so.
 cmd_desk() {
-  local root d name summary nxt sessions n=0
-  case "${1:-}" in -h|--help) printf 'usage: office desk\n'; return 0 ;; esac
+  local root tz since rc
+  case "${1:-}" in -h|--help) printf 'usage: office desk\n  In flight, Ready (in order), Parked (under what each waits for), Candidates\n'; return 0 ;; esac
   root="$(resolve_office)" || exit 1
-  for d in "$root"/desk/*/; do
-    [ -d "$d" ] || continue
-    name="$(basename "$d")"; n=$((n + 1))
-    if [ ! -f "$d/folder.md" ]; then printf '%s  (no folder.md)\n' "$name"; continue; fi
-    if summary="$(helper folder-summary "$d/folder.md" "$TEMPLATES/folder.md")"; then
-      nxt="$(printf '%s' "$summary" | cut -f1)"; sessions="$(printf '%s' "$summary" | cut -f2)"
-      printf '%s  next: %s  (sessions: %s)\n' "$name" "$nxt" "$sessions"
-    else
-      printf '%s  (folder.md could not be read)\n' "$name"
-    fi
-  done
-  [ "$n" -gt 0 ] || printf 'the desk is clear\n'
+  tz="$(office_tz "$root")"
+  since="$(last_walk_in "$root")"
+  reader desk "$root" --today "$(office_date "$tz")" ${since:+--since "$since"}; rc=$?
+  case $rc in
+    0) return 0 ;;
+    3) warn "some of this office's projects could not be read; In flight says which"; return 0 ;;
+    *) die "could not render the desk" ;;
+  esac
+}
+
+# The day of the last walk-in, kept on this machine outside the office
+# (the walk-in only reads the office), so the desk can say which gates
+# cleared since. Empty when there is none.
+walk_in_file() {
+  printf '%s/office-src/walk-ins/%s' "${XDG_STATE_HOME:-$HOME/.local/state}" "$(printf '%s' "$1" | sha256sum | cut -c1-16)"
+}
+
+last_walk_in() {
+  local f
+  f="$(walk_in_file "$1")"
+  [ -f "$f" ] || { debug "no walk-in recorded for $1 on this machine"; return 0; }
+  head -n 1 "$f" | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || debug "unreadable walk-in record: $f"
+  return 0
+}
+
+record_walk_in() {
+  local f
+  f="$(walk_in_file "$1")"
+  { mkdir -p "$(dirname "$f")" && printf '%s\n' "$2" > "$f"; } 2>/dev/null || debug "could not record this walk-in in $f"
+  return 0
 }
 
 cmd_week() {
@@ -689,58 +930,214 @@ cmd_week() {
 
 # Moving a folder is not rewriting it: the bytes move, git keeps the
 # history, and anything uncommitted in the folder moves with it.
-move_folder() {
-  local verb="$1" from="$2" to="$3" want="$4" root name
-  root="$(resolve_office)" || exit 1
-  require_current "$root"
-  name="$(find_folder "$root" "$from" "$want")" || exit 1
+move_folder_dir() {
+  local root="$1" from="$2" to="$3" name="$4"
   [ ! -e "$root/$to/$name" ] || die "$to/$name already exists; not overwriting it"
   mkdir -p "$root/$to" || die "cannot create $to"
   mv "$root/$from/$name" "$root/$to/$name" || die "could not move $from/$name to $to/"
   log "moved $from/$name to $to/"
-  commit_paths "$root" "office $verb: $name" "$from/$name" "$to/$name" || true
+}
+
+# folder_fact FOLDER_MD KEY: status, number, history (1 or 0) or sids.
+folder_fact() {
+  helper folder-facts "$1" 2>/dev/null | sed -n "s/^$2\t//p"
+}
+
+# One History line, and the status line when given, in a folder; each
+# says what it did, and a folder from before the field block is left
+# as it is and said so at debug.
+folder_event() {
+  local md="$1" day="$2" verb="$3" text="$4" status="${5:-}" out
+  out="$(helper folder-event "$md" --day "$day" --verb "$verb" --text "$text" ${status:+--status "$status"})" \
+    || die "could not write the $verb line in $md"
+  while IFS= read -r line; do
+    case "$line" in
+      no\ *) debug "$(basename "$(dirname "$md")"): $line" ;;
+      *) log "$(basename "$(dirname "$md")"): $line" ;;
+    esac
+  done <<< "$out"
+}
+
+# The folder a closing job lives on in: an existing folder other than
+# the one closing, whose own job has not ended elsewhere (an absorbed,
+# split or retired folder carries nothing further).
+successor_folder() {
+  local root="$1" closing="$2" ref="$3" rel status
+  rel="$(helper folder-by-number "$root" "$ref")" || return 1
+  [ "${rel#*/}" != "$closing" ] || die "a folder is not absorbed or split into itself"
+  status="$(folder_fact "$root/$rel/folder.md" status)"
+  case "$status" in
+    absorbed|split|retired) die "$(helper normalize-field linked -- "$ref") is $status itself, so the job cannot live on in it; name the folder it went to" ;;
+  esac
+  printf '%s' "$rel"
+}
+
+usage_close() {
+  cat <<'USAGE'
+usage: office close [FOLDER] [--into N | --split A,B | --retired WHY]
+Moves a folder from the desk to the filing cabinet, writing its status and
+a History line. Plain close is done. --into N: absorbed into folder N;
+--split A,B: split into those folders; --retired WHY: retired, and why.
+Each successor gets a note line pointing back. FOLDER is its name, a
+unique part of it, or folder N; on a terminal it is asked for when
+missing.
+USAGE
 }
 
 cmd_close() {
-  case "${1:-}" in -h|--help|"") printf 'usage: office close FOLDER\n'; [ -n "${1:-}" ]; return ;; esac
-  move_folder close desk filing-cabinet "$1"
+  local want="" into="" split="" retired="" set=0 root name md tz day status verb text number me
+  local succ=() rels=() paths=() parts=() s rel i label
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --into|--split|--retired)
+        [ $# -ge 2 ] || die "$1 needs a value (office close --help)"
+        set=$((set + 1))
+        case "$1" in --into) into="$2" ;; --split) split="$2" ;; --retired) retired="$2" ;; esac
+        shift 2 ;;
+      -h|--help) usage_close; return 0 ;;
+      -*) usage_close >&2; die "office close does not know $1" ;;
+      *) [ -z "$want" ] || die "close takes one folder"; want="$1"; shift ;;
+    esac
+  done
+  [ "$set" -le 1 ] || die "--into, --split and --retired are three different endings; give one"
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ -z "$want" ]; then
+    can_ask || { usage_close >&2; die "name a folder: office close FOLDER; piped input is never asked"; }
+    ask_folder want "$root" desk close
+  fi
+  name="$(find_folder "$root" desk "$want")" || exit 1
+  md="$root/desk/$name/folder.md"
+  [ -f "$md" ] || die "desk/$name has no folder.md"
+  status="$(folder_fact "$md" status)"; number="$(folder_fact "$md" number)"
+  case "$status" in done|absorbed|split|retired) die "desk/$name says status $status, which belongs in the filing cabinet; office status names what disagrees" ;; esac
+  me="${number:+folder $number}"; me="${me:-$name}"
+  [ ! -e "$root/filing-cabinet/$name" ] || die "filing-cabinet/$name already exists; not overwriting it, and nothing was written"
+  if [ -n "$into" ]; then
+    rel="$(successor_folder "$root" "$name" "$into")" || exit 1
+    succ=("$(helper normalize-field linked -- "$into")"); rels=("$rel")
+    verb=absorbed; status=absorbed; text="into ${succ[0]}"
+  elif [ -n "$split" ]; then
+    IFS=',' read -r -a parts <<< "$split"
+    [ "${#parts[@]}" -ge 2 ] || die "--split names the two or more folders the job was cut into, as A,B"
+    for s in "${parts[@]}"; do
+      rel="$(successor_folder "$root" "$name" "$s")" || exit 1
+      case " ${rels[*]} " in *" $rel "*) die "--split names $(helper normalize-field linked -- "$s") twice" ;; esac
+      succ+=("$(helper normalize-field linked -- "$s")"); rels+=("$rel")
+    done
+    verb=split; status=split
+    text="into folders $(printf '%s\n' "${succ[@]}" | sed 's/^folder //' | paste -sd, - | sed 's/,/, /g')"
+  elif [ -n "$retired" ]; then
+    [ -n "${retired//[[:space:]]/}" ] || die "--retired needs the reason, in a few words"
+    verb=retired; status=retired; text="$(printf '%s' "$retired" | helper ascii-escape)"
+  else
+    verb=done; status=done; text="office close"
+  fi
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  # The status and History lines go in while the folder is on the desk,
+  # which is live; the filing cabinet only ever gains lines.
+  folder_event "$md" "$day" "$verb" "$text" "$status"
+  move_folder_dir "$root" desk filing-cabinet "$name"
+  paths=("desk/$name" "filing-cabinet/$name")
+  label="$me"; [ -z "$number" ] || label="$me ($name)"
+  for i in "${!rels[@]}"; do
+    if [ "$verb" = absorbed ]; then
+      folder_event "$root/${rels[$i]}/folder.md" "$day" note "absorbed $label"
+    else
+      folder_event "$root/${rels[$i]}/folder.md" "$day" note "split from $label"
+    fi
+    paths+=("${rels[$i]}/folder.md")
+  done
+  if [ "$verb" = done ]; then
+    commit_paths "$root" "office close: $name (done)" "${paths[@]}" || true
+  else
+    commit_paths "$root" "office close: $name ($verb: $text)" "${paths[@]}" || true
+  fi
 }
 
 cmd_reopen() {
-  case "${1:-}" in -h|--help|"") printf 'usage: office reopen FOLDER\n'; [ -n "${1:-}" ]; return ;; esac
-  move_folder reopen filing-cabinet desk "$1"
+  local want="" root name md status tz day
+  case "${1:-}" in -h|--help) printf 'usage: office reopen [FOLDER]\nBrings a done folder back to the desk, history and all: status open, and a reopened line.\n'; return 0 ;; esac
+  want="${1:-}"
+  [ $# -le 1 ] || die "reopen takes one folder"
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ -z "$want" ]; then
+    can_ask || die "name a folder: office reopen FOLDER; piped input is never asked"
+    ask_folder want "$root" filing-cabinet reopen
+  fi
+  name="$(find_folder "$root" filing-cabinet "$want")" || exit 1
+  md="$root/filing-cabinet/$name/folder.md"
+  status=""
+  [ -f "$md" ] && status="$(folder_fact "$md" status)"
+  case "$status" in
+    absorbed|split|retired)
+      die "filing-cabinet/$name was $status; the job lives on elsewhere or not at all, so it is not reopened (its History names where; office open starts a new folder)" ;;
+  esac
+  move_folder_dir "$root" filing-cabinet desk "$name"
+  if [ -f "$root/desk/$name/folder.md" ]; then
+    tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+    folder_event "$root/desk/$name/folder.md" "$day" reopened "office reopen" open
+  fi
+  commit_paths "$root" "office reopen: $name" "filing-cabinet/$name" "desk/$name" || true
 }
 
 # Record which sessions worked on a folder's job. The id comes from
 # bale, never typed: `bale pack --json ... | office sessions FOLDER -`
-# reads the pack report. The session verbs of a later release call
-# record_session the same way.
+# reads the pack report. With the first id a candidate or queued folder
+# records, the folder is open: status open and an opened line.
 record_session() {
-  local root="$1" folder="$2" sid="$3" words="$4" out rc
-  out="$(helper record-session "$root/$folder/folder.md" "$sid" ${words:+--words "$words"})"; rc=$?
+  local root="$1" folder="$2" sid="$3" words="$4" day="$5" out rc
+  out="$(helper record-session "$root/$folder/folder.md" "$sid" ${words:+--words "$words"} ${day:+--day "$day"})"; rc=$?
   case $rc in
-    0) log "recorded $sid in $folder"; commit_paths "$root" "office sessions: $sid in $(basename "$folder")" "$folder/folder.md" || true ;;
+    0) log "recorded $sid in $folder"
+       printf '%s\n' "$out" | tail -n +2 | sed "s|^|[office] $(basename "$folder"): |" >&2
+       commit_paths "$root" "office sessions: $sid in $(basename "$folder")" "$folder/folder.md" || true ;;
     4) log "$sid is already recorded in $folder" ;;
     *) die "could not record $sid in $folder/folder.md" ;;
   esac
 }
 
+usage_sessions() {
+  cat <<'USAGE'
+usage: office sessions [FOLDER] [SID | -] [-m WORDS] [--ratified [--except TEXT]]
+  office sessions FOLDER               list the recorded sessions, with what bale records
+  office sessions FOLDER SID|-         record one; - reads a bale pack --json report on stdin.
+                                       The first one a candidate or queued folder records opens it.
+  office sessions FOLDER SID|- --ratified [--except TEXT]
+                                       the planner ratified that session's judgment calls,
+                                       except TEXT (what was corrected, and where it went)
+USAGE
+}
+
 cmd_sessions() {
-  local want="" source="" words="" root space name sid
+  local want="" source="" words="" ratified=0 except="" has_except=0 root space name sid tz day out
   while [ $# -gt 0 ]; do
     case "$1" in
       -m) [ $# -ge 2 ] || die "-m needs a few words"; words="$2"; shift 2 ;;
-      -h|--help) printf 'usage: office sessions FOLDER [SID | -] [-m WORDS]\n  with - the id is read from a bale pack --json report on stdin\n'; return 0 ;;
+      --ratified) ratified=1; shift ;;
+      --except) [ $# -ge 2 ] || die "--except needs what was corrected, and where it went"; except="$2"; has_except=1; shift 2 ;;
+      -h|--help) usage_sessions; return 0 ;;
+      -?*) [ "$1" = "-" ] || { usage_sessions >&2; die "office sessions does not know $1"; }
+           if [ -z "$want" ]; then die "name the folder before -"; elif [ -z "$source" ]; then source="-"; else die "too many arguments"; fi; shift ;;
       *) if [ -z "$want" ]; then want="$1"; elif [ -z "$source" ]; then source="$1"; else die "too many arguments"; fi; shift ;;
     esac
   done
-  [ -n "$want" ] || die "name a folder"
+  [ "$has_except" = 0 ] || [ "$ratified" = 1 ] || die "--except goes with --ratified"
   root="$(resolve_office)" || exit 1
+  if [ -z "$want" ]; then
+    can_ask || { usage_sessions >&2; die "name a folder: office sessions FOLDER; piped input is never asked"; }
+    ask_folder want "$root" desk "record sessions in"
+  fi
   space=desk
   if ! name="$( (find_folder "$root" desk "$want") 2>/dev/null)"; then
     space=filing-cabinet; name="$(find_folder "$root" filing-cabinet "$want")" || exit 1
   fi
   [ -f "$root/$space/$name/folder.md" ] || die "$space/$name has no folder.md"
+  if [ -z "$source" ] && [ "$ratified" = 1 ]; then
+    can_ask || die "--ratified needs the session: office sessions FOLDER SID --ratified; piped input is never asked"
+    ask_field source sid "SID" "Session id to ratify" "" 1
+  fi
   if [ -z "$source" ]; then
     helper folder-summary "$root/$space/$name/folder.md" "$TEMPLATES/folder.md" >/dev/null || die "could not read $space/$name/folder.md"
     # Each recorded id, then what bale's records say about it: outcome,
@@ -758,7 +1155,19 @@ cmd_sessions() {
   else
     sid="$source"
   fi
-  record_session "$root" "$space/$name" "$sid" "$words"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  if [ "$ratified" = 1 ]; then
+    [ -z "$words" ] || die "-m goes with recording a session, not with --ratified"
+    if [ "$has_except" = 1 ]; then
+      out="$(helper ratify "$root/$space/$name/folder.md" "$sid" --day "$day" --except "$except")" || exit 1
+    else
+      out="$(helper ratify "$root/$space/$name/folder.md" "$sid" --day "$day")" || exit 1
+    fi
+    log "$name: $out"
+    commit_paths "$root" "office sessions: $sid ratified in $name" "$space/$name/folder.md" || true
+    return 0
+  fi
+  record_session "$root" "$space/$name" "$sid" "$words" "$day"
 }
 
 # The projects this office scopes, and what bale records about them.
@@ -796,12 +1205,13 @@ cmd_projects_add() {
       # A wizard on a terminal: ask for what was not given (doctrine
       # section 7); every question has its flag twin.
       if [ -z "$path" ]; then
-        read -r -p "Path to the project's git repo on this machine (--path): " path || die "no path given"
+        ask path "Path to the project's git repo on this machine (--path)" "" 1 \
+          "The top of the project's git repo, absolute or under your home directory (~/...). bale must run there: it needs a .bale/ directory or a bale.toml."
       fi
       if [ -z "$name" ]; then
         default="$(slugify "$(basename "${path%/}")")"
-        read -r -p "Name for it in this office (--name) [$default]: " name || die "no name given"
-        name="${name:-$default}"
+        ask name "Name for it in this office (--name)" "$default" 0 \
+          "What this office calls the project on the walk-in and in office projects: letters, digits, dash or underscore."
       fi
     else
       [ -n "$name" ] || missing+=("--name NAME")
@@ -869,16 +1279,17 @@ walk_in() {
   printf '%s, %s %s. %s; %s.\n\n' "$(TZ="$tz" date '+%A %F')" "$(office_time "$tz")" "$tz" "$founded" "$state"
 
   # In flight: one line per session open in the projects this office
-  # scopes, and the folder that names it. Never fails the walk-in.
-  printf 'In flight:\n'
-  local flight
-  flight="$(reader in-flight "$root")"
+  # scopes and in the office itself, and the folder that names it; then
+  # the desk's count and its first three ready folders. A gate cleared
+  # since the last walk-in says so. Never fails the walk-in.
+  local desk today since
+  today="$(office_date "$tz")"; since="$(last_walk_in "$root")"
+  desk="$(reader desk "$root" --walk-in --today "$today" ${since:+--since "$since"})"
   case $? in
-    0|3) printf '%s\n' "$flight" | sed 's/^/  /' ;;
-    *) printf '  could not be read (OFFICE_DEBUG=1 office for why)\n' ;;
+    0|3) printf '%s\n' "$desk" ;;
+    *) printf 'In flight:\n  could not be read (OFFICE_DEBUG=1 office for why)\n\nOn the desk:\n  could not be read; office desk says why\n' ;;
   esac
-  printf '\nOn the desk:\n'
-  OFFICE_ROOT="$root" cmd_desk | sed 's/^/  /'
+  record_walk_in "$root" "$today"
   printf '\nThis week:\n'
   OFFICE_ROOT="$root" cmd_week | sed 's/^/  /'
   printf '\nNotepad, last lines:\n'
@@ -886,7 +1297,7 @@ walk_in() {
   if [ -n "$notes" ]; then printf '%s\n' "$notes" | sed 's/^/  /'; else printf '  nothing noted yet\n'; fi
   slips="$(find "$root/suggestion-box" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
   printf '\nSuggestion box: %s slip(s).\n' "$slips"
-  printf '\nFrom here: office note TEXT, office open SLUG, office close FOLDER, office desk, office week, office projects, office status. office help lists everything.\n'
+  printf '\nFrom here: office note TEXT, office open, office close FOLDER, office desk, office week, office projects, office status. office help lists everything.\n'
 }
 
 cmd_where() {
@@ -913,11 +1324,13 @@ cmd_version() {
 
 usage_init() {
   cat <<'EOF'
-usage: office init [--name NAME] [--no-default] PATH
+usage: office init [PATH | --path PATH] [--name NAME] [--no-default]
 Builds an office at PATH (new or empty): the base spaces, a profile stub,
 the version stamp, a first survey and a first commit. Prints the pack line
 for the founding sitting. Makes PATH this machine's default office when
-there is none yet, unless --no-default.
+there is none yet, unless --no-default. On a terminal it asks for the path
+and the name when it was given no path; ? explains a question. It refuses
+to build from an install whose catalogs have a defect.
 EOF
 }
 
@@ -927,14 +1340,19 @@ office-src $(install_version): builds and keeps offices.
 
 usage: office [VERB [args]]
 
-  (no verb)       walk in: sessions in flight, the desk, this week, recent notes, slips
+  (no verb)       walk in: sessions in flight, what is ready on the desk, this week,
+                  recent notes, slips
   note TEXT       append a dated line to the notepad (works unfounded or behind)
-  open SLUG       start a folder on the desk; --thread seeds it from stdin
-  desk            open folders and each one's next move
+  open [SLUG]     start a numbered folder on the desk; asks on a terminal for the
+                  title, size, lane and source it was not given; --candidate,
+                  --filed --sid SID, gates with --after; --help lists the fields
+  desk            in flight, ready in order, parked under what each waits for,
+                  candidates
   week            this week's calendar and its gaps
-  close FOLDER    move a folder to the filing cabinet
-  reopen FOLDER   bring a folder back to the desk, history and all
-  sessions FOLDER [SID|-]
+  close FOLDER    to the filing cabinet: done, or --into N, --split A,B,
+                  --retired WHY
+  reopen FOLDER   bring a done folder back to the desk, history and all
+  sessions FOLDER [SID|-] [--ratified [--except TEXT]]
                   list or record the sessions that worked on a folder;
                   - reads a bale pack --json report on stdin; listing shows
                   each session's outcome from bale's records
@@ -943,7 +1361,8 @@ usage: office [VERB [args]]
 
   init PATH       build an office and print its founding session's pack line
   survey          rewrite floor-plan/survey.md and report what changed
-  status          version, skew, profile, survey age, hung items, catalogs (read-only)
+  status          version, skew, profile, survey age, hung items, catalogs, folders,
+                  filed pages, bale (read-only)
   upgrade         run pending migrations, dry run first, one commit
   where           print the office a command here would act on
   default [PATH]  show or set this machine's default office

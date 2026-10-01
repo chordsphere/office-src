@@ -12,9 +12,10 @@ to fill in, bale.toml, a first survey of the machine and a first commit,
 then prints the line that packs the founding session. From then on the
 office is on its own, and office-src reaches it only through `office
 upgrade`. Every day: `office` to walk in, `office note` to capture a
-line, `office open`, `desk`, `close` and `reopen` for folders, `office
-week` for the calendar, and `office sessions` to record which sessions
-worked on a job and see how each one went. `office projects` names the
+line, `office open`, `desk`, `close` and `reopen` for folders (numbered,
+with statuses, gates and a History, and a desk that orders itself),
+`office week` for the calendar, and `office sessions` to record which
+sessions worked on a job and see how each one went. `office projects` names the
 projects an office scopes and shows what bale records about them: the
 trust ledger, who last landed a file, the version trail. Walking in
 shows the sessions open in those projects. `office status`, `survey` and
@@ -29,6 +30,21 @@ or carries a session.
 
 ## Recent changes
 
+- 0.5.0 (session 2026-09-30-desk-verbs-002): the desk's verbs. Folders
+  are numbered (`folder N`) by `office open`, which asks on a terminal
+  for the title, size, lane and source it was not given, explains a
+  field on `?`, and takes every field as a flag; `--candidate`, and
+  `--filed --sid SID` for a job born done. Statuses and History lines
+  from `office close` (done, `--into`, `--split`, `--retired`),
+  `office reopen` and `office sessions` (the first session opens the
+  folder; `--ratified [--except]`). `office desk` shows in flight,
+  ready in order, parked under what each waits for, and candidates;
+  walking in shows in flight and the first three ready. `office open`
+  refuses while an open session in the office's own bale registry
+  holds the desk. `office status` checks folders against their History
+  and filed pages against git; `office init` refuses a defective
+  install. Additive: no migration, no office needs anything done, and
+  older folders are never numbered.
 - 0.4.0 (session 2026-09-30-read-side-001): the read side. The floor
   plan's `[projects]` table and `office projects` (list, `add`, and the
   `--ledger`, `--landed PATH` and `--versions` renderings); the reader,
@@ -89,6 +105,12 @@ or carries a session.
 - The version trail is read two ways (applied sessions that landed a
   VERSION file, and bale's contract-doc epochs), pending a ruling on
   what the blueprint's "version landmark" meant.
+- The doctrine says a script that appends to filed paper checks the
+  page's prefix before it commits; `office note` does not yet. `office
+  status` now catches a rewrite after the fact.
+- `office desk` cannot yet read a gate on a blueprint, an agenda item or
+  a ruling: such a folder waits under that name, as not readable until
+  the drafting-table verbs land.
 - The calendar's two-page format is the tool's first guess; the first
   office with a calendar will tell whether it fits.
 - Offices on WSL report the machine's zone (UTC on chordsphere) until

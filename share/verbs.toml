@@ -96,11 +96,13 @@ lands = ["notepad"]
 attended = true
 trigger = ["manual"]
 
+# open writes one folder: on the desk, or in the filing cabinet when it
+# is born done (--filed); lands names both, one of which it lands.
 [verbs.open]
 kind = "script"
 built = true
-writes = ["desk"]
-lands = ["desk"]
+writes = ["desk/{folder}", "filing-cabinet/{folder}"]
+lands = ["desk/{folder}", "filing-cabinet/{folder}"]
 attended = true
 trigger = ["manual"]
 
@@ -120,19 +122,21 @@ lands = []
 attended = true
 trigger = ["manual"]
 
+# close moves one folder and, with --into or --split, adds a line to
+# each successor's folder.md, on the desk or in the cabinet.
 [verbs.close]
 kind = "script"
 built = true
-writes = ["desk", "filing-cabinet"]
-lands = ["desk", "filing-cabinet"]
+writes = ["desk/{folder}", "filing-cabinet/{folder}"]
+lands = ["desk/{folder}", "filing-cabinet/{folder}"]
 attended = true
 trigger = ["manual"]
 
 [verbs.reopen]
 kind = "script"
 built = true
-writes = ["filing-cabinet", "desk"]
-lands = ["filing-cabinet", "desk"]
+writes = ["filing-cabinet/{folder}", "desk/{folder}"]
+lands = ["filing-cabinet/{folder}", "desk/{folder}"]
 attended = true
 trigger = ["manual"]
 

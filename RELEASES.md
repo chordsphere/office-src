@@ -4,6 +4,53 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.5.0
+
+Additive: no migration, nothing to do in any office. A folder without
+the new fields still serves every verb, and nothing numbers a folder
+after the fact.
+
+The desk's verbs. `office open` mints each folder a number, one more
+than the highest on the desk and in the filing cabinet (a folder from
+before this release keeps none and is cited by its name), and writes
+the field block from the template in one rendering: the number, the
+status, the day it was queued, and each of class, size, lane, source,
+blueprint, linked, after, serializes after and consumer it was given,
+with a field it was not given left out. `--candidate` opens a candidate;
+`--filed --sid SID` files a job born done inside a session. On a
+terminal it asks for the title, size, lane and source it was not given,
+four answers with a plain return skipping all but the title, and `?`
+explains a field; piped, it asks nothing and names the flag it needed.
+`office init`, `office projects add`, `office close`, `office reopen`
+and `office sessions` ask the same way, and init now asks for the path
+it was not given. While a session open in the office's own bale
+registry forecasts the desk (or the filing cabinet, for `--filed`),
+`office open` refuses and names it: the one-writer rule. An office bale
+has never run in has no registry and nothing to refuse.
+
+`office close` takes `--into N`, `--split A,B` and `--retired WHY`
+beside plain done, writes the status and History lines, and gives each
+successor a line pointing back. `office reopen` writes `reopened` and
+status open, and does not reopen a job that lives on elsewhere.
+`office sessions` opens a candidate or queued folder with the first
+session it records, and `--ratified [--except TEXT]` records the
+planner's ratification under the session's line. `office desk` renders
+its groups in order: in flight (including the office's own open
+sessions), ready (by `serializes after`, then size, then number, each
+saying when a gate cleared since the last walk-in), parked under what
+each folder waits for, and candidates; a gate on a blueprint, agenda
+item or ruling waits as not readable until the drafting-table verbs
+land. Walking in shows in flight and the first three ready folders, and
+keeps the day of the walk-in on the machine, outside the office.
+
+`office status` checks that every folder's status agrees with its
+History and that numbers are minted once, and walks git's history of
+every filed page but the filing cabinet for a commit that did more than
+append. `office init` refuses to build an office from an install whose
+catalogs have a defect; `office status` still reports one and exits 0.
+share/verbs.toml lands open, close and reopen on the folder patterns
+they write.
+
 ## 0.4.0
 
 Additive: no migration, nothing to do in any office. An office without
