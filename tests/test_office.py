@@ -760,15 +760,15 @@ class TestFolders(unittest.TestCase):
         self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
 
     def test_open_writes_only_the_fields_it_can_fill(self):
-        """The field block carries status and the queued date, both
-        known at open, and no line for a field a later verb mints: a
-        blank number would be a wrong fact, not a missing one."""
+        """The field block carries the minted number, status and the
+        queued date, all known at open, and no line for a field it was
+        not given: a blank size would be a wrong fact, not a missing one."""
         folder = self.open("job")
         text = (self.root / folder / "folder.md").read_text()
         day = pathlib.Path(folder).name[:10]
-        self.assertTrue(text.startswith(f"# job\n\n- status: queued\n- queued: {day}\n\n"), text[:80])
+        self.assertTrue(text.startswith(f"# job\n\n- number: 1\n- status: queued\n- queued: {day}\n\n"), text[:80])
         fields = re.findall(r"^- ([a-z ]+): ", text.split("\n## ", 1)[0], re.M)
-        self.assertEqual(fields, ["status", "queued"])
+        self.assertEqual(fields, ["number", "status", "queued"])
         self.assertNotIn("{{", text)
         self.assertIn("\n## Riders\n", text)
         self.assertTrue(text.endswith(f"\n## History\n\nOne event per line, dated, appended and never rewritten: what happened\n"
@@ -819,18 +819,24 @@ class TestFolders(unittest.TestCase):
         self.assertIn("next: Ask Sam for the logs.", self.e.run("desk", cwd=self.root, check=0).stdout)
 
     def test_close_and_reopen_move_without_rewriting(self):
+        """The bytes move as they are; the only edits are the status line
+        and one History line each, appended to the History section."""
         folder = self.open("job")
         name = pathlib.Path(folder).name
+        day = name[:10]
         f = self.root / folder / "folder.md"
-        f.write_text(f.read_text() + "\nWork in progress.\n")
-        before = f.read_bytes()
+        f.write_text(f.read_text().replace("## Asked\n", "## Asked\n\nWork in progress.\n"))
+        self.e.git(self.root, "commit", "-qam", "work")
+        before = f.read_text()
         self.e.run("close", "job", cwd=self.root, check=0)
         filed = self.root / "filing-cabinet" / name / "folder.md"
-        self.assertEqual(filed.read_bytes(), before)
+        self.assertEqual(filed.read_text(), before.replace("- status: queued", "- status: done")
+                         + f"- {day} done: office close\n")
         self.assertFalse((self.root / folder).exists())
         self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
         self.e.run("reopen", name, cwd=self.root, check=0)
-        self.assertEqual(f.read_bytes(), before)
+        self.assertEqual(f.read_text(), before.replace("- status: queued", "- status: open")
+                         + f"- {day} done: office close\n- {day} reopened: office reopen\n")
         log = self.e.git(self.root, "log", "--follow", "--format=%s", "--", f"desk/{name}/folder.md")
         self.assertIn("office open:", log)
         self.assertIn("office close:", log)
@@ -858,7 +864,8 @@ class TestSessions(unittest.TestCase):
         proc = self.e.run("sessions", "job", "-", cwd=self.root, check=0, input=report)
         self.assertIn("already recorded", proc.stderr)
         text = (self.root / self.folder / "folder.md").read_text()
-        self.assertEqual(text.count("2026-09-24-job-001"), 1)
+        sessions = text.split("## Sessions\n", 1)[1].split("\n## ", 1)[0]
+        self.assertEqual(sessions.count("2026-09-24-job-001"), 1)
         self.assertIn("- 2026-09-24-job-001: first pass\n", text)
         self.assertNotIn("not copied", text)
         listing = self.e.run("sessions", "job", cwd=self.root, check=0).stdout
@@ -1053,7 +1060,7 @@ class TestCatalogs(unittest.TestCase):
         v["survey"]["trigger"] = []
         v["where"]["kind"] = "cron"
         problems, _ = h.verb_catalog_problems(verbs)
-        want = ["note: trigger 'weekly'", "open: lands 'notepad/{date}.md' falls inside none of writes ['desk']",
+        want = ["note: trigger 'weekly'", "open: lands 'notepad/{date}.md' falls inside none of writes ['desk/{folder}', 'filing-cabinet/{folder}']",
                 "close: lands entry 'the moved folder' is prose", "week: no attended key", "desk: attended must be",
                 "survey: trigger must be a non-empty list", "where: kind must be one of"]
         for w in want:
@@ -1203,6 +1210,8 @@ SITTINGS = REPO / "claude/context/sittings"
 WORDS_SHA256 = {
     "2026-09-23-office-construction-001": "9c804c7dae8ee5056e571720bdc5defc42acd6a497fcc0299d87286aad930a64",
     "2026-09-29-continue-plan-002": "6d1097bb8986ebafdc8902db26019d3ce1f0ba2eaa174917b08345cc850f5c4a",
+    # A sitting that outlives its first page continues on -2, -3.
+    "2026-09-29-continue-plan-002-2": "b5a3f09fd59ac66f3fd0023a98a23dd0d13ac35188a4dce6a01624ee1ca18c78",
 }
 
 

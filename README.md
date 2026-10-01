@@ -36,7 +36,7 @@ rendering says bale is missing and the rest of the command works.
 
     office init ~/offices/home # build an office; prints the founding session's pack line
     office                     # walk in: sessions in flight, the desk, this week, recent notes, slips
-    office status              # version, skew, profile, survey age, hung items, catalogs, bale, projects
+    office status              # version, skew, profile, survey age, hung items, catalogs, folders, filed pages, bale, projects
     office survey              # rewrite floor-plan/survey.md, report what changed
     office upgrade             # run pending migrations: dry run, then one commit
     office where               # the office a command here acts on
@@ -50,17 +50,78 @@ first `office init` on a machine sets it.
 ### Every day
 
     office note called the bank; rate locks Friday   # a timed line on today's notepad page
-    office open fix-login --title "Fix the login"    # a folder on the desk
+    office open                                      # a folder on the desk; asks for what it needs
     office open house-hunt --thread < thread.txt     # ...seeded with the thread that started it
-    office desk                                      # open folders and their next moves
+    office desk                                      # in flight, ready in order, parked, candidates
     office week                                      # this week's calendar and its gaps
-    office close fix-login                           # to the filing cabinet
+    office close fix-login                           # to the filing cabinet, done
     office reopen fix-login                          # back to the desk, history and all
 
 Each verb commits only the paths it touched. `office note` works in an
 unfounded office and in one that needs an upgrade; it warns and writes.
-A folder is named by the date and a slug and can be named by any unique
-part of that name.
+A folder is named by the date and a slug, and can be named by any unique
+part of that name or by its number, `folder 12`.
+
+### Folders: numbers, fields, statuses and gates
+
+On a terminal, `office open` walks you through what you left out: the
+title, the size, the lane and the source, four answers, each skippable
+with a plain return but the title. Type `?` at any question to have the
+field explained. Every question has a flag, so the same folder opens in
+one line, and piped input is never asked anything:
+
+    office open fix-login --title "Fix the login" --size small \
+        --lane "office-src: bin/" --source "notepad/2026-09-30.md"
+
+| flag | what it records |
+|---|---|
+| `--size small\|medium\|high` | how big the job is; the desk puts small jobs first |
+| `--lane "project: paths"` | the project and paths the job will touch |
+| `--source TEXT` | where the job came from: `proposal SID #n`, `rider N`, `ruling ID`, `blueprint ID`, `notepad/...`, or a person |
+| `--class CLASS` | bale's work class: code, doc, contract-doc, meta, mixed |
+| `--blueprint ID` | the blueprint the folder belongs to |
+| `--after GATE` | not before GATE is done: `folder N` (or just N), `blueprint ID`, `agenda N`, `ruling ID`; repeatable |
+| `--serializes-after N` | never beside folder N; when both are ready, N goes first |
+| `--consumer GATE` | parked for the blueprint or folder that will carry it |
+| `--linked N` | related to folder N, without waiting for it |
+| `--candidate` | not queued yet: an idea on the desk |
+| `--filed --sid SID` | a job done inside a session, filed straight into the cabinet |
+
+`office open --help` explains each. Every folder gets a number, one more
+than the highest on the desk and in the filing cabinet, and is cited as
+`folder N`; folders from before 0.5.0 keep their names and are never
+numbered. While a session open in the office's own bale registry
+forecasts the desk, `office open` refuses and names it, so a number is
+never minted beside a session that could mint one too.
+
+A folder's status follows its job, and each change is a dated line in
+its History:
+
+    office sessions fix-login SID              # the first session recorded opens it
+    office sessions fix-login SID --ratified   # the planner ratified its judgment calls
+    office sessions fix-login SID --ratified --except "the slug rule, moved to folder 14"
+    office close fix-login                     # done
+    office close fix-login --into 14           # absorbed into folder 14, which points back
+    office close fix-login --split 14,15       # split into those folders
+    office close fix-login --retired "premise was wrong"
+    office reopen fix-login                    # a done folder, back on the desk, open
+
+`office desk` computes the order; nobody writes one. In flight: the
+folders a session is open for. Ready: queued folders whose gates are all
+met, by `serializes after`, then small first, then number, each saying
+when a gate cleared since you last walked in. Parked: grouped under what
+each waits for, with that gate's own status; a gate on a blueprint, an
+agenda item or a ruling waits until the drafting-table verbs can read
+them. Candidates last. A gate that names nothing, or a cycle, prints as
+an error line naming the folders; no folder is ever dropped. Walking in
+shows In flight and the first three ready folders.
+
+`office status` checks that every folder's status agrees with the last
+line of its History that changed it, and walks git's history of every
+filed page (the notepad, and the drafting table's ledgers once an office
+has one) for a commit that did more than add at the end. It reports and
+exits 0; `office init` refuses to build from an install whose catalogs
+have a defect.
 
 ### Which sessions worked on a job
 
@@ -106,7 +167,7 @@ matches the floor plan.
 |---|---|
 | bin/office | the command (bash) |
 | lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library) |
-| lib/office_bale.py | the read side: the only code that runs bale, through its --json surfaces, and the renderings built on it |
+| lib/office_bale.py | the read side: the only code that runs bale, through its --json surfaces, and the renderings built on it, the desk's groups and the one-writer rule among them |
 | doctrine/OFFICE.md | how every office works |
 | doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |
 | share/spaces.toml | every space an office can have; the base ones are the default floor plan; a space files itself whole or as a list of paths |

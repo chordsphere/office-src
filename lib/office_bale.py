@@ -378,44 +378,408 @@ def folders_naming(office_root):
     out = {}
     for space in ("desk", "filing-cabinet"):
         for md in sorted((pathlib.Path(office_root) / space).glob("*/folder.md")):
-            for sid, _ in oh.folder_session_lines(md):
+            try:
+                lines = oh.folder_session_lines(md)
+            except (OSError, UnicodeDecodeError) as exc:
+                # The desk names it under Cannot be read; one bad file
+                # never takes the rest of the rendering down.
+                debug(f"{space}/{md.parent.name}/folder.md cannot be read, so no session maps to it: {exc}")
+                continue
+            for sid, _ in lines:
                 out.setdefault(sid, []).append(f"{space}/{md.parent.name}")
     return out
 
 
 # --- the renderings ---------------------------------------------------------------------
 
-def render_in_flight(rd, office_root, now=None):
-    """(lines, unreadable projects): one line per open session across the
-    projects the office scopes, each mapped to the folder that names its
-    sid. Short on purpose: it is a walk-in section."""
+def office_registry(office_root):
+    """The office's own repo when bale keeps a registry there (a .bale/
+    directory; an existence check, nothing inside is read), else None.
+    An office nobody has packed a session from has none, and nothing in
+    it can be open."""
+    root = pathlib.Path(office_root)
+    if (root / ".bale").is_dir():
+        return root
+    debug(f"no .bale/ in the office at {root}: bale keeps no registry there, so no session of its own is open")
+    return None
+
+
+# The office's own registry is read with the projects' and labeled so.
+OFFICE_LABEL = "this office"
+
+
+def in_flight(rd, office_root, now=None):
+    """(lines, unreadable, flying): one line per open session in the
+    projects the office scopes and in the office's own repo, each mapped
+    to the folder that names its sid; flying is the set of folders
+    (space/name) some open session is mapped to."""
     now = now or dt.datetime.now(dt.timezone.utc)
     projects = office_projects(office_root)
-    if not projects:
-        return [no_projects_line(projects)], 0
     naming = folders_naming(office_root)
-    lines, bad, open_count = [], 0, 0
-    for p in projects:
+    sources = [(p["name"], p) for p in projects or []]
+    own = office_registry(office_root)
+    if own is not None:
+        sources.insert(0, (OFFICE_LABEL, {"problem": None, "resolved": own}))
+    lines, bad, open_count, flying = [], 0, 0, set()
+    if not projects:
+        lines.append(no_projects_line(projects))
+    for label, p in sources:
         try:
             cwd = readable(p)
             for sid, read_only in rd.open_sessions(cwd):
                 open_count += 1
+                folders = naming.get(sid, [])
+                flying.update(folders)
                 d = rd.dossier(cwd, sid)
                 if d is None:
-                    lines.append(f"{p['name']}: {sid} open, with no record in bale's telemetry yet"
-                                 f" -> {', '.join(naming.get(sid, [])) or 'no folder'}")
+                    lines.append(f"{label}: {sid} open, with no record in bale's telemetry yet"
+                                 f" -> {', '.join(folders) or 'no folder'}")
                     continue
                 v = session_view(rd, d)
                 state = "read-only" if read_only else outcome_word(v)
                 age = describe_age(parse_stamp(v["created"]), now)
-                lines.append(f"{p['name']}: {sid} {state}, opened {age} ago"
-                             f" -> {', '.join(naming.get(sid, [])) or 'no folder'}")
+                lines.append(f"{label}: {sid} {state}, opened {age} ago"
+                             f" -> {', '.join(folders) or 'no folder'}")
         except BaleError as exc:
             bad += 1
-            lines.append(f"{p['name']}: cannot read: {exc}")
-    if open_count == 0 and bad == 0:
-        lines.append(f"none: no session is open in the {len(projects)} project(s) this office scopes")
+            lines.append(f"{label}: cannot read: {exc}")
+    if open_count == 0 and bad == 0 and projects:
+        lines.append(f"none: no session is open in the {len(projects)} project(s) this office scopes"
+                     + (", or in the office itself" if own is not None else ""))
+    elif open_count == 0 and bad == 0 and own is not None:
+        lines.append("none: no session is open in the office itself")
+    return lines, bad, flying
+
+
+def render_in_flight(rd, office_root, now=None):
+    """(lines, unreadable projects): the walk-in's In flight section.
+    Short on purpose."""
+    lines, bad, _ = in_flight(rd, office_root, now)
     return lines, bad
+
+
+# --- the one-writer rule ---------------------------------------------------------
+
+def forecast_holds(entry, target):
+    """Does a forecast entry hold the target path? It does when it is
+    the target or a directory above it (the whole tree included). An
+    entry inside the target, a session scoped to one folder, does not:
+    it cannot mint a number, and blocking every open for the life of a
+    folder's session would be friction, not safety."""
+    entry = entry.strip().strip("/")
+    target = target.strip().strip("/")
+    return entry in ("", ".") or entry == target or target.startswith(entry + "/")
+
+
+def writers_holding(rd, office_root, targets):
+    """[(sid, target, forecast)] for each session open in the office's own
+    registry whose forecast holds a target: the sessions a script that
+    mints a number must not run beside (the blueprint's section 5.4).
+    [] when the office has no registry. Raises BaleError when it has one
+    that cannot be read."""
+    own = office_registry(office_root)
+    if own is None:
+        return []
+    st = rd.status(own)
+    sids = rd.key(st, "status", "sessions") or []
+    scopes = rd.key(st, "status", "scopes") or {}
+    out = []
+    for sid in sids:
+        forecast = scopes.get(sid) or []
+        for target in targets:
+            if any(forecast_holds(e, target) for e in forecast):
+                out.append((sid, target, forecast))
+                break
+    return out
+
+
+# --- the desk ----------------------------------------------------------------------
+#
+# What `office desk` renders (the blueprint's section 2.3), in order: In
+# flight, Ready, Parked, Candidates. Orphaned riders and pending desk moves
+# follow Candidates once the drafting-table verbs exist to read them.
+# Every folder on the desk lands in exactly one group, and a folder whose
+# facts the desk cannot place is shown with the reason, never dropped.
+
+FOLDER_TEMPLATE = INSTALL / "templates" / "folder.md"
+SIZE_RANK = {size: n for n, size in enumerate(oh.SIZES)}
+NOT_YET = "not readable until the drafting-table verbs land"
+SUCCESSOR_RE = re.compile(r"folders?\s+([\d,\s]+)")
+
+
+def folder_line(f):
+    """`folder N  NAME  next: ...  (sessions: N)`, the name alone for a
+    folder with no number, and its size when it has one."""
+    try:
+        nxt, count = oh.folder_summary(f["path"], FOLDER_TEMPLATE)
+    except (OSError, UnicodeDecodeError, oh.HelperError) as exc:
+        return f"{f['name']}  (folder.md could not be read: {exc})"
+    head = f"folder {f['number']}  {f['name']}" if f.get("number") else f["name"]
+    size = (f["fields"].get("size") or [None])[0]
+    return f"{head}  next: {nxt}  (sessions: {count})" + (f"  {size}" if size else "")
+
+
+def successors(f):
+    """The folder numbers an absorbed or split folder's last state line
+    points at."""
+    last = f.get("last_state")
+    m = SUCCESSOR_RE.search(last[2]) if last else None
+    return [int(n) for n in re.findall(r"\d+", m.group(1))] if m else []
+
+
+def gate_state(gate, by_number, seen=()):
+    """Where a gate stands: (state, words, cleared) where state is met,
+    wait, notyet or error; words name the gate's own status; cleared is
+    the day a met folder gate cleared, when its History says."""
+    kind, _, ref = gate.partition(" ")
+    if kind != "folder":
+        return "notyet", f"{gate}: {NOT_YET}", None
+    n = int(ref)  # read_gates normalized it: `folder N`
+    if n in seen:
+        return "error", f"{gate} leads back to the folder that waits on it", None
+    same = by_number.get(n, [])
+    if not same:
+        return "error", f"{gate} names no folder on the desk or in the filing cabinet", None
+    if len(same) > 1:
+        return "error", f"{gate} is minted twice ({', '.join(x['rel'] for x in same)})", None
+    t = same[0]
+    title = t.get("title") or t["name"]
+    status = t["status"]
+    last = t["last_state"]
+    if status == "done":
+        return "met", f"{gate} done", last[0] if last and last[1] == "done" else None
+    if status is None and t["space"] == "filing-cabinet":
+        return "met", f"{gate} filed", None
+    if status in ("absorbed", "split"):
+        nexts = successors(t)
+        if not nexts:
+            return "error", f"{gate} was {status}, and its History names no successor", None
+        states = [gate_state(f"folder {m}", by_number, seen + (n,)) for m in nexts]
+        for st in states:
+            if st[0] != "met":
+                return st[0], f"{gate} ({status} into " + ", ".join(f"folder {m}" for m in nexts) + f"): {st[1]}", None
+        days = [st[2] for st in states if st[2]]
+        return "met", f"{gate} {status}, and " + ", ".join(f"folder {m}" for m in nexts) + " done", max(days) if days else None
+    if status == "retired":
+        why = last[2] if last and last[1] == "retired" else "no reason recorded"
+        return "wait", f"{gate} (retired: {why}); it will not clear by itself", None
+    return "wait", f"{gate} ({status or 'no status line'}): {title}", None
+
+
+def after_cycles(desk, by_number):
+    """Cycles among the after gates of desk folders, each as the list of
+    numbers around it."""
+    graph = {}
+    for f in desk:
+        if f["problem"] or not f.get("number"):
+            continue
+        graph[f["number"]] = [int(g.split()[1]) for g in read_gates(f, "after", [])
+                              if g.startswith("folder ")
+                              and len(by_number.get(int(g.split()[1]), [])) == 1
+                              and by_number[int(g.split()[1])][0]["space"] == "desk"]
+    cycles, state = [], {}
+
+    def visit(n, path):
+        state[n] = "open"
+        for m in graph.get(n, []):
+            if state.get(m) == "open":
+                cycles.append(path[path.index(m):] + [m])
+            elif m not in state:
+                visit(m, path + [m])
+        state[n] = "done"
+
+    for n in sorted(graph):
+        if n not in state:
+            visit(n, [n])
+    return cycles
+
+
+def ready_order(ready, errors):
+    """Ready folders in order: by `serializes after` (when both are
+    ready, the one named goes first), then size, small first, then
+    number. A cycle among them is an error line, and its folders follow
+    in size and number order."""
+    def key(f):
+        size = (f["fields"].get("size") or [None])[0]
+        return (SIZE_RANK.get(size, len(SIZE_RANK)), f.get("number") or float("inf"), f["name"])
+    by_n = {f["number"]: f for f in ready if f.get("number")}
+    before = {id(f): set() for f in ready}
+    for f in ready:
+        for g in read_gates(f, "serializes after", []):
+            kind, _, ref = g.partition(" ")
+            if kind == "folder" and int(ref) in by_n and by_n[int(ref)] is not f:
+                before[id(f)].add(id(by_n[int(ref)]))
+    out, left = [], sorted(ready, key=key)
+    while left:
+        free = [f for f in left if not (before[id(f)] & {id(x) for x in left})]
+        if not free:
+            errors.append("ERROR: `serializes after` gates in a cycle among ready folders: "
+                          + ", ".join(oh.cite(f) for f in left) + "; shown in size and number order")
+            out += left
+            break
+        out.append(free[0])
+        left.remove(free[0])
+    return out
+
+
+def read_gates(f, key, errors):
+    """A folder's gates of one kind, normalized as office open writes
+    them; a line that does not read as a gate is an error line, never a
+    guess."""
+    out = []
+    for g in f["fields"].get(key, []):
+        try:
+            out.append(oh.normalize_field(key, g))
+        except oh.HelperError as exc:
+            errors.append(f"ERROR: {oh.cite(f)}: `{key}: {g}` does not read: {exc}")
+    return out
+
+
+def classify_desk(folders, flying, since):
+    """The desk's groups from its folders: a dict of lists, plus the
+    error lines the Ready group carries."""
+    by_number = oh.folders_by_number(folders)
+    desk = [f for f in folders if f["space"] == "desk"]
+    groups = {"flying": [], "open": [], "ready": [], "parked": {}, "candidates": [], "no_status": [],
+              "misplaced": [], "unreadable": [], "ready_errors": [], "cleared": {}}
+    cyclic = {}
+    for cycle in after_cycles(desk, by_number):
+        words = "ERROR: after gates in a cycle: " + " -> ".join(f"folder {n}" for n in cycle)
+        for n in cycle[:-1]:
+            cyclic.setdefault(n, words)
+
+    def park(heading, f, also=()):
+        groups["parked"].setdefault(heading, []).append((f, [a for a in also if a != heading]))
+
+    for f in desk:
+        if f["problem"]:
+            groups["unreadable"].append(f)
+            continue
+        if f["rel"] in flying:
+            groups["flying"].append(f)
+            continue
+        status = f["status"]
+        if status is None:
+            groups["no_status"].append(f)
+        elif status == "open":
+            groups["open"].append(f)
+        elif status == "candidate":
+            groups["candidates"].append(f)
+        elif status != "queued":
+            groups["misplaced"].append(f)
+        elif f.get("number") in cyclic:
+            park(cyclic[f["number"]], f)
+        else:
+            waits, cleared = [], []
+            me = (f["number"],) if f.get("number") else ()
+            gates = {key: read_gates(f, key, waits) for key in ("after", "consumer", "serializes after")}
+            for g in gates["after"]:
+                state, words, day = gate_state(g, by_number, me)
+                if state == "met":
+                    if day and day >= since:
+                        cleared.append(f"gate cleared: {words} {day}")
+                elif state == "error":
+                    waits.append(f"ERROR: {oh.cite(f)}: after {words}")
+                elif state == "notyet":
+                    waits.append(f"waiting for {words}")
+                else:
+                    waits.append(f"waiting for {words}")
+            for g in gates["consumer"]:
+                state, words, _ = gate_state(g, by_number, me)
+                if state == "error":
+                    waits.append(f"ERROR: {oh.cite(f)}: consumer {words}")
+                elif state == "notyet":
+                    waits.append(f"parked for its consumer, {words}")
+                else:
+                    waits.append(f"parked for its consumer, {words}")
+            for g in gates["serializes after"]:
+                kind, _, ref = g.partition(" ")
+                same = by_number.get(int(ref), [])
+                if not same:
+                    waits.append(f"ERROR: {oh.cite(f)}: serializes after {g}, which names no folder")
+                elif same[0]["status"] == "open" or same[0]["rel"] in flying:
+                    waits.append(f"waiting for {g} to close: it is open, and this one serializes after it, "
+                                 "never beside it")
+            if waits:
+                park(waits[0], f, waits[1:])
+            else:
+                groups["ready"].append(f)
+                if cleared:
+                    groups["cleared"][f["rel"]] = cleared
+    groups["ready"] = ready_order(groups["ready"], groups["ready_errors"])
+    return groups
+
+
+def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
+    """The groups as the screen shows them. Full, for office desk; for
+    the walk-in, In flight and the first ready folders."""
+    lines = ["In flight:"]
+    lines += [f"  {l}" for l in flight_lines]
+    lines += [f"  {folder_line(f)}  [open, no session in flight]" for f in groups["open"]]
+    parked = sum(len(v) for v in groups["parked"].values())
+    errors = sum(1 for h in groups["parked"] if h.startswith("ERROR")) + len(groups["ready_errors"])
+    on_desk = (len(groups["flying"]) + len(groups["open"]) + len(groups["ready"]) + parked + len(groups["candidates"])
+               + len(groups["no_status"]) + len(groups["misplaced"]) + len(groups["unreadable"]))
+
+    def ready_block(items):
+        out = []
+        for f in items:
+            out.append(f"  {folder_line(f)}")
+            out += [f"    {c}" for c in groups["cleared"].get(f["rel"], [])]
+        return out
+
+    if walk_in:
+        counts = [f"{len(groups['ready'])} ready", f"{parked} parked",
+                  f"{len(groups['candidates'])} candidate(s)"]
+        if groups["flying"] or groups["open"]:
+            counts.insert(0, f"{len(groups['flying']) + len(groups['open'])} open")
+        if groups["no_status"]:
+            counts.append(f"{len(groups['no_status'])} with no status line")
+        lines += ["", "On the desk: " + ", ".join(counts) + " (office desk shows every group)"]
+        if not on_desk:
+            lines.append("  the desk is clear")
+        elif groups["ready"]:
+            lines += ready_block(groups["ready"][:ready_limit])
+            if len(groups["ready"]) > ready_limit:
+                lines.append(f"  and {len(groups['ready']) - ready_limit} more ready")
+        else:
+            lines.append("  nothing is ready")
+        if errors:
+            lines.append(f"  {errors} gate error(s): office desk names them")
+        return lines
+    if not on_desk:
+        return lines + ["", "the desk is clear"]
+    if groups["ready"] or groups["ready_errors"]:
+        lines += ["", "Ready:"] + [f"  {e}" for e in groups["ready_errors"]] + ready_block(groups["ready"])
+    if groups["parked"]:
+        lines += ["", "Parked:"]
+        for heading in sorted(groups["parked"], key=lambda h: (not h.startswith("ERROR"), h)):
+            lines.append(f"  {heading}")
+            for f, also in groups["parked"][heading]:
+                lines.append(f"    {folder_line(f)}")
+                lines += [f"      and {a}" for a in also]
+    if groups["candidates"]:
+        lines += ["", "Candidates:"] + [f"  {folder_line(f)}" for f in groups["candidates"]]
+    # Orphaned riders and pending desk moves join here with the
+    # drafting-table verbs.
+    if groups["no_status"]:
+        lines += ["", "No status line (folders from before the field block; the desk cannot order them):"]
+        lines += [f"  {folder_line(f)}" for f in groups["no_status"]]
+    if groups["misplaced"]:
+        lines += ["", "On the desk with a filing-cabinet status (office status names each):"]
+        lines += [f"  {folder_line(f)}  [status {f['status']}]" for f in groups["misplaced"]]
+    if groups["unreadable"]:
+        lines += ["", "Cannot be read:"] + [f"  {f['name']}  ({f['problem']})" for f in groups["unreadable"]]
+    return lines
+
+
+def render_desk(rd, office_root, today, since=None, walk_in=False, now=None):
+    """(lines, unreadable projects): office desk, or the walk-in's two
+    sections. since is the day of the previous walk-in (default today):
+    a ready folder whose gate cleared on or after it says so."""
+    flight, bad, flying = in_flight(rd, office_root, now)
+    groups = classify_desk(oh.read_folders(office_root), flying, since or today)
+    return desk_lines(groups, flight, walk_in=walk_in), bad
 
 
 def locate(rd, projects, sid, statuses):
@@ -698,10 +1062,27 @@ def main(argv=None):
     p = sub.add_parser("landed"); p.add_argument("office"); p.add_argument("path"); p.add_argument("--project")
     p = sub.add_parser("versions"); p.add_argument("office"); p.add_argument("--project")
     p = sub.add_parser("status-lines"); p.add_argument("office")
+    p = sub.add_parser("desk"); p.add_argument("office"); p.add_argument("--today", required=True)
+    p.add_argument("--since", help="the day of the previous walk-in (default: today)")
+    p.add_argument("--walk-in", action="store_true", help="In flight and the first ready folders only")
+    p = sub.add_parser("writers"); p.add_argument("office"); p.add_argument("paths", nargs="+")
     a = ap.parse_args(argv)
     try:
         rd = Reader()
-        if a.cmd == "in-flight":
+        if a.cmd == "writers":
+            # The one-writer rule: exit 3 and one line per session whose
+            # forecast holds a path, 0 when none does or there is no
+            # registry, 1 when the registry cannot be read.
+            held = writers_holding(rd, a.office, a.paths)
+            for sid, target, forecast in held:
+                print(f"{sid} holds {target} (its forecast: {', '.join(forecast)})")
+            return 3 if held else 0
+        if a.cmd == "desk":
+            for day in (a.today, a.since):
+                if day is not None:
+                    dt.date.fromisoformat(day)
+            lines, bad = render_desk(rd, a.office, a.today, a.since, a.walk_in)
+        elif a.cmd == "in-flight":
             now = parse_stamp(a.now) if a.now else None
             lines, bad = render_in_flight(rd, a.office, now)
         elif a.cmd == "folder-sessions":

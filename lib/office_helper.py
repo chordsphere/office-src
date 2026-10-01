@@ -8,7 +8,8 @@ stderr with an [office] prefix, and exits 0 on success, 1 on a refusal
 the caller should report, 2 on a usage or internal error, and 3 where a
 subcommand documents a second outcome (an incomplete profile, an unmet
 renovation declaration, include-group drift, a catalog defect, a
-project in the floor plan that cannot be read), and 4
+project in the floor plan that cannot be read, a folder whose facts
+disagree, a filed page changed other than at its end), and 4
 when record-session finds the id already recorded.
 """
 
@@ -839,6 +840,503 @@ def folder_summary(folder_md, template_md):
     return nxt, sessions
 
 
+# --- the desk's fields, statuses and history ----------------------------------
+#
+# A folder carries its facts as field lines under its title, one field
+# per line, written by the office command only (doctrine section 5; the
+# drafting-table blueprint's section 2). Every vocabulary a verb reads is
+# closed and lives here, so the wizard offers it, a flag is checked
+# against it and office status checks what the folders say.
+
+# In the order the field block writes them.
+FIELD_KEYS = ("number", "status", "queued", "class", "size", "lane", "source",
+              "blueprint", "linked", "after", "serializes after", "consumer")
+# The fields a folder may carry more than once, one line each.
+MULTI_FIELDS = ("linked", "after", "serializes after", "consumer")
+SIZES = ("small", "medium", "high")
+# bale's work classes, as bale pack's --work-class takes them; the read
+# side joins a folder to bale's telemetry by it.
+WORK_CLASSES = ("code", "doc", "contract-doc", "meta", "mixed")
+DESK_STATUSES = ("candidate", "queued", "open")
+CABINET_STATUSES = ("done", "absorbed", "split", "retired")
+STATUSES = DESK_STATUSES + CABINET_STATUSES
+# The History verbs, a closed set. `candidate` is the line office open
+# --candidate writes, the one state the blueprint's set had no verb for.
+HISTORY_VERBS = ("candidate", "queued", "opened", "ratified", "gated", "cleared", "grown",
+                 "re-scoped", "corrected", "ruled", "carried", "consumed", "done",
+                 "absorbed", "split", "retired", "reopened", "note")
+# The state-changing verbs and the status each leaves the folder in:
+# candidate -> queued -> open -> done; any desk status -> absorbed,
+# split or retired; done -> reopened -> open.
+STATE_VERBS = {"candidate": "candidate", "queued": "queued", "opened": "open",
+               "reopened": "open", "done": "done", "absorbed": "absorbed",
+               "split": "split", "retired": "retired"}
+
+ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$")
+FOLDER_REF_RE = re.compile(r"^(?:folder\s+|#)?(\d+)$", re.I)
+GATE_RE = re.compile(r"^(folder|agenda|blueprint|ruling)\s+(\S+)$", re.I)
+FIELD_LINE_RE = re.compile(r"^- ([a-z][a-z ]*?): (.*)$")
+HISTORY_LINE_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2}) ([a-z-]+):(?: (.*))?$")
+RATIFIED_RE = re.compile(r"^- (\S+) ratified (\d{4}-\d{2}-\d{2})(?:, except: (.*))?$")
+
+# What each field means, for the wizard's `?` and office open --help.
+FIELD_HELP = {
+    "title": "the folder's name in words, its first line. The slug, its directory name after the "
+             "date, is made from the title when you do not give one.",
+    "number": "the folder's short citation, `folder N`. Minted by office open as one more than the "
+              "highest number on the desk and in the filing cabinet; never reused, never typed.",
+    "status": "where the job stands: candidate, queued, open (desk); done, absorbed, split, retired "
+              "(filing cabinet). Written by the verbs, never asked.",
+    "queued": "the day the job entered the desk, in the office's timezone. Written by office open.",
+    "class": "bale's work class for the job's sessions: " + ", ".join(WORK_CLASSES)
+             + ". The read side joins the folder to bale's telemetry by it.",
+    "size": "how big the job is: " + ", ".join(SIZES) + ". The desk puts small jobs first when "
+            "nothing else orders them.",
+    "lane": "the project and the paths the job will touch, as `project: paths`, e.g. "
+            "`office-src: bin/, lib/`. The folder's forecast in waiting.",
+    "source": "where the job came from, in one form: `proposal SID #n`, `rider N`, `ruling ID`, "
+              "`blueprint ID`, a notepad page (`notepad/...`), or a person (whose words go in Asked).",
+    "blueprint": "the blueprint the folder belongs to, by its id, YYYY-MM-DD-slug.",
+    "linked": "a folder this one relates to without waiting for it: `folder N`.",
+    "after": "do not open this before X is done. X is `folder N` (a bare number means a folder), "
+             "`blueprint ID`, `agenda N` or `ruling ID`. Give it more than once for more gates.",
+    "serializes after": "may run before or after folder N, never beside it (their forecasts "
+                        "overlap); when both are ready, folder N goes first. `folder N`.",
+    "consumer": "parked for a named consumer that will carry it: `blueprint ID` or `folder N`.",
+    "sid": "a bale session id, YYYY-MM-DD-slug-NNN, as bale pack reports it.",
+}
+
+
+def one_line(value, key):
+    text = " ".join(str(value).split())
+    if not text:
+        raise HelperError(f"{key} is empty")
+    return ascii_escape(text)[0]
+
+
+def normalize_gate(value, key, kinds):
+    """`folder N` (a bare number is a folder), `agenda N`, `blueprint ID`
+    or `ruling ID`, whichever of those `kinds` the field takes."""
+    text = " ".join(str(value).split())
+    m = FOLDER_REF_RE.match(text)
+    if m and "folder" in kinds:
+        return f"folder {int(m.group(1))}"
+    m = GATE_RE.match(text)
+    if m:
+        kind, ref = m.group(1).lower(), m.group(2)
+        if kind in kinds:
+            if kind in ("folder", "agenda") and ref.isdigit():
+                return f"{kind} {int(ref)}"
+            if kind in ("blueprint", "ruling") and ID_RE.match(ref):
+                return f"{kind} {ref}"
+    forms = {"folder": "folder N", "agenda": "agenda N", "blueprint": "blueprint YYYY-MM-DD-slug",
+             "ruling": "ruling YYYY-MM-DD-slug"}
+    raise HelperError(f"{key} takes " + " or ".join(forms[k] for k in kinds) + f", not {text!r}")
+
+
+def normalize_field(key, value):
+    """A field's value as a folder writes it, or HelperError saying what
+    the field takes (the words the wizard and the flag refusal print)."""
+    text = " ".join(str(value).split())
+    if key == "size":
+        if text.lower() in SIZES:
+            return text.lower()
+        raise HelperError(f"size is one of {', '.join(SIZES)}, not {text!r}")
+    if key == "class":
+        if text.lower() in WORK_CLASSES:
+            return text.lower()
+        raise HelperError(f"class is one of {', '.join(WORK_CLASSES)} (bale's work classes), not {text!r}")
+    if key == "status":
+        if text in STATUSES:
+            return text
+        raise HelperError(f"status is one of {', '.join(STATUSES)}, not {text!r}")
+    if key == "after":
+        return normalize_gate(text, key, ("folder", "blueprint", "agenda", "ruling"))
+    if key in ("serializes after", "linked"):
+        return normalize_gate(text, key, ("folder",))
+    if key == "consumer":
+        return normalize_gate(text, key, ("blueprint", "folder"))
+    if key == "blueprint":
+        bare = text[len("blueprint "):].strip() if text.lower().startswith("blueprint ") else text
+        if ID_RE.match(bare):
+            return bare
+        raise HelperError(f"blueprint takes a blueprint id, YYYY-MM-DD-slug, not {text!r}")
+    if key == "sid":
+        if SID_RE.match(text):
+            return text
+        raise HelperError(f"not a session id (YYYY-MM-DD-slug-NNN): {text!r}")
+    if key in ("title", "lane", "source"):
+        return one_line(text, key)
+    raise HelperError(f"no field named {key!r}")
+
+
+def parse_folder(text):
+    """Everything a verb reads from a folder.md: its title, its field
+    lines (key -> [values], in order), its History (date, verb, text)
+    and the History lines that do not read, and its session ids.
+
+    Fields are the `- key: value` lines between the title and the first
+    section whose key is one of FIELD_KEYS; a folder from before the
+    field block has none, and every reader takes that as unknown, never
+    as a value."""
+    lines = text.splitlines()
+    title = lines[0][2:].strip() if lines and lines[0].startswith("# ") else None
+    first = next((i for i, l in enumerate(lines) if l.startswith("## ")), len(lines))
+    fields = {}
+    for line in lines[1:first]:
+        m = FIELD_LINE_RE.match(line)
+        if m and m.group(1) in FIELD_KEYS:
+            fields.setdefault(m.group(1), []).append(m.group(2).strip())
+    history, unreadable = [], []
+    start, end = section_bounds(lines, "History")
+    has_history = start is not None
+    if start is not None:
+        for line in lines[start + 1:end]:
+            if not line.startswith("- "):
+                continue
+            m = HISTORY_LINE_RE.match(line)
+            if m:
+                history.append((m.group(1), m.group(2), (m.group(3) or "").strip()))
+            else:
+                unreadable.append(line)
+    sids, ratified = [], {}
+    start, end = section_bounds(lines, "Sessions")
+    if start is not None:
+        for line in lines[start + 1:end]:
+            m = RATIFIED_RE.match(line)
+            if m and SID_RE.match(m.group(1)):
+                ratified[m.group(1)] = (m.group(2), m.group(3))
+                continue
+            if line.startswith("- "):
+                sid = line[2:].partition(":")[0].strip()
+                if SID_RE.match(sid):
+                    sids.append(sid)
+    return {"title": title, "fields": fields, "history": history, "history_unreadable": unreadable,
+            "has_history": has_history,
+            "has_status_line": "status" in fields, "sids": sids, "ratified": ratified}
+
+
+def folder_number(fields):
+    """(number or None, problem or None) from a folder's number line."""
+    values = fields.get("number")
+    if not values:
+        return None, None
+    if len(values) > 1:
+        return None, f"{len(values)} number lines"
+    if not values[0].isdigit() or int(values[0]) < 1:
+        return None, f"number line is not a number: {values[0]!r}"
+    return int(values[0]), None
+
+
+def read_folders(root):
+    """Every folder on the desk and in the filing cabinet, desk first,
+    each by name: a dict with space, name, rel (space/name), path (its
+    folder.md), problem (None, or why it cannot be read) and, when it
+    reads, the parse_folder keys plus number, number_problem, status and
+    last_state (date, verb, text of the last state-changing History
+    line, or None)."""
+    out = []
+    for space in ("desk", "filing-cabinet"):
+        base = pathlib.Path(root) / space
+        if not base.is_dir():
+            continue
+        for d in sorted(p for p in base.iterdir() if p.is_dir()):
+            f = {"space": space, "name": d.name, "rel": f"{space}/{d.name}", "path": d / "folder.md",
+                 "problem": None}
+            try:
+                f.update(parse_folder(f["path"].read_text(encoding="utf-8")))
+            except FileNotFoundError:
+                f["problem"] = "no folder.md"
+            except (OSError, UnicodeDecodeError) as exc:
+                f["problem"] = f"folder.md cannot be read ({exc.__class__.__name__}: {exc})"
+            if f["problem"] is None:
+                f["number"], f["number_problem"] = folder_number(f["fields"])
+                f["status"] = (f["fields"].get("status") or [None])[0]
+                states = [h for h in f["history"] if h[1] in STATE_VERBS]
+                f["last_state"] = states[-1] if states else None
+            out.append(f)
+    return out
+
+
+def cite(folder):
+    """How a folder is cited: `folder N`, or by its directory name when
+    it has no number (a folder from before numbers are never numbered)."""
+    return f"folder {folder['number']}" if folder.get("number") else folder["name"]
+
+
+def next_number(root):
+    """(one more than the highest number on the desk and in the filing
+    cabinet, the folders skipped for having no number line). A number
+    line that does not read refuses: minting past it could reuse it."""
+    highest, unnumbered = 0, []
+    for f in read_folders(root):
+        if f["problem"]:
+            unnumbered.append(f"{f['rel']} ({f['problem']})")
+            continue
+        if f["number_problem"]:
+            raise HelperError(f"{f['rel']}/folder.md: {f['number_problem']}; no number is minted "
+                              "until it reads (office status lists every folder's problems)")
+        if f["number"] is None:
+            unnumbered.append(f["rel"])
+        else:
+            highest = max(highest, f["number"])
+    return highest + 1, unnumbered
+
+
+def folders_by_number(folders):
+    out = {}
+    for f in folders:
+        if not f["problem"] and f.get("number"):
+            out.setdefault(f["number"], []).append(f)
+    return out
+
+
+def append_line_to_section(lines, heading, entry):
+    """lines with entry added as the last line of the section, before its
+    trailing blank lines; None when the folder has no such section."""
+    start, end = section_bounds(lines, heading)
+    if start is None:
+        return None
+    body = lines[start + 1:end]
+    while body and not body[-1].strip():
+        body.pop()
+    if body and not body[-1].startswith("- "):
+        body.append("")  # a list after prose needs a blank line to render as one
+    tail = [""] + lines[end:] if end < len(lines) else []
+    return lines[:start + 1] + body + [entry] + tail
+
+
+def history_line(day, verb, text):
+    if verb not in HISTORY_VERBS:
+        raise HelperError(f"{verb!r} is not a History verb ({', '.join(HISTORY_VERBS)})")
+    dt.date.fromisoformat(day)
+    text = one_line(text, "the History line's text")
+    return f"- {day} {verb}: {text}"
+
+
+def folder_event(folder_md, day, verb, text, status=None):
+    """Append one History line and, when status is given, set the status
+    line to it: the only two edits a verb makes to a folder's facts.
+
+    A folder from before the field block has no status line and no
+    History section, and gets neither: nothing is added to a folder that
+    lacks it. Returns (old status or None, history written: bool)."""
+    path = pathlib.Path(folder_md)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    old = None
+    if status is not None:
+        if status not in STATUSES:
+            raise HelperError(f"not a status: {status!r}")
+        first = next((i for i, l in enumerate(lines) if l.startswith("## ")), len(lines))
+        for i in range(1, first):
+            m = FIELD_LINE_RE.match(lines[i])
+            if m and m.group(1) == "status":
+                old = m.group(2).strip()
+                lines[i] = f"- status: {status}"
+                break
+    new = append_line_to_section(lines, "History", history_line(day, verb, text))
+    wrote = new is not None
+    path.write_text("\n".join(new if wrote else lines) + "\n", encoding="utf-8")
+    return old, wrote
+
+
+def record_session_opening(folder_md, sid, day, words=None):
+    """record_session, and with the first sid a folder records, the
+    `opened` History line and status open, when the folder is a
+    candidate or queued. Returns (recorded, what changed, in words)."""
+    before = parse_folder(pathlib.Path(folder_md).read_text(encoding="utf-8"))
+    if not record_session(folder_md, sid, words):
+        return False, None
+    status = (before["fields"].get("status") or [None])[0]
+    if before["sids"] or status not in ("candidate", "queued"):
+        return True, None
+    folder_event(folder_md, day, "opened", sid, status="open")
+    return True, f"status {status} -> open; History: {day} opened: {sid}"
+
+
+def ratify_session(folder_md, sid, day, except_text=None):
+    """Write `- SID ratified DAY[, except: TEXT]` right under the sid's
+    line in Sessions: the planner's half of a session whose worker
+    flagged judgment calls, one line per session."""
+    if not SID_RE.match(sid):
+        raise HelperError(f"not a session id: {sid!r}")
+    dt.date.fromisoformat(day)
+    path = pathlib.Path(folder_md)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start, end = section_bounds(lines, "Sessions")
+    if start is None:
+        raise HelperError(f"{path}: no '## Sessions' section")
+    at = None
+    for i in range(start + 1, end):
+        m = RATIFIED_RE.match(lines[i])
+        if m and m.group(1) == sid:
+            raise HelperError(f"{sid} is already ratified in this folder: {lines[i][2:]}")
+        if lines[i].startswith("- ") and lines[i][2:].partition(":")[0].strip() == sid:
+            at = i
+    if at is None:
+        raise HelperError(f"{sid} is not recorded in this folder; record it first: office sessions FOLDER {sid}")
+    entry = f"- {sid} ratified {day}"
+    if except_text is not None:
+        entry += f", except: {one_line(except_text, '--except')}"
+    lines.insert(at + 1, entry)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return entry[2:]
+
+
+# --- office status's checks over the desk and the filed pages ------------------
+
+def folder_check(root):
+    """(problems, counts) over every folder: a status outside the
+    vocabulary or in the wrong space, a status its History's last
+    state-changing line does not agree with, a History line that does
+    not read or uses a verb outside the set, and number lines that do
+    not read or are minted twice. A folder with no status line is from
+    before the field block: counted, never a problem."""
+    folders = read_folders(root)
+    problems, counts = [], {"folders": len(folders), "no_status": 0}
+    for number, same in sorted(folders_by_number(folders).items()):
+        if len(same) > 1:
+            problems.append(f"folder {number} is minted twice: " + ", ".join(f["rel"] for f in same))
+    for f in folders:
+        if f["problem"]:
+            problems.append(f"{f['rel']}: {f['problem']}")
+            continue
+        if f["number_problem"]:
+            problems.append(f"{f['rel']}: {f['number_problem']}")
+        for line in f["history_unreadable"]:
+            problems.append(f"{f['rel']}: a History line that is not `- YYYY-MM-DD verb: text`: {line}")
+        for day, verb, _ in f["history"]:
+            if verb not in HISTORY_VERBS:
+                problems.append(f"{f['rel']}: History verb {verb!r} ({day}) is not one of the set")
+        if len(f["fields"].get("status", [])) > 1:
+            problems.append(f"{f['rel']}: {len(f['fields']['status'])} status lines")
+        status = f["status"]
+        if status is None:
+            counts["no_status"] += 1
+            continue
+        if status not in STATUSES:
+            problems.append(f"{f['rel']}: status {status!r} is not one of {', '.join(STATUSES)}")
+            continue
+        home = "desk" if status in DESK_STATUSES else "filing-cabinet"
+        if f["space"] != home:
+            problems.append(f"{f['rel']}: status {status} belongs in {home}/")
+        last = f["last_state"]
+        if last is None:
+            problems.append(f"{f['rel']}: status {status}, and no History line says how it got there")
+        elif STATE_VERBS[last[1]] != status:
+            problems.append(f"{f['rel']}: status {status}, but its History's last state-changing line is "
+                            f"`{last[0]} {last[1]}` ({STATE_VERBS[last[1]]})")
+    return problems, counts
+
+
+def filed_pages(manifest):
+    """The pathspecs of the filed pages the floor plan lists, less the
+    filing cabinet: a filed folder moves whole and the office command
+    adds lines inside its sections, which no byte prefix expresses
+    (doctrine section 15), so it keeps its own rule."""
+    out = []
+    for key, space in sorted(manifest.get("spaces", {}).items()):
+        if key == "filing-cabinet":
+            continue
+        value = space.get("filed", False)
+        if value is True:
+            out.append(space.get("path", key))
+        elif isinstance(value, list):
+            out.extend(str(v) for v in value)
+    return out
+
+
+def git_out(root, *args, text=True):
+    proc = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=text, timeout=120)
+    if proc.returncode != 0:
+        err = proc.stderr if text else proc.stderr.decode("utf-8", "replace")
+        raise HelperError(f"git {' '.join(args[:2])} failed in {root}: {err.strip() or 'no message'}")
+    return proc.stdout
+
+
+def first_difference(old, new):
+    n = min(len(old), len(new))
+    return next((i for i in range(n) if old[i] != new[i]), n)
+
+
+def append_problem(old, new):
+    """None when new is old with bytes added at its end, else what broke."""
+    if new.startswith(old):
+        return None
+    if len(new) < len(old) and old.startswith(new):
+        return f"cut to {len(new)} bytes from {len(old)}"
+    return f"changed bytes already filed (first difference at byte {first_difference(old, new)} of {len(old)})"
+
+
+def filed_history_check(root):
+    """(problems, counts): every commit, first-parent, whose diff to a
+    filed page does more than append at its end, and every uncommitted
+    change that would. The net for a hand edit that went through
+    neither bale nor a script (the blueprint's section 5.4)."""
+    root = pathlib.Path(root)
+    specs = filed_pages(read_toml(root / "floor-plan" / "manifest.toml"))
+    counts = {"specs": specs, "commits": 0, "pages": 0}
+    if not specs:
+        return [], counts
+    git_out(root, "rev-parse", "--is-inside-work-tree")
+    if subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "-q", "HEAD"],
+                      capture_output=True).returncode != 0:
+        return [], counts
+    log = git_out(root, "log", "--first-parent", "--reverse", "--no-renames", "--raw", "--no-abbrev",
+                  "--format=commit %H %ad", "--date=short", "--", *specs)
+    entries, commit = [], None
+    for line in log.splitlines():
+        if line.startswith("commit "):
+            _, sha, day = line.split(" ", 2)
+            commit = (sha, day)
+            counts["commits"] += 1
+        elif line.startswith(":") and commit:
+            meta, _, path = line.partition("\t")
+            parts = meta[1:].split()
+            entries.append((commit, parts[2], parts[3], parts[4], path))
+    blobs = {}
+    wanted = sorted({s for e in entries for s in (e[1], e[2]) if set(s) != {"0"}})
+    if wanted:
+        batch = subprocess.run(["git", "-C", str(root), "cat-file", "--batch"], input=("\n".join(wanted) + "\n").encode(),
+                               capture_output=True, timeout=300)
+        data, pos = batch.stdout, 0
+        for sha in wanted:
+            nl = data.index(b"\n", pos)
+            header = data[pos:nl].split()
+            if len(header) < 3 or header[1] == b"missing":
+                raise HelperError(f"git has no object {sha} in {root}")
+            size = int(header[2])
+            blobs[sha] = data[nl + 1:nl + 1 + size]
+            pos = nl + 1 + size + 1
+    problems, pages = [], set()
+    for (sha, day), old, new, status, path in entries:
+        pages.add(path)
+        where = f"{sha[:10]} {day} {path}"
+        if status.startswith("D"):
+            problems.append(f"{where}: removed a filed page")
+        elif status.startswith("M"):
+            why = append_problem(blobs[old], blobs[new])
+            if why:
+                problems.append(f"{where}: {why}")
+        elif status.startswith("T"):
+            problems.append(f"{where}: changed a filed page's type")
+    changed = git_out(root, "diff", "--name-only", "--no-renames", "HEAD", "--", *specs).splitlines()
+    for path in changed:
+        disk = root / path
+        try:
+            old = git_out(root, "show", f"HEAD:{path}", text=False)
+        except HelperError:
+            continue
+        if not disk.is_file():
+            problems.append(f"uncommitted {path}: a filed page is missing from disk")
+            continue
+        why = append_problem(old, disk.read_bytes())
+        if why:
+            problems.append(f"uncommitted {path}: {why}")
+    counts["pages"] = len(pages)
+    return problems, counts
+
+
 # --- text that lands in an office -------------------------------------------
 
 def ascii_escape(text):
@@ -849,13 +1347,49 @@ def ascii_escape(text):
     return out, escaped
 
 
+TEMPLATE_KEY_RE = re.compile(r"\{\{([a-z_]+)\}\}")
+# A field line in a template: `- label: {{key}}` and nothing else on it.
+TEMPLATE_FIELD_RE = re.compile(r"^- [a-z][a-z ]*: \{\{([a-z_]+)\}\}$")
+
+
+def template_values(value):
+    """A value as the list render_template works with: a string is one
+    value, a list is one per line, None or an empty string is unset."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value != "" else []
+    return [v for v in value if v is not None and v != ""]
+
+
 def render_template(text, values):
-    def sub(m):
-        key = m.group(1)
-        if key not in values:
-            raise HelperError(f"template needs a value for {{{{{key}}}}}")
-        return values[key]
-    return re.sub(r"\{\{([a-z_]+)\}\}", sub, text)
+    """Fill {{key}} placeholders from values (a string, or a list of them).
+
+    A field line, `- label: {{key}}` alone on its line, renders once per
+    value and is dropped when the key is unset, so a template can show
+    the whole field block and every caller renders it through this one
+    call: a field the command cannot fill is left out, never left blank.
+    Every other placeholder needs exactly one value."""
+    out = []
+    for line in text.splitlines(keepends=True):
+        body = line.rstrip("\n")
+        m = TEMPLATE_FIELD_RE.match(body)
+        if m:
+            given = template_values(values.get(m.group(1)))
+            nl = line[len(body):]
+            out += [body.replace("{{" + m.group(1) + "}}", v) + nl for v in given]
+            continue
+
+        def sub(mm):
+            key = mm.group(1)
+            given = template_values(values.get(key)) if key in values else None
+            if given is None or (not given and values.get(key) != ""):
+                raise HelperError(f"template needs a value for {{{{{key}}}}}")
+            if len(given) > 1:
+                raise HelperError(f"template takes one value for {{{{{key}}}}}, not {len(given)}")
+            return given[0] if given else ""
+        out.append(TEMPLATE_KEY_RE.sub(sub, line))
+    return "".join(out)
 
 
 def recent_notes(notepad, count):
@@ -1115,15 +1649,111 @@ def cmd_project_add(a):
 
 
 def cmd_record_session(a):
-    if not record_session(a.folder_md, a.sid, a.words):
+    """With --day, the first sid a candidate or queued folder records
+    also opens it: the `opened` History line and status open."""
+    if a.day is None:
+        recorded, change = record_session(a.folder_md, a.sid, a.words), None
+    else:
+        recorded, change = record_session_opening(a.folder_md, a.sid, a.day, a.words)
+    if not recorded:
         print("already recorded")
         return 4
     print("recorded")
+    if change:
+        print(change)
 
 
 def cmd_folder_summary(a):
     nxt, sessions = folder_summary(a.folder_md, a.template)
     print(f"{nxt}\t{sessions}")
+
+
+def cmd_normalize_field(a):
+    print(normalize_field(a.key.replace("-", " "), a.value))
+
+
+def cmd_field_help(a):
+    keys = list(FIELD_HELP) if a.key == "all" else [a.key.replace("-", " ")]
+    for key in keys:
+        if key not in FIELD_HELP:
+            raise HelperError(f"no field named {key!r}")
+        print(f"{key}: {FIELD_HELP[key]}")
+
+
+def cmd_next_number(a):
+    n, unnumbered = next_number(a.root)
+    if unnumbered and os.environ.get("OFFICE_DEBUG") == "1":
+        for rel in unnumbered:
+            log(f"debug: no number line, so not counted (and never numbered): {rel}")
+    print(n)
+
+
+def cmd_folder_by_number(a):
+    m = FOLDER_REF_RE.match(" ".join(a.ref.split()))
+    if not m:
+        raise HelperError(f"not a folder number: {a.ref!r} (folder N)")
+    same = folders_by_number(read_folders(a.root)).get(int(m.group(1)), [])
+    if not same:
+        raise HelperError(f"no folder {int(m.group(1))} on the desk or in the filing cabinet")
+    if len(same) > 1:
+        raise HelperError(f"folder {int(m.group(1))} is minted twice: " + ", ".join(f["rel"] for f in same))
+    print(same[0]["rel"])
+
+
+def cmd_folder_facts(a):
+    """Tab-separated facts a verb decides on: status, number, whether
+    the folder has a History section, how many sids it records."""
+    f = parse_folder(pathlib.Path(a.folder_md).read_text(encoding="utf-8"))
+    number, problem = folder_number(f["fields"])
+    print(f"status\t{(f['fields'].get('status') or [''])[0]}")
+    print(f"number\t{number or ''}")
+    print(f"history\t{1 if f['has_history'] else 0}")
+    print(f"sids\t{len(f['sids'])}")
+    if problem:
+        log(f"warning: {a.folder_md}: {problem}")
+
+
+def cmd_folder_event(a):
+    old, wrote = folder_event(a.folder_md, a.day, a.verb, a.text, a.status)
+    if a.status is not None:
+        print(f"status {old} -> {a.status}" if old is not None
+              else "no status line (a folder from before the field block): left as it is")
+    print(f"History: {a.day} {a.verb}: {a.text}" if wrote
+          else "no History section (a folder from before the field block): no line written")
+
+
+def cmd_ratify(a):
+    print(ratify_session(a.folder_md, a.sid, a.day, a.except_text))
+
+
+def cmd_folder_check(a):
+    problems, counts = folder_check(a.root)
+    older = (f"; {counts['no_status']} with no status line, from before the field block"
+             if counts["no_status"] else "")
+    if not problems:
+        print(f"folders:    {counts['folders']} on the desk and in the filing cabinet; every status "
+              f"agrees with its History{older}")
+        return 0
+    print(f"folders:    {len(problems)} problem(s) in {counts['folders']} folders{older}:")
+    for p in problems:
+        print(f"  {p}")
+    return 3
+
+
+def cmd_filed_check(a):
+    problems, counts = filed_history_check(a.root)
+    if not counts["specs"]:
+        print("filed:      the floor plan lists no filed pages")
+        return 0
+    listed = ", ".join(counts["specs"])
+    if not problems:
+        print(f"filed:      every commit to a filed page only appended at its end ({listed}: "
+              f"{counts['pages']} file(s), {counts['commits']} commit(s))")
+        return 0
+    print(f"filed:      {len(problems)} change(s) to filed pages did more than append at the end ({listed}):")
+    for p in problems:
+        print(f"  {p}")
+    return 3
 
 
 def cmd_ascii_escape(a):
@@ -1136,7 +1766,17 @@ def cmd_ascii_escape(a):
 
 
 def cmd_render_template(a):
-    values = dict(kv.split("=", 1) for kv in a.values)
+    """key=value arguments; a key given more than once is a list, one
+    field line per value."""
+    values = {}
+    for kv in a.values:
+        if "=" not in kv:
+            raise HelperError(f"render-template takes key=value, not {kv!r}")
+        key, value = kv.split("=", 1)
+        if key in values:
+            values[key] = template_values(values[key]) + template_values(value)
+        else:
+            values[key] = value
     sys.stdout.write(render_template(pathlib.Path(a.template).read_text(encoding="utf-8"), values))
 
 
@@ -1191,7 +1831,22 @@ def main(argv=None):
     p = sub.add_parser("project-add"); p.add_argument("manifest"); p.add_argument("name")
     p.add_argument("path"); p.set_defaults(fn=cmd_project_add)
     p = sub.add_parser("record-session"); p.add_argument("folder_md"); p.add_argument("sid")
-    p.add_argument("--words"); p.set_defaults(fn=cmd_record_session)
+    p.add_argument("--words"); p.add_argument("--day"); p.set_defaults(fn=cmd_record_session)
+    p = sub.add_parser("normalize-field"); p.add_argument("key"); p.add_argument("value")
+    p.set_defaults(fn=cmd_normalize_field)
+    p = sub.add_parser("field-help"); p.add_argument("key"); p.set_defaults(fn=cmd_field_help)
+    p = sub.add_parser("next-number"); p.add_argument("root"); p.set_defaults(fn=cmd_next_number)
+    p = sub.add_parser("folder-by-number"); p.add_argument("root"); p.add_argument("ref")
+    p.set_defaults(fn=cmd_folder_by_number)
+    p = sub.add_parser("folder-facts"); p.add_argument("folder_md"); p.set_defaults(fn=cmd_folder_facts)
+    p = sub.add_parser("folder-event"); p.add_argument("folder_md"); p.add_argument("--day", required=True)
+    p.add_argument("--verb", required=True); p.add_argument("--text", required=True)
+    p.add_argument("--status"); p.set_defaults(fn=cmd_folder_event)
+    p = sub.add_parser("ratify"); p.add_argument("folder_md"); p.add_argument("sid")
+    p.add_argument("--day", required=True); p.add_argument("--except", dest="except_text")
+    p.set_defaults(fn=cmd_ratify)
+    p = sub.add_parser("folder-check"); p.add_argument("root"); p.set_defaults(fn=cmd_folder_check)
+    p = sub.add_parser("filed-check"); p.add_argument("root"); p.set_defaults(fn=cmd_filed_check)
     p = sub.add_parser("folder-summary"); p.add_argument("folder_md"); p.add_argument("template")
     p.set_defaults(fn=cmd_folder_summary)
     p = sub.add_parser("ascii-escape"); p.set_defaults(fn=cmd_ascii_escape)

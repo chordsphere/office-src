@@ -30,7 +30,8 @@ surveys the machine, and prints the line that packs the founding session.
 `office` on its own is walking in: what is on the desk, this week, the
 last notes, the suggestion box, and what you can do from here. The
 everyday verbs take seconds and need no session: `office note` captures a
-line, `office open` starts a folder, `office desk` lists what is open,
+line, `office open` starts a numbered folder, `office desk` shows what is
+in flight, what is ready and in what order, and what waits on what,
 `office week` shows this week against what happened, `office close` and
 `office reopen` move a folder to the filing cabinet and back. `office
 survey` rewrites the page of machine facts. `office status` says whether
@@ -158,20 +159,56 @@ of spaces is share/spaces.toml.
 
 Folders, desk and filing cabinet. A folder is one job: a directory named
 by date and a short slug, holding folder.md (from the install's folder
-template) and whatever else the job gathers. `office open SLUG` starts
-one on the desk; with `--thread` it also keeps a thread pasted on stdin
-as thread.md. The Next section of folder.md is what `office desk` shows
-as the folder's next move. Closing a folder moves it to the filing
-cabinet; reopening brings it back with its history, so the next session
-starts knowing what was asked, answered and built. Moving a folder is not
+template) and whatever else the job gathers. `office open` starts one on
+the desk; with `--thread` it also keeps a thread pasted on stdin as
+thread.md. The Next section of folder.md is what `office desk` shows as
+the folder's next move. Closing a folder moves it to the filing cabinet;
+reopening brings it back with its history, so the next session starts
+knowing what was asked, answered and built. Moving a folder is not
 rewriting it: the bytes move as they are, and git keeps the history.
+
 Under its title a folder carries its facts as field lines, written by
-the office command and never by hand: its status and the date it was
-queued, and, as the verbs that mint them arrive, its number, class,
-size, lane, source, blueprint and gates. A field the command cannot
-fill is left out rather than left blank. Its History section is one
-dated line per event, appended and never rewritten. The order of the
-desk is computed from what the folders say, and nobody writes one.
+the office command and never by hand: its number, its status, the day
+it was queued, and whichever of class, size, lane, source, blueprint,
+links and gates it was given. A field the command cannot fill is left
+out rather than left blank. The number is the folder's citation, folder
+N: `office open` mints it as one more than the highest number on the
+desk and in the filing cabinet, and it is never reused or renumbered. A
+folder from before numbers keeps none and is cited by its name; nothing
+ever numbers it after the fact. A verb that mints a number refuses while
+an open session in the office's own bale registry forecasts the space
+the number lands in, and names the session: sessions are kept apart by
+bale, and scripts are kept off sessions' paper by this one-writer rule.
+An office bale has never run in has no registry and nothing to refuse.
+
+The status is one of seven. On the desk: candidate (`office open
+--candidate`), queued (`office open`), open (the first session `office
+sessions` records). In the filing cabinet: done (`office close`, or
+`office open --filed --sid SID` for a job born done inside a session),
+absorbed (`office close --into N`), split (`office close --split A,B`)
+and retired (`office close --retired WHY`). An absorbed or split folder
+names its successors, and each successor gets a line pointing back.
+`office reopen` brings a done folder back as open; a job that lives on
+in another folder, or was retired, is not reopened. Its History section
+is one dated line per event, `- YYYY-MM-DD verb: text`, from a closed
+set of verbs, appended and never rewritten, and the status line always
+agrees with the last line that changed it. `office sessions FOLDER SID
+--ratified` records that the planner ratified a session's judgment
+calls, with `--except` for what was corrected and where it went.
+
+Gates are data on the folder that waits: `after` (do not open this
+before folder N is done, a blueprint closes, an agenda item is ruled on
+or a ruling exists), `serializes after` (never beside folder N; when both
+are ready, N goes first) and `consumer` (parked for the blueprint or
+folder that will carry it). The order of the desk is computed from what
+the folders say, and nobody writes one. `office desk` shows, in order:
+in flight, the folders some session is open for; ready, the queued
+folders whose gates are all met, ordered by `serializes after`, then
+size, small first, then number, each saying when a gate cleared since
+the last walk-in; parked, grouped under what each waits for, headed by
+that gate's own status; and candidates. A gate that names nothing, or a
+cycle of gates, is an error line naming the folders, and no folder is
+ever dropped from the desk.
 
 Clipboards. A recurring meeting gets a clipboard because it never ends:
 the series (purpose, attendees, cadence, which chapters it concerns), the
@@ -278,11 +315,11 @@ Kinds:
 | upgrade | script; prints a renovation pack line when a migration needs judgment | yes |
 | where, default | script: which office a command acts on | yes |
 | note | script: append a dated line to the notepad | yes |
-| open | script: start a folder on the desk | yes |
-| desk | script: list open folders and their next moves | yes |
+| open | script: start a numbered folder on the desk, or a candidate, or one born done in the filing cabinet | yes |
+| desk | script: in flight, ready in order, parked under what each waits for, candidates | yes |
 | week | script: this week's calendar and its gaps | yes |
-| close, reopen | script: move a folder to the filing cabinet and back | yes |
-| sessions | script: list or record the sessions that worked on a folder | yes |
+| close, reopen | script: move a folder to the filing cabinet, done, absorbed, split or retired, and a done one back | yes |
+| sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes |
 | projects | script: list the projects this office scopes, add one, render what bale records about them | yes |
 | founding | office session: the profile, the occupant's words, the timezone | yes, via init |
 | work | office session: answer, draft, probe, decide, deliver | by hand |
@@ -300,7 +337,13 @@ whatever it was not given, and it explains an argument it does not
 understand rather than refusing it. Every question a verb asks has a
 flag twin, so the same invocation can be typed in full without being
 asked anything. With piped input a verb never asks: it refuses what it
-was not given and names the flag.
+was not given and names the flag. The verbs ask the same way: each
+question names its flag, offers its default or the words a field takes,
+explains the field when the answer is `?`, and asks again, with the
+reason, when an answer is not one the field takes. A plain return skips
+a question that may be skipped. A verb asks only for what matters to
+it, so a folder is opened in four answers (title, size, lane, source);
+the other fields are flags, and `--help` explains each.
 
 A session whose goal the occupant overrides midway keeps the override
 words on its notepad page, and the new ask becomes a new folder or
@@ -309,10 +352,13 @@ blueprint, never an exception counted against the old one.
 Walking in is `office` with no verb, from inside an office or anywhere on
 the machine (the per-machine default). It shows the office's name, the
 date and time in its timezone, whether it is founded and current, the
-sessions in flight in its projects and the folder each belongs to, the
-folders on the desk with their next moves, this week and its gaps, the
-last notepad lines, how many slips are in the suggestion box, and the
-verbs to reach for. It only reads.
+sessions in flight in its projects and in the office itself, with the
+folder each belongs to, how many folders are ready, parked and
+candidates, and the first three ready ones with their next moves, this
+week and its gaps, the last notepad lines, how many slips are in the
+suggestion box, and the verbs to reach for. It only reads the office;
+the one thing it keeps is the day of the walk-in, on this machine and
+outside the office, so the desk can say which gates cleared since.
 
 ## 8. When to open a session
 
@@ -431,7 +477,9 @@ says so on every command. Capture still works in an unfounded office.
 
 Spawning an office is a conversation, not a form. `office init` builds
 the skeleton, writes bale.toml, surveys the machine, commits, and prints
-the pack line for the founding session. The founding session is scoped:
+the pack line for the founding session. It refuses to build from an
+install whose own catalogs have a defect; for an office already built,
+`office status` reports the defect and the office keeps working. The founding session is scoped:
 it may write profile.md, the notepad and the floor plan, so one trip
 lands everything. In it the occupant and the session write the profile
 together, section by section; the session files the occupant's words from
@@ -525,3 +573,9 @@ check is `doctrine/checks/filed-append-only.sh`, which rides with the
 doctrine into every office session, and the worker fills in its paths,
 sizes and hashes from its own request. A script that appends to filed
 paper makes the same check before it commits.
+
+`office status` holds the same line after the fact: it walks git's
+history of every filed page the floor plan lists, the filing cabinet
+aside, and reports any commit whose change to one did more than add at
+its end, and any uncommitted change that would. It is the net for a
+hand edit that went through neither bale nor a script.
