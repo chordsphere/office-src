@@ -1,0 +1,281 @@
+{
+  "record_version": 1,
+  "session_id": "2026-09-30-desk-verbs-002",
+  "created_at": "2026-09-30T23:41:10+00:00",
+  "attempts": [
+    {
+      "at": "2026-09-30T23:41:10+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "claude/INDEX.md",
+        "claude/context/front-sheet.md",
+        "claude/context/sittings",
+        "doctrine",
+        "lib",
+        "share",
+        "templates",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-09-30-desk-verbs-002.log",
+      "bundle": {
+        "stem": "2026-09-30-desk-verbs",
+        "brief_sha256": "fc936d38a347643f6ff7485e5909a4b196e931932d000477fb24da09800043e2",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "bead33695958144e2246eb5ff67f16b48f5ce7f09cd6c5523010f3ab7f8ff040"
+      },
+      "provenance": {
+        "work_class": "mixed",
+        "packer": "chordsphere",
+        "packed_at": "2026-09-30T23:41:10+00:00"
+      }
+    },
+    {
+      "at": "2026-10-01T01:15:25+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-09-30-desk-verbs-002.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "shell and python syntax": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "unit tests": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "the continuation page is byte-exact": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "shell and python syntax": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "unit tests": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "the continuation page is byte-exact": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "shell and python syntax",
+          "unit tests",
+          "the continuation page is byte-exact",
+          "the sitting's first page is untouched",
+          "claude/INDEX.md's sittings row names the -2 continuation",
+          "VERSION is 0.5.0",
+          "RELEASES.md has the 0.5.0 entry, additive",
+          "no migration ships (additive release)",
+          "the install's catalogs hold",
+          "office-src names no office and no machine outside claude/",
+          "the folder template shows the whole field block, in order",
+          "the doctrine says what the verbs do now",
+          "bin/office is executable"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "claude/INDEX.md",
+        "claude/context/front-sheet.md",
+        "claude/context/sittings",
+        "doctrine",
+        "lib",
+        "share",
+        "templates",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/INDEX.md",
+        "claude/context/front-sheet.md",
+        "claude/context/sittings/2026-09-29-continue-plan-002-2.md",
+        "doctrine/OFFICE.md",
+        "lib/office_bale.py",
+        "lib/office_helper.py",
+        "share/verbs.toml",
+        "templates/folder.md",
+        "tests/test_desk_verbs.py",
+        "tests/test_office.py",
+        "tests/test_read_side.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.45",
+            "contract_docs": {
+              "AGENT.md": "dd22b82cf4b3dc146fa813a862ab03c32d0b94faf8bab5e51218e6cdd5578fed",
+              "TARBALL.md": "59ece7fde0adb7dd5c5f5d902d5cf1078c4562cebb82925aa529df19f22d1c8c",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "5af584b98ed0591b57fbb146baf1441f8130a894e050882d22b3cd62c5cd17d5"
+            },
+            "packer": "chordsphere",
+            "work_class": "mixed",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-09-30T23:41:10+00:00",
+            "base_files": {
+              "README.md": "17065410d2871c1aec43e6b3a1620ad8f9f49bbff0488452d48007d5a2cac704",
+              "RELEASES.md": "88fc8caf0f6cd507a7184604f3e86adf4f4bac49b85d63ac690dbf48ee5a18e5",
+              "VERSION": "40b8eb4000a913a7791090535f291d3d369874162a89ef3c9e3d4e887a1b9e79",
+              "bin/office": "67cdf0999d8a56cdfebdc115d45db871fc86f21a8cb8d75df14d209548a38067",
+              "claude/INDEX.md": "ab4e5d99dbd015695ca5c4fb446c3b1b846a23e4c76be8955b54f0571c96aa3e",
+              "claude/context/front-sheet.md": "66f59e97a1acd21751f592fd8498796d7a9b82da5633daf86865e6b7b7cfffdc",
+              "claude/context/sittings/2026-09-23-office-construction-001.md": "9c804c7dae8ee5056e571720bdc5defc42acd6a497fcc0299d87286aad930a64",
+              "claude/context/sittings/2026-09-29-continue-plan-002.md": "6d1097bb8986ebafdc8902db26019d3ce1f0ba2eaa174917b08345cc850f5c4a",
+              "doctrine/OFFICE.md": "8d8eea8eca72e18664b8a76206604c016b0d4d7e13d11a702fed14c4f81bf3ea",
+              "doctrine/checks/filed-append-only.sh": "0f52ed5870f32c3d985e032fc99df071e256f7cad2e343d9dba8b6a2e7099e95",
+              "lib/office_bale.py": "02cac4f56538dc4cb96df5eaf8ed05f2ca422e15c8da7943f6a441f2c6f30f15",
+              "lib/office_helper.py": "959433e4939e17727357b512ba2139e6ff2420567b38b91e623b4d6cee0ab375",
+              "share/bale-consumption.toml": "cd4c27233b361b5df2c562d212954c7b2aaa6275e8631c79d36b29b7cce9e3d9",
+              "share/profile-shape.toml": "42245342f7f64086db352e5a5e0f02b3ed47fa5c785d0f13348a567d40e1d930",
+              "share/spaces.toml": "f76750a30fa15d37777ef27f297531a6abba66794523d8930ace43b5c4a8d920",
+              "share/verbs.toml": "e6b5bdbbb47231f3e3bdc917622a9b13da597b4b4d986d857a1f785f6d8ab282",
+              "templates/blueprint.md": "5c76d1c1a3c07908e2934898c5931b4694e9261c901830038c0a2ce3515f44da",
+              "templates/clipboard-series.md": "a5d9eb92961bd491b10225321c7564ba0afd3bbb8d9bedd6913f26be36866f22",
+              "templates/clipboard-sheet.md": "3a49bc3bc432964a963d3a8167ab19ac237119f309d9f1943c9313c9e61bd769",
+              "templates/close-report.md": "2ed79c13360c2c9b2dc354b7203d22104344670be50bbe7b70409b32de1012fe",
+              "templates/drafting-table-README.md": "84c6a2462d7e17bb50114f2062792699440113c863919631183beb4a68aa586a",
+              "templates/drafting-table-agenda.md": "ec2c50086d54a7e29c253cc98d7bd20b749a58862e0ede7a42e70fe5f56e15f0",
+              "templates/drafting-table-evidence.md": "2db0ee33c42518ec534463f8d28782d6446eca05fa63a4c6a3f2f33603397516",
+              "templates/drafting-table-moves.md": "ec06d442075329054ff2d90f2a04b065b32fa4392e7e96a2bd46b90eda2ecd8b",
+              "templates/drafting-table-riders.md": "997a09888b6e5d981f968683629861cace9005f9e1759b5a2ece42ca4f2d2b43",
+              "templates/drafting-table-rulings.md": "a4ddb5c4f2a1845df986110d6b811c78b5204c47c5ed7536dc7075229da5e356",
+              "templates/drafting-table-watch-log.md": "31a7191f31277c183325a9dd848037e44e65ac293df433eaba5bde049554cbac",
+              "templates/drafting-table-watches.md": "9f4a8152ae222961c47f305a65154151b0a040244108ece7af8063b056418294",
+              "templates/folder.md": "4c4447a56c4404de8585de0d18b602105f6f4326b3cd0ea37cab4728eb54f8d0",
+              "templates/handbook-chapter.md": "90c939906c6aa4c1615e75b7a904b61c1b7afa67d1e97853bbc1c410e6c06b96",
+              "templates/notepad-page.md": "692df506823206c9db5f7153bf90aa0bf46014ad80fe2962163a5997f8e065de",
+              "templates/profile.md": "c57c886d2d71ff7c07969282a6778da8f0c7a6e352f08021ce50574ce4c7a708",
+              "templates/rolodex-card.md": "833635ca21cc16ed318ae9a8103c9afc8fd8e98027a1fa4eb013cee9cf386833",
+              "templates/suggestion-slip.md": "c78eae20d323be8a290f7d1edce2cd2103f355001db5b0fb19499c2e8e95a250",
+              "tests/test_filed_append_only.py": "9daf033c18db0969190168fb2276dd835c3abd71a56f5bd01d0d6f0edd76d45b",
+              "tests/test_office.py": "3a602f5e185f580314da0d86e77024f11f3e57c28af22929faf61a06760626cb",
+              "tests/test_read_side.py": "69fd19244998d29b428ed070b8a9676ce36c78566f87f729547cc01431569164"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          },
+          "linkage": {
+            "kind": "probe",
+            "point": "pre-build",
+            "depends_on": null
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "A plain office close of a queued or candidate folder writes done: the occupant may finish a job without a session, so the state machine's open -> done is not required before done.",
+            "The reader's In flight may include the office's own repo when it has a .bale/ directory; status --json's surface there is the one the fixtures captured in a project, with different values.",
+            "Ready's order is a stable topological sort on serializes after, smallest size then lowest number first among the folders free to go."
+          ],
+          "judgment_calls": [
+            "History gains a candidate verb, as the brief asked, beyond the blueprint's closed set.",
+            "A forecast holds the desk when an entry is the desk or a directory above it; an entry inside it (one folder's session) does not, so a work session never blocks office open.",
+            "The one-writer rule warns and proceeds when the office has a registry bale cannot read (bale missing, or refusing); it refuses only on an open session it can see.",
+            "The walk-in keeps the day of each walk-in under XDG_STATE_HOME on the machine, outside the office, so the desk can say a gate cleared since; the comparison is by office-local day.",
+            "office reopen refuses an absorbed, split or retired folder; only done comes back, per the state machine.",
+            "Open folders with no session in flight list in the In flight group, marked, so no folder drops off the desk.",
+            "A bare number in a gate flag means a folder, and a folder can be named by `folder N` (or N, when no name matches) in every verb.",
+            "office init had no wizard before (it refused without a path); it now asks for the path and name, and gains --path as the path's flag twin.",
+            "The filed-page check excludes the filing cabinet, which keeps section 15's older rule (the office command adds lines inside filed folders).",
+            "close refuses a successor that is itself absorbed, split or retired, and a split naming one folder twice; it checks the cabinet slot before writing any line.",
+            "A gate line on a folder that does not read (hand-edited, say) is an error line on the desk, never a guess; the desk normalizes gates the way open writes them."
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [
+            "nisaba-src blueprints/drafting-table.md (the context tarball did not arrive; read through a probe)"
+          ],
+          "compaction_occurred": {
+            "occurred": false,
+            "disclosure_ref": null
+          },
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md META through 11.2",
+            "README.md (the brief)",
+            "TARBALL.md sections 1, 2, 3.2 (resolved_scope), 4, 5, 7, 10.1",
+            "nisaba-src blueprints/drafting-table.md sections 0, 1 (intro), 1.5-1.7, 2, 3 (table), 3.6, 4, 5.3, 5.4, 7, 8",
+            "context: bin/office, lib/office_helper.py, lib/office_bale.py, doctrine/OFFICE.md, share/*.toml, templates (folder, blueprint, drafting-table pages), tests, RELEASES.md, front-sheet.md, INDEX.md, the sitting's first page, fixtures README"
+          ],
+          "light_blocks": 0
+        }
+      },
+      "log": ".bale/logs/2026-09-30-desk-verbs-002.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-10-01T01:15:25+00:00",
+  "outcome": "applied"
+}
