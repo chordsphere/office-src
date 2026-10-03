@@ -931,6 +931,34 @@ def add_project(manifest_path, name, path):
     return stored, found
 
 
+def project_spec(spec, taken=()):
+    """(name, stored path, what the check found) for one `[NAME=]PATH`
+    office init was given: the name defaults to the directory's name made
+    a slug, a relative path is resolved against the working directory, and
+    the path must be the top of a git repo bale runs in. Refuses a bad
+    name, a name in taken, or a path that does not check, before anything
+    is built."""
+    name, sep, path = spec.partition("=")
+    if not sep or not PROJECT_NAME_RE.match(name):
+        name, path = "", spec
+    path = path.strip()
+    if not path:
+        raise HelperError(f"--project {spec!r}: no path")
+    stored = path if (path.startswith("/") or path.startswith("~/") or path == "~") else str(pathlib.Path(os.path.abspath(path)))
+    stored = stored.rstrip("/") or "/"
+    resolved = expand_project_path(stored)
+    if not name:
+        name = re.sub(r"-+", "-", re.sub(r"[^a-z0-9]", "-", resolved.name.lower())).strip("-")
+    if not PROJECT_NAME_RE.match(name or "-"):
+        raise HelperError(f"--project {spec!r}: no name can be made from the path; give one as NAME=PATH")
+    if name in taken:
+        raise HelperError(f"--project {spec!r}: the name {name} is given twice; give one as NAME=PATH")
+    ok, found = check_project_dir(resolved)
+    if not ok:
+        raise HelperError(f"--project {spec!r}: {found}")
+    return name, stored, found
+
+
 def section_bounds(lines, heading):
     """Index of a `## heading` line and of the line that ends its section."""
     start = next((i for i, l in enumerate(lines) if l.rstrip() == f"## {heading}"), None)
@@ -1945,6 +1973,28 @@ def cmd_project_add(a):
     print(f"added {a.name}: {stored} ({found})")
 
 
+def cmd_project_spec(a):
+    """One NAME<TAB>PATH line per spec, each checked; refuses at the first
+    that does not check, so office init builds nothing."""
+    taken = []
+    for spec in a.specs:
+        name, stored, _ = project_spec(spec, taken)
+        taken.append(name)
+        print(f"{name}\t{stored}")
+
+
+def cmd_check_project_dir(a):
+    """Whether a path a wizard was just given is the top of a git repo bale
+    runs in, checked before it asks anything else: what it found, or the
+    reason as an error, for the wizard to ask again."""
+    path = a.path.strip()
+    stored = path if (path.startswith("/") or path.startswith("~/") or path == "~") else os.path.abspath(path)
+    ok, found = check_project_dir(expand_project_path(stored))
+    if not ok:
+        raise HelperError(found)
+    print(found)
+
+
 def cmd_check_declaration(a):
     """A ride-along path or an after-land action as it would be stored,
     or a refusal saying why, for the wizard to ask again."""
@@ -2198,6 +2248,8 @@ def main(argv=None):
     p.add_argument("--ride", action="append"); p.add_argument("--no-rides", action="store_true")
     p.add_argument("--after-land", action="append"); p.add_argument("--no-after-land", action="store_true")
     p.set_defaults(fn=cmd_project_declare)
+    p = sub.add_parser("check-project-dir"); p.add_argument("path"); p.set_defaults(fn=cmd_check_project_dir)
+    p = sub.add_parser("project-spec"); p.add_argument("specs", nargs="+"); p.set_defaults(fn=cmd_project_spec)
     p = sub.add_parser("check-declaration"); p.add_argument("kind", choices=("ride", "after-land"))
     p.add_argument("value"); p.set_defaults(fn=cmd_check_declaration)
     p = sub.add_parser("project-facts"); p.add_argument("manifest"); p.add_argument("name")

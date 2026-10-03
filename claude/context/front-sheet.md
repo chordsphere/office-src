@@ -7,12 +7,15 @@ is its home.
 
 ## What it does
 
-Builds and keeps offices. `office init` makes one: the spaces, a profile
-to fill in, bale.toml, a first survey of the machine and a first commit,
-then prints the line that packs the founding session. From then on the
-office is on its own, and office-src reaches it only through `office
-upgrade`. Every day: `office` to walk in, `office note` to capture a
-line, `office slip` to drop a friction slip, `office start` to send a
+Builds and keeps offices. `office tour` lets you try one first: a
+throwaway office in a temp directory, six steps through the verbs, then
+deleted. `office init` makes a real one: the spaces, a profile to fill
+in, bale.toml, a first survey of the machine and a first commit, then
+asks which projects it watches and prints the line that packs the
+founding session. From then on the office is on its own, and office-src
+reaches it only through `office upgrade`. Every day: `office` to walk in
+(it ends with a Next line naming the one command to type), `office note`
+to capture a line, `office slip` to drop a friction slip, `office start` to send a
 session out for a folder (it packs the session with bale, or opens a
 planner's bundle, records it in the folder and puts everything to attach
 in one out tray beside the opener), `office land` to bring it back (bale
@@ -26,7 +29,8 @@ projects an office scopes, declares what rides beside each one's
 sessions and what runs after they land, and shows what bale records
 about them: the trust ledger, who last landed a file, the version trail. Walking in
 shows the sessions open in those projects. `office status`, `survey` and
-`upgrade` look after the office itself.
+`upgrade` look after the office itself. `office help` lists every verb by
+what you want to do, and every verb's `--help` has examples.
 
 ## Who uses it, where and when it runs
 
@@ -40,6 +44,20 @@ pastes.
 
 ## Recent changes
 
+- 0.8.0 (session 2026-10-03-friction-front-door-002): the front door,
+  the third and last session of the friction wave. Walking in ends with
+  one Next line, worked out each time and never written down: land the
+  session out, start the first ready folder, add a project, and so on
+  down to nothing to do. `office help` is organized by what you want to
+  do and says what the office saves a bale user; every verb's help has
+  examples. `office tour` builds a throwaway office, walks through the
+  verbs on it (start and land shown, never run), offers a shell to play
+  in, and deletes it, touching nothing real and running no bale.
+  `office init` asks which projects the office watches (`--project` is
+  the flag twin). `office start` refuses a bundle whose forecast overlaps
+  an open session in its own words, as it does a pack, whenever it can
+  read the bundle. README.md leads with what you want to do. Additive: no
+  migration, no office needs anything done.
 - 0.7.0 (session 2026-10-03-friction-return-trip-001): the return trip,
   the second session of the friction wave. `office land` brings a
   session back in one command: bale apply (or retry, for a held one) in
@@ -126,7 +144,19 @@ pastes.
 
 - `office start` packs the doctrine from a copy, but the lines `office
   init` and `office upgrade` print still run `bale pack --context` in the
-  install's doctrine directory, which writes an outbox there.
+  install's doctrine directory, which writes an outbox there. The
+  founding door (its own session after 4b) hands both to `office start`.
+- An unfounded office's Next line says `office status`, which names the
+  missing profile sections but cannot reprint the founding line `office
+  init` printed; the founding door is where that is fixed.
+- The Next line cannot say whether a session's response is already in
+  the downloads: bale's `--json` surfaces give a count of search
+  directories (`bale status --json`, `config.search_paths`) but not the
+  directories or what they hold. It says the session is out and that
+  land finds it; a slip for bale-src.
+- `office tour` and its play shell were built and tested on Linux; on
+  WSL the first `office tour` is their test (the tour turns the
+  clipboard and Explorer steps off for itself).
 - ~~An office session forecasts its folder, and `office start` records
   the session in that folder after packing, so the folder.md the worker
   was shown is one commit behind; a response that rewrites folder.md
@@ -184,6 +214,10 @@ pastes.
 - *Why does `office note` still work when everything else refuses?*
   Capture is instant and dumb. It warns about an unfounded or out-of-date
   office and writes anyway.
+- *Can the tour change my office?* No. It builds its own in a temp
+  directory, runs every command against it with its own settings and a
+  stand-in bale that refuses everything, and deletes it when it ends or
+  is stopped.
 - *Who marks a renovation done?* `office upgrade`, by checking what the
   renovation declared. No session edits the version stamp.
 
