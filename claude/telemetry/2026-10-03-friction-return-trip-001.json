@@ -1,0 +1,428 @@
+{
+  "record_version": 1,
+  "session_id": "2026-10-03-friction-return-trip-001",
+  "created_at": "2026-10-03T00:55:32+00:00",
+  "attempts": [
+    {
+      "at": "2026-10-03T00:55:32+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "claude/INDEX.md",
+        "claude/context/front-sheet.md",
+        "claude/context/sittings",
+        "claude/fixtures",
+        "doctrine",
+        "lib",
+        "share",
+        "templates",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-10-03-friction-return-trip-001.log",
+      "bundle": {
+        "stem": "2026-10-02-friction-return-trip",
+        "brief_sha256": "823df8b0c12b9884e51e7238555f94ad5ade2a33b10eea7a2c55af2d3a73e918",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "aab2f46e3fc5596d4898740e7b4b0e117de1a1cd616181bb333f9b4021b3fa06"
+      },
+      "provenance": {
+        "work_class": "mixed",
+        "packer": "chordsphere",
+        "packed_at": "2026-10-03T00:55:32+00:00"
+      }
+    },
+    {
+      "at": "2026-10-03T03:06:25+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-10-03-friction-return-trip-001.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "project test suite (python3 -m unittest discover -s tests; about seven minutes)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "session: the sitting's second page is byte-exact and pinned": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "session: VERSION is 0.7.0 and RELEASES.md opens with it": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "session: land is declared built, attended, landing nothing guaranteed": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "session: bale-consumption declares open, apply, retry and relay, and apply answers nothing": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "session: the land fixtures are the probe's lines, sha256 by sha256": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "session: the doctrine says what office land does and how a sitting's words land": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "session: the front sheet and INDEX say what 0.7.0 changed": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "session: the earlier record, fixtures and migrations are byte for byte untouched": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "session: land and start --bundle answer --help": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "project test suite (python3 -m unittest discover -s tests; about seven minutes)": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "session: the sitting's second page is byte-exact and pinned": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "session: VERSION is 0.7.0 and RELEASES.md opens with it": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "session: land is declared built, attended, landing nothing guaranteed": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "session: bale-consumption declares open, apply, retry and relay, and apply answers nothing": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "session: the land fixtures are the probe's lines, sha256 by sha256": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "session: the doctrine says what office land does and how a sitting's words land": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "session: the front sheet and INDEX say what 0.7.0 changed": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "session: the earlier record, fixtures and migrations are byte for byte untouched": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "session: land and start --bundle answer --help": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "file syntax (bash -n, python ast, toml, json)",
+          "project test suite (python3 -m unittest discover -s tests; about seven minutes)",
+          "session: the sitting's second page is byte-exact and pinned",
+          "session: VERSION is 0.7.0 and RELEASES.md opens with it",
+          "session: land is declared built, attended, landing nothing guaranteed",
+          "session: bale-consumption declares open, apply, retry and relay, and apply answers nothing",
+          "session: the land fixtures are the probe's lines, sha256 by sha256",
+          "session: the doctrine says what office land does and how a sitting's words land",
+          "session: the front sheet and INDEX say what 0.7.0 changed",
+          "session: the earlier record, fixtures and migrations are byte for byte untouched",
+          "session: land and start --bundle answer --help",
+          "exec bit: bin/office"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "claude/INDEX.md",
+        "claude/context/front-sheet.md",
+        "claude/context/sittings",
+        "claude/fixtures",
+        "doctrine",
+        "lib",
+        "share",
+        "templates",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/INDEX.md",
+        "claude/context/front-sheet.md",
+        "claude/context/sittings/2026-10-02-friction-wave-sitting-001-2.md",
+        "claude/fixtures/bale-0.4.45/land/README.md",
+        "claude/fixtures/bale-0.4.45/land/apply-applied.json",
+        "claude/fixtures/bale-0.4.45/land/apply-appliedj.json",
+        "claude/fixtures/bale-0.4.45/land/apply-bare.json",
+        "claude/fixtures/bale-0.4.45/land/apply-clar.json",
+        "claude/fixtures/bale-0.4.45/land/apply-drift.json",
+        "claude/fixtures/bale-0.4.45/land/apply-driftrestored.json",
+        "claude/fixtures/bale-0.4.45/land/apply-hold.json",
+        "claude/fixtures/bale-0.4.45/land/apply-missing.json",
+        "claude/fixtures/bale-0.4.45/land/apply-noarg.json",
+        "claude/fixtures/bale-0.4.45/land/apply-outside.json",
+        "claude/fixtures/bale-0.4.45/land/dossier-applied.json",
+        "claude/fixtures/bale-0.4.45/land/dossier-clar.json",
+        "claude/fixtures/bale-0.4.45/land/dossier-drift.json",
+        "claude/fixtures/bale-0.4.45/land/dossier-driftrestored.json",
+        "claude/fixtures/bale-0.4.45/land/dossier-hold.json",
+        "claude/fixtures/bale-0.4.45/land/dossier-openb.json",
+        "claude/fixtures/bale-0.4.45/land/dossier-outside.json",
+        "claude/fixtures/bale-0.4.45/land/dry-1.json",
+        "claude/fixtures/bale-0.4.45/land/help-apply.json",
+        "claude/fixtures/bale-0.4.45/land/help-open.json",
+        "claude/fixtures/bale-0.4.45/land/help-relay.json",
+        "claude/fixtures/bale-0.4.45/land/help-retry.json",
+        "claude/fixtures/bale-0.4.45/land/help-unlock.json",
+        "claude/fixtures/bale-0.4.45/land/help.json",
+        "claude/fixtures/bale-0.4.45/land/open-brief.json",
+        "claude/fixtures/bale-0.4.45/land/open-extra-flags.json",
+        "claude/fixtures/bale-0.4.45/land/open-missing.json",
+        "claude/fixtures/bale-0.4.45/land/open-ro-bare.json",
+        "claude/fixtures/bale-0.4.45/land/pack-drift.json",
+        "claude/fixtures/bale-0.4.45/land/ptyapply-driftn.json",
+        "claude/fixtures/bale-0.4.45/land/ptyapply-drifty.json",
+        "claude/fixtures/bale-0.4.45/land/ptyapply-outside.json",
+        "claude/fixtures/bale-0.4.45/land/ptyapply-split.json",
+        "claude/fixtures/bale-0.4.45/land/ptyapply-whole.json",
+        "claude/fixtures/bale-0.4.45/land/ptyopen-split.json",
+        "claude/fixtures/bale-0.4.45/land/relay-clar.json",
+        "claude/fixtures/bale-0.4.45/land/status-applied.json",
+        "claude/fixtures/bale-0.4.45/land/status-clar.json",
+        "claude/fixtures/bale-0.4.45/land/status-drift.json",
+        "claude/fixtures/bale-0.4.45/land/status-hold.json",
+        "claude/fixtures/bale-0.4.45/land/status-openb.json",
+        "claude/fixtures/bale-0.4.45/land/status-openro.json",
+        "doctrine/OFFICE.md",
+        "lib/office_bale.py",
+        "lib/office_helper.py",
+        "share/bale-consumption.toml",
+        "share/verbs.toml",
+        "tests/test_land.py",
+        "tests/test_office.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.45",
+            "contract_docs": {
+              "AGENT.md": "dd22b82cf4b3dc146fa813a862ab03c32d0b94faf8bab5e51218e6cdd5578fed",
+              "TARBALL.md": "59ece7fde0adb7dd5c5f5d902d5cf1078c4562cebb82925aa529df19f22d1c8c",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "5af584b98ed0591b57fbb146baf1441f8130a894e050882d22b3cd62c5cd17d5"
+            },
+            "packer": "chordsphere",
+            "work_class": "mixed",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-10-03T00:55:32+00:00",
+            "base_files": {
+              "README.md": "b28e6c4f92c6aa88c3750260680dc8116f16cbe225790384ef1e3a657a601fde",
+              "RELEASES.md": "06dce3c9ac566467728b5398fd61a96dcd848530dfaf589a658bb4d478d82972",
+              "VERSION": "97a5d6e540a6120d09c39ddb667e0e8e2bac7fcc2ffef813b82e08fd60365bce",
+              "bin/office": "44ef3b7212da98246e4124cd23f95acd761c51464908c35c25bda3c2aadd37dc",
+              "claude/INDEX.md": "708fe00d5ed8f461f1866272bb31e8c850628681710c7f42c5b4a74aed8d534d",
+              "claude/context/front-sheet.md": "85eeeb517853ca4efebb020ff2cf144ce84761c3fb8587d323e6473b555c9dce",
+              "claude/context/sittings/2026-09-23-office-construction-001.md": "9c804c7dae8ee5056e571720bdc5defc42acd6a497fcc0299d87286aad930a64",
+              "claude/context/sittings/2026-09-29-continue-plan-002-2.md": "b5a3f09fd59ac66f3fd0023a98a23dd0d13ac35188a4dce6a01624ee1ca18c78",
+              "claude/context/sittings/2026-09-29-continue-plan-002-3.md": "6e1e0c056307d3606da8a3d595d973fd15280833d980324574966fc87fc69eaf",
+              "claude/context/sittings/2026-09-29-continue-plan-002-4.md": "da1fbbc5514918a2d57aadb7affdd052d8a008560e749c32219d551e775d3c6d",
+              "claude/context/sittings/2026-09-29-continue-plan-002.md": "6d1097bb8986ebafdc8902db26019d3ce1f0ba2eaa174917b08345cc850f5c4a",
+              "claude/context/sittings/2026-10-02-friction-wave-sitting-001.md": "97a2df5f66da24b7a75a13024da98403e9aa4229865014e5c993410de592ddf2",
+              "claude/fixtures/bale-0.4.45/README.md": "469b561c4d479403fee52114a2c01678da4694323cab48b66c7ae2ec2f74aed8",
+              "claude/fixtures/bale-0.4.45/anywhere/version.json": "efb0c5b1da6af160375e70e3b0ff7b4a527b388ad2a0176f050305972c54bbae",
+              "claude/fixtures/bale-0.4.45/office-src/stats_json.json": "a1b0dbf48bfda830a7ffeb8cb01ebc748242fc883033d02ab621b3e9d795de4b",
+              "claude/fixtures/bale-0.4.45/office-src/stats_json_work-class_meta.json": "4634e4766b1abc3bd815b8aec048153f8e6e19731c7db82738f2ed2b73bd65d7",
+              "claude/fixtures/bale-0.4.45/office-src/stats_json_work-class_mixed.json": "ef9ae95c2d18dbf873f0462deec8349bd0e7b3a95fa6788ebaa093baa7521c22",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-01-01-no-such-session-001_json.json": "d8518ea77cb9ecfa98f32c8e7ca633655e9761b9b0cb825c5ca211f8bb3c0f71",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-core-001_json.json": "04363ee7c1cc5f65fdd40870a03bc3427a2827ebeb1d27bea3fce7a3d0cb81e0",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-core-001_since_2026-09-01_json.json": "b72292c04b01a403ca5c9bd5dccfb387ba1400230bc4e7c45ac67d90325f3f3d",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-verbs-002_json.json": "b6fc28b8edc6e5e0eea8b8dc93ff4005fa01d663bc3baad875ed1ed3c384d347",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-smoothing-003_json.json": "ab6553228f68ee96207bf7a1823c0b1856409fd99d1da76190d6f3af37bfac05",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-continue-plan-002_json.json": "09be6288ae1d3d214f3230991b5b191a7c76421e357c8598a9b6ce8bd6e30c5d",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-drafting-table-sitting-001_json.json": "068be3f995cbb62d7afba58e161b05cec4942a56a14aa22018b5093b5de3a88c",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-drafting-table-space-003_json.json": "ed14f71fc9c05a759310063f1b307fd9a678bc349ce9bd7e4db8ddea2a22ba90",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-verb-table-columns-004_json.json": "870b8ad34c55fd0ea382e470a82e872b02910650426f8a60a6ccc287170e37c1",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-30-read-side-001_json.json": "745eed58c6ec075a47e102e3d9cff6b0a268a64d37ae698c865ca35a7a9a9cdf",
+              "claude/fixtures/bale-0.4.45/office-src/status_json.json": "4aac175b0dffa2ac394959ec8bb7b18ab0f9d7ac2c85bf2efb83441e45ff2fbe",
+              "claude/fixtures/bale-0.4.45/pack/README.md": "7fda3b91ab2df15264b5c69b8270855653296a160108c1a9e1c86f81a5a35ba3",
+              "claude/fixtures/bale-0.4.45/pack/ctx-other-include.json": "8e99841daa4d2b4bce5aca4b91a14f6acd287034881326d67ea082515e734c95",
+              "claude/fixtures/bale-0.4.45/pack/ctx-other-inside.json": "3d84eee7ce21868c04bba668e9da8d284c89b1619acbb853175535c5d692f465",
+              "claude/fixtures/bale-0.4.45/pack/ctx-plain.json": "5da715135bbc7728d85b16637f573bf8865f813b47b75d7975ee45960c85fa46",
+              "claude/fixtures/bale-0.4.45/pack/office-context-include.json": "b4aa1024f5c2dc1a2693b8a995783889fb830daa8a028322f64b15130702d5ba",
+              "claude/fixtures/bale-0.4.45/pack/office-context-whole.json": "b5da4e98cea8ff49754264f86345ceaa573edc37816b760665386f4a785510dd",
+              "claude/fixtures/bale-0.4.45/pack/office-pack.json": "c65862849087aaac35c5fc24686407b8e283e4a5190531eb43250f5dbde06dd4",
+              "claude/fixtures/bale-0.4.45/pack/office-second-pack-plain.json": "4251be81b4c707a867624fb4be107fb8c1caa75cfe7645188ddb3720a4f2b07b",
+              "claude/fixtures/bale-0.4.45/pack/office-second-pack.json": "3aca7ca62d6928e9119443e47090b992ea8942565a5428800d5615f82336a150",
+              "claude/fixtures/bale-0.4.45/pack/office-status.json": "efe07d621916d9032698994cb17200d2ae8523beedf5e61b60ede1ebd9581924",
+              "claude/fixtures/bale-0.4.45/pack/pack_help.json": "5280a7bb3b17e897923e88b97b153c65297675cd30b72dd529c65ef2f72536d7",
+              "claude/fixtures/bale-0.4.45/pack/project-pack-plain.json": "1d39b6be46923a28d40b0c85164a0e0c95fc7e2b70836ac172ae84f740b7c750",
+              "claude/fixtures/bale-0.4.45/pack/project-pack.json": "5d464ac0c12a72b658275b75297571b97cf6ef649ed7cc571aadd12eee8fa819",
+              "claude/fixtures/bale-0.4.45/test-office/status_json.json": "4b2cf1a076e8fb95607d48699ec9e10cdc18c02fee3d0fee02790df67a03d95c",
+              "doctrine/OFFICE.md": "9ae6a03aefc2c945e31c39575de412fa09e333a5e536a0a4b075fe7ea3b65828",
+              "doctrine/checks/filed-append-only.sh": "0f52ed5870f32c3d985e032fc99df071e256f7cad2e343d9dba8b6a2e7099e95",
+              "lib/office_bale.py": "c57d7b96eb7b098cbf57e8540123a2c8d7b0fdf861d5ddbd81a5ff1cd54e0372",
+              "lib/office_helper.py": "a5f4414493abe2f902f80a6b26fcc7ca92d4f8b2f28603ace2a47c6dcb361411",
+              "share/bale-consumption.toml": "eef83e90e9c0f4d9165af96663a1478ff9c01b4b45b6eb8b3c942575e359646b",
+              "share/profile-shape.toml": "42245342f7f64086db352e5a5e0f02b3ed47fa5c785d0f13348a567d40e1d930",
+              "share/spaces.toml": "f76750a30fa15d37777ef27f297531a6abba66794523d8930ace43b5c4a8d920",
+              "share/verbs.toml": "1dafc9c95d1916140d3dedbdb6a8e47e617f698261923a57f63cf1433f7c01f0",
+              "templates/blueprint.md": "5c76d1c1a3c07908e2934898c5931b4694e9261c901830038c0a2ce3515f44da",
+              "templates/clipboard-series.md": "a5d9eb92961bd491b10225321c7564ba0afd3bbb8d9bedd6913f26be36866f22",
+              "templates/clipboard-sheet.md": "3a49bc3bc432964a963d3a8167ab19ac237119f309d9f1943c9313c9e61bd769",
+              "templates/close-report.md": "2ed79c13360c2c9b2dc354b7203d22104344670be50bbe7b70409b32de1012fe",
+              "templates/drafting-table-README.md": "84c6a2462d7e17bb50114f2062792699440113c863919631183beb4a68aa586a",
+              "templates/drafting-table-agenda.md": "ec2c50086d54a7e29c253cc98d7bd20b749a58862e0ede7a42e70fe5f56e15f0",
+              "templates/drafting-table-evidence.md": "2db0ee33c42518ec534463f8d28782d6446eca05fa63a4c6a3f2f33603397516",
+              "templates/drafting-table-moves.md": "ec06d442075329054ff2d90f2a04b065b32fa4392e7e96a2bd46b90eda2ecd8b",
+              "templates/drafting-table-riders.md": "997a09888b6e5d981f968683629861cace9005f9e1759b5a2ece42ca4f2d2b43",
+              "templates/drafting-table-rulings.md": "a4ddb5c4f2a1845df986110d6b811c78b5204c47c5ed7536dc7075229da5e356",
+              "templates/drafting-table-watch-log.md": "31a7191f31277c183325a9dd848037e44e65ac293df433eaba5bde049554cbac",
+              "templates/drafting-table-watches.md": "9f4a8152ae222961c47f305a65154151b0a040244108ece7af8063b056418294",
+              "templates/folder.md": "602c95dc370519a977a50456da1da89bbec5c6620951bccf1431675652fc8f8d",
+              "templates/handbook-chapter.md": "90c939906c6aa4c1615e75b7a904b61c1b7afa67d1e97853bbc1c410e6c06b96",
+              "templates/notepad-page.md": "692df506823206c9db5f7153bf90aa0bf46014ad80fe2962163a5997f8e065de",
+              "templates/profile.md": "c57c886d2d71ff7c07969282a6778da8f0c7a6e352f08021ce50574ce4c7a708",
+              "templates/rolodex-card.md": "833635ca21cc16ed318ae9a8103c9afc8fd8e98027a1fa4eb013cee9cf386833",
+              "templates/suggestion-slip.md": "8b95b77a645429817ace549f81822ff0c65b1369746bb580635a4be6ac87c5d1",
+              "tests/test_desk_verbs.py": "e8c6f0be1e0171f3c2860fba7e43d68f4490c39e02c684dd9f75207da7d23e32",
+              "tests/test_filed_append_only.py": "9daf033c18db0969190168fb2276dd835c3abd71a56f5bd01d0d6f0edd76d45b",
+              "tests/test_office.py": "c37e637343ffb7f2216b5f4afc26d3ad4511527dea0024a9357b0ccf6c53f363",
+              "tests/test_read_side.py": "3cac6e376a755f4853dd43def44efb6c4c820ccdee78f7f7a11609e5fce53ddf",
+              "tests/test_start.py": "b7e79f1fb9d36409b48c9535ed58824c80993295b7def8c6e1a84c470d9bbe6a"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          },
+          "linkage": {
+            "kind": "probe",
+            "point": "pre-build",
+            "depends_on": null
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "bale's prompts reach the occupant through office land's copy of bale's stdout when stdin is a terminal, as the probe's split pseudo-terminal case showed; not yet seen on a real WSL terminal",
+            "the folder record commit office start makes is the last change to an office session's folder.md before it lands, which holds while office sessions take turns on the notepad"
+          ],
+          "judgment_calls": [
+            "apply runs plain, not --json, with stdout copied and the outcome read from the dossier",
+            "the relay and bale open's report are read from between declared markers, the opener's narrow exception",
+            "the response is passed to bale by name (response-SID.tar.gz) or by full path, never as bare apply",
+            "a held session's corrected response must be named; asked on a terminal, refused piped",
+            "the office record is taken out of an office session's folder while bale lands and merged back with git merge-file, falling back to a new append",
+            "after-land actions stop at the first failure and land exits 1",
+            "ratification is asked last, default not now",
+            "office start --bundle skips the office's own overlap refusal, leaving it to bale open's gates",
+            "sitting pages are filed from a --brief given by hand too, not only from bundles",
+            "office land joins the walk-in's From here list"
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [],
+          "compaction_occurred": {
+            "occurred": false,
+            "disclosure_ref": null
+          },
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md META through section 11.2",
+            "README.md (the brief)",
+            "TARBALL.md sections 1, 2, 4, 5, 7, 8, 9, 10 and parts of 3.4",
+            "PLANNER.md section 2",
+            "doctrine/OFFICE.md",
+            "claude/responses/2026-10-02-friction-out-and-in-002/notes.md",
+            "claude/context/front-sheet.md",
+            "claude/context/sittings/2026-09-29-continue-plan-002-4.md",
+            "claude/context/sittings/2026-10-02-friction-wave-sitting-001.md",
+            "lib/office_bale.py",
+            "bin/office",
+            "share/bale-consumption.toml",
+            "share/verbs.toml",
+            "tests/test_start.py"
+          ],
+          "light_blocks": 0
+        }
+      },
+      "log": ".bale/logs/2026-10-03-friction-return-trip-001.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-10-03T03:06:25+00:00",
+  "outcome": "applied"
+}
