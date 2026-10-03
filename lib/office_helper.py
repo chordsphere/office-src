@@ -108,8 +108,8 @@ def render_manifest(spaces_catalog, name, version, built_at, timezone):
         "# Floor plan of this office. The office command finds an office by",
         "# this file and reads it on every run. Only office upgrade writes",
         "# migrated_to. The founding session sets the timezone; renovation",
-        "# sessions change the spaces; office projects add writes the",
-        "# [projects] table. Nothing else should change it.",
+        "# sessions change the spaces; office projects add and set write",
+        "# the [projects] table. Nothing else should change it.",
         "",
         "[office]",
         f'name = "{name}"',
@@ -691,7 +691,8 @@ def read_projects(manifest):
         raise HelperError("the floor plan's projects is not a table")
     out = []
     for name, entry in sorted(table.items()):
-        item = {"name": name, "path": None, "resolved": None, "problem": None}
+        item = {"name": name, "path": None, "resolved": None, "problem": None,
+                "rides": [], "after_land": [], "declaration_problems": []}
         if not PROJECT_NAME_RE.match(name):
             item["problem"] = "the name must be letters, digits, dash or underscore"
         elif not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
@@ -702,7 +703,145 @@ def read_projects(manifest):
                 item["resolved"] = expand_project_path(entry["path"])
             except HelperError as exc:
                 item["problem"] = str(exc)
+        if isinstance(entry, dict):
+            # The two declarations are optional; a table without them is
+            # valid, and one that does not read is reported beside the
+            # project, never taken as empty and never fatal to the reads.
+            for key in DECLARATION_KEYS:
+                value = entry.get(key, [])
+                if string_list(value):
+                    item[key] = list(value)
+                else:
+                    item["declaration_problems"].append(f"{key} is not a list of non-empty strings")
         out.append(item)
+    return out
+
+
+# --- what rides with a project, and what runs after it lands ------------------
+#
+# Two optional keys in a project's [projects.NAME] table, set through
+# `office projects` (a wizard, with flag twins) and never by hand or in
+# the project's own repo: what rides is office context, and a project's
+# audience must not see the office's choices.
+#
+#   rides       paths on this machine whose context rides beside every
+#               session on the project: a directory inside another repo,
+#               a whole repo, or a file; absolute or ~/
+#   after_land  commands run in the project's repo after one of its
+#               sessions lands (office land runs them; this release only
+#               declares and shows them)
+
+DECLARATION_KEYS = ("rides", "after_land")
+
+
+def check_ride(path):
+    """(stored, resolved) for a path that rides with a project: absolute
+    or ~/, and on this machine now."""
+    text = path.strip()
+    if not text:
+        raise HelperError("a path that rides is empty")
+    stored = text.rstrip("/") or "/"
+    resolved = expand_project_path(stored)
+    if not resolved.exists():
+        raise HelperError(f"no such path on this machine: {stored}")
+    return stored, resolved
+
+
+def check_after_land(command):
+    """A command run in the project's repo after a session lands: one
+    non-empty line."""
+    text = command.strip()
+    if not text:
+        raise HelperError("an after-land action is empty")
+    if "\n" in text or "\r" in text:
+        raise HelperError(f"an after-land action is one line: {command!r}")
+    return text
+
+
+def table_span(lines, name):
+    """(start, end) of [projects.NAME] in the floor plan's lines: the
+    header's index and the index of the next table header (or the end).
+    None when the table is not there."""
+    header = f"[projects.{name}]"
+    start = next((i for i, l in enumerate(lines) if l.strip() == header), None)
+    if start is None:
+        return None
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
+    return start, end
+
+
+def set_declarations(manifest_path, name, rides=None, after_land=None):
+    """Write a project's declarations, keeping every other byte of the
+    floor plan. A list replaces the key's value; [] removes the key;
+    None leaves it as it is. Returns the project's entry as it reads
+    back. Refuses a project the table does not list, a key written over
+    several lines (not the shape this writes), and a value that does
+    not check."""
+    if not PROJECT_NAME_RE.match(name):
+        raise HelperError(f"a project name must be letters, digits, dash or underscore: {name!r}")
+    want = {}
+    if rides is not None:
+        seen = []
+        for r in rides:
+            stored, _ = check_ride(r)
+            if stored not in seen:
+                seen.append(stored)
+        want["rides"] = seen
+    if after_land is not None:
+        want["after_land"] = [check_after_land(c) for c in after_land]
+    path = pathlib.Path(manifest_path)
+    text = path.read_text(encoding="ascii")
+    lines = text.splitlines()
+    span = table_span(lines, name)
+    projects = read_projects(read_toml(path)) or []
+    if span is None or name not in [p["name"] for p in projects]:
+        raise HelperError(f"no project named {name} in this office's [projects] "
+                          f"(it lists: {', '.join(p['name'] for p in projects) or 'none'}); "
+                          "office projects add NAME PATH adds one")
+    start, end = span
+    body = lines[start + 1:end]
+    for key, value in want.items():
+        at = [i for i, l in enumerate(body) if re.match(rf"^\s*{key}\s*=", l)]
+        for i in at:
+            if not body[i].rstrip().endswith("]"):
+                raise HelperError(f"[projects.{name}] writes {key} over several lines, which office projects "
+                                  "does not rewrite; put it on one line first")
+        new_line = f"{key} = [" + ", ".join(toml_basic_string(v) for v in value) + "]"
+        if at:
+            body[at[0]] = new_line
+            for i in reversed(at[1:]):
+                del body[i]
+            if not value:
+                del body[at[0]]
+        elif value:
+            # After the last key line, before the blank lines that end
+            # the table.
+            last = max((i for i, l in enumerate(body) if l.strip() and not l.lstrip().startswith("#")), default=-1)
+            body.insert(last + 1, new_line)
+    new = lines[:start + 1] + body + lines[end:]
+    out = "\n".join(new) + ("\n" if text.endswith("\n") or not text else "")
+    path.write_text(out, encoding="ascii")
+    entry = next(p for p in read_projects(read_toml(path)) if p["name"] == name)
+    for key, value in want.items():
+        if entry[key] != value:
+            raise HelperError(f"{path}: {key} did not read back as written; the floor plan needs a look")
+    return entry
+
+
+def describe_declarations(entry):
+    """Lines for office projects: what rides and what runs after landing,
+    each ride-along checked on this machine."""
+    out = []
+    for r in entry["rides"]:
+        try:
+            resolved = expand_project_path(r)
+            where = "" if resolved.exists() else "  (NOT ON THIS MACHINE)"
+        except HelperError as exc:
+            where = f"  ({exc})"
+        out.append(f"rides: {r}{where}")
+    for c in entry["after_land"]:
+        out.append(f"after it lands: {c}")
+    out += [f"declaration problem: {p}" for p in entry["declaration_problems"]]
     return out
 
 
@@ -783,7 +922,8 @@ def add_project(manifest_path, name, path):
         block.append("")
     if manifest.get("projects") is None:
         block += ["", "# The projects this office scopes on this machine: a name and the path",
-                  "# of its repo, absolute or ~-relative. office projects add writes them."]
+                  "# of its repo, absolute or ~-relative, and what rides with each and runs",
+                  "# after it lands. office projects add and set write them."]
     block += ["", f"[projects.{name}]", f"path = {toml_basic_string(stored)}"]
     pathlib.Path(manifest_path).write_text(text + "\n".join(block) + "\n", encoding="ascii")
     return stored, found
@@ -1268,6 +1408,30 @@ def append_problem(old, new):
     return f"changed bytes already filed (first difference at byte {first_difference(old, new)} of {len(old)})"
 
 
+def append_check(root, rel):
+    """None when the page at rel (relative to the repo at root) is new
+    to git or grows its committed bytes only at its end, else what
+    broke. The check doctrine section 15 asks of a script that appends
+    to filed paper, made before it commits: office note runs it, and
+    the drafting-table's recording verbs will. A root that is not a git
+    repo has nothing filed to compare against, which is not a refusal."""
+    root = pathlib.Path(root)
+    inside = subprocess.run(["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
+                            capture_output=True, text=True, timeout=30)
+    if inside.returncode != 0:
+        return None
+    if subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "-q", "HEAD"],
+                      capture_output=True).returncode != 0:
+        return None
+    shown = subprocess.run(["git", "-C", str(root), "show", f"HEAD:{rel}"], capture_output=True, timeout=60)
+    if shown.returncode != 0:
+        return None  # not in the last commit: a new page has no base
+    disk = root / rel
+    if not disk.is_file():
+        return "the page is committed but missing from disk"
+    return append_problem(shown.stdout, disk.read_bytes())
+
+
 def filed_history_check(root):
     """(problems, counts): every commit, first-parent, whose diff to a
     filed page does more than append at its end, and every uncommitted
@@ -1640,12 +1804,59 @@ def cmd_projects(a):
         bad += not ok
         print(f"{p['name']:<{width}}  {p['path'] or '(no path)'}  "
               + (f"({text})" if ok else f"CANNOT BE READ: {text}"))
+        for line in describe_declarations(p):
+            print(f"{'':<{width}}  {line}")
     return 3 if bad else 0
+
+
+def cmd_project_declare(a):
+    """Set one project's declarations: --ride and --after-land replace
+    the key's list, --no-rides and --no-after-land clear it, and a key
+    with neither is left as it is."""
+    rides = [] if a.no_rides else (a.ride or None)
+    after = [] if a.no_after_land else (a.after_land or None)
+    if a.no_rides and a.ride:
+        raise HelperError("--ride and --no-rides contradict each other")
+    if a.no_after_land and a.after_land:
+        raise HelperError("--after-land and --no-after-land contradict each other")
+    entry = set_declarations(a.manifest, a.name, rides, after)
+    lines = describe_declarations(entry)
+    print(f"{a.name}: " + ("; ".join(lines) if lines else "nothing rides with it and nothing runs after it lands"))
 
 
 def cmd_project_add(a):
     stored, found = add_project(a.manifest, a.name, a.path)
     print(f"added {a.name}: {stored} ({found})")
+
+
+def cmd_check_declaration(a):
+    """A ride-along path or an after-land action as it would be stored,
+    or a refusal saying why, for the wizard to ask again."""
+    if a.kind == "ride":
+        print(check_ride(a.value)[0])
+    else:
+        print(check_after_land(a.value))
+
+
+def cmd_project_facts(a):
+    """One project's entry as tab-separated lines a verb decides on:
+    path (as written), resolved, then one rides and one after_land line
+    per entry. Refuses a project the table does not list or cannot read."""
+    projects = read_projects(read_toml(a.manifest)) or []
+    entry = next((p for p in projects if p["name"] == a.name), None)
+    if entry is None:
+        raise HelperError(f"no project named {a.name} in this office's [projects] "
+                          f"(it lists: {', '.join(p['name'] for p in projects) or 'none'})")
+    if entry["problem"]:
+        raise HelperError(f"{a.name}: {entry['problem']}")
+    if entry["declaration_problems"]:
+        raise HelperError(f"{a.name}: " + "; ".join(entry["declaration_problems"]))
+    print(f"path\t{entry['path']}")
+    print(f"resolved\t{entry['resolved']}")
+    for r in entry["rides"]:
+        print(f"rides\t{r}\t{expand_project_path(r)}")
+    for c in entry["after_land"]:
+        print(f"after_land\t{c}")
 
 
 def cmd_record_session(a):
@@ -1709,6 +1920,11 @@ def cmd_folder_facts(a):
     print(f"number\t{number or ''}")
     print(f"history\t{1 if f['has_history'] else 0}")
     print(f"sids\t{len(f['sids'])}")
+    # The fields office start derives from: the lane (project: paths),
+    # the work class and the title.
+    for key in ("lane", "class"):
+        print(f"{key}\t{(f['fields'].get(key) or [''])[0]}")
+    print(f"title\t{f['title'] or ''}")
     if problem:
         log(f"warning: {a.folder_md}: {problem}")
 
@@ -1754,6 +1970,23 @@ def cmd_filed_check(a):
     for p in problems:
         print(f"  {p}")
     return 3
+
+
+def cmd_append_check(a):
+    """Exit 0 when the page only grew at its end (or is new), 3 with the
+    reason on stdout when it changed bytes already committed."""
+    why = append_check(a.root, a.path)
+    if why:
+        print(why)
+        return 3
+    return 0
+
+
+def cmd_project_names(a):
+    """One project name per line, in the floor plan's order; nothing when
+    the office scopes none."""
+    for p in read_projects(read_toml(a.manifest)) or []:
+        print(p["name"])
 
 
 def cmd_ascii_escape(a):
@@ -1830,6 +2063,14 @@ def main(argv=None):
     p = sub.add_parser("projects"); p.add_argument("manifest"); p.set_defaults(fn=cmd_projects)
     p = sub.add_parser("project-add"); p.add_argument("manifest"); p.add_argument("name")
     p.add_argument("path"); p.set_defaults(fn=cmd_project_add)
+    p = sub.add_parser("project-declare"); p.add_argument("manifest"); p.add_argument("name")
+    p.add_argument("--ride", action="append"); p.add_argument("--no-rides", action="store_true")
+    p.add_argument("--after-land", action="append"); p.add_argument("--no-after-land", action="store_true")
+    p.set_defaults(fn=cmd_project_declare)
+    p = sub.add_parser("check-declaration"); p.add_argument("kind", choices=("ride", "after-land"))
+    p.add_argument("value"); p.set_defaults(fn=cmd_check_declaration)
+    p = sub.add_parser("project-facts"); p.add_argument("manifest"); p.add_argument("name")
+    p.set_defaults(fn=cmd_project_facts)
     p = sub.add_parser("record-session"); p.add_argument("folder_md"); p.add_argument("sid")
     p.add_argument("--words"); p.add_argument("--day"); p.set_defaults(fn=cmd_record_session)
     p = sub.add_parser("normalize-field"); p.add_argument("key"); p.add_argument("value")
@@ -1849,6 +2090,9 @@ def main(argv=None):
     p = sub.add_parser("filed-check"); p.add_argument("root"); p.set_defaults(fn=cmd_filed_check)
     p = sub.add_parser("folder-summary"); p.add_argument("folder_md"); p.add_argument("template")
     p.set_defaults(fn=cmd_folder_summary)
+    p = sub.add_parser("append-check"); p.add_argument("root"); p.add_argument("path")
+    p.set_defaults(fn=cmd_append_check)
+    p = sub.add_parser("project-names"); p.add_argument("manifest"); p.set_defaults(fn=cmd_project_names)
     p = sub.add_parser("ascii-escape"); p.set_defaults(fn=cmd_ascii_escape)
     p = sub.add_parser("render-template"); p.add_argument("template"); p.add_argument("values", nargs="*")
     p.set_defaults(fn=cmd_render_template)

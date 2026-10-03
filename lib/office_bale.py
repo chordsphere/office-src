@@ -5,8 +5,10 @@ The office reads bale's records in its projects' repos and renders them;
 it never copies them (doctrine section 10). This module is the only place
 the office talks to bale. It runs `bale` from the PATH in a project's
 directory with stdin closed, reads the one JSON line a --json surface
-prints, and returns plain data. It never reads .bale/ and never writes
-anywhere.
+prints, and returns plain data. It never reads .bale/. The reads write
+nothing; the one thing that writes is office start, which, when the
+occupant asks, runs bale's pack for a session and for the context that
+rides beside it, and copies the tarballs bale made into an out tray.
 
 share/bale-consumption.toml is the contract with bale: every verb and
 flag called here (each call's argv is built from it), every JSON key
@@ -31,6 +33,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import office_helper as oh  # noqa: E402
@@ -38,6 +41,8 @@ import office_helper as oh  # noqa: E402
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 CONSUMPTION = INSTALL / "share" / "bale-consumption.toml"
 BALE_TIMEOUT = 60
+# A pack copies a tree and runs bale's own checks; give it longer.
+PACK_TIMEOUT = 600
 # Attempts that carry a response tarball: the ones a trust ledger counts.
 RESPONSE_COMMANDS = ("apply", "retry")
 OUTBOX_RE = re.compile(r"^request-(.+)\.tar\.gz$")
@@ -112,6 +117,14 @@ class Consumption:
             key = word.strip("{}")
             if values.get(key) is not None:
                 out += [flag, str(values[key])]
+        # A list value: the flag once per element, in order.
+        for flag, word in s.get("repeated", []):
+            for v in values.get(word.strip("{}")) or []:
+                out += [flag, str(v)]
+        # A true value: the bare flag.
+        for flag, word in s.get("switches", []):
+            if values.get(word.strip("{}")):
+                out.append(flag)
         return out
 
 
@@ -150,13 +163,11 @@ class Reader:
             raise BaleError("missing", "bale is not on PATH; the read side runs bale's --json surfaces")
         return exe
 
-    def run(self, surface, cwd=None, **values):
-        """Run one declared surface and return its parsed JSON line."""
+    def invoke(self, surface, cwd=None, timeout=BALE_TIMEOUT, **values):
+        """Run one declared surface with stdin closed; (proc, shown, where).
+        Refuses when bale exits non-zero, carrying bale's last words."""
         argv = self.consumption.argv(surface, **values)
         where = str(cwd) if cwd is not None else os.getcwd()
-        cache_key = (where, tuple(argv))
-        if cache_key in self._cache:
-            return self._cache[cache_key]
         exe = self.bale()
         if cwd is not None and not pathlib.Path(cwd).is_dir():
             raise BaleError("path", f"no such directory on this machine: {cwd}")
@@ -164,15 +175,38 @@ class Reader:
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
         try:
             proc = self.runner([exe, *argv], cwd=cwd, env=env, stdin=subprocess.DEVNULL,
-                               capture_output=True, text=True, timeout=BALE_TIMEOUT)
+                               capture_output=True, text=True, timeout=timeout)
         except subprocess.TimeoutExpired:
-            raise BaleError("refused", f"{shown} in {where} did not finish in {BALE_TIMEOUT}s")
+            raise BaleError("refused", f"{shown} in {where} did not finish in {timeout}s")
         except OSError as exc:
             raise BaleError("missing", f"could not run {exe}: {exc}")
         debug(f"{shown} in {where}: exit {proc.returncode}, {len(proc.stdout)} bytes on stdout")
         if proc.returncode != 0:
             why = next((l for l in reversed(proc.stderr.splitlines()) if l.strip()), "no message")
             raise BaleError("refused", f"{shown} refused in {where} (exit {proc.returncode}): {why}")
+        return proc, shown, where
+
+    def run(self, surface, cwd=None, **values):
+        """Run one declared reading surface and return its parsed JSON
+        line, asking bale each question once."""
+        argv = self.consumption.argv(surface, **values)
+        where = str(cwd) if cwd is not None else os.getcwd()
+        cache_key = (where, tuple(argv))
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        proc, shown, where = self.invoke(surface, cwd, **values)
+        result = self.parse(surface, proc, shown, where)
+        self._cache[cache_key] = result
+        return result
+
+    def pack(self, surface, cwd, **values):
+        """Run one of the surfaces that make something (a session, a
+        context tarball): never cached, since each run makes a new one.
+        Returns (the report, bale's stderr lines)."""
+        proc, shown, where = self.invoke(surface, cwd, timeout=PACK_TIMEOUT, **values)
+        return self.parse(surface, proc, shown, where), proc.stderr.splitlines()
+
+    def parse(self, surface, proc, shown, where):
         lines = [l for l in proc.stdout.splitlines() if l.strip()]
         spec = self.consumption.surface(surface)
         if spec.get("format") == "text":
@@ -190,7 +224,6 @@ class Reader:
             got = self.key(result, surface, "outcome")
             if want is not None and got != want:
                 raise BaleError("output", f"{shown} in {where}: outcome {got!r}, the surface promises {want!r}")
-        self._cache[cache_key] = result
         return result
 
     # --- what the renderings ask for ---------------------------------------
@@ -1050,6 +1083,302 @@ def status_lines(rd, office_root):
     return lines + problems, 0
 
 
+# --- sending a session out: office start -------------------------------------------
+#
+# The office runs bale's pack when the occupant asks (the ruling of
+# sitting 2026-09-29-continue-plan-002, fourth page): it is the
+# occupant's hands at the terminal. It never schedules, never dispatches
+# to a model and never carries pastes. What it does here: checks the
+# planned forecast against the sessions open where the pack will run,
+# makes every context tarball that rides beside the request, packs the
+# session, and gathers every file the occupant attaches into one out
+# tray. Context packs come first, because they open nothing: a failure
+# there leaves no session open.
+
+# The constraint every project session an office packs carries
+# (doctrine section 2), verbatim.
+PROJECT_CONSTRAINT = "Office context informs this session but never lands in this project."
+
+
+class StartError(Exception):
+    """office start cannot go on, said as lines a person can act on."""
+
+    def __init__(self, lines):
+        super().__init__("\n".join(lines))
+        self.lines = lines
+
+
+def forecast_overlap(mine, theirs):
+    """The entries of two forecasts that overlap: equal, or one a
+    directory holding the other. None stands for the whole tree (a pack
+    with no --write and no --include); [] overlaps nothing."""
+    def norm(e):
+        return e.strip().strip("/")
+    if mine is None and theirs is None:
+        return ["the whole tree"]
+    if mine is None:
+        return [norm(t) for t in theirs]
+    if theirs is None:
+        return [norm(m) for m in mine]
+    out = []
+    for m in mine:
+        for t in theirs:
+            a, b = norm(m), norm(t)
+            if a in ("", ".") or b in ("", ".") or a == b or a.startswith(b + "/") or b.startswith(a + "/"):
+                out.append(a if len(a) >= len(b) else b)
+    return sorted(set(out))
+
+
+def open_overlaps(rd, cwd, mine):
+    """[(sid, their forecast, overlapping entries)] for the sessions open
+    in the repo at cwd whose recorded forecast overlaps mine. A repo bale
+    has never run in has no registry and nothing open."""
+    if not (pathlib.Path(cwd) / ".bale").is_dir():
+        return []
+    st = rd.status(cwd)
+    scopes = rd.key(st, "status", "scopes") or {}
+    out = []
+    for sid in rd.key(st, "status", "sessions") or []:
+        theirs = scopes.get(sid)
+        if theirs == []:
+            continue
+        hit = forecast_overlap(mine, theirs)
+        if hit:
+            out.append((sid, theirs, hit))
+    return out
+
+
+def opener_lines(stderr_lines, spec):
+    """The paste-ready opener bale prints between its scissor lines, the
+    lines bale itself asks a person to copy; None when bale printed no
+    such block. The --json report carries no opener (a slip for
+    bale-src), so these markers, declared in the consumption manifest,
+    are the one place it is found."""
+    begin, end = spec["opener"]
+    try:
+        a = stderr_lines.index(begin)
+        b = stderr_lines.index(end, a + 1)
+    except ValueError:
+        return None
+    return stderr_lines[a + 1:b]
+
+
+def git_top(path):
+    """The top of the git work tree holding path, or None."""
+    p = pathlib.Path(path)
+    where = p if p.is_dir() else p.parent
+    try:
+        proc = subprocess.run(["git", "-C", str(where), "rev-parse", "--show-toplevel"],
+                              capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return pathlib.Path(proc.stdout.strip()).resolve() if proc.returncode == 0 else None
+
+
+def ride_plan(path):
+    """How one ride-along reaches the out tray: ("pack", directory,
+    include or None) for a context pack run in that directory, or
+    ("copy", path, None) for a file outside any repo, copied as it is.
+    A directory outside git is packed from a scratch copy ("scratch"),
+    so the office writes nothing into it; a path inside a repo is packed
+    from the repo's top with --include, whose outbox .bale/ ignores."""
+    p = pathlib.Path(path).resolve()
+    if not p.exists():
+        raise StartError([f"a declared ride-along is not on this machine: {path} "
+                          "(office projects set changes what rides)"])
+    top = git_top(p)
+    if top is None:
+        return ("copy", p, None) if p.is_file() else ("scratch", p, None)
+    if p == top:
+        return ("pack", top, None)
+    return ("pack", top, str(p.relative_to(top)))
+
+
+class Tray:
+    """The out tray being filled: a staging directory beside its final
+    place, renamed to the session id once the session is packed."""
+
+    def __init__(self, root):
+        self.root = pathlib.Path(root).expanduser()
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.dir = pathlib.Path(tempfile.mkdtemp(prefix=".filling-", dir=self.root))
+        self.files = []
+
+    def take(self, src, name=None):
+        name = name or pathlib.Path(src).name
+        stem, dot, ext = name.partition(".")
+        n = 1
+        while (self.dir / name).exists():
+            n += 1
+            name = f"{stem}-{n}{dot}{ext}"
+        shutil.copy2(src, self.dir / name)
+        self.files.append(name)
+        log(f"out tray: {name}")
+        return name
+
+    def finish(self, sid):
+        """Name the tray for the session. bale's ids are unique within
+        one repo only, so a tray already named so (the same folder's
+        session in another repo, the same day) gets the next free
+        name rather than failing a session that is already open."""
+        final, n = self.root / sid, 1
+        while final.exists():
+            n += 1
+            final = self.root / f"{sid}-{n}"
+        self.dir.rename(final)
+        self.dir = final
+        return final
+
+    def discard(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+
+def context_into_tray(rd, tray, directory, includes, what):
+    """One context pack in directory, its tarball copied into the tray."""
+    report, _ = rd.pack("context", directory, includes=includes or None)
+    tarball = rd.key(report, "context", "tarball")
+    name = tray.take(tarball, f"context-{rd.key(report, 'context', 'tree_name')}.tar.gz")
+    return f"{name}: {what}"
+
+
+def scratch_context(rd, tray, source, what):
+    """A context pack of a directory outside git, made from a scratch
+    copy under the same name, so nothing is written into the original
+    (the install's doctrine directory among them)."""
+    with tempfile.TemporaryDirectory(prefix="office-start-") as tmp:
+        copy = pathlib.Path(tmp) / pathlib.Path(source).name
+        shutil.copytree(source, copy, ignore=shutil.ignore_patterns(".bale", "__pycache__"))
+        return context_into_tray(rd, tray, copy, None, what)
+
+
+def start(rd, office_root, folder, where, project, goal, slug, includes, writes, read_only,
+          brief, work_class, tray_root):
+    """Pack a session for a folder and fill its out tray. Returns a dict:
+    sid, tray, files, opener (lines, or None), carried (what each file
+    is). Raises StartError with lines to print when it cannot go on."""
+    office_root = pathlib.Path(office_root).resolve()
+    manifest = oh.read_toml(office_root / "floor-plan" / "manifest.toml")
+    projects = {p["name"]: p for p in oh.read_projects(manifest) or []}
+    entry = None
+    if project:
+        entry = projects.get(project)
+        if entry is None:
+            raise StartError([f"no project named {project} in this office's [projects] "
+                              f"(it lists: {', '.join(sorted(projects)) or 'none'})"])
+        problems = [entry["problem"]] if entry["problem"] else []
+        problems += entry["declaration_problems"]
+        if problems:
+            raise StartError([f"{project}: {p}" for p in problems])
+    rd.bale()
+
+    # Where the pack runs, and its forecast.
+    if where == "office":
+        pack_dir = office_root
+        includes = [folder, *includes]
+        if read_only:
+            forecast = []
+        else:
+            writes = [folder] + (["notepad"] if (office_root / "notepad").is_dir() else []) + list(writes)
+            forecast = writes
+    else:
+        pack_dir = entry["resolved"]
+        ok, why = oh.check_project_dir(pack_dir)
+        if not ok:
+            raise StartError([f"{project} cannot be packed: {why}"])
+        forecast = [] if read_only else (list(writes) or list(includes) or None)
+    for p in (writes if not read_only else []):
+        if not (pathlib.Path(pack_dir) / p).exists():
+            raise StartError([f"--write {p}: no such path in {pack_dir}; a forecast names existing paths "
+                              "(a directory covers new files under it)"])
+    for p in includes:
+        if not (pathlib.Path(pack_dir) / p).exists():
+            raise StartError([f"--include {p}: no such path in {pack_dir}"])
+
+    # The predictable refusal, said plainly before bale is asked: two
+    # sessions whose forecasts overlap never run beside each other.
+    naming = folders_naming(office_root)
+    clash = open_overlaps(rd, pack_dir, forecast)
+    if clash:
+        label = "this office" if where == "office" else project
+        lines = []
+        for sid, theirs, hit in clash:
+            folders = ", ".join(naming.get(sid, [])) or "no folder records it"
+            lines.append(f"{sid} is open in {label} ({folders}); its forecast ({', '.join(theirs)}) "
+                         f"overlaps this one at {', '.join(hit)}")
+        if where == "office" and any("notepad" in h for _, _, h in clash):
+            lines.append("office sessions take turns on the notepad: land or close the open one first "
+                         "(bale apply its response, or bale unlock SID if it was abandoned), "
+                         "or start this one --read-only")
+        else:
+            lines.append("land or close it first (bale apply its response, or bale unlock SID if it was "
+                         "abandoned), or narrow this one's forecast with --write")
+        raise StartError(lines)
+
+    tray = Tray(tray_root)
+    carried = []
+    stage = "a context pack"
+    try:
+        # The doctrine, from a scratch copy: the install is never written.
+        carried.append(scratch_context(rd, tray, INSTALL / "doctrine", "the doctrine (OFFICE.md and its checks)"))
+        if where == "project":
+            # The office's context rides beside the request, never inside
+            # it: the folder and the hung items, named, because include
+            # groups do not fire under --context.
+            hung = [h for h in oh.space_paths(manifest, "hung") if (office_root / h).exists()]
+            carried.append(context_into_tray(rd, tray, office_root, [folder, *hung],
+                                              f"the office: {folder} and the hung items"))
+        elif entry is not None:
+            # An office session about a project reads the project's tree.
+            carried.append(context_into_tray(rd, tray, entry["resolved"], None, f"{project}'s tree"))
+        if entry is not None:
+            grouped = {}
+            for ride in entry["rides"]:
+                kind, place, inc = ride_plan(oh.expand_project_path(ride))
+                if kind == "copy":
+                    carried.append(f"{tray.take(place)}: rides with {project} ({ride})")
+                elif kind == "scratch":
+                    carried.append(scratch_context(rd, tray, place, f"rides with {project} ({ride})"))
+                else:
+                    grouped.setdefault(place, []).append(inc)
+            for place, incs in grouped.items():
+                whole = None in incs
+                carried.append(context_into_tray(rd, tray, place, None if whole else incs,
+                                                  f"rides with {project} ({place}"
+                                                  + ("" if whole else ": " + ", ".join(incs)) + ")"))
+        # The session itself, last.
+        stage = "the session's pack"
+        spec = rd.consumption.surface("pack")
+        report, stderr = rd.pack(
+            "pack", pack_dir, goal=goal, slug=slug, includes=includes or None,
+            writes=None if read_only else (forecast if where == "office" else (list(writes) or None)),
+            constraints=[PROJECT_CONSTRAINT] if where == "project" else None,
+            readme_file=str(pathlib.Path(brief).resolve()) if brief else None,
+            no_readme=not brief, read_only=read_only, work_class=work_class)
+    except BaleError as exc:
+        tray.discard()
+        raise StartError([f"{stage} failed, so no session was opened and no out tray was made: {exc}"])
+    except StartError:
+        tray.discard()
+        raise
+    except (OSError, shutil.Error) as exc:
+        tray.discard()
+        raise StartError([f"{stage} could not be put in the out tray, so no session was opened: {exc}"])
+    sid = rd.key(report, "pack", "sid")
+    if not isinstance(sid, str) or not oh.SID_RE.match(sid):
+        raise StartError([f"bale packed, but its report's sid is not a session id: {sid!r}; "
+                          f"what was gathered is in {tray.dir}"])
+    try:
+        name = tray.take(rd.key(report, "pack", "tarball"))
+        final = tray.finish(sid)
+    except (OSError, shutil.Error) as exc:
+        raise StartError([f"session {sid} is open, but its out tray could not be finished: {exc}",
+                          f"what was gathered is in {tray.dir}; the request is {rd.key(report, 'pack', 'tarball')}",
+                          f"record the session in its folder with: office sessions {pathlib.Path(folder).name} {sid}"])
+    carried.insert(0, f"{name}: the request ({'an office session' if where == 'office' else project + ' session'})")
+    return {"sid": sid, "tray": str(final), "files": sorted(tray.files), "carried": carried,
+            "opener": opener_lines(stderr, spec), "pack_dir": str(pack_dir)}
+
+
 # --- command line --------------------------------------------------------------------
 
 def main(argv=None):
@@ -1066,7 +1395,28 @@ def main(argv=None):
     p.add_argument("--since", help="the day of the previous walk-in (default: today)")
     p.add_argument("--walk-in", action="store_true", help="In flight and the first ready folders only")
     p = sub.add_parser("writers"); p.add_argument("office"); p.add_argument("paths", nargs="+")
+    p = sub.add_parser("start", help="pack a session for a folder and fill its out tray; one JSON line on stdout")
+    p.add_argument("office"); p.add_argument("folder", help="desk/NAME")
+    p.add_argument("--where", choices=("office", "project"), required=True)
+    p.add_argument("--project", default=None, help="the project it is on, or the one an office session is about")
+    p.add_argument("--goal", required=True); p.add_argument("--slug", required=True)
+    p.add_argument("--include", action="append", default=[]); p.add_argument("--write", action="append", default=[])
+    p.add_argument("--read-only", action="store_true"); p.add_argument("--brief")
+    p.add_argument("--work-class"); p.add_argument("--tray-root", required=True)
     a = ap.parse_args(argv)
+    if a.cmd == "start":
+        try:
+            result = start(Reader(), a.office, a.folder, a.where, a.project, a.goal, a.slug, a.include,
+                           a.write, a.read_only, a.brief, a.work_class, a.tray_root)
+        except StartError as exc:
+            for line in exc.lines:
+                log(f"error: {line}")
+            return 1
+        except (oh.HelperError, BaleError, OSError) as exc:
+            log(f"error: {exc}")
+            return 1
+        print(json.dumps(result))
+        return 0
     try:
         rd = Reader()
         if a.cmd == "writers":

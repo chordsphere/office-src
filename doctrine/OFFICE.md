@@ -30,17 +30,23 @@ surveys the machine, and prints the line that packs the founding session.
 `office` on its own is walking in: what is on the desk, this week, the
 last notes, the suggestion box, and what you can do from here. The
 everyday verbs take seconds and need no session: `office note` captures a
-line, `office open` starts a numbered folder, `office desk` shows what is
+line, `office slip` drops a friction slip in the suggestion box, `office
+open` starts a numbered folder, `office desk` shows what is
 in flight, what is ready and in what order, and what waits on what,
 `office week` shows this week against what happened, `office close` and
 `office reopen` move a folder to the filing cabinet and back. `office
 survey` rewrites the page of machine facts. `office status` says whether
 the office matches the installed tool. `office upgrade` brings an office
 up to a new release, one commit per office. `office projects` lists the
-projects in the office's scope and renders what bale records about them.
+projects in the office's scope, declares what rides with each and what
+runs after its sessions land, and renders what bale records about them.
 
-The office never runs a session. It only says what a session should carry
-and where it lands, and prints the pack line. bale carries the session.
+`office start` sends a session out: it asks which job, whether the work
+lands in the office or on a project, and the goal, then runs bale's pack,
+records the session in the folder, and puts every file to attach in one
+out tray beside the opener to paste. The office runs bale when you ask,
+as your hands at the terminal; it never schedules a session, never hands
+one to a model and never carries pastes. bale carries the session.
 
 ## 1. What an office is
 
@@ -114,17 +120,31 @@ A session is packed where it lands.
   `bale pack --context --include ...` from the office root, and the pack
   carries the constraint from section 2.
 - This doctrine rides as a context tarball made from the install's
-  doctrine directory: `bale pack --context` run there. bale's include
-  groups only pull paths inside the repo being packed, and this doc lives
-  in the install, not in the office.
+  doctrine directory: `bale pack --context` run on a copy of it, so the
+  install is never written. bale's include groups only pull paths inside
+  the repo being packed, and this doc lives in the install, not in the
+  office.
+- Whatever a project declares rides too: each path in its `rides` (a
+  directory inside another repo, a whole repo, or a file) becomes a
+  context tarball beside every session on that project (section 10).
+
+`office start` does all of this for a folder in one command. It packs
+the session from the office or from the project, makes every context
+tarball that rides beside it, and copies them with the request into one
+out tray, a directory on the machine outside every office, named by the
+session's id; the occupant attaches its files and pastes the opener it
+prints. An office session forecasts its folder and the notepad, so
+office sessions take turns; `--read-only` packs a sitting that forecasts
+nothing. A session whose forecast overlaps one already open is refused
+before bale is asked, and the open session is named.
 
 The folder records the id of every session that worked on its job.
-`bale pack --json` reports the id, so nobody types it: piping that report
-into `office sessions FOLDER -` records the id in the folder's Sessions
-section, with a few words if the occupant gives them (`-m`). Until the
-session verbs arrive, sessions for a folder are packed by hand this way,
-and the session verbs will record through the same step. The folder
-points at session ids; it never copies what bale records about a session.
+`bale pack --json` reports the id, so nobody types it: `office start`
+records it in the folder's Sessions section, and a session packed by
+hand records the same way, by piping that report into `office sessions
+FOLDER -`, with a few words if the occupant gives them (`-m`). The
+folder points at session ids; it never copies what bale records about a
+session.
 `office sessions FOLDER` lists them with what bale records about each,
 rendered on every run (section 10).
 
@@ -273,7 +293,11 @@ install, never here. Survey steps the office adds live in drawer/survey/
 Suggestion box. Any session, and the occupant, can drop a slip when
 something causes friction. Routine slips are handled by cleanup, design
 slips by renovation. A slip about a tool (bale, office-src) says so, so
-it can be carried to that tool's project.
+it can be carried to that tool's project. `office slip` drops one: each
+slip is its own page, suggestion-box/DATE-SLUG.md, saying what it is
+about (the office, a tool or one of the office's projects) and committed
+on its own. Like a note it is instant and dumb: it works in an unfounded
+office and one behind or ahead of the installed tool, and only warns.
 
 ## 6. Hanging, and what every office session ships
 
@@ -294,9 +318,11 @@ A session may always write the notepad and the suggestion box.
 
 ## 7. Verbs
 
-Verbs declare what a session ships and where it lands, and emit pack
-lines. office-src never runs, schedules or carries a session, so whoever
-carries sessions (the occupant, bale, a future harness) can change freely
+Verbs declare what a session ships and where it lands. office-src runs
+bale's pack and apply when the occupant asks, as the occupant's hands at
+the terminal: `office start` packs. It never schedules a session, never
+dispatches one to a model and never carries pastes, so whoever carries
+sessions (the occupant, bale, a future harness) can change freely
 without the office changing. The declarations are share/verbs.toml in
 the install.
 
@@ -315,15 +341,17 @@ Kinds:
 | upgrade | script; prints a renovation pack line when a migration needs judgment | yes |
 | where, default | script: which office a command acts on | yes |
 | note | script: append a dated line to the notepad | yes |
+| slip | script: drop a friction slip in the suggestion box, saying what it is about | yes |
 | open | script: start a numbered folder on the desk, or a candidate, or one born done in the filing cabinet | yes |
 | desk | script: in flight, ready in order, parked under what each waits for, candidates | yes |
 | week | script: this week's calendar and its gaps | yes |
 | close, reopen | script: move a folder to the filing cabinet, done, absorbed, split or retired, and a done one back | yes |
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes |
-| projects | script: list the projects this office scopes, add one, render what bale records about them | yes |
+| projects | script: list the projects this office scopes, add one, declare what rides with it and what runs after it lands, render what bale records about them | yes |
+| start | script: pack a session for a folder, in the office or on a project, record it in the folder, and gather what to attach in one out tray | yes |
 | founding | office session: the profile, the occupant's words, the timezone | yes, via init |
-| work | office session: answer, draft, probe, decide, deliver | by hand |
-| build | project session: change a project for a folder | by hand |
+| work | office session: answer, draft, probe, decide, deliver | yes, via start |
+| build | project session: change a project for a folder | yes, via start |
 | prep | office session: a briefing for a meeting | not yet |
 | meeting | office session held open during a meeting | not yet |
 | cleanup | office session: keep the office as designed | not yet |
@@ -428,8 +456,8 @@ another machine is not read. The office reads each project's records
 only through bale's --json surfaces, run in the project's directory with
 no prompt, never by parsing .bale/, and it never writes what bale
 records. The install's share/bale-consumption.toml names every bale verb,
-flag and key the office reads and the bale version they were written
-against; `office status` reports a bale outside that range. What it
+flag and key the office reads or runs and the bale version they were
+written against; `office status` reports a bale outside that range. What it
 renders: on the walk-in, the sessions in flight and the folder each
 belongs to; in `office sessions FOLDER`, each session with its outcome,
 dates, claims beside verdicts and exchange rounds; in `office projects`,
@@ -438,10 +466,23 @@ on; the office holds no grant), the last applied session that landed a
 path, and the version trail. Wherever a count the records compute sits
 beside one written down, both are printed.
 
+Each project's entry may also declare two things: `rides`, the other
+paths whose context rides beside every session on the project (a
+directory inside another repo, a whole repo, or a file), and
+`after_land`, the commands run in the project's repo after one of its
+sessions lands. Both are set by `office projects add` and `office
+projects set`, a wizard with flag twins, and never by hand or in the
+project's own repo: what rides is office context, and a project's
+audience must not see the office's choices. A table without them is
+valid.
+
 The office scales with whatever carries sessions by staying on its side
 of that line. It supplies what a carrier lacks (which job, what context,
-what a spawned session may touch, and when) from files that declare it,
-and never records, schedules or carries sessions itself.
+what a spawned session may touch, and when) from files that declare it.
+It runs bale's pack and apply when the occupant asks, as the occupant's
+hands at the terminal, and records which sessions belong to which job;
+it never records what bale records, never schedules a session, never
+dispatches one to a model and never carries pastes.
 
 ## 11. One office per set of house rules
 
@@ -572,7 +613,8 @@ request stamped for it; a page the session created has no base. The
 check is `doctrine/checks/filed-append-only.sh`, which rides with the
 doctrine into every office session, and the worker fills in its paths,
 sizes and hashes from its own request. A script that appends to filed
-paper makes the same check before it commits.
+paper makes the same check before it commits: `office note` holds the
+day's page to its committed bytes and commits nothing that changed them.
 
 `office status` holds the same line after the fact: it walks git's
 history of every filed page the floor plan lists, the filing cabinet

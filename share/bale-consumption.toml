@@ -8,7 +8,8 @@
 #
 # The office reads bale only through these --json surfaces, in the
 # project's directory, with stdin closed: never .bale/, never a prompt.
-# It never writes what bale records. A datum the office needs and bale
+# It never writes what bale records; the two surfaces at the end make a
+# session and a context tarball when the occupant runs office start. A datum the office needs and bale
 # does not stamp is a slip for bale-src, never a scrape and never a
 # guess (doctrine section 10).
 #
@@ -115,11 +116,49 @@ keys = [
   "lineage.superseded_by",
 ]
 
-# The office never runs bale pack; it reads the report the occupant pipes
-# into office sessions FOLDER - (lib/office_helper.py, sid_from_pack_report).
+# The two surfaces that make something, run only by office start when the
+# occupant asks (the office is the occupant's hands at the terminal; it
+# never schedules, never dispatches to a model and never carries pastes).
+# Probed in 2026-10-02-friction-out-and-in-002 on bale 0.4.45, in
+# throwaway repos.
+#
+# repeated   flags given once per element of a list value, in order
+# switches   bare flags given when their value is true
+# opener     the scissor lines bale prints around the session opener; the
+#            --json report carries no opener, so office start takes the
+#            lines between these from bale's stderr, verbatim (a slip for
+#            bale-src: an opener key on the report)
+#
+# A session: the goal first, the slug, the folder's includes and forecast,
+# the project constraint, a brief or --no-readme, the work class. A piped
+# report of the same shape is what office sessions FOLDER - reads
+# (lib/office_helper.py, sid_from_pack_report).
 [surfaces.pack]
-calls = false
-argv = ["pack", "--json"]
-contract = "format_pack_json's docstring, bin/bale_report.py"
+argv = ["pack", "{goal}", "--slug", "{slug}", "--json"]
+optional = [["--readme-file", "{readme_file}"], ["--work-class", "{work_class}"]]
+repeated = [["--include", "{includes}"], ["--write", "{writes}"], ["--constraint", "{constraints}"]]
+switches = [["--no-readme", "{no_readme}"], ["--read-only", "{read_only}"]]
+contract = "format_pack_json's docstring, bin/bale_report.py; bale pack --help names the keys"
 outcome = "packed"
-keys = ["sid"]
+opener = ["--8<-- session opener (copy everything between the scissor lines) --8<--",
+          "--8<-- end session opener --8<--"]
+keys = [
+  "outcome",
+  "sid",       # the session id, recorded in the folder
+  "tarball",   # the request tarball in the repo's .bale/outbox, copied into the out tray
+]
+
+# A context tarball: session-less, of the directory it runs in (the
+# office, a ride-along's repo, a scratch copy of the doctrine). Under
+# --context bale's include groups do not fire, so office start names the
+# hung items itself.
+[surfaces.context]
+argv = ["pack", "--context", "--json"]
+repeated = [["--include", "{includes}"]]
+contract = "bale pack --help, --context (v0.4.39)"
+outcome = "context-packed"
+keys = [
+  "outcome",
+  "tarball",     # .bale/outbox/context-<dir>.tar.gz under the directory; overwritten on every run
+  "tree_name",   # the one folder inside it
+]
