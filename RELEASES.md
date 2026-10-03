@@ -4,6 +4,56 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.7.0
+
+Additive: no migration, nothing to do in any office. Every older office
+shape keeps working; a project without after-land actions lands the same
+way, with nothing run after.
+
+The return trip. `office land` brings a session back in one command: it
+finds the session a response answers (the one the office has out, asked
+for when there are several, or named by a session id, a folder or a
+response file, each a plain word or a flag) and runs `bale apply` in the
+repo the session belongs to, a project or the office itself, or `bale
+retry` when bale held the session. bale reads the occupant's own
+terminal, so every question it asks (an admission, the merge, a hook)
+reaches him as bale asks it, and the office answers none. How the
+landing ended is read from the session's dossier and said in the
+office's words; whatever bale printed to carry (the relay for the
+planner; on a HOLD the worker's block first) is printed whole and, on
+WSL, put on the clipboard; a clarification's block comes from `bale
+relay`. After an applied landing the project's after-land actions run
+in its repo, in order, and the first that fails stops the rest loudly,
+with the lines that rerun them; then it asks whether the planner
+ratified the session's judgment calls (yes, yes except TEXT, or not now;
+`--ratified`, `--except`, `--not-now`) and records the answer in the
+folder. A HOLD, a refusal or a clarification records nothing as
+ratified, runs nothing after, and names the next line. An office
+session's folder, which `office start` records the session in after the
+pack, is put back as it was packed while bale lands, so bale never
+refuses the response over the office's own record, and the record goes
+back after as a new append.
+
+`office start --bundle FILE` (or the `.bale-bundle` file as a word)
+sends out a session a planning sitting authored: it asks which job and
+where the work lands, gathers what rides, runs `bale open` there,
+records the session, fills the out tray and prints the opener, as for a
+pack. The bundle's pack line is the whole session; the office adds
+nothing to it and answers none of its intents, and says when it leaves
+out the office's constraint or the folder. A page of a sitting's words
+that a brief carries between `--- NOTEPAD PAGE BEGIN notepad/DATE-SLUG.md
+---` and `--- NOTEPAD PAGE END ---` is filed in the notepad and committed
+alone, the same words twice are left as they are, and a different page
+at that path is refused loudly and never overwritten.
+
+share/verbs.toml declares `land`, landing nothing guaranteed (a HOLD
+lands nothing), and `start` writing a sitting's page.
+share/bale-consumption.toml declares the four surfaces the return trip
+runs, `open`, `apply`, `retry` and `relay`, from a probe of bale 0.4.45,
+with the markers of the blocks bale prints to carry. The doctrine says
+how a read-only sitting's words land and what `office land` does
+(sections 3, 4, 5, 7, 9 and 10, and its front sheet).
+
 ## 0.6.0
 
 Additive: no migration, nothing to do in any office. A [projects] entry

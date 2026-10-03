@@ -1,0 +1,18 @@
+{
+ "argv": [
+  "open",
+  "2026-01-01-no-such-bundle.bale-bundle"
+ ],
+ "cwd": "/tmp/office-probe.waUkTl/openro",
+ "stdin": "closed",
+ "exit": 1,
+ "stdout": [],
+ "stdout_sha256": [],
+ "stderr": [
+  "[bale] error: bundle not found: 2026-01-01-no-such-bundle.bale-bundle",
+  "  searched:",
+  "    /tmp/office-probe.waUkTl/openro  (cwd)",
+  "    /tmp/office-probe.waUkTl/dl"
+ ],
+ "captured": "probe of session 2026-10-03-friction-return-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.45) on 2026-10-03, in a throwaway repo under /tmp/office-probe.waUkTl (removed)"
+}

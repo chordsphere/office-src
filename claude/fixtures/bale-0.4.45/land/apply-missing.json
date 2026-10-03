@@ -1,0 +1,18 @@
+{
+ "argv": [
+  "apply",
+  "response-2026-01-01-no-such-session-001.tar.gz"
+ ],
+ "cwd": "/tmp/office-probe.waUkTl/bare",
+ "stdin": "closed",
+ "exit": 1,
+ "stdout": [],
+ "stdout_sha256": [],
+ "stderr": [
+  "[bale] error: tarball not found: response-2026-01-01-no-such-session-001.tar.gz",
+  "  searched:",
+  "    /tmp/office-probe.waUkTl/bare  (cwd)",
+  "    /tmp/office-probe.waUkTl/dl"
+ ],
+ "captured": "probe of session 2026-10-03-friction-return-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.45) on 2026-10-03, in a throwaway repo under /tmp/office-probe.waUkTl (removed)"
+}

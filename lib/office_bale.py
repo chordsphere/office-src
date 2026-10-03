@@ -6,9 +6,13 @@ it never copies them (doctrine section 10). This module is the only place
 the office talks to bale. It runs `bale` from the PATH in a project's
 directory with stdin closed, reads the one JSON line a --json surface
 prints, and returns plain data. It never reads .bale/. The reads write
-nothing; the one thing that writes is office start, which, when the
-occupant asks, runs bale's pack for a session and for the context that
-rides beside it, and copies the tarballs bale made into an out tray.
+nothing. Two verbs run bale to make or land something, when the
+occupant asks: office start runs bale's pack, or bale open for a
+planner's bundle, for a session and the context that rides beside it,
+and copies the tarballs bale made into an out tray; office land runs
+bale apply, or bale retry for a held session, with the occupant's own
+terminal as its stdin, so every question bale asks reaches him and the
+office answers none, then reads what happened from bale's records.
 
 share/bale-consumption.toml is the contract with bale: every verb and
 flag called here (each call's argv is built from it), every JSON key
@@ -33,6 +37,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -163,9 +168,11 @@ class Reader:
             raise BaleError("missing", "bale is not on PATH; the read side runs bale's --json surfaces")
         return exe
 
-    def invoke(self, surface, cwd=None, timeout=BALE_TIMEOUT, **values):
+    def invoke(self, surface, cwd=None, timeout=BALE_TIMEOUT, whole_why=False, **values):
         """Run one declared surface with stdin closed; (proc, shown, where).
-        Refuses when bale exits non-zero, carrying bale's last words."""
+        Refuses when bale exits non-zero, carrying bale's last words, or,
+        with whole_why, everything from its error line on (a refusal that
+        lists what it searched, say)."""
         argv = self.consumption.argv(surface, **values)
         where = str(cwd) if cwd is not None else os.getcwd()
         exe = self.bale()
@@ -182,7 +189,11 @@ class Reader:
             raise BaleError("missing", f"could not run {exe}: {exc}")
         debug(f"{shown} in {where}: exit {proc.returncode}, {len(proc.stdout)} bytes on stdout")
         if proc.returncode != 0:
-            why = next((l for l in reversed(proc.stderr.splitlines()) if l.strip()), "no message")
+            err = [l for l in proc.stderr.splitlines() if l.strip()]
+            why = err[-1] if err else "no message"
+            if whole_why and err:
+                start = next((i for i, l in enumerate(err) if "error" in l.lower()), max(0, len(err) - 8))
+                why = "\n".join(err[start:])
             raise BaleError("refused", f"{shown} refused in {where} (exit {proc.returncode}): {why}")
         return proc, shown, where
 
@@ -198,6 +209,56 @@ class Reader:
         result = self.parse(surface, proc, shown, where)
         self._cache[cache_key] = result
         return result
+
+    def forget(self, cwd):
+        """Drop what this reader has cached about a directory, after a
+        verb that changed what bale records there."""
+        where = str(cwd)
+        self._cache = {k: v for k, v in self._cache.items() if k[0] != where}
+
+    def lines(self, surface, cwd, **values):
+        """Run one declared text surface with stdin closed and return
+        every stdout line it printed (a block to carry, a report)."""
+        if self.consumption.surface(surface).get("format") != "text":
+            raise BaleError("undeclared", f"bale {surface} is not declared as a text surface")
+        proc, _, _ = self.invoke(surface, cwd, timeout=PACK_TIMEOUT, whole_why=True, **values)
+        return proc.stdout.splitlines()
+
+    def interact(self, surface, cwd, capture, **values):
+        """Run a surface the occupant answers: stdin and stderr stay his
+        terminal, so every question bale asks reaches him as bale asks it
+        and the office answers none; stdout is copied to ours as it comes
+        and kept in the capture file, for the blocks bale prints to carry.
+        Returns bale's exit code."""
+        spec = self.consumption.surface(surface)
+        if not spec.get("interactive"):
+            raise BaleError("undeclared", f"bale {surface} is not declared interactive in {self.consumption.path.name}")
+        argv = self.consumption.argv(surface, **values)
+        exe = self.bale()
+        if not pathlib.Path(cwd).is_dir():
+            raise BaleError("path", f"no such directory on this machine: {cwd}")
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        debug(f"bale {' '.join(argv)} in {cwd}, stdin and stderr the terminal's")
+        try:
+            proc = subprocess.Popen([exe, *argv], cwd=cwd, env=env, stdout=subprocess.PIPE)
+        except OSError as exc:
+            raise BaleError("missing", f"could not run {exe}: {exc}")
+        screen = sys.stdout.buffer
+        with open(capture, "wb") as keep:
+            fd = proc.stdout.fileno()
+            try:
+                while True:
+                    chunk = os.read(fd, 4096)
+                    if not chunk:
+                        break
+                    screen.write(chunk)
+                    screen.flush()
+                    keep.write(chunk)
+                    keep.flush()
+            except KeyboardInterrupt:
+                # bale got the same interrupt; let it finish saying so.
+                log("interrupted; waiting for bale to stop")
+        return proc.wait()
 
     def pack(self, surface, cwd, **values):
         """Run one of the surfaces that make something (a session, a
@@ -1251,11 +1312,61 @@ def scratch_context(rd, tray, source, what):
         return context_into_tray(rd, tray, copy, None, what)
 
 
+def bundle_pack_argv(bundle):
+    """The pack argv a planner bundle stores, when the bundle is a file
+    the office can read here (a bare name bale's own search finds is
+    not), else None. The office reads it only to say what the bundle
+    does; it never adds to it."""
+    p = pathlib.Path(bundle)
+    if not p.is_file():
+        return None
+    try:
+        with tarfile.open(p) as t:
+            member = t.extractfile("bundle.json")
+            argv = json.loads(member.read().decode("utf-8")).get("pack_argv") if member else None
+    except (OSError, KeyError, tarfile.TarError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        debug(f"could not read the pack argv of {p}: {exc}")
+        return None
+    return argv if isinstance(argv, list) and all(isinstance(a, str) for a in argv) else None
+
+
+def open_bundle(rd, pack_dir, bundle):
+    """Run bale open for a planner bundle in pack_dir, stdin closed, so
+    no question is answered for the occupant; a pre-answered intent in
+    the bundle is bale's to honour. Returns sid, tarball and opener. The
+    sid is the session bale status lists after the open and did not
+    before; the tarball is the report's tarball line, held to the
+    request that status lists for that sid."""
+    spec = rd.consumption.surface("open")
+    before = set(rd.key(rd.status(pack_dir), "status", "sessions") or [])
+    proc, shown, where = rd.invoke("open", pack_dir, timeout=PACK_TIMEOUT, whole_why=True, bundle=bundle)
+    lines = proc.stdout.splitlines()
+    rd.forget(pack_dir)
+    st = rd.status(pack_dir)
+    new = [x for x in (rd.key(st, "status", "sessions") or []) if x not in before]
+    if len(new) != 1:
+        raise BaleError("output", f"{shown} exited 0 in {where}, but bale status names {len(new)} newly open "
+                                  f"session(s) ({', '.join(new) or 'none'}), so the office cannot tell which it opened")
+    sid = new[0]
+    name = f"request-{sid}.tar.gz"
+    tarball = None
+    for line in lines:
+        if line.startswith(spec["tarball_line"]):
+            tarball = line[len(spec["tarball_line"]):].strip()
+    if tarball is None or pathlib.Path(tarball).name != name or name not in (rd.key(st, "status", "outbox") or []):
+        raise BaleError("output", f"{shown} opened {sid} in {where}, but its report's tarball line "
+                                  f"({tarball or 'none'}) is not the request bale status lists for it ({name})")
+    return {"sid": sid, "tarball": tarball, "opener": opener_lines(lines, spec)}
+
+
 def start(rd, office_root, folder, where, project, goal, slug, includes, writes, read_only,
-          brief, work_class, tray_root):
+          brief, work_class, tray_root, bundle=None):
     """Pack a session for a folder and fill its out tray. Returns a dict:
     sid, tray, files, opener (lines, or None), carried (what each file
-    is). Raises StartError with lines to print when it cannot go on."""
+    is), warnings. Raises StartError with lines to print when it cannot
+    go on. With a bundle, bale open replays the bundle's own pack line in
+    place of a pack the office composes: goal, slug, forecast, includes
+    and brief are the bundle's, and the office adds nothing to them."""
     office_root = pathlib.Path(office_root).resolve()
     manifest = oh.read_toml(office_root / "floor-plan" / "manifest.toml")
     projects = {p["name"]: p for p in oh.read_projects(manifest) or []}
@@ -1272,6 +1383,7 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     rd.bale()
 
     # Where the pack runs, and its forecast.
+    warnings = []
     if where == "office":
         pack_dir = office_root
         includes = [folder, *includes]
@@ -1286,6 +1398,19 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         if not ok:
             raise StartError([f"{project} cannot be packed: {why}"])
         forecast = [] if read_only else (list(writes) or list(includes) or None)
+    if bundle:
+        # The bundle's pack line is the whole session: bale open gates its
+        # forecast against the open sessions itself, in its own words,
+        # before any session exists, and the office says what it notices.
+        argv = bundle_pack_argv(bundle)
+        if argv is not None and where == "project" and PROJECT_CONSTRAINT not in argv:
+            warnings.append(f"this bundle's pack line does not carry the office's constraint (\"{PROJECT_CONSTRAINT}\"); "
+                            "the office adds nothing to a bundle, so the session goes out without it")
+        if argv is not None and where == "office" and "--read-only" not in argv \
+                and not any(argv[i] == "--write" and argv[i + 1].strip("/") in (folder, "desk")
+                            for i in range(len(argv) - 1)):
+            warnings.append(f"this bundle's forecast does not name {folder}, so the session cannot land in its folder")
+        includes, writes, forecast = [], [], []
     for p in (writes if not read_only else []):
         if not (pathlib.Path(pack_dir) / p).exists():
             raise StartError([f"--write {p}: no such path in {pack_dir}; a forecast names existing paths "
@@ -1297,7 +1422,7 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     # The predictable refusal, said plainly before bale is asked: two
     # sessions whose forecasts overlap never run beside each other.
     naming = folders_naming(office_root)
-    clash = open_overlaps(rd, pack_dir, forecast)
+    clash = [] if bundle else open_overlaps(rd, pack_dir, forecast)
     if clash:
         label = "this office" if where == "office" else project
         lines = []
@@ -1346,14 +1471,20 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                                                   f"rides with {project} ({place}"
                                                   + ("" if whole else ": " + ", ".join(incs)) + ")"))
         # The session itself, last.
-        stage = "the session's pack"
-        spec = rd.consumption.surface("pack")
-        report, stderr = rd.pack(
-            "pack", pack_dir, goal=goal, slug=slug, includes=includes or None,
-            writes=None if read_only else (forecast if where == "office" else (list(writes) or None)),
-            constraints=[PROJECT_CONSTRAINT] if where == "project" else None,
-            readme_file=str(pathlib.Path(brief).resolve()) if brief else None,
-            no_readme=not brief, read_only=read_only, work_class=work_class)
+        if bundle:
+            stage = "the bundle's open"
+            opened = open_bundle(rd, pack_dir, bundle)
+        else:
+            stage = "the session's pack"
+            spec = rd.consumption.surface("pack")
+            report, stderr = rd.pack(
+                "pack", pack_dir, goal=goal, slug=slug, includes=includes or None,
+                writes=None if read_only else (forecast if where == "office" else (list(writes) or None)),
+                constraints=[PROJECT_CONSTRAINT] if where == "project" else None,
+                readme_file=str(pathlib.Path(brief).resolve()) if brief else None,
+                no_readme=not brief, read_only=read_only, work_class=work_class)
+            opened = {"sid": rd.key(report, "pack", "sid"), "tarball": rd.key(report, "pack", "tarball"),
+                      "opener": opener_lines(stderr, spec)}
     except BaleError as exc:
         tray.discard()
         raise StartError([f"{stage} failed, so no session was opened and no out tray was made: {exc}"])
@@ -1363,23 +1494,430 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     except (OSError, shutil.Error) as exc:
         tray.discard()
         raise StartError([f"{stage} could not be put in the out tray, so no session was opened: {exc}"])
-    sid = rd.key(report, "pack", "sid")
+    sid = opened["sid"]
     if not isinstance(sid, str) or not oh.SID_RE.match(sid):
         raise StartError([f"bale packed, but its report's sid is not a session id: {sid!r}; "
                           f"what was gathered is in {tray.dir}"])
     try:
-        name = tray.take(rd.key(report, "pack", "tarball"))
+        name = tray.take(opened["tarball"])
         final = tray.finish(sid)
     except (OSError, shutil.Error) as exc:
         raise StartError([f"session {sid} is open, but its out tray could not be finished: {exc}",
-                          f"what was gathered is in {tray.dir}; the request is {rd.key(report, 'pack', 'tarball')}",
+                          f"what was gathered is in {tray.dir}; the request is {opened['tarball']}",
                           f"record the session in its folder with: office sessions {pathlib.Path(folder).name} {sid}"])
-    carried.insert(0, f"{name}: the request ({'an office session' if where == 'office' else project + ' session'})")
+    kind = "an office session" if where == "office" else project + " session"
+    carried.insert(0, f"{name}: the request ({kind}" + (f", from the bundle {pathlib.Path(bundle).name})" if bundle else ")"))
     return {"sid": sid, "tray": str(final), "files": sorted(tray.files), "carried": carried,
-            "opener": opener_lines(stderr, spec), "pack_dir": str(pack_dir)}
+            "opener": opened["opener"], "pack_dir": str(pack_dir), "request": str(final / name),
+            "warnings": warnings}
+
+
+# --- bringing a session back: office land -------------------------------------------
+#
+# The return trip. office land finds the session a response answers,
+# runs bale apply (bale retry for a held one) in the repo the session
+# belongs to with the occupant's own terminal as its stdin, so bale's
+# questions reach him as bale asks them and the office answers none,
+# then reads what happened from the session's dossier, never from bale's
+# words, and hands back the blocks bale printed for him to carry. The
+# shell does the asking and the after-land actions; this does the rest.
+
+# A response tarball's name, and a browser's second copy of it.
+RESPONSE_NAME_RE = re.compile(r"^response-(.+?)(?: \(\d+\))?\.tar\.gz$")
+# The commits that leave office start's record of a session in a folder:
+# office sessions recording it, and office land putting it back.
+RECORD_SUBJECTS = ("office sessions: {sid} in ", "office land: {sid} recorded again in ")
+
+
+class LandError(StartError):
+    """office land cannot go on, said as lines a person can act on."""
+
+
+def repos(office_root):
+    """([(label, project entry or None, directory)], problem lines): the
+    office's own registry, when bale keeps one there, and every project
+    it scopes that can be read."""
+    out, bad = [], []
+    own = office_registry(office_root)
+    if own is not None:
+        out.append((OFFICE_LABEL, None, own))
+    for p in office_projects(office_root) or []:
+        try:
+            out.append((p["name"], p, readable(p)))
+        except BaleError as exc:
+            bad.append(f"{p['name']}: cannot read: {exc}")
+    return out, bad
+
+
+def open_anywhere(rd, office_root):
+    """(sessions, problems): every session open in a repo the office
+    reads, each a dict: sid, label, project, repo, read_only, folders
+    (the folders whose Sessions section names it, space/name)."""
+    naming = folders_naming(office_root)
+    found, problems = repos(office_root)
+    out = []
+    for label, p, cwd in found:
+        try:
+            for sid, ro in rd.open_sessions(cwd):
+                out.append({"sid": sid, "label": label, "project": p["name"] if p else None, "repo": str(cwd),
+                            "read_only": ro, "folders": naming.get(sid, []),
+                            "after_land": list(p["after_land"]) if p and not p["declaration_problems"] else [],
+                            "after_land_problem": "; ".join(p["declaration_problems"]) if p else ""})
+        except BaleError as exc:
+            problems.append(f"{label}: cannot read: {exc}")
+    return out, problems
+
+
+def sessions_out(rd, office_root):
+    """(sessions, problems): the sessions the office has out, the open
+    ones a folder records, read-only sittings aside (they land nothing)."""
+    every, problems = open_anywhere(rd, office_root)
+    return [x for x in every if x["folders"] and not x["read_only"]], problems
+
+
+def responds_to(path):
+    """The session a response tarball answers: its manifest's
+    responds_to. The tarball is the worker's file, not bale's records."""
+    try:
+        with tarfile.open(path) as t:
+            for m in t.getmembers():
+                if m.isfile() and re.fullmatch(r"response-\d{3}/manifest\.json", m.name):
+                    sid = json.loads(t.extractfile(m).read().decode("utf-8")).get("responds_to")
+                    if isinstance(sid, str) and oh.SID_RE.match(sid):
+                        return sid
+                    raise LandError([f"{path}: its manifest's responds_to is not a session id: {sid!r}"])
+    except (OSError, tarfile.TarError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise LandError([f"{path} is not a response tarball the office can read: {exc}"])
+    raise LandError([f"{path} holds no response-NNN/manifest.json, so it is not a response tarball"])
+
+
+def git(root, *args, check=True, binary=False):
+    """git in the office, its output as text (bytes with binary=True, for
+    a page's exact bytes); a failure is a LandError naming the command."""
+    proc = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=not binary, timeout=60)
+    if check and proc.returncode != 0:
+        err = proc.stderr.decode(errors="replace") if binary else proc.stderr
+        raise LandError([f"git {' '.join(args)} failed in {root}: {err.strip() or proc.returncode}"])
+    return proc
+
+
+def folder_record(office_root, folder, sid):
+    """How the office's record of sid sits in folder/folder.md, for a
+    session packed in the office (whose forecast holds the folder, so a
+    response may rewrite it): the commit that wrote the record, and
+    whether the folder can be put back as it was packed, because nothing
+    else touched it since. A folder in the filing cabinet only gains
+    lines, so it is never put back."""
+    rel = f"{folder}/folder.md"
+    out = {"path": rel, "commit": None, "restorable": False, "why": None}
+    for subject in RECORD_SUBJECTS:
+        proc = git(office_root, "log", "-n", "1", "--format=%H %s", "--fixed-strings",
+                   f"--grep={subject.format(sid=sid)}", "--", rel, check=False)
+        line = proc.stdout.strip()
+        if line:
+            commit = line.split()[0]
+            if out["commit"] is None or git(office_root, "merge-base", "--is-ancestor", out["commit"], commit,
+                                             check=False).returncode == 0:
+                out["commit"] = commit
+    if out["commit"] is None:
+        return out
+    last = git(office_root, "log", "-n", "1", "--format=%H", "--", rel, check=False).stdout.strip()
+    dirty = git(office_root, "diff", "--quiet", "HEAD", "--", rel, check=False).returncode != 0
+    if folder.startswith("filing-cabinet/"):
+        out["why"] = (f"{rel} is in the filing cabinet, whose folders only gain lines, so the office does not take its "
+                      f"record of {sid} out while bale lands")
+    elif last != out["commit"] or dirty:
+        out["why"] = (f"{rel} changed after the office recorded {sid} in it, so the office cannot put it back as it "
+                      "was packed")
+    else:
+        out["restorable"] = True
+    if out["why"]:
+        out["why"] += ("; if the response rewrites it, bale refuses it as base drift and prints the line that "
+                       "lands it over those changes")
+    return out
+
+
+def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None):
+    """The one session to land and how: a dict (sid, label, project,
+    repo, folders, verb apply or retry, tarball, needs_response,
+    attempts_before, record, after_land, problems). Raises LandError
+    with lines when there is none, or more than one."""
+    tarball = None
+    if response:
+        given = pathlib.Path(response).expanduser()
+        here = given if given.is_absolute() else pathlib.Path(cwd or os.getcwd()) / given
+        if here.is_file():
+            tarball = str(here.resolve())
+            want = responds_to(here)
+        elif "/" in response:
+            raise LandError([f"no such file: {response}"])
+        else:
+            m = RESPONSE_NAME_RE.match(response)
+            if not m or not oh.SID_RE.match(m.group(1)):
+                raise LandError([f"{response} is not a file here, and not a response tarball's name "
+                                 "(response-SID.tar.gz) for bale to find in its search directories"])
+            tarball, want = response, m.group(1)
+        if sid and sid != want:
+            raise LandError([f"{response} answers {want}, not {sid}"])
+        sid = want
+    every, problems = open_anywhere(rd, office_root)
+    if folder:
+        found = [x for x in every if folder in x["folders"]]
+        if sid:
+            found = [x for x in found if x["sid"] == sid]
+        if not found:
+            raise LandError([f"no session {sid + ' ' if sid else ''}is out for {folder}: none it records is open "
+                             "in this office or a project it scopes (office sessions FOLDER shows how each went)"]
+                            + problems)
+    elif sid:
+        found = [x for x in every if x["sid"] == sid]
+        if not found:
+            raise LandError([f"{sid} is not open in this office or in any project it scopes, so there is nothing "
+                             "to land (office sessions FOLDER shows how it went)"] + problems)
+    else:
+        found = [x for x in every if x["folders"] and not x["read_only"]]
+        if not found:
+            raise LandError(["no session is out: none that a folder records is open in this office or in a "
+                             "project it scopes (office start sends one out)"] + problems)
+    landable = [x for x in found if not x["read_only"]]
+    if not landable:
+        x = found[0]
+        raise LandError([f"{x['sid']} is a read-only session: it lands nothing, so there is no response to land "
+                         f"(when the sitting is over, bale unlock {x['sid']} in {x['repo']} closes it)"])
+    if len(landable) > 1:
+        raise LandError(["more than one session is out; name one: office land SID"]
+                        + [f"  {x['sid']}  ({x['label']}; {', '.join(x['folders']) or 'no folder records it'})"
+                           for x in landable])
+    x = landable[0]
+    d = rd.dossier(x["repo"], x["sid"])
+    view = session_view(rd, d) if d is not None else None
+    held = bool(view and view["in_flight"] and view["outcome"] == "held")
+    plan = dict(x)
+    plan.update(verb="retry" if held else "apply", held=held,
+                tarball=tarball or f"response-{x['sid']}.tar.gz",
+                needs_response=held and tarball is None,
+                attempts_before=len(response_attempts(view)) if view else 0,
+                office_session=x["label"] == OFFICE_LABEL, problems=problems, record=None)
+    if plan["office_session"]:
+        for f in x["folders"]:
+            plan["record"] = folder_record(office_root, f, x["sid"])
+            plan["record"]["folder"] = f
+            break
+    return plan
+
+
+def take_record_out(office_root, plan):
+    """Before bale lands an office session: put the folder back as it was
+    packed, so bale finds the bytes it stamped and never has to refuse
+    the response as base drift. One commit, that path alone. Returns the
+    line to tell the occupant, and records the commit in the plan."""
+    rec = plan.get("record")
+    if not rec or rec["commit"] is None:
+        return None
+    if not rec["restorable"]:
+        return rec["why"]
+    root = pathlib.Path(office_root)
+    packed = git(root, "show", f"{rec['commit']}^:{rec['path']}", binary=True).stdout
+    (root / rec["path"]).write_bytes(packed)
+    name = pathlib.Path(rec["folder"]).name
+    git(root, "add", "--", rec["path"])
+    git(root, "commit", "-q", "-m", f"office land: {plan['sid']} unrecorded in {name} while it lands", "--",
+        rec["path"])
+    rec["unrecorded"] = git(root, "rev-parse", "HEAD").stdout.strip()
+    return (f"{rec['path']}: the office's record of {plan['sid']}, written after the pack, is out while bale lands "
+            "it, so bale finds the folder as it was packed; it goes back after")
+
+
+def put_record_back(office_root, plan, applied, day):
+    """After bale: the folder records the session again, as a new append
+    when the response landed a folder.md without it, or as it was before
+    land took it out when nothing landed. Returns lines to tell."""
+    rec = plan.get("record")
+    folders = plan.get("folders") or []
+    if not plan.get("office_session") or not folders:
+        return []
+    root = pathlib.Path(office_root)
+    folder = rec["folder"] if rec else folders[0]
+    rel = f"{folder}/folder.md"
+    name = pathlib.Path(folder).name
+    md = root / rel
+    if not md.is_file():
+        return [f"{rel} is not there after the landing, so the record of {plan['sid']} was not put back"]
+    if not applied and rec and rec.get("unrecorded"):
+        before = git(root, "show", f"{rec['unrecorded']}^:{rel}", binary=True).stdout
+        md.write_bytes(before)
+        why = "it did not land"
+    elif applied and plan["sid"] not in [s for s, _ in oh.folder_session_lines(md)]:
+        why = "the response's folder.md did not carry it"
+        merged = merge_record(root, rec, rel, md) if rec and rec.get("unrecorded") else None
+        if merged is not None:
+            md.write_bytes(merged)
+            why += "; the lines the office wrote merged back as they were"
+        else:
+            oh.record_session_opening(md, plan["sid"], day)
+    else:
+        return []
+    git(root, "add", "--", rel)
+    git(root, "commit", "-q", "-m", f"office land: {plan['sid']} recorded again in {name}", "--", rel)
+    return [f"{rel}: {plan['sid']} recorded again ({why})"]
+
+
+def merge_record(root, rec, rel, md):
+    """The landed folder.md with the office's record merged back in, the
+    lines as the office wrote them (the day it opened stays the day it
+    opened): a three-way merge of the folder as packed, as recorded, and
+    as landed. None when the two sides touched the same lines, and the
+    record goes back as a new append instead."""
+    with tempfile.TemporaryDirectory(prefix="office-land-") as tmp:
+        t = pathlib.Path(tmp)
+        (t / "packed").write_bytes(git(root, "show", f"{rec['commit']}^:{rel}", binary=True).stdout)
+        (t / "recorded").write_bytes(git(root, "show", f"{rec['unrecorded']}^:{rel}", binary=True).stdout)
+        (t / "landed").write_bytes(md.read_bytes())
+        proc = subprocess.run(["git", "merge-file", "-p", str(t / "recorded"), str(t / "packed"), str(t / "landed")],
+                              capture_output=True, timeout=60)
+    if proc.returncode != 0:
+        debug(f"{rel}: the record did not merge cleanly onto the landed folder (git merge-file exit {proc.returncode})")
+        return None
+    return proc.stdout
+
+
+def relay_blocks(lines, sid, spec):
+    """[(addressee, lines)] for each block bale printed for a person to
+    carry, markers included, in the order printed."""
+    begin, end = (m.format(sid=sid) for m in spec["relay"])
+    out, cur = [], None
+    for line in lines:
+        if cur is None and line.startswith(begin):
+            cur = (line[len(begin):].removesuffix(" ===").strip(), [line])
+        elif cur is not None:
+            cur[1].append(line)
+            if line.startswith(end):
+                out.append(cur)
+                cur = None
+    return out
+
+
+def exchange_block(lines, sid, spec):
+    """The paste block bale relay printed, or None."""
+    begin, end = (m.format(sid=sid) for m in spec["block"])
+    try:
+        a = lines.index(begin)
+        b = lines.index(end, a + 1)
+    except ValueError:
+        return None
+    return lines[a:b + 1]
+
+
+def outcome_words(plan, outcome):
+    """(words, next line or None) for where a landing ended, in the
+    office's words; bale's own lines above say the rest."""
+    sid, where = plan["sid"], plan["label"]
+    nothing = "nothing landed, and the session stays open"
+    if outcome == "applied":
+        return f"Landed: {sid} is applied in {where} (tag applied/{sid}).", None
+    if outcome == "held":
+        return (f"Held: bale held {sid} in {where}; {nothing}. Carry bale's blocks above, the worker's first.",
+                f"office land {sid} --response FILE, with the corrected response (bale retry runs it)")
+    if outcome in ("base-drift-refused", "scope-drift-refused", "required-check-refused"):
+        what = {"base-drift-refused": "a file it changes moved since the pack",
+                "scope-drift-refused": "it changes paths outside the session's forecast",
+                "required-check-refused": "its validation leaves out a check the project requires"}[outcome]
+        return (f"Refused: bale refused {sid} in {where}: {what}; {nothing}. bale printed the line that admits it "
+                "above; the office never runs it for you.", None)
+    if outcome == "clarification":
+        return (f"Questions: the worker asked before building; {nothing}. The block for the planner is below.",
+                f"(cd {plan['repo']} && bale relay {sid} ANSWER-FILE), with the planner's answer")
+    if outcome == "reverted":
+        return (f"Reverted: bale's walkthrough discarded {sid}'s branch in {where}; nothing landed. bale's lines "
+                "above say what stays open.", None)
+    if outcome == "bailout":
+        return f"Bailed: the worker handed {sid} off; nothing landed. bale printed the handoff step above.", None
+    if outcome == "refused":
+        return f"Not landed: bale refused before it recorded an attempt for {sid}; its words are above.", None
+    return f"bale recorded {outcome} for {sid} in {where}; nothing is ratified and nothing runs after it.", None
+
+
+def land_outcome(rd, office_root, plan, code, capture, day):
+    """What happened, from the session's dossier: the attempt this landing
+    added, or, when bale exited 0 and added none, a clarification round.
+    Puts the folder's record back, and gathers the blocks to carry."""
+    spec = rd.consumption.surface("apply")
+    d = rd.dossier(plan["repo"], plan["sid"])
+    view = session_view(rd, d) if d is not None else None
+    new = response_attempts(view)[plan["attempts_before"]:] if view else []
+    if new:
+        outcome = new[-1]["outcome"]
+    elif code == 0 and view and view["in_flight"]:
+        outcome = "clarification"
+    else:
+        outcome = "refused"
+    try:
+        printed = pathlib.Path(capture).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        printed = []
+    blocks = relay_blocks(printed, plan["sid"], spec)
+    if outcome == "clarification":
+        try:
+            block = exchange_block(rd.lines("relay", plan["repo"], sid=plan["sid"]), plan["sid"],
+                                   rd.consumption.surface("relay"))
+        except BaleError as exc:
+            block = None
+            log(f"bale relay could not re-emit the questions' block: {exc}")
+        blocks = [("planner", block)] if block else []
+    words, nxt = outcome_words(plan, outcome)
+    applied = outcome == "applied"
+    told = put_record_back(office_root, plan, applied, day)
+    return {"outcome": outcome, "applied": applied, "words": words, "next": nxt, "told": told,
+            "relays": [{"to": to, "lines": lines} for to, lines in blocks],
+            "after_land": plan["after_land"] if applied else [],
+            "known_outcome": outcome in spec["outcomes"] + ["clarification", "refused"]}
 
 
 # --- command line --------------------------------------------------------------------
+
+# bale ran, but office land could not (no bale, no such directory).
+LAND_RUN_FAILED = 125
+
+
+def land_main(a):
+    """The land-* subcommands: error lines on stderr and exit 1 when the
+    office cannot go on; land-run exits with bale's own code."""
+    rd = Reader()
+    try:
+        if a.cmd == "land-out":
+            out, problems = sessions_out(rd, a.office)
+            for line in problems:
+                log(f"warning: {line}")
+            for x in out:
+                print(f"{x['sid']}\t{x['label']}\t{', '.join(x['folders'])}")
+            return 0
+        if a.cmd == "land-plan":
+            plan = land_plan(rd, a.office, a.sid, a.folder, a.response, a.cwd)
+            pathlib.Path(a.plan).write_text(json.dumps(plan), encoding="utf-8")
+            return 0
+        plan = json.loads(pathlib.Path(a.plan).read_text(encoding="utf-8"))
+        if a.cmd == "land-prepare":
+            line = take_record_out(a.office, plan)
+            pathlib.Path(a.plan).write_text(json.dumps(plan), encoding="utf-8")
+            if line:
+                print(line)
+            return 0
+        if a.cmd == "land-run":
+            try:
+                return rd.interact(plan["verb"], plan["repo"], a.capture, tarball=plan["tarball"])
+            except BaleError as exc:
+                log(f"error: {exc}")
+                return LAND_RUN_FAILED
+        print(json.dumps(land_outcome(rd, a.office, plan, a.exit, a.capture, a.day)))
+        return 0
+    except StartError as exc:
+        for line in exc.lines:
+            log(f"error: {line}")
+        return 1
+    except (oh.HelperError, BaleError, OSError, ValueError) as exc:
+        log(f"error: {exc}")
+        return 1
+
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="office_bale.py", description=__doc__.split("\n\n")[0])
@@ -1403,11 +1941,27 @@ def main(argv=None):
     p.add_argument("--include", action="append", default=[]); p.add_argument("--write", action="append", default=[])
     p.add_argument("--read-only", action="store_true"); p.add_argument("--brief")
     p.add_argument("--work-class"); p.add_argument("--tray-root", required=True)
+    p.add_argument("--bundle", help="a planner bundle: bale open replays its pack line in place of a pack")
+    p = sub.add_parser("land-out", help="the sessions out: sid, where, folders; one per line")
+    p.add_argument("office")
+    p = sub.add_parser("land-plan", help="the one session to land and how, as JSON into --plan")
+    p.add_argument("office"); p.add_argument("--sid"); p.add_argument("--folder"); p.add_argument("--response")
+    p.add_argument("--cwd", help="where a relative response path is read from (default: here)")
+    p.add_argument("--plan", required=True)
+    p = sub.add_parser("land-prepare", help="take the office's record out of an office session's folder")
+    p.add_argument("office"); p.add_argument("--plan", required=True)
+    p = sub.add_parser("land-run", help="bale apply or retry, the terminal's; exits with bale's code")
+    p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--capture", required=True)
+    p = sub.add_parser("land-outcome", help="what happened, from bale's records; one JSON line")
+    p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--capture", required=True)
+    p.add_argument("--exit", type=int, required=True); p.add_argument("--day", required=True)
     a = ap.parse_args(argv)
+    if a.cmd.startswith("land-"):
+        return land_main(a)
     if a.cmd == "start":
         try:
             result = start(Reader(), a.office, a.folder, a.where, a.project, a.goal, a.slug, a.include,
-                           a.write, a.read_only, a.brief, a.work_class, a.tray_root)
+                           a.write, a.read_only, a.brief, a.work_class, a.tray_root, a.bundle)
         except StartError as exc:
             for line in exc.lines:
                 log(f"error: {line}")

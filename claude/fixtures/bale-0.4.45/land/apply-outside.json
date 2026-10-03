@@ -1,0 +1,47 @@
+{
+ "argv": [
+  "apply",
+  "/tmp/office-probe.waUkTl/dl/response-2026-10-03-probe-outside-001.tar.gz"
+ ],
+ "cwd": "/tmp/office-probe.waUkTl/outside",
+ "stdin": "closed",
+ "exit": 1,
+ "stdout": [
+  "[bale] applying response-2026-10-03-probe-outside-001.tar.gz against session 2026-10-03-probe-outside-001",
+  "[bale] apply.sh and validation.sh syntax checks passed",
+  "[bale] manifest schema validation passed",
+  "[bale] admission prompt not offered (stdin is not a TTY): the decline default applies to every drifted path",
+  "[bale] [REJECT] own-forecast drift (BALE.md \u00a711 row 22): 1 changes[] path(s) outside session 2026-10-03-probe-outside-001's write forecast \u2014 docs/outside.md; write forecast: notes",
+  "",
+  "  [SCOPE-DRIFT-REFUSED] 2026-10-03-probe-outside-001",
+  "  past the forecast: docs/outside.md",
+  "  write forecast:    notes",
+  "  telemetry:         recorded claude/telemetry/2026-10-03-probe-outside-001.json",
+  "",
+  "The session stays open; nothing was staged or committed. Out-of-forecast work is worker judgment past the ask (ADR-0015): check the response's notes.md for its enumeration, then either:",
+  "  - admit every drifted path deliberately by pasting this line (delete a flag to admit less):",
+  "      bale apply 'response-2026-10-03-probe-outside-001.tar.gz' --allow-out-of-scope 'docs/outside.md'",
+  "  - regenerate the response inside the forecast and re-run `bale apply`,",
+  "  - or reforecast: `bale unlock 2026-10-03-probe-outside-001` and re-pack with a write forecast covering the work."
+ ],
+ "stdout_sha256": [
+  "12607c9d0f4a8801f4f5a51d1b5a7ca6206d82bbf8f67846dcc35721b3ff2d2b",
+  "9b3238e1b728cff6eef4c6d18c1c3a62b8fa3ec73784723040150c6e43097ee5",
+  "91cd0479f3cb9bb7b0465ad956b23e42a7e7ae3c68151d2d85cb4dc350f7b8bd",
+  "b07ff912a9f177617911b316c7a2f70f7131dbf213349e3c77dfb699941b93f4",
+  "382860deeec0adbc402282dfa8129d02ec7a57556a540b1b4d6542b1ed5910c2",
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "41099c09376fc6e4a9de515ce6c856dd4223b833ab7a28e7b0d985a5af732053",
+  "7f1d825d3219dcdf74a0684391c21b61e3b9b14d91740f45550231ed4df4567c",
+  "066fc316ffba4d0a2d56fad3bd9fa5ca61d9e62f84787f217fd9a60d23f6a7a5",
+  "2efd17acccc30c7dd5eb37a7d5b8ae54d84b64a360c7e2e768998ba8cf0b1404",
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "b80d89c51d2132b613782394e767c8a9635a88b3c6ce8072faf86f2d714cf172",
+  "306a26c623686b08021534429921c27a04d4c06d55e0dab0fb888c1fd0445ad7",
+  "f15c6b690d7f8c7389c58b27c4c43a3bed7d3308fa60242dedebf00bdbd3623f",
+  "2bf7a27ac5950de9d57654ac949daa8d57d1e3e186485d3cb3dc1d163d52cd95",
+  "a7a42f11c34524459af31d7946412bf61089e84e822400bc5d8d96776dd82546"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-03-friction-return-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.45) on 2026-10-03, in a throwaway repo under /tmp/office-probe.waUkTl (removed)"
+}

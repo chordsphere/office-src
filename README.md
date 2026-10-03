@@ -133,6 +133,7 @@ have a defect.
     office start                       # asks: which job, in the office or on a project, the goal
     office start fix-login --on office-src --goal "Fix the login redirect"
     office start plan-wave --in-office --read-only --goal "Plan the next wave"
+    office start fix-login --on office-src 2026-10-05-fix-login.bale-bundle   # a planner's bundle
 
 `office start` packs a session for a folder and gathers everything to
 attach into one out tray, `~/out-tray/SID`: the request, the doctrine,
@@ -152,10 +153,57 @@ bale runs, naming the open one; office sessions take turns on the
 notepad. Every question has a flag (`office start --help`); piped, it
 asks nothing and names the flag it needed.
 
+A planning sitting hands over the sessions it authors as bundles
+(`.bale-bundle` files). Give one to `office start`, as a path or as the
+bare name bale's own search finds (`--bundle FILE`, or the file as a
+word): it asks which job and where the work lands, as for a pack, then
+hands the bundle to `bale open` there. The bundle's pack line is the
+whole session, its goal, forecast and brief; the office adds nothing to
+it and says when it leaves out something the office would have carried.
+When the brief carries a page of the sitting's words between
+`--- NOTEPAD PAGE BEGIN notepad/DATE-SLUG.md ---` and
+`--- NOTEPAD PAGE END ---`, `office start` files that page in the
+notepad and commits it alone; a page already filed with the same words
+is left as it is, and a different one at that path is refused loudly and
+never overwritten. This works for a brief given with `--brief` too.
+
 On WSL the out tray opens in Explorer and the opener goes on the
 clipboard. `~/.config/office-src/machine.toml` changes that per machine:
 `out_tray = "~/somewhere"`, `clipboard_command = "..."`,
 `open_command = "..."`, and `""` turns a step off.
+
+### Bringing a session back
+
+    office land                          # the session out: bale apply, how it ended, the relay
+    office land fix-login                # the session out for a folder
+    office land response-2026-10-05-fix-login-001.tar.gz --ratified
+
+`office land` finds the session a response answers (the one the office
+has out, asked for when there are several; a session id, a folder or a
+response file names one) and runs `bale apply` in the repo it belongs
+to, `bale retry` when bale held it. bale reads your terminal, so its own
+questions (an admission, the merge, a hook) are asked by bale and only
+you answer them; the office passes it nothing that answers one. The
+response is found by bale, by name, in its search directories; give a
+path when the browser saved it as `response-SID (1).tar.gz`, which a
+corrected response after a HOLD usually is. How it ended is read from
+bale's records and said in a line. Whatever bale prints for you to carry
+(the relay for the planner, and on a HOLD the worker's block first) is
+printed whole and, on WSL, put on the clipboard; a clarification's block
+for the planner comes from `bale relay` and is printed too.
+
+After an applied landing it runs the project's after-land actions in
+its repo, in order (`office projects set NAME --after-land ./install.sh`
+declares them), stopping loudly at the first that fails with the lines
+that rerun it and the rest. Then it asks whether the planner ratified the
+session's judgment calls: yes, yes except TEXT, or not now
+(`--ratified`, `--except TEXT`, `--not-now`), and records the answer in
+the folder. A HOLD, a refusal or a clarification lands nothing: nothing
+is ratified, nothing runs after, and the next line is named. An office
+session's folder changed after its pack, when `office start` recorded the
+session; `office land` puts it back as it was packed while bale lands, so
+bale never refuses the response over it, and records the session again
+after.
 
 ### Which sessions worked on a job
 
@@ -184,8 +232,8 @@ repo on this machine; `office projects add` writes it, and checks the
 path is the top of a git repo bale runs in. A project may declare what
 rides beside every session on it (`--ride PATH`, repeatable: a directory
 inside another repo, a whole repo, or a file) and what runs in its repo
-after one of its sessions lands (`--after-land CMD`, repeatable; the
-return trip runs them, this release only declares them). `office
+after one of its sessions lands (`--after-land CMD`, repeatable; `office
+land` runs them). `office
 projects set NAME` asks for both on a terminal, and `office projects`
 shows them. They live in the office, never in the project's repo. Walking in shows the sessions
 open in those projects and the folder whose Sessions section names each.
@@ -209,7 +257,7 @@ matches the floor plan.
 |---|---|
 | bin/office | the command (bash) |
 | lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library) |
-| lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups and the one-writer rule among them), and office start's packing and out tray |
+| lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after |
 | doctrine/OFFICE.md | how every office works |
 | doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |
 | share/spaces.toml | every space an office can have; the base ones are the default floor plan; a space files itself whole or as a list of paths |
@@ -248,4 +296,6 @@ bale need not be installed: the read side's tests put a fake bale first
 on the PATH that replays real bale output captured by a probe, kept in
 the development record, and refuses anything it did not capture; office
 start's tests use a fake that packs, every line of it built from the
-packs a probe captured.
+packs a probe captured, and office land's a fake that also applies, holds,
+refuses and opens bundles, built from the applies and opens a probe
+captured.

@@ -1,0 +1,24 @@
+{
+ "argv": [
+  "pack",
+  "Probe: dry",
+  "--slug",
+  "probe-dry",
+  "--include",
+  "notes",
+  "--write",
+  "notes",
+  "--no-readme",
+  "--json",
+  "--dry-run"
+ ],
+ "cwd": "/tmp/office-probe.waUkTl/dry",
+ "stdin": "closed",
+ "exit": 1,
+ "stdout": [],
+ "stdout_sha256": [],
+ "stderr": [
+  "[bale] error: --dry-run and --json are not supported together: pack's --json line reports a pack that ran (sid, tarball, session), and a rehearsal runs none. Drop --json to rehearse, or --dry-run to pack."
+ ],
+ "captured": "probe of session 2026-10-03-friction-return-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.45) on 2026-10-03, in a throwaway repo under /tmp/office-probe.waUkTl (removed)"
+}
