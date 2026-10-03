@@ -730,7 +730,84 @@ cmd_note() {
     n=$((n + 1))
   done <<< "$text"
   log "noted $n line(s) in $page"
+  # The notepad is filed paper: before committing, the page must be its
+  # committed bytes with lines added at the end (doctrine section 15).
+  # The words stay on disk either way; nothing is lost, only not filed.
+  local why
+  why="$(helper append-check "$root" "$page")"
+  case $? in
+    0) ;;
+    3) die "$page differs from its committed bytes other than at its end ($why); the line is on disk but not committed, and office status names the page" ;;
+    *) die "could not check $page against its committed bytes; the line is on disk but not committed" ;;
+  esac
   commit_paths "$root" "office note: $day $now" "$page" || true
+}
+
+usage_slip() {
+  cat <<'USAGE'
+usage: office slip [TEXT...] [--about WHAT]   (or the text on stdin)
+Drops a friction slip in the suggestion box: one new page,
+suggestion-box/DATE-SLUG.md, committed on its own. --about names what the
+slip is about: the office, a tool (bale, office-src) or one of the
+office's projects, so it can be carried to that tool's project. On a
+terminal it asks for what it was not told; piped, it never asks. Like
+office note, it works in an unfounded office and one behind or ahead of
+the installed tool, and only warns.
+USAGE
+}
+
+# A slip is about the office, a tool or a project: one word, the way a
+# project is named.
+slip_about_choices() {
+  local root="$1" names
+  names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null | paste -sd, - | sed 's/,/, /g')"
+  printf 'office, bale, office-src%s' "${names:+, $names}"
+}
+
+cmd_slip() {
+  local about="" text="" words=() root tz day now title slug page n=1 base
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --about) [ $# -ge 2 ] || die "--about needs what the slip is about: office, a tool or a project"; about="$2"; shift 2 ;;
+      -h|--help) usage_slip; return 0 ;;
+      --) shift; words+=("$@"); break ;;
+      -*) usage_slip >&2; die "office slip does not know $1; it takes the text and --about" ;;
+      *) words+=("$1"); shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  warn_on_skew "$root"
+  warn_if_unfounded "$root"
+  if [ "${#words[@]}" -gt 0 ]; then text="${words[*]}"
+  elif [ ! -t 0 ]; then text="$(cat)"
+  else
+    ask text "What caused friction, in a line or two (office slip TEXT)" "" 1 \
+      "Where it hurt and what would remove it, in your words. It lands as its own page in the suggestion box; cleanup and renovation sessions read the box."
+  fi
+  [ -n "${text//[[:space:]]/}" ] || die "nothing to slip: the text is empty"
+  if [ -z "$about" ] && can_ask; then
+    ask about "What it is about: $(slip_about_choices "$root") (--about)" "office" 0 \
+      "The office itself, a tool the office uses (bale, office-src), or one of this office's projects. A slip about a tool says so, so it can be carried to that tool's project."
+  fi
+  if [ -n "$about" ] && [[ ! "$about" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    die "--about takes one word, the office, a tool or a project ($(slip_about_choices "$root")), not $(shq "$about")"
+  fi
+  [ -n "$about" ] || log "the slip does not say what it is about (--about office, a tool or a project says so)"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"; now="$(office_time "$tz")"
+  # The slug from the words as typed, as office open makes one: an
+  # escape is no part of a file name.
+  slug="$(short_slug "$(printf '%s\n' "$text" | grep -m 1 '[^[:space:]]')")"; [ -n "$slug" ] || slug="slip"
+  text="$(printf '%s' "$text" | helper ascii-escape)"
+  title="$(printf '%s\n' "$text" | grep -m 1 '[^[:space:]]' | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
+  [ "${#title}" -le 72 ] || title="${title:0:69}..."
+  base="suggestion-box/$day-$slug"; page="$base.md"
+  while [ -e "$root/$page" ]; do n=$((n + 1)); page="$base-$n.md"; done
+  mkdir -p "$root/suggestion-box" || die "cannot create $root/suggestion-box"
+  helper render-template "$TEMPLATES/suggestion-slip.md" "title=$title" "about=$about" "dropped=$day $now" "text=$text" \
+    > "$root/$page" || { rm -f "$root/$page"; die "could not write $page"; }
+  log "slipped $page${about:+ (about $about)}"
+  commit_paths "$root" "office slip: $(basename "$page" .md)${about:+ (about $about)}" "$page" || true
+  printf '%s\n' "$page"
 }
 
 usage_open() {
@@ -1170,31 +1247,319 @@ cmd_sessions() {
   record_session "$root" "$space/$name" "$sid" "$words" "$day"
 }
 
+# --- sending a session out ----------------------------------------------------
+#
+# office start: one command from a folder to an out tray. It asks which
+# job, whether the work lands in the office or on a project, and the
+# goal, and derives the rest: the slug from the folder, the forecast from
+# its lane, the work class from its class. Then the read side packs the
+# context that rides and the session itself, records the session id in
+# the folder, and gathers every file to attach into one directory.
+
+MACHINE_FILE="$CONFIG_DIR/machine.toml"
+
+# A per-machine setting, outside every office: KEY from machine.toml, or
+# the default given. An empty value in the file turns a desktop step off.
+machine_setting() {
+  if [ -f "$MACHINE_FILE" ]; then
+    helper get "$MACHINE_FILE" "$1" --default "$2" 2>/dev/null && return 0
+    warn "$MACHINE_FILE could not be read; using the default for $1"
+  fi
+  printf '%s\n' "$2"
+}
+
+on_wsl() { grep -qi microsoft /proc/version 2>/dev/null; }
+
+usage_start() {
+  cat <<'USAGE'
+usage: office start [FOLDER] [--in-office | --on PROJECT] [--goal TEXT] [--slug SLUG]
+                    [--write PATH]... [--include PATH]... [--brief FILE] [--read-only]
+Packs a session for a folder on the desk and gathers everything to attach
+into one out tray: the request, the doctrine, and whatever rides with the
+work (on a project, the office's context and the project's ride-alongs;
+in the office, the project its lane names, when it names one). Records
+the session id in the folder and prints the opener to paste.
+  FOLDER         the job: its name, a unique part of it, or folder N;
+                 on a terminal it is asked for, and new opens one through
+                 office open's own questions
+  --in-office    the work lands in the office (packed from the office,
+                 forecasting the folder and the notepad)
+  --on PROJECT   the work lands in one of the office's projects (packed
+                 from the project, with the office's context beside it)
+  --goal TEXT    the session's goal, one sentence
+  --slug SLUG    default: the folder's name without its date, and
+                 -office after it for a session in the office
+  --write PATH   what the session will change, relative to where it is
+                 packed; for a project, default: the paths in the folder's
+                 lane, else the whole repo
+  --include PATH more to ship as context (a project ships its whole repo
+                 by default)
+  --brief FILE   a brief to ship as the request's README.md
+  --read-only    forecast nothing: a sitting that lands nothing itself
+The out tray is ~/out-tray/SID unless this machine's
+~/.config/office-src/machine.toml sets out_tray. On WSL the tray opens in
+Explorer and the opener goes to the clipboard; clipboard_command and
+open_command in the same file change that, and "" turns either off.
+USAGE
+}
+
+# The folder a start is for: asked on a terminal, with new as a choice.
+ask_start_folder() {
+  local __var="$1" root="$2" d number n=0
+  printf 'Folders on the desk:\n' >&2
+  for d in "$root/desk"/*/; do
+    [ -d "$d" ] || continue
+    n=$((n + 1)); number=""
+    [ -f "$d/folder.md" ] && number="$(folder_fact "$d/folder.md" number)"
+    printf '  %s%s\n' "${number:+folder $number  }" "$(basename "$d")" >&2
+  done
+  [ "$n" -gt 0 ] || printf '  (none yet)\n' >&2
+  ask "$__var" "Which job: a unique part of its name, folder N, or new to open one (office start FOLDER)" \
+    "$([ "$n" -eq 0 ] && printf new)" 1 \
+    "The folder the session works on. new opens one first, with office open's questions (title, size, lane, source)."
+}
+
+cmd_start() {
+  local want="" where="" project="" goal="" slug="" brief="" read_only=0 includes=() writes=() set_w=0
+  local root name md status lane lane_project lane_paths names cls ans tz day out sid tray tray_root rel about="" args=() v
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --in-office) [ -z "$where" ] || [ "$where" = office ] || die "--in-office and --on are two places; give one"; where=office; shift ;;
+      --on) [ $# -ge 2 ] || die "--on needs the project's name"; [ "$where" != office ] || die "--in-office and --on are two places; give one"
+            where=project; project="$2"; shift 2 ;;
+      --goal|--slug|--brief|--write|--include)
+        [ $# -ge 2 ] || die "$1 needs a value (office start --help explains it)"
+        case "$1" in --goal) goal="$2" ;; --slug) slug="$2" ;; --brief) brief="$2" ;;
+                     --write) writes+=("$2"); set_w=1 ;; --include) includes+=("$2") ;; esac
+        shift 2 ;;
+      --read-only) read_only=1; shift ;;
+      -h|--help) usage_start; return 0 ;;
+      -*) usage_start >&2; die "office start does not know $1; the flags above are what it takes" ;;
+      *) [ -z "$want" ] || die "office start takes one folder"; want="$1"; shift ;;
+    esac
+  done
+  [ "$read_only" = 0 ] || [ "$set_w" = 0 ] || die "--read-only forecasts nothing, so it takes no --write"
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  warn_if_unfounded "$root"
+  command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office start runs bale pack"
+
+  # Which job.
+  if [ -z "$want" ]; then
+    can_ask || { usage_start >&2; die "name the folder: office start FOLDER (office open makes one first); piped input is never asked"; }
+    ask_start_folder want "$root"
+  fi
+  if [ "$want" = new ]; then
+    can_ask || die "new opens a folder through office open's questions, which need a terminal; run office open first"
+    rel="$(cmd_open)" || exit 1
+    want="${rel#desk/}"
+  fi
+  name="$(find_folder "$root" desk "$want")" || exit 1
+  md="$root/desk/$name/folder.md"
+  [ -f "$md" ] || die "desk/$name has no folder.md"
+  status="$(folder_fact "$md" status)"
+  case "$status" in done|absorbed|split|retired) die "desk/$name says status $status, which belongs in the filing cabinet; office status names what disagrees" ;; esac
+
+  # What the folder already says: its lane (project: paths) and class.
+  lane="$(folder_fact "$md" lane)"; cls="$(folder_fact "$md" class)"
+  lane_project=""; lane_paths=""
+  case "$lane" in *:*) lane_project="$(printf '%s' "${lane%%:*}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; lane_paths="${lane#*:}" ;; esac
+  names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+  printf '%s\n' "$names" | grep -qxF -- "$lane_project" || lane_project=""
+
+  # Where the work lands: two choices, the kind names behind the curtain.
+  if [ -z "$where" ]; then
+    can_ask || die "say where the work lands: --in-office, or --on PROJECT ($(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')); piped input is never asked"
+    while :; do
+      ask ans "Where the work lands: office, or the project it changes ($(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')) (--in-office or --on PROJECT)" \
+        "${lane_project:-office}" 1 \
+        "office: the session works in this office (the folder, the notepad) and is packed here. A project's name: the session changes that project's repo and is packed there, with this office's context riding beside it, never inside it."
+      if [ "$ans" = office ]; then where=office; break; fi
+      if printf '%s\n' "$names" | grep -qxF -- "$ans"; then where=project; project="$ans"; break; fi
+      printf '  office, or one of this office'"'"'s projects: %s\n' "$(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')" >&2
+    done
+  fi
+  if [ "$where" = project ]; then
+    printf '%s\n' "$names" | grep -qxF -- "$project" || die "--on $project: no such project in this office (it scopes: $(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g'); office projects add adds one)"
+  else
+    about="$lane_project"
+  fi
+
+  # The goal: the one thing the pack cannot derive.
+  if [ -z "$goal" ]; then
+    can_ask || die "give the session's goal: --goal TEXT, one sentence; piped input is never asked"
+    ask goal "The session's goal, in one sentence (--goal)" "" 1 \
+      "What the session is for, in one sentence: it becomes the request's goal and the opener's first line. The folder, its lane and the project's ride-alongs go with it on their own."
+  fi
+  goal="$(printf '%s' "$goal" | tr '\n' ' ' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  [ -n "$goal" ] || die "the goal is empty"
+  case "$goal" in -*) die "a goal may not start with a dash (bale would read it as a flag)" ;; esac
+  # bale numbers sessions per repo, so the same slug packed in the office
+  # and in a project the same day would mint one id twice; an office
+  # session's default slug says office.
+  if [ -z "$slug" ]; then
+    slug="$(short_slug "${name#[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-}")"
+    [ "$where" = project ] || slug="$slug-office"
+  fi
+  slug="$(slugify "$slug")"; [ -n "$slug" ] || die "the slug has no letters or digits (give one: --slug SLUG)"
+
+  # A project session's forecast: the lane's paths when the lane names
+  # this project, else asked, else the whole repo.
+  if [ "$where" = project ] && [ "$set_w" = 0 ] && [ "$read_only" = 0 ]; then
+    if [ "$lane_project" = "$project" ] && [ -n "${lane_paths//[[:space:],]/}" ]; then
+      IFS=',' read -r -a writes <<< "$lane_paths"
+      for v in "${!writes[@]}"; do writes[$v]="$(printf '%s' "${writes[$v]}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; done
+      log "forecast from the folder's lane: ${writes[*]}"
+    elif can_ask; then
+      ask ans "Paths in $project the session will change, comma-separated (--write) [return: the whole repo]" "" 0 \
+        "Its write forecast, relative to $project's top: what bale keeps other sessions off while this one is open. A directory covers what lands under it. The whole repo keeps every other $project session waiting."
+      [ -z "$ans" ] || IFS=',' read -r -a writes <<< "$ans"
+      for v in "${!writes[@]}"; do writes[$v]="$(printf '%s' "${writes[$v]}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; done
+    fi
+    [ "${#writes[@]}" -gt 0 ] || log "no forecast given: bale forecasts the whole of $project, so no other session there runs beside this one"
+  fi
+  args=(--where "$where" --goal "$goal" --slug "$slug")
+  [ "$where" = project ] && args+=(--project "$project")
+  [ -z "$about" ] || args+=(--project "$about")
+  for v in "${writes[@]}"; do [ -n "$v" ] && args+=(--write "${v%/}"); done
+  for v in "${includes[@]}"; do args+=(--include "${v%/}"); done
+  [ "$read_only" = 0 ] || args+=(--read-only)
+  if [ -n "$brief" ]; then [ -f "$brief" ] || die "--brief $brief: no such file"; args+=(--brief "$brief"); fi
+  [ -z "$cls" ] || args+=(--work-class "$cls")
+  tray_root="$(machine_setting out_tray "$HOME/out-tray")"
+  case "$tray_root" in "~"|"~/"*) tray_root="$HOME${tray_root#\~}" ;; esac
+
+  log "packing desk/$name ($([ "$where" = office ] && printf 'in the office' || printf 'on %s' "$project"))"
+  out="$(reader start "$root" "desk/$name" "${args[@]}" --tray-root "$tray_root")" || exit 1
+  sid="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sid"])')" || die "could not read what office start packed"
+  tray="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tray"])')"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  record_session "$root" "desk/$name" "$sid" "" "$day"
+
+  printf 'Packed %s for desk/%s.\n\n' "$sid" "$name"
+  printf 'Out tray: %s\n' "$tray"
+  printf '%s' "$out" | python3 -c 'import json,sys
+r = json.load(sys.stdin)
+for line in r["carried"]:
+    print("  " + line)'
+  printf '\nAttach every file in the out tray to a fresh chat, then paste the opener:\n\n'
+  local opener
+  opener="$(printf '%s' "$out" | python3 -c 'import json,sys
+r = json.load(sys.stdin)
+if r["opener"] is not None:
+    print("\n".join(r["opener"]))')"
+  if [ -z "$opener" ]; then
+    warn "bale printed no opener between its scissor lines; the session is open, and bale pack's own report (run it by hand) or bale status shows it"
+    return 0
+  fi
+  printf -- '--8<-- session opener --8<--\n%s\n--8<-- end session opener --8<--\n' "$opener"
+  start_desktop "$tray" "$opener"
+}
+
+# The two desktop steps, on a terminal only: copy the opener to the
+# clipboard and open the out tray in the file manager. On WSL they
+# default to clip.exe and explorer.exe; elsewhere they are off until
+# machine.toml names a command.
+start_desktop() {
+  local tray="$1" opener="$2" clip open
+  [ -t 1 ] || return 0
+  if on_wsl; then
+    clip="$(machine_setting clipboard_command "$(command -v clip.exe >/dev/null 2>&1 && printf clip.exe)")"
+    open="$(machine_setting open_command "$(command -v explorer.exe >/dev/null 2>&1 && printf explorer.exe)")"
+  else
+    clip="$(machine_setting clipboard_command "")"; open="$(machine_setting open_command "")"
+  fi
+  if [ -n "$clip" ]; then
+    # clip.exe reads UTF-16; anything else takes the bytes as they are.
+    if [ "$(basename "${clip%% *}")" = clip.exe ] && command -v iconv >/dev/null 2>&1; then
+      printf '%s\n' "$opener" | iconv -f UTF-8 -t UTF-16LE | $clip 2>/dev/null
+    else
+      printf '%s\n' "$opener" | $clip 2>/dev/null
+    fi
+    if [ $? -eq 0 ]; then log "the opener is on the clipboard ($clip)"; else warn "$clip could not take the opener; copy it from above"; fi
+  fi
+  if [ -n "$open" ]; then
+    (cd "$tray" && $open . >/dev/null 2>&1 &)
+    log "opened the out tray with $open"
+  fi
+}
+
 # The projects this office scopes, and what bale records about them.
 # The floor plan's [projects] table names each project and its repo on
 # this machine; `office projects add` is the only writer. The renderings
 # read bale's records through the read side and write nothing.
 usage_projects() {
   cat <<'EOF'
-usage: office projects                       list the projects this office scopes
+usage: office projects                       list the projects this office scopes, and
+                                             what rides with each and runs after it lands
        office projects add [NAME] [PATH]     add one (asks for what it was not given)
-                           [--name NAME] [--path PATH]
+                           [--name NAME] [--path PATH] [--ride PATH]... [--after-land CMD]...
+       office projects set [NAME]            declare what rides beside every session on a
+                           [--ride PATH]... [--no-rides]       project, and what runs in its
+                           [--after-land CMD]... [--no-after-land]   repo after one lands
        office projects [NAME] --ledger       trust ledger per work class
        office projects [NAME] --landed PATH  the last applied session that landed PATH
        office projects [NAME] --versions     the version trail
 NAME narrows a rendering to one project; without it every project is read.
 PATH for --landed is relative to the project's root, e.g. bin/office.
+A ride-along is a path on this machine, absolute or ~/: a directory inside
+another repo, a whole repo, or a file. Its context rides beside every
+session office start packs for the project. An after-land action is a
+command run in the project's repo after one of its sessions lands (office
+land runs them; this release only declares them). Both live in this
+office's floor plan, never in the project's repo. --ride and --after-land
+replace the list they name; on a terminal, set asks for what it was not
+given.
 EOF
 }
 
+# ask_declaration ARRAY PROJECT KIND: on a terminal, one ride-along path
+# (KIND ride) or after-land action (KIND after-land) per question until
+# a plain return; each answer is checked as it is given and asked again
+# with the reason when it does not check.
+ask_declaration() {
+  local -n __list="$1"
+  local name="$2" kind="$3" answer out q flag help n=0
+  case "$kind" in
+    ride) flag=--ride; q="A path whose context rides beside every $name session"
+          help="A path on this machine, absolute or ~/: a directory inside another repo (~/other-repo/docs), a whole repo, or a file. office start packs its context and puts it in the out tray beside every request for $name." ;;
+    *) flag=--after-land; q="A command to run in $name's repo after one of its sessions lands"
+       help="One line, run from the top of $name's repo once a session there has landed, e.g. ./install.sh. office land runs these; until it is built, office projects shows them." ;;
+  esac
+  __list=()
+  while :; do
+    [ "$n" -eq 0 ] || q="Another"
+    IFS= read -r -p "$q ($flag) [return ends the list]: " answer || die "no answer given to: $q"
+    answer="$(printf '%s' "$answer" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    if [ "$answer" = "?" ]; then printf '%s\n' "$help" | fold -s -w 76 | sed 's/^/  /' >&2; continue; fi
+    [ -n "$answer" ] || return 0
+    if out="$(helper check-declaration "$kind" -- "$answer" 2>&1)"; then
+      __list+=("$out"); n=$((n + 1))
+    else
+      printf '  %s\n' "${out#\[office\] error: }" >&2
+    fi
+  done
+}
+
+# declaration_args ARRAY RIDES_SET RIDES... -- : the project-declare
+# flags for one key, given its list and whether it was set at all.
+declare_flags() {
+  local -n __out="$1"; local key="$2" set="$3"; shift 3
+  [ "$set" = 1 ] || return 0
+  if [ $# -eq 0 ]; then __out+=("--no-$([ "$key" = ride ] && printf rides || printf after-land)"); return 0; fi
+  local v; for v in "$@"; do __out+=("--$key" "$v"); done
+}
+
 cmd_projects_add() {
-  local name="" path="" root default missing=()
+  local name="" path="" root default missing=() rides=() afters=() set_r=0 set_a=0 args=()
   while [ $# -gt 0 ]; do
     case "$1" in
       --name) [ $# -ge 2 ] || die "--name needs a value"; name="$2"; shift 2 ;;
       --path) [ $# -ge 2 ] || die "--path needs a value"; path="$2"; shift 2 ;;
+      --ride) [ $# -ge 2 ] || die "--ride needs a path"; rides+=("$2"); set_r=1; shift 2 ;;
+      --after-land) [ $# -ge 2 ] || die "--after-land needs a command"; afters+=("$2"); set_a=1; shift 2 ;;
       -h|--help) usage_projects; return 0 ;;
-      -*) usage_projects >&2; die "office projects add does not know $1; it takes a name and a path, as words or as --name and --path" ;;
+      -*) usage_projects >&2; die "office projects add does not know $1; it takes a name and a path, as words or as --name and --path, and --ride and --after-land" ;;
       *) if [ -z "$name" ]; then name="$1"; elif [ -z "$path" ]; then path="$1"; else die "office projects add takes a name and a path, and got more: $1"; fi; shift ;;
     esac
   done
@@ -1213,6 +1578,8 @@ cmd_projects_add() {
         ask name "Name for it in this office (--name)" "$default" 0 \
           "What this office calls the project on the walk-in and in office projects: letters, digits, dash or underscore."
       fi
+      if [ "$set_r" = 0 ]; then ask_declaration rides "$name" ride; set_r=1; fi
+      if [ "$set_a" = 0 ]; then ask_declaration afters "$name" after-land; set_a=1; fi
     else
       [ -n "$name" ] || missing+=("--name NAME")
       [ -n "$path" ] || missing+=("--path PATH")
@@ -1220,13 +1587,75 @@ cmd_projects_add() {
     fi
   fi
   [ -n "$name" ] && [ -n "$path" ] || die "a project needs a name and a path"
+  # Check the declarations before the table is touched, so a bad one
+  # adds nothing.
+  local v
+  for v in "${rides[@]}"; do helper check-declaration ride -- "$v" >/dev/null || exit 1; done
+  for v in "${afters[@]}"; do helper check-declaration after-land -- "$v" >/dev/null || exit 1; done
   helper project-add "$root/$MANIFEST_REL" "$name" "$path" || exit 1
+  if [ "${#rides[@]}" -gt 0 ] || [ "${#afters[@]}" -gt 0 ]; then
+    declare_flags args ride "$([ "${#rides[@]}" -gt 0 ] && echo 1 || echo 0)" "${rides[@]}"
+    declare_flags args after-land "$([ "${#afters[@]}" -gt 0 ] && echo 1 || echo 0)" "${afters[@]}"
+    helper project-declare "$root/$MANIFEST_REL" "$name" "${args[@]}" || die "added $name, but its declarations could not be written; office projects set $name tries again"
+  fi
   commit_paths "$root" "office projects: add $name" "$MANIFEST_REL" || true
+}
+
+cmd_projects_set() {
+  local name="" root facts rides=() afters=() set_r=0 set_a=0 args=() current keep line
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --ride) [ $# -ge 2 ] || die "--ride needs a path"; rides+=("$2"); set_r=1; shift 2 ;;
+      --no-rides) set_r=2; shift ;;
+      --after-land) [ $# -ge 2 ] || die "--after-land needs a command"; afters+=("$2"); set_a=1; shift 2 ;;
+      --no-after-land) set_a=2; shift ;;
+      -h|--help) usage_projects; return 0 ;;
+      -*) usage_projects >&2; die "office projects set does not know $1; it takes a project's name, --ride, --no-rides, --after-land and --no-after-land" ;;
+      *) [ -z "$name" ] || die "office projects set takes one project"; name="$1"; shift ;;
+    esac
+  done
+  [ "$set_r" != 2 ] || [ "${#rides[@]}" -eq 0 ] || die "--ride and --no-rides contradict each other"
+  [ "$set_a" != 2 ] || [ "${#afters[@]}" -eq 0 ] || die "--after-land and --no-after-land contradict each other"
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ -z "$name" ]; then
+    can_ask || { usage_projects >&2; die "name the project: office projects set NAME; piped input is never asked"; }
+    printf 'Projects: %s\n' "$(helper project-names "$root/$MANIFEST_REL" | paste -sd, - | sed 's/,/, /g')" >&2
+    ask name "Which project (office projects set NAME)" "" 1 "One of the projects this office scopes, by the name office projects lists."
+  fi
+  facts="$(helper project-facts "$root/$MANIFEST_REL" "$name")" || exit 1
+  if [ "$set_r" = 0 ] && [ "$set_a" = 0 ] && ! can_ask; then
+    die "nothing to set for $name; give --ride PATH (repeatable) or --no-rides, and --after-land CMD (repeatable) or --no-after-land; piped input is never asked"
+  fi
+  if can_ask; then
+    for line in ride after-land; do
+      if [ "$line" = ride ] && [ "$set_r" != 0 ]; then continue; fi
+      if [ "$line" = after-land ] && [ "$set_a" != 0 ]; then continue; fi
+      current="$(printf '%s\n' "$facts" | awk -F'\t' -v k="$([ "$line" = ride ] && echo rides || echo after_land)" '$1 == k {print $2}' | paste -sd, - | sed 's/,/, /g')"
+      if [ -n "$current" ]; then
+        ask keep "Keep $([ "$line" = ride ] && echo "what rides with $name" || echo "what runs after $name lands"): $current? (y/n)" "y" 0 \
+          "y keeps the list as it is; n asks for the new list, one per question, and a plain return at once clears it."
+        case "$keep" in y|Y|yes) continue ;; esac
+      fi
+      if [ "$line" = ride ]; then ask_declaration rides "$name" ride; set_r=$([ "${#rides[@]}" -gt 0 ] && echo 1 || echo 2)
+      else ask_declaration afters "$name" after-land; set_a=$([ "${#afters[@]}" -gt 0 ] && echo 1 || echo 2); fi
+      if [ -z "$current" ] && [ "$line" = ride ] && [ "$set_r" = 2 ]; then set_r=0; fi
+      if [ -z "$current" ] && [ "$line" = after-land ] && [ "$set_a" = 2 ]; then set_a=0; fi
+    done
+  fi
+  [ "$set_r" != 0 ] || [ "$set_a" != 0 ] || { log "nothing changed for $name"; return 0; }
+  declare_flags args ride "$([ "$set_r" != 0 ] && echo 1 || echo 0)" "${rides[@]}"
+  declare_flags args after-land "$([ "$set_a" != 0 ] && echo 1 || echo 0)" "${afters[@]}"
+  helper project-declare "$root/$MANIFEST_REL" "$name" "${args[@]}" || exit 1
+  commit_paths "$root" "office projects: set $name" "$MANIFEST_REL" || true
 }
 
 cmd_projects() {
   local name="" mode="" landed="" root rc
-  case "${1:-}" in add) shift; cmd_projects_add "$@"; return ;; esac
+  case "${1:-}" in
+    add) shift; cmd_projects_add "$@"; return ;;
+    set) shift; cmd_projects_set "$@"; return ;;
+  esac
   while [ $# -gt 0 ]; do
     case "$1" in
       --ledger|--versions) [ -z "$mode" ] || die "one rendering at a time: $mode or $1"; mode="$1"; shift ;;
@@ -1297,7 +1726,7 @@ walk_in() {
   if [ -n "$notes" ]; then printf '%s\n' "$notes" | sed 's/^/  /'; else printf '  nothing noted yet\n'; fi
   slips="$(find "$root/suggestion-box" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
   printf '\nSuggestion box: %s slip(s).\n' "$slips"
-  printf '\nFrom here: office note TEXT, office open, office close FOLDER, office desk, office week, office projects, office status. office help lists everything.\n'
+  printf '\nFrom here: office start, office note TEXT, office slip TEXT, office open, office close FOLDER, office desk, office week, office projects, office status. office help lists everything.\n'
 }
 
 cmd_where() {
@@ -1343,6 +1772,11 @@ usage: office [VERB [args]]
   (no verb)       walk in: sessions in flight, what is ready on the desk, this week,
                   recent notes, slips
   note TEXT       append a dated line to the notepad (works unfounded or behind)
+  slip TEXT       drop a friction slip in the suggestion box, --about the office,
+                  a tool or a project (works unfounded or behind)
+  start [FOLDER]  pack a session for a folder, in the office or --on a project,
+                  and gather everything to attach into one out tray; records
+                  the session in the folder and prints the opener
   open [SLUG]     start a numbered folder on the desk; asks on a terminal for the
                   title, size, lane and source it was not given; --candidate,
                   --filed --sid SID, gates with --after; --help lists the fields
@@ -1357,7 +1791,9 @@ usage: office [VERB [args]]
                   - reads a bale pack --json report on stdin; listing shows
                   each session's outcome from bale's records
   projects        list the projects this office scopes; add NAME PATH adds one;
-                  --ledger, --landed PATH, --versions render bale's records
+                  set NAME declares what rides with it (--ride) and what runs
+                  after it lands (--after-land); --ledger, --landed PATH,
+                  --versions render bale's records
 
   init PATH       build an office and print its founding session's pack line
   survey          rewrite floor-plan/survey.md and report what changed
@@ -1385,6 +1821,7 @@ main() {
     where) cmd_where "$@" ;;
     default) cmd_default "$@" ;;
     note) cmd_note "$@" ;;
+    slip) cmd_slip "$@" ;;
     open) cmd_open "$@" ;;
     desk) cmd_desk "$@" ;;
     week) cmd_week "$@" ;;
@@ -1392,6 +1829,7 @@ main() {
     reopen) cmd_reopen "$@" ;;
     sessions) cmd_sessions "$@" ;;
     projects) cmd_projects "$@" ;;
+    start) cmd_start "$@" ;;
     version|--version|-V) cmd_version ;;
     help|--help|-h) usage ;;
     *) usage >&2; die "unknown verb: $verb" ;;

@@ -1,0 +1,19 @@
+{
+ "argv": [
+  "pack",
+  "--context",
+  "--json"
+ ],
+ "cwd": "/tmp/office-probe.WtDCdZ/office",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\":\"context-packed\",\"tarball\":\"/tmp/office-probe.WtDCdZ/office/.bale/outbox/context-office.tar.gz\",\"directory\":\"/tmp/office-probe.WtDCdZ/office\",\"tree_name\":\"office\",\"context_files\":12,\"total_bytes\":6971,\"git\":true}"
+ ],
+ "stderr": [
+  "[bale] context pack of /tmp/office-probe.WtDCdZ/office (inside the git work tree at /tmp/office-probe.WtDCdZ/office; listing via git ls-files) \u2014 no session is opened"
+ ],
+ "stdout_sha256": [
+  "ac32d97abda7c758dac4978ea75a7149576b4389afac5a7403b699f704e4290a"
+ ],
+ "captured": "probe of session 2026-10-02-friction-out-and-in-002, section S6, call office-context-whole: run in a throwaway repo under the probe's temp directory, stdin closed (the probe printed each stdout line's sha256; every one re-verified on the paste)"
+}

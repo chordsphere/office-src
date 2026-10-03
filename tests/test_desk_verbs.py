@@ -769,9 +769,12 @@ class TestCatalogAndDoctrine(unittest.TestCase):
     def test_lands_name_the_folder_patterns_the_verbs_write(self):
         import tomllib
         v = tomllib.loads((REPO / "share/verbs.toml").read_text())["verbs"]
+        # open and sessions land one of their two places; close and
+        # reopen move a folder and land where it ends up (the fourth
+        # page's ruling: lands means exists after).
         self.assertEqual(v["open"]["lands"], ["desk/{folder}", "filing-cabinet/{folder}"])
-        self.assertEqual(v["close"]["lands"], ["desk/{folder}", "filing-cabinet/{folder}"])
-        self.assertEqual(v["reopen"]["lands"], ["filing-cabinet/{folder}", "desk/{folder}"])
+        self.assertEqual(v["close"]["lands"], ["filing-cabinet/{folder}"])
+        self.assertEqual(v["reopen"]["lands"], ["desk/{folder}"])
         self.assertEqual(v["sessions"]["lands"], ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md"])
 
     def test_the_doctrine_says_what_the_verbs_now_do(self):

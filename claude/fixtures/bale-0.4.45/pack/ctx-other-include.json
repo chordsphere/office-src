@@ -1,0 +1,21 @@
+{
+ "argv": [
+  "pack",
+  "--context",
+  "--include",
+  "blueprints",
+  "--json"
+ ],
+ "cwd": "/tmp/office-probe.WtDCdZ/other",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\":\"context-packed\",\"tarball\":\"/tmp/office-probe.WtDCdZ/other/.bale/outbox/context-other.tar.gz\",\"directory\":\"/tmp/office-probe.WtDCdZ/other\",\"tree_name\":\"other\",\"context_files\":2,\"total_bytes\":14,\"git\":true}"
+ ],
+ "stderr": [
+  "[bale] context pack of /tmp/office-probe.WtDCdZ/other (inside the git work tree at /tmp/office-probe.WtDCdZ/other; listing via git ls-files) \u2014 no session is opened"
+ ],
+ "stdout_sha256": [
+  "0a1139d814adef24bb631a1f49e2986896e7c0cd34ed86f2f45e219b76aac1b5"
+ ],
+ "captured": "probe of session 2026-10-02-friction-out-and-in-002, section S6, call ctx-other-include: run in a throwaway repo under the probe's temp directory, stdin closed (the probe printed each stdout line's sha256; every one re-verified on the paste)"
+}

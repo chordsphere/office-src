@@ -1,0 +1,19 @@
+{
+ "argv": [
+  "pack",
+  "--context",
+  "--json"
+ ],
+ "cwd": "/tmp/office-probe.WtDCdZ/doctrine",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\":\"context-packed\",\"tarball\":\"/tmp/office-probe.WtDCdZ/doctrine/.bale/outbox/context-doctrine.tar.gz\",\"directory\":\"/tmp/office-probe.WtDCdZ/doctrine\",\"tree_name\":\"doctrine\",\"context_files\":2,\"total_bytes\":36598,\"git\":false}"
+ ],
+ "stderr": [
+  "[bale] context pack of /tmp/office-probe.WtDCdZ/doctrine (not a git work tree; listing via a filesystem walk, no .gitignore to honor) \u2014 no session is opened"
+ ],
+ "stdout_sha256": [
+  "ffd6d73bd6184a1cce5342e7340e1dcfad217998a13e6f21005e75c5b1f5d393"
+ ],
+ "captured": "probe of session 2026-10-02-friction-out-and-in-002, section S6, call ctx-plain: run in a throwaway repo under the probe's temp directory, stdin closed (the probe printed each stdout line's sha256; every one re-verified on the paste)"
+}

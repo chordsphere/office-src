@@ -45,8 +45,13 @@ APPLIED = ("2026-09-24-office-src-core-001", "2026-09-24-office-src-verbs-002",
            "2026-09-29-drafting-table-space-003", "2026-09-29-verb-table-columns-004")
 
 
+# The read side's sets: one directory per project the read-side probe ran
+# in. pack/ beside them is the out-and-in probe's, read by test_start.py.
+READ_SETS = ("anywhere", "office-src", "test-office")
+
+
 def fixture_records(setname=None):
-    sets = [FIXTURES / setname] if setname else sorted(p for p in FIXTURES.iterdir() if p.is_dir())
+    sets = [FIXTURES / setname] if setname else [FIXTURES / n for n in READ_SETS]
     out = []
     for d in sets:
         for f in sorted(d.glob("*.json")):
@@ -255,10 +260,13 @@ class TestConsumptionManifest(unittest.TestCase):
         self.assertEqual(declared - reads, set(), "declared but never read")
 
     def test_the_pack_report_key_is_the_one_declared(self):
-        self.assertEqual(self.data["surfaces"]["pack"]["keys"], [h.PACK_SID_KEY])
-        self.assertFalse(self.data["surfaces"]["pack"]["calls"])
+        """office sessions FOLDER - reads the piped report's sid, the key
+        office start reads through the reader; since 0.6.0 the office
+        calls the surface itself."""
+        self.assertIn(h.PACK_SID_KEY, self.data["surfaces"]["pack"]["keys"])
+        self.assertTrue(self.data["surfaces"]["pack"].get("calls", True))
         with self.assertRaises(ob.BaleError):
-            self.cons.argv("pack")
+            self.cons.argv("pack")  # it needs a goal and a slug
 
     def test_every_declared_key_is_in_the_captured_lines(self):
         """The test that fails when a bale release moves a key: re-capture
@@ -528,6 +536,12 @@ class TestProjectsVerb(unittest.TestCase):
         self.assertTrue(read_until(b"(--path):"), seen)
         os.write(fd, str(self.proj).encode() + b"\n")
         self.assertTrue(read_until(b"(--name) [office-src]:"), seen)
+        os.write(fd, b"\n")
+        # What rides with it and what runs after it lands: a plain
+        # return ends each list, empty.
+        self.assertTrue(read_until(b"(--ride) [return ends the list]:"), seen)
+        os.write(fd, b"\n")
+        self.assertTrue(read_until(b"(--after-land) [return ends the list]:"), seen)
         os.write(fd, b"\n")
         read_until(b"added office-src")
         _, status = os.waitpid(pid, 0)

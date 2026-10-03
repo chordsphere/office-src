@@ -50,6 +50,7 @@ first `office init` on a machine sets it.
 ### Every day
 
     office note called the bank; rate locks Friday   # a timed line on today's notepad page
+    office slip --about bale pack needs too many flags  # a friction slip, its own page in the suggestion box
     office open                                      # a folder on the desk; asks for what it needs
     office open house-hunt --thread < thread.txt     # ...seeded with the thread that started it
     office desk                                      # in flight, ready in order, parked, candidates
@@ -57,8 +58,12 @@ first `office init` on a machine sets it.
     office close fix-login                           # to the filing cabinet, done
     office reopen fix-login                          # back to the desk, history and all
 
-Each verb commits only the paths it touched. `office note` works in an
-unfounded office and in one that needs an upgrade; it warns and writes.
+Each verb commits only the paths it touched. `office note` and `office
+slip` work in an unfounded office and in one that needs an upgrade; they
+warn and write. `office note` commits a notepad page only when its
+committed bytes are untouched and the new lines are at its end. `office
+slip` asks on a terminal what the slip is about (the office, bale,
+office-src, or one of the office's projects) unless `--about` says so.
 A folder is named by the date and a slug, and can be named by any unique
 part of that name or by its number, `folder 12`.
 
@@ -123,10 +128,40 @@ has one) for a commit that did more than add at the end. It reports and
 exits 0; `office init` refuses to build from an install whose catalogs
 have a defect.
 
+### Sending a session out
+
+    office start                       # asks: which job, in the office or on a project, the goal
+    office start fix-login --on office-src --goal "Fix the login redirect"
+    office start plan-wave --in-office --read-only --goal "Plan the next wave"
+
+`office start` packs a session for a folder and gathers everything to
+attach into one out tray, `~/out-tray/SID`: the request, the doctrine,
+and what rides with the work. On a project, the session is packed from
+the project's repo with the constraint "Office context informs this
+session but never lands in this project.", and the office's context
+(the folder and the hung items) rides beside it as a context tarball,
+with each path the project declares (`office projects set`). In the
+office, it is packed from the office, forecasting the folder and the
+notepad, and the project the folder's lane names rides beside it with
+its declarations. The forecast of a project session comes from the
+folder's lane, the work class from its class, the slug from its name;
+the goal is the one thing asked. It records the session in the folder
+and prints the opener: attach the tray's files to a fresh chat and paste
+it. A session whose forecast overlaps one already open is refused before
+bale runs, naming the open one; office sessions take turns on the
+notepad. Every question has a flag (`office start --help`); piped, it
+asks nothing and names the flag it needed.
+
+On WSL the out tray opens in Explorer and the opener goes on the
+clipboard. `~/.config/office-src/machine.toml` changes that per machine:
+`out_tray = "~/somewhere"`, `clipboard_command = "..."`,
+`open_command = "..."`, and `""` turns a step off.
+
 ### Which sessions worked on a job
 
-When you pack a session for a folder by hand, pipe bale's report into
-the folder, so the id is never typed:
+`office start` records the session it packs. When you pack one for a
+folder by hand, pipe bale's report into the folder, so the id is never
+typed:
 
     bale pack --json --include desk/2026-09-24-fix-login "Fix the login redirect" | office sessions fix-login -
 
@@ -139,13 +174,20 @@ add with `-m`; it never copies what bale records about the session.
 
     office projects                          # the projects this office scopes
     office projects add office-src ~/office-src   # add one (asks on a terminal for what it was not given)
+    office projects set office-src --ride ~/other-repo/docs --after-land ./install.sh
     office projects --ledger                 # trust ledger per project and work class
     office projects --landed bin/office      # the last applied session that landed a path
     office projects office-src --versions    # the version trail of one project
 
 The floor plan's [projects] table names each project and the path of its
 repo on this machine; `office projects add` writes it, and checks the
-path is the top of a git repo bale runs in. Walking in shows the sessions
+path is the top of a git repo bale runs in. A project may declare what
+rides beside every session on it (`--ride PATH`, repeatable: a directory
+inside another repo, a whole repo, or a file) and what runs in its repo
+after one of its sessions lands (`--after-land CMD`, repeatable; the
+return trip runs them, this release only declares them). `office
+projects set NAME` asks for both on a terminal, and `office projects`
+shows them. They live in the office, never in the project's repo. Walking in shows the sessions
 open in those projects and the folder whose Sessions section names each.
 Everything here is read from bale's `--json` surfaces in each project and
 rendered on every run, never copied into the office; the bale verbs,
@@ -167,12 +209,12 @@ matches the floor plan.
 |---|---|
 | bin/office | the command (bash) |
 | lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library) |
-| lib/office_bale.py | the read side: the only code that runs bale, through its --json surfaces, and the renderings built on it, the desk's groups and the one-writer rule among them |
+| lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups and the one-writer rule among them), and office start's packing and out tray |
 | doctrine/OFFICE.md | how every office works |
 | doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |
 | share/spaces.toml | every space an office can have; the base ones are the default floor plan; a space files itself whole or as a list of paths |
 | share/profile-shape.toml | the profile's required sections |
-| share/bale-consumption.toml | every bale verb, flag and JSON key the office reads, and the bale version they were written against |
+| share/bale-consumption.toml | every bale verb, flag and JSON key the office reads or runs, and the bale version they were written against |
 | share/verbs.toml | what each verb ships, where it lands, whether a person must be present and what may set it off; a session kind with no declared landing may not run unattended |
 | templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), copied in by the renovation that adds the space |
 | migrations/ | one file per breaking release; format in migrations/README.md |
@@ -204,4 +246,6 @@ The suite builds offices, installs and synthetic migrations under
 temporary directories and never touches your home directory or offices.
 bale need not be installed: the read side's tests put a fake bale first
 on the PATH that replays real bale output captured by a probe, kept in
-the development record, and refuses anything it did not capture.
+the development record, and refuses anything it did not capture; office
+start's tests use a fake that packs, every line of it built from the
+packs a probe captured.

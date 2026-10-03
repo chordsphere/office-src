@@ -1,0 +1,16 @@
+{
+ "argv": [
+  "status",
+  "--json"
+ ],
+ "cwd": "/tmp/office-probe.WtDCdZ/office",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"status\", \"version\": \"0.4.45\", \"sid\": \"2026-10-02-probe-office-work-001\", \"repo\": {\"root\": \"/tmp/office-probe.WtDCdZ/office\", \"branch\": \"main\", \"tree_clean\": false, \"tree_change_count\": 1, \"bale_initialised\": true}, \"session\": {\"state\": \"packed\", \"goal\": \"Probe: an office session on one folder\", \"expects_probe\": \"agent-decides\", \"clarification\": null}, \"staging\": {\"present\": false, \"path\": \"/tmp/office-probe.WtDCdZ/office/.bale/staging\", \"sessions\": {\"2026-10-02-probe-office-work-001\": {\"present\": false, \"path\": \"/tmp/office-probe.WtDCdZ/office/.bale/staging/2026-10-02-probe-office-work-001\", \"strategy\": \"working-tree\", \"untracked_inputs\": []}}, \"stale\": []}, \"outbox\": [\"request-2026-10-02-probe-office-work-001.tar.gz\"], \"applied\": {\"count\": 0, \"latest\": null}, \"sessions\": [\"2026-10-02-probe-office-work-001\"], \"scopes\": {\"2026-10-02-probe-office-work-001\": [\"desk/2026-10-02-probe-job\", \"notepad\"]}, \"integration_lock\": null, \"config\": {\"project\": \"/tmp/office-probe.WtDCdZ/office/bale.toml\", \"global\": \"/home/chordsphere/bale/user/bale.toml\", \"hooks_wired\": [\"post_pack\"], \"search_paths\": 1, \"baleignore\": false, \"summary_failed\": false}}"
+ ],
+ "stderr": [],
+ "stdout_sha256": [
+  "ec0c46db785848bad8e5306de40db0d5e4bc8b311d7dafb94a9da5bd5e05aadb"
+ ],
+ "captured": "probe of session 2026-10-02-friction-out-and-in-002, section S6, call office-status: run in a throwaway repo under the probe's temp directory, stdin closed (the probe printed each stdout line's sha256; every one re-verified on the paste)"
+}

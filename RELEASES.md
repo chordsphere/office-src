@@ -4,6 +4,55 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.6.0
+
+Additive: no migration, nothing to do in any office. A [projects] entry
+without the new keys is valid, and every older office shape keeps
+working.
+
+The out trip. `office start` sends a session out in one command: it
+asks which folder on the desk (or opens a new one through `office
+open`'s questions), whether the work lands in the office or on one of
+the office's projects, and the goal, and derives the slug, the forecast
+and the work class from the folder. On a project it runs `bale pack`
+in the project's repo with the constraint "Office context informs this
+session but never lands in this project.", and packs the office's
+context (the folder and the hung items) as a context tarball beside it;
+in the office it packs from the office, forecasting the folder and the
+notepad, or nothing with `--read-only`. The doctrine rides from a copy
+of the install's doctrine directory, so the install is never written,
+and each path a project declares rides as a context tarball too. Every
+file to attach lands in one out tray, ~/out-tray/SID; the session id
+is recorded in the folder through the same step as `office sessions`;
+the opener is printed, and on WSL put on the clipboard while the tray
+opens in Explorer (machine.toml in ~/.config/office-src changes either).
+A forecast that overlaps an open session's is refused before bale runs,
+naming the session and its folder. Every question has a flag; piped,
+it asks nothing and names the flag it needed.
+
+`office projects set NAME` declares what rides beside every session on a
+project (`--ride PATH`) and what runs in its repo after one lands
+(`--after-land CMD`), by wizard on a terminal; `office projects add`
+asks and takes the same, and `office projects` shows them. They are
+written into the office's floor plan, never the project's repo. This
+release declares the after-land actions; the return trip runs them.
+
+`office slip TEXT` drops a friction slip in the suggestion box as its
+own page, saying what it is about (`--about`, asked on a terminal: the
+office, bale, office-src or a project), committed on its own, and works
+in an unfounded office or under skew. `office note` now refuses to
+commit a notepad page whose committed bytes changed, as the doctrine
+says every script that appends to filed paper does.
+
+share/verbs.toml: lands means what exists after the verb, so `close`
+lands the filing cabinet's folder alone and `reopen` the desk's; `slip`
+and `start` are declared, and `work` and `build` are built, through
+`start`. share/bale-consumption.toml declares the two surfaces
+`office start` runs, a session pack and a context pack, from a probe of
+bale 0.4.45. The doctrine says the office runs bale's pack and apply
+when the occupant asks, and still never schedules, dispatches to a
+model or carries pastes (sections 4, 5, 7 and 10, and its front sheet).
+
 ## 0.5.0
 
 Additive: no migration, nothing to do in any office. A folder without

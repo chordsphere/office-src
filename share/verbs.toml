@@ -1,8 +1,10 @@
 # What each verb is, what it ships, where it lands, whether a person must
 # be present and what may set it off. The office command reads the built
-# verbs from here as they arrive. A verb never runs, schedules or carries
-# a session: an office-session or project-session verb only prints the
-# pack line.
+# verbs from here as they arrive. A verb never schedules a session, never
+# dispatches one to a model and never carries pastes. When the occupant
+# asks, office start runs bale's pack for an office-session or
+# project-session kind: the office is the occupant's hands at the
+# terminal, and bale carries the session.
 #
 # kind      script | office-session | project-session
 # built     whether the office command has it yet
@@ -13,7 +15,11 @@
 #           writes something no path names
 # lands     what is guaranteed to exist, created or changed, after the
 #           verb succeeds: paths or patterns, each inside one of the
-#           verb's writes; [] when nothing is guaranteed
+#           verb's writes; [] when nothing is guaranteed. Lands means
+#           exists after: a verb that moves a folder lands where the
+#           folder ends up, not the place it left (close lands
+#           filing-cabinet/{folder} alone), and a verb whose entries are
+#           alternatives (open, sessions) lands one of them.
 # attended  true when a person must be present while it runs (answering,
 #           carrying, deciding); false when it can run with nobody there
 # trigger   what may set it off, a list from a closed vocabulary:
@@ -96,6 +102,15 @@ lands = ["notepad"]
 attended = true
 trigger = ["manual"]
 
+# One new page per slip, committed on its own.
+[verbs.slip]
+kind = "script"
+built = true
+writes = ["suggestion-box/{date}-{slug}.md"]
+lands = ["suggestion-box/{date}-{slug}.md"]
+attended = true
+trigger = ["manual"]
+
 # open writes one folder: on the desk, or in the filing cabinet when it
 # is born done (--filed); lands names both, one of which it lands.
 [verbs.open]
@@ -123,12 +138,13 @@ attended = true
 trigger = ["manual"]
 
 # close moves one folder and, with --into or --split, adds a line to
-# each successor's folder.md, on the desk or in the cabinet.
+# each successor's folder.md, on the desk or in the cabinet. It writes
+# both places and lands the cabinet alone: the folder exists there after.
 [verbs.close]
 kind = "script"
 built = true
 writes = ["desk/{folder}", "filing-cabinet/{folder}"]
-lands = ["desk/{folder}", "filing-cabinet/{folder}"]
+lands = ["filing-cabinet/{folder}"]
 attended = true
 trigger = ["manual"]
 
@@ -136,7 +152,7 @@ trigger = ["manual"]
 kind = "script"
 built = true
 writes = ["filing-cabinet/{folder}", "desk/{folder}"]
-lands = ["filing-cabinet/{folder}", "desk/{folder}"]
+lands = ["desk/{folder}"]
 attended = true
 trigger = ["manual"]
 
@@ -151,13 +167,27 @@ attended = false
 trigger = ["manual", "after-build"]
 
 # Lists the projects the office scopes and renders what bale records
-# about them, reading only; `office projects add` is the one writer of
-# the floor plan's [projects] table.
+# about them, reading only; `office projects add` and `office projects
+# set` are the only writers of the floor plan's [projects] table, set
+# writing what rides with a project and what runs after it lands.
 [verbs.projects]
 kind = "script"
 built = true
 writes = ["floor-plan/manifest.toml"]
 lands = ["floor-plan/manifest.toml"]
+attended = true
+trigger = ["manual"]
+
+# Packs a session for a folder: in the office (the work kind, or a
+# sitting with --read-only) or on a project (the build kind). It records
+# the session in the folder, and opens one first when asked for a new
+# job; what it writes outside the office is bale's registry where the
+# pack runs and the out tray on this machine.
+[verbs.start]
+kind = "script"
+built = true
+writes = ["desk/{folder}", "bale's registry where the session is packed", "the out tray"]
+lands = ["desk/{folder}/folder.md"]
 attended = true
 trigger = ["manual"]
 
@@ -170,19 +200,21 @@ lands = ["profile.md", "notepad/{date}-{slug}.md", "floor-plan/manifest.toml"]
 attended = true
 trigger = ["manual"]
 
+# Packed by office start, in the office.
 [verbs.work]
 kind = "office-session"
-built = false
+built = true
 ships = ["desk/{folder}", "handbook/{systems}", "rolodex/{people}", "letterhead"]
 writes = ["desk/{folder}"]
 lands = ["desk/{folder}/folder.md"]
 attended = true
 trigger = ["manual"]
 
-# Attended until a build kind with a declared landing is proven by hand.
+# Packed by office start, on a project. Attended until a build kind
+# with a declared landing is proven by hand.
 [verbs.build]
 kind = "project-session"
-built = false
+built = true
 ships = ["desk/{folder}", "handbook/{systems}"]
 writes = ["{project}"]
 lands = []

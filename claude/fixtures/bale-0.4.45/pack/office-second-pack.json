@@ -1,0 +1,25 @@
+{
+ "argv": [
+  "pack",
+  "Probe: a second office session",
+  "--slug",
+  "probe-office-second",
+  "--include",
+  "notepad",
+  "--write",
+  "notepad",
+  "--no-readme",
+  "--json"
+ ],
+ "cwd": "/tmp/office-probe.WtDCdZ/office",
+ "exit": 1,
+ "stdout": [],
+ "stderr": [
+  "[bale] tree position: branch main; latest applied none yet",
+  "[bale] include group 'hung' engaged (trigger: notepad): pulled floor-plan/survey.md, profile.md into context (read side only \u2014 the write forecast is unchanged; opt out with --no-include-group hung)",
+  "[bale] argv-only pack gates passed before any exchange (slug/goal, forecast existence, bundle-file naming, cap values, checkpoint blindness)",
+  "[bale] error: pack write forecast intersects 1 open session(s): 2026-10-02-probe-office-work-001 (notepad ~ notepad). Concurrent sessions require disjoint write forecasts (ADR-0015). Narrow this pack's forecast with --write paths disjoint from the open forecast(s), apply the open session's response first, run `bale unlock` if it was abandoned, or re-run with `--supersedes <sid>` if this pack splits and supersedes an open session (BALE.md \u00a77.2). Note: a pack without --write forecasts its resolved include set \u2014 the whole tree when --include is also absent \u2014 and conflicts with every open session; a read-only pack (--read-only, empty forecast) conflicts with none. An open session packed before the separation reads its include set as its forecast (conservative) until it closes."
+ ],
+ "stdout_sha256": [],
+ "captured": "probe of session 2026-10-02-friction-out-and-in-002, section S6, call office-second-pack: run in a throwaway repo under the probe's temp directory, stdin closed (the probe printed each stdout line's sha256; every one re-verified on the paste)"
+}

@@ -12,12 +12,16 @@ to fill in, bale.toml, a first survey of the machine and a first commit,
 then prints the line that packs the founding session. From then on the
 office is on its own, and office-src reaches it only through `office
 upgrade`. Every day: `office` to walk in, `office note` to capture a
-line, `office open`, `desk`, `close` and `reopen` for folders (numbered,
+line, `office slip` to drop a friction slip, `office start` to send a
+session out for a folder (it packs the session with bale, records it in
+the folder and puts everything to attach in one out tray beside the
+opener), `office open`, `desk`, `close` and `reopen` for folders (numbered,
 with statuses, gates and a History, and a desk that orders itself),
 `office week` for the calendar, and `office sessions` to record which
 sessions worked on a job and see how each one went. `office projects` names the
-projects an office scopes and shows what bale records about them: the
-trust ledger, who last landed a file, the version trail. Walking in
+projects an office scopes, declares what rides beside each one's
+sessions and what runs after they land, and shows what bale records
+about them: the trust ledger, who last landed a file, the version trail. Walking in
 shows the sessions open in those projects. `office status`, `survey` and
 `upgrade` look after the office itself.
 
@@ -25,11 +29,25 @@ shows the sessions open in those projects. `office status`, `survey` and
 
 The occupant, on every machine that has an office. Installed per machine
 at ~/.local/share/office-src from the committed tree and run as
-`office`. It runs only when called; it schedules nothing and never runs
-or carries a session.
+`office`. It runs only when called. It runs bale's pack when the
+occupant asks (`office start`), as the occupant's hands at the terminal;
+it schedules nothing, never hands a session to a model and never carries
+pastes.
 
 ## Recent changes
 
+- 0.6.0 (session 2026-10-02-friction-out-and-in-002): the out trip, the
+  first session of the friction wave. `office start` packs a session for
+  a folder, in the office or on a project, with what rides beside it
+  (the doctrine, the office's context for a project session, and each
+  project's declared ride-alongs), records the session in the folder,
+  and gathers every file to attach in one out tray, ~/out-tray/SID,
+  printing the opener (on WSL, on the clipboard too). `office projects
+  set` and `add` declare what rides with a project and what runs after
+  it lands, in the office's floor plan. `office slip` drops a friction
+  slip as its own page. `office note` checks the page's prefix before it
+  commits. close and reopen land where the folder ends up. Additive: no
+  migration, no office needs anything done.
 - 0.5.0 (session 2026-09-30-desk-verbs-002): the desk's verbs. Folders
   are numbered (`folder N`) by `office open`, which asks on a terminal
   for the title, size, lane and source it was not given, explains a
@@ -90,9 +108,21 @@ or carries a session.
 
 ## Known problems
 
-- The doctrine's ride-along context pack (`bale pack --context` run in
-  the install) has not been run for real yet; the first founding line
-  will be its first run.
+- `office start` packs the doctrine from a copy, but the lines `office
+  init` and `office upgrade` print still run `bale pack --context` in the
+  install's doctrine directory, which writes an outbox there.
+- An office session forecasts its folder, and `office start` records
+  the session in that folder after packing, so the folder.md the worker
+  was shown is one commit behind; a response that rewrites folder.md
+  meets bale's base check at apply. The return trip (`office land`)
+  decides how the record and the response meet.
+- bale's `--json` pack report has no opener; `office start` takes it from
+  between the scissor lines bale prints on stderr (a slip for bale-src).
+  bale's session ids are unique within one repo only; `office start`
+  gives an office session's default slug an -office suffix so a folder
+  packed in the office and in a project the same day gets two ids.
+- On WSL the clipboard and Explorer steps were built without a WSL
+  machine to run them on; the first `office start` there is their test.
 - bale does not stamp everything the read side and the watches want.
   Slips for bale-src, from the 0.4.0 probe (session
   2026-09-30-read-side-001's notes): no HOLD cause class; no marker
@@ -105,9 +135,9 @@ or carries a session.
 - The version trail is read two ways (applied sessions that landed a
   VERSION file, and bale's contract-doc epochs), pending a ruling on
   what the blueprint's "version landmark" meant.
-- The doctrine says a script that appends to filed paper checks the
-  page's prefix before it commits; `office note` does not yet. `office
-  status` now catches a rewrite after the fact.
+- ~~The doctrine says a script that appends to filed paper checks the
+  page's prefix before it commits; `office note` does not yet.~~ Struck
+  in 0.6.0: `office note` checks before it commits.
 - `office desk` cannot yet read a gate on a blueprint, an agenda item or
   a ruling: such a folder waits under that name, as not readable until
   the drafting-table verbs land.
