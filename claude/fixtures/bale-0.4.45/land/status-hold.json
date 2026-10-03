@@ -1,0 +1,17 @@
+{
+ "argv": [
+  "status",
+  "--json"
+ ],
+ "cwd": "/tmp/office-probe.waUkTl/hold",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"status\", \"version\": \"0.4.45\", \"sid\": \"2026-10-03-probe-hold-001\", \"repo\": {\"root\": \"/tmp/office-probe.waUkTl/hold\", \"branch\": \"main\", \"tree_clean\": false, \"tree_change_count\": 1, \"bale_initialised\": true}, \"session\": {\"state\": \"held\", \"goal\": \"Probe: hold\", \"expects_probe\": \"agent-decides\", \"clarification\": null}, \"staging\": {\"present\": true, \"path\": \"/tmp/office-probe.waUkTl/hold/.bale/staging\", \"sessions\": {\"2026-10-03-probe-hold-001\": {\"present\": true, \"path\": \"/tmp/office-probe.waUkTl/hold/.bale/staging/2026-10-03-probe-hold-001\", \"strategy\": \"working-tree\", \"untracked_inputs\": []}}, \"stale\": []}, \"outbox\": [\"request-2026-10-03-probe-hold-001.tar.gz\"], \"applied\": {\"count\": 0, \"latest\": null}, \"sessions\": [\"2026-10-03-probe-hold-001\"], \"scopes\": {\"2026-10-03-probe-hold-001\": [\"notes\"]}, \"integration_lock\": null, \"config\": {\"project\": \"/tmp/office-probe.waUkTl/hold/bale.toml\", \"global\": \"/home/chordsphere/bale/user/bale.toml\", \"hooks_wired\": [\"post_pack\"], \"search_paths\": 1, \"baleignore\": false, \"summary_failed\": false}}"
+ ],
+ "stdout_sha256": [
+  "70edddbb04522b8eba11b283166db3c314d9484bf9e2cbc1fc16d441a9e3eeec"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-03-friction-return-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.45) on 2026-10-03, in a throwaway repo under /tmp/office-probe.waUkTl (removed)"
+}

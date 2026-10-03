@@ -42,11 +42,17 @@ projects in the office's scope, declares what rides with each and what
 runs after its sessions land, and renders what bale records about them.
 
 `office start` sends a session out: it asks which job, whether the work
-lands in the office or on a project, and the goal, then runs bale's pack,
-records the session in the folder, and puts every file to attach in one
-out tray beside the opener to paste. The office runs bale when you ask,
-as your hands at the terminal; it never schedules a session, never hands
-one to a model and never carries pastes. bale carries the session.
+lands in the office or on a project, and the goal, then runs bale's pack
+(or opens a planner's bundle), records the session in the folder, and
+puts every file to attach in one out tray beside the opener to paste.
+`office land` brings it back: it runs bale's apply in the repo the session
+belongs to, says how it ended, hands you whatever bale printed for you to
+carry, and after an applied landing runs the project's after-land actions
+and asks whether the planner ratified the session's judgment calls. The
+office runs bale when you ask, as your hands at the terminal; bale asks its
+own questions and only you answer them. It never schedules a session,
+never hands one to a model and never carries pastes. bale carries the
+session.
 
 ## 1. What an office is
 
@@ -95,8 +101,10 @@ Three boundaries hold that line, each with a guard.
 1. Capture is instant and dumb. Structuring is slow and smart, and
    happens later in batch.
 2. Every session lands something: at minimum a notepad entry and the
-   folder it touched. A read-only sitting lands through the sessions it
-   authors, whose briefs carry its planner's words.
+   folder it touched. A read-only sitting lands nothing itself: its words
+   reach the notepad when `office start` sends out a session whose brief
+   carries the sitting's page, whether that session is an office session
+   or a project session.
 3. A session is worth opening only when the job needs it (section 8).
    Otherwise the occupant does the work and leaves a one-line trace.
 4. What every session needs is hung. Hanging is a property of an item,
@@ -136,7 +144,14 @@ session's id; the occupant attaches its files and pastes the opener it
 prints. An office session forecasts its folder and the notepad, so
 office sessions take turns; `--read-only` packs a sitting that forecasts
 nothing. A session whose forecast overlaps one already open is refused
-before bale is asked, and the open session is named.
+before bale is asked, and the open session is named. A session a
+planning sitting authored arrives as a bundle (a .bale-bundle file):
+`office start --bundle FILE` hands it to bale's open in the place the
+occupant names, the office or the job's project, and gathers what rides
+the same way. The bundle's own pack line is the whole session, its goal,
+forecast and brief, and the office adds nothing to it and answers none of
+its intents; it says so when the line leaves out something the office
+would have carried, such as the constraint of section 2.
 
 The folder records the id of every session that worked on its job.
 `bale pack --json` reports the id, so nobody types it: `office start`
@@ -147,6 +162,24 @@ folder points at session ids; it never copies what bale records about a
 session.
 `office sessions FOLDER` lists them with what bale records about each,
 rendered on every run (section 10).
+
+`office land` brings a session back in one command. It finds the
+session a response answers (the one out, a named one, or the one a
+response file names), runs `bale apply` in the repo it belongs to (`bale
+retry` for a session bale held), with the occupant's own terminal as
+bale's input, so every question bale asks (an admission, the merge, a
+hook) reaches the occupant as bale asks it; the office answers none. It
+reads how the landing ended from bale's records, not from bale's words,
+and hands the occupant whatever bale printed to carry (the relay), whole.
+Only after bale has applied the session does it run the project's
+after-land actions (section 10) and ask whether the planner ratified the
+session's judgment calls, recording the answer in the folder. A HOLD, a
+refusal or a clarification lands nothing: it records nothing as ratified,
+runs nothing after, and names the next line. An office session's folder
+moved after the pack, because `office start` recorded the session in it;
+`office land` puts the folder back as it was packed while bale lands, so
+bale never has to refuse the response, and records the session again
+after.
 
 After a project session lands, the office side (the folder, and the
 front sheet of any handbook chapter the change touched) is brought up to
@@ -281,7 +314,14 @@ nothing is condensed.
 Notepad. The occupant's words, verbatim and dated. Never edited.
 Structuring them into folders, cards and chapters is cleanup's job.
 `office note` appends a timed line to the day's page, notepad/DATE.md;
-a sitting's words are filed as their own page, notepad/DATE-SLUG.md.
+a sitting's words are filed as their own page, notepad/DATE-SLUG.md. A
+read-only sitting lands nothing itself, so the brief of a session it
+authors carries its page between two marker lines, `--- NOTEPAD PAGE
+BEGIN notepad/DATE-SLUG.md ---` and `--- NOTEPAD PAGE END ---`, and
+`office start` files it when it sends that session out, an office
+session or a project session, and commits that page alone. A page
+already filed with the same words is left as it is; a different page at
+its path is refused loudly and never overwritten.
 Capture is instant: it works in an unfounded office and in one behind or
 ahead of the installed tool, and only warns. Anything outside ASCII is
 kept as a backslash escape, so the office stays ASCII and no word is lost.
@@ -320,7 +360,8 @@ A session may always write the notepad and the suggestion box.
 
 Verbs declare what a session ships and where it lands. office-src runs
 bale's pack and apply when the occupant asks, as the occupant's hands at
-the terminal: `office start` packs. It never schedules a session, never
+the terminal: `office start` packs, and `office land` applies. It never
+schedules a session, never
 dispatches one to a model and never carries pastes, so whoever carries
 sessions (the occupant, bale, a future harness) can change freely
 without the office changing. The declarations are share/verbs.toml in
@@ -348,7 +389,8 @@ Kinds:
 | close, reopen | script: move a folder to the filing cabinet, done, absorbed, split or retired, and a done one back | yes |
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes |
 | projects | script: list the projects this office scopes, add one, declare what rides with it and what runs after it lands, render what bale records about them | yes |
-| start | script: pack a session for a folder, in the office or on a project, record it in the folder, and gather what to attach in one out tray | yes |
+| start | script: pack a session for a folder, in the office or on a project, or open a planner's bundle; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
+| land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, and the planner's ratification | yes |
 | founding | office session: the profile, the occupant's words, the timezone | yes, via init |
 | work | office session: answer, draft, probe, decide, deliver | yes, via start |
 | build | project session: change a project for a folder | yes, via start |
@@ -412,7 +454,8 @@ These hold in every office. Each office adds its own in its profile.
 
 1. Every session lands something: at minimum a notepad entry and the
    folder it touched. A planning sitting's words travel in the briefs of
-   the sessions it authors, and those sessions file them in the notepad.
+   the sessions it authors, and `office start` files them in the notepad
+   when it sends one of those sessions out.
 2. Every session that lands a change to something the handbook describes
    updates the front sheet of that chapter in plain language.
 3. Nothing goes on a rolodex card that would embarrass the occupant if
@@ -455,7 +498,11 @@ so rather than showing an empty screen as if it were true. A project on
 another machine is not read. The office reads each project's records
 only through bale's --json surfaces, run in the project's directory with
 no prompt, never by parsing .bale/, and it never writes what bale
-records. The install's share/bale-consumption.toml names every bale verb,
+records. The verbs that run bale to make or land a session do so with
+the occupant at the terminal: a question bale asks is his to answer, and
+where bale prints a block for him to carry and no --json key holds it,
+the office takes the lines between the markers the manifest below
+declares. The install's share/bale-consumption.toml names every bale verb,
 flag and key the office reads or runs and the bale version they were
 written against; `office status` reports a bale outside that range. What it
 renders: on the walk-in, the sessions in flight and the folder each
@@ -470,9 +517,11 @@ Each project's entry may also declare two things: `rides`, the other
 paths whose context rides beside every session on the project (a
 directory inside another repo, a whole repo, or a file), and
 `after_land`, the commands run in the project's repo after one of its
-sessions lands. Both are set by `office projects add` and `office
-projects set`, a wizard with flag twins, and never by hand or in the
-project's own repo: what rides is office context, and a project's
+sessions lands: `office land` runs them in order once bale has applied
+the session, never after a HOLD, and says loudly when one fails, with
+the line that runs it again. Both are set by `office projects add` and
+`office projects set`, a wizard with flag twins, and never by hand or in
+the project's own repo: what rides is office context, and a project's
 audience must not see the office's choices. A table without them is
 valid.
 

@@ -13,9 +13,12 @@ then prints the line that packs the founding session. From then on the
 office is on its own, and office-src reaches it only through `office
 upgrade`. Every day: `office` to walk in, `office note` to capture a
 line, `office slip` to drop a friction slip, `office start` to send a
-session out for a folder (it packs the session with bale, records it in
-the folder and puts everything to attach in one out tray beside the
-opener), `office open`, `desk`, `close` and `reopen` for folders (numbered,
+session out for a folder (it packs the session with bale, or opens a
+planner's bundle, records it in the folder and puts everything to attach
+in one out tray beside the opener), `office land` to bring it back (bale
+applies it in its repo, the office says how it ended, hands over the
+relay to carry, runs the project's after-land actions and records the
+planner's ratification), `office open`, `desk`, `close` and `reopen` for folders (numbered,
 with statuses, gates and a History, and a desk that orders itself),
 `office week` for the calendar, and `office sessions` to record which
 sessions worked on a job and see how each one went. `office projects` names the
@@ -29,13 +32,26 @@ shows the sessions open in those projects. `office status`, `survey` and
 
 The occupant, on every machine that has an office. Installed per machine
 at ~/.local/share/office-src from the committed tree and run as
-`office`. It runs only when called. It runs bale's pack when the
-occupant asks (`office start`), as the occupant's hands at the terminal;
-it schedules nothing, never hands a session to a model and never carries
+`office`. It runs only when called. It runs bale's pack and apply when
+the occupant asks (`office start`, `office land`), as the occupant's
+hands at the terminal, and leaves every question bale asks to him; it
+schedules nothing, never hands a session to a model and never carries
 pastes.
 
 ## Recent changes
 
+- 0.7.0 (session 2026-10-03-friction-return-trip-001): the return trip,
+  the second session of the friction wave. `office land` brings a
+  session back in one command: bale apply (or retry, for a held one) in
+  the repo it belongs to, with bale's questions left to the occupant; how
+  it ended, from bale's records; the relay printed whole and, on WSL, on
+  the clipboard; then, once applied, the project's after-land actions
+  (office-src's is `./install.sh`, so nobody remembers it again) and the
+  planner's ratification in the folder. An office session's folder
+  record no longer meets bale's base check. `office start --bundle`
+  sends out a session a sitting authored, and files the sitting's page
+  its brief carries in the notepad. Additive: no migration, no office
+  needs anything done.
 - 0.6.0 (session 2026-10-02-friction-out-and-in-002): the out trip, the
   first session of the friction wave. `office start` packs a session for
   a folder, in the office or on a project, with what rides beside it
@@ -111,18 +127,29 @@ pastes.
 - `office start` packs the doctrine from a copy, but the lines `office
   init` and `office upgrade` print still run `bale pack --context` in the
   install's doctrine directory, which writes an outbox there.
-- An office session forecasts its folder, and `office start` records
+- ~~An office session forecasts its folder, and `office start` records
   the session in that folder after packing, so the folder.md the worker
   was shown is one commit behind; a response that rewrites folder.md
-  meets bale's base check at apply. The return trip (`office land`)
-  decides how the record and the response meet.
+  meets bale's base check at apply.~~ Struck in 0.7.0: `office land`
+  puts the folder back as it was packed while bale lands, and records
+  the session again after. A folder changed by anything else after the
+  record still meets the check, and land says so before bale runs.
 - bale's `--json` pack report has no opener; `office start` takes it from
   between the scissor lines bale prints on stderr (a slip for bale-src).
+  The same holds for `bale open`, which has no `--json` at all (the
+  opener and the request's path are read from its report, the session
+  id from `bale status`), and for the relay `bale apply` prints, which
+  no `--json` key holds; `office land` takes it from between bale's
+  RELAY markers.
   bale's session ids are unique within one repo only; `office start`
   gives an office session's default slug an -office suffix so a folder
   packed in the office and in a project the same day gets two ids.
 - On WSL the clipboard and Explorer steps were built without a WSL
-  machine to run them on; the first `office start` there is their test.
+  machine to run them on; the first `office start` there is their test,
+  and the first `office land` is the relay's.
+- A response saved twice by a browser is `response-SID (1).tar.gz`;
+  bale's search finds `response-SID.tar.gz` first, so after a HOLD the
+  corrected response is named by its path (`office land` asks for it).
 - bale does not stamp everything the read side and the watches want.
   Slips for bale-src, from the 0.4.0 probe (session
   2026-09-30-read-side-001's notes): no HOLD cause class; no marker

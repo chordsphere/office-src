@@ -1,0 +1,49 @@
+{
+ "argv": [
+  "apply",
+  "/tmp/office-probe.waUkTl/dl/response-2026-10-03-probe-drifty-001.tar.gz"
+ ],
+ "cwd": "/tmp/office-probe.waUkTl/drifty",
+ "mode": "split (stdin on a pty, no controlling terminal)",
+ "exit": 1,
+ "events": [
+  [
+   "out",
+   "[bale] applying response-2026-10-03-probe-drifty-001.tar.gz against session 2026-10-03-probe-drifty-001\n[bale] apply.sh and validation.sh syntax checks passed\n[bale] manifest schema validation passed\n[bale] file presence, sha256, and path safety verified\n[bale] [REJECT] base drift (BALE.md \u00a711 row 36): 1 changes[] path(s) whose base moved since pack \u2014 notes/job/folder.md; the whole-file overlay would revert the intervening edits\n\n  [BASE-DRIFT-REFUSED] 2026-10-03-probe-drifty-001\n  base moved: notes/job/folder.md \u2014 stamped 885ac2969003 at pack, now 54623f159d83\n  telemetry:  recorded claude/telemetry/2026-10-03-probe-drifty-001.json\n\nThe base moved under this session: the named files changed on the target branch after the request was packed, and the response's whole-file mirror was built against the old bytes \u2014 applying it would revert those intervening edits. Nothing was staged or committed, and the session stays open. Either:\n  - regenerate the response against the current tree (a fresh `bale pack` restamps against today's base by construction), recommended when the intervening edits must survive,\n  - or land the response's bytes over the moved base deliberately, superseding those edits for exactly the named paths, by pasting this line (delete a flag to admit less):\n      bale apply 'response-2026-10-03-probe-drifty-001.tar.gz' --accept-base-drift 'notes/job/folder.md'\n"
+  ]
+ ],
+ "stdout": [
+  "[bale] applying response-2026-10-03-probe-drifty-001.tar.gz against session 2026-10-03-probe-drifty-001",
+  "[bale] apply.sh and validation.sh syntax checks passed",
+  "[bale] manifest schema validation passed",
+  "[bale] file presence, sha256, and path safety verified",
+  "[bale] [REJECT] base drift (BALE.md \u00a711 row 36): 1 changes[] path(s) whose base moved since pack \u2014 notes/job/folder.md; the whole-file overlay would revert the intervening edits",
+  "",
+  "  [BASE-DRIFT-REFUSED] 2026-10-03-probe-drifty-001",
+  "  base moved: notes/job/folder.md \u2014 stamped 885ac2969003 at pack, now 54623f159d83",
+  "  telemetry:  recorded claude/telemetry/2026-10-03-probe-drifty-001.json",
+  "",
+  "The base moved under this session: the named files changed on the target branch after the request was packed, and the response's whole-file mirror was built against the old bytes \u2014 applying it would revert those intervening edits. Nothing was staged or committed, and the session stays open. Either:",
+  "  - regenerate the response against the current tree (a fresh `bale pack` restamps against today's base by construction), recommended when the intervening edits must survive,",
+  "  - or land the response's bytes over the moved base deliberately, superseding those edits for exactly the named paths, by pasting this line (delete a flag to admit less):",
+  "      bale apply 'response-2026-10-03-probe-drifty-001.tar.gz' --accept-base-drift 'notes/job/folder.md'"
+ ],
+ "stdout_sha256": [
+  "8a59f0f888d2a443655026be787c970e77a412ed14eabd388a4d5402380c2aa5",
+  "9b3238e1b728cff6eef4c6d18c1c3a62b8fa3ec73784723040150c6e43097ee5",
+  "91cd0479f3cb9bb7b0465ad956b23e42a7e7ae3c68151d2d85cb4dc350f7b8bd",
+  "372460aa2737e5e4c0a27c432316bab288a6f970295498cc10e91de91441eadb",
+  "2c99101e9fa4ef3dd445d39ea532f5623a81a87277dc967a06e75195b2daf722",
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "f20135a829f1300afc403916de34ed5c7c7bf05154987052d78cc2a65cbeebfd",
+  "047aac3f8b98d14a0f66413d0c60fdb35049bf51d792c530b0eeca0659f9d8d4",
+  "302db8c4d2f21af051edd15652234357e166f41cc1faae3d9400adfb5f82c32e",
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "502dc19e49e747c9d1f10f8af528e7e96d7eb8754093cd279904aac2dc1b35fb",
+  "88b97a0befcf795fc40fd5120c3b2c553d1f4025969c60d9ebeaef8fbdcaf903",
+  "f796bfc7972c3ee114b1c77d01fb53a94ef4389933fa43928764ebd0b0de88c3",
+  "fb20538f6c9e4e0f69d4ef7f237199921583b1e8c63df171cc7a7c9199fb5917"
+ ],
+ "stdin": "a pseudo-terminal, not a controlling terminal; the events are what the probe saw and sent, in order",
+ "captured": "probe of session 2026-10-03-friction-return-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.45) on 2026-10-03, in a throwaway repo under /tmp/office-probe.waUkTl (removed)"
+}

@@ -8,10 +8,15 @@
 #
 # The office reads bale only through these --json surfaces, in the
 # project's directory, with stdin closed: never .bale/, never a prompt.
-# It never writes what bale records; the two surfaces at the end make a
-# session and a context tarball when the occupant runs office start. A datum the office needs and bale
-# does not stamp is a slip for bale-src, never a scrape and never a
-# guess (doctrine section 10).
+# It never writes what bale records. The surfaces after the reads run a
+# bale verb when the occupant asks: office start makes a session and its
+# context tarballs (pack, context, open), and office land lands one
+# (apply, retry) and carries a clarification back (relay). A datum the
+# office needs and bale does not stamp is a slip for bale-src, never a
+# scrape and never a guess (doctrine section 10); where bale prints a
+# block for a person to carry and no --json key holds it, the office
+# takes the lines between the markers declared here, and a moved marker
+# fails a test.
 #
 # floor      the installed bale the surfaces were probed on. bale's key
 #            contracts are additive (existing keys are never renamed or
@@ -162,3 +167,70 @@ keys = [
   "tarball",     # .bale/outbox/context-<dir>.tar.gz under the directory; overwritten on every run
   "tree_name",   # the one folder inside it
 ]
+
+# A planner bundle: bale verifies it, gates its stored pack argv and
+# replays it. Probed in 2026-10-03-friction-return-trip-001 on bale
+# 0.4.45, in throwaway repos. open has no --json and takes no flag beyond
+# its own, so the bundle's pack argv is the whole forecast: the office
+# adds nothing to it and answers none of its intents. The report is all
+# on stdout. The new session's id is read from bale status --json, the
+# sessions open after the open that were not open before; the request
+# tarball is the path on the report's tarball line, checked against the
+# status outbox; the opener is between the same scissor lines as the
+# pack's (slips for bale-src: --json on open, with sid, tarball and
+# opener keys).
+#
+# tarball_line  the report line that names the request tarball's path
+[surfaces.open]
+argv = ["open", "{bundle}"]
+format = "text"
+contract = "bale open --help (v0.4.45)"
+opener = ["--8<-- session opener (copy everything between the scissor lines) --8<--",
+          "--8<-- end session opener --8<--"]
+tarball_line = "  tarball:        "
+
+# Landing a response: run in the repo the session belongs to, with stdin
+# the occupant's own terminal, so every question bale asks (an admission,
+# the walkthrough's merge or revert, a hook) reaches him as bale asks it;
+# the office answers none. stdout is copied to the terminal as it comes
+# and kept for the relay blocks; stderr is the terminal's. Probed in
+# 2026-10-03-friction-return-trip-001. The outcome is read from the
+# session's dossier afterwards, never from these lines: the attempt
+# apply or retry added, or, when bale exits 0 and added none, a
+# clarification round (bale relay re-emits its block).
+#
+# interactive   stdin, and stderr, stay the occupant's terminal
+# relay         the lines around each block bale prints for a person to
+#               carry, {sid} filled in; the block's addressee follows
+#               "to " on the BEGIN line (worker, planner). The --json
+#               report has no relay key (a slip for bale-src), so the
+#               office takes the blocks from between these, verbatim
+# outcomes      the attempt outcomes the office words; any other is
+#               shown as bale records it
+[surfaces.apply]
+argv = ["apply", "{tarball}"]
+format = "text"
+interactive = true
+contract = "bale apply --help (v0.4.45)"
+relay = ["=== RELAY BEGIN {sid} to ", "=== RELAY END {sid} to "]
+outcomes = ["applied", "held", "base-drift-refused", "scope-drift-refused", "required-check-refused",
+            "reverted", "bailout"]
+
+# A held session's corrected response: the same pipeline, the same
+# session id.
+[surfaces.retry]
+argv = ["retry", "{tarball}"]
+format = "text"
+interactive = true
+contract = "bale retry --help (v0.4.45)"
+
+# A clarification's paste block for the planner, re-emitted from the
+# thread's latest round. With no file it records nothing; the block is
+# the whole of stdout.
+#
+# block   the block's first and last lines, {sid} filled in
+[surfaces.relay]
+argv = ["relay", "{sid}"]
+format = "text"
+contract = "bale relay --help (v0.4.22)"
+block = ["BALE EXCHANGE BEGIN {sid}", "BALE EXCHANGE END"]

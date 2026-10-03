@@ -1,0 +1,20 @@
+{
+ "argv": [
+  "open",
+  "/tmp/office-probe.waUkTl/dl/2026-10-03-probe-open-brief.bale-bundle",
+  "--include",
+  "docs",
+  "--write",
+  "docs"
+ ],
+ "cwd": "/tmp/office-probe.waUkTl/openx",
+ "stdin": "closed",
+ "exit": 2,
+ "stdout": [],
+ "stdout_sha256": [],
+ "stderr": [
+  "usage: bale [-h] [--version] <command> ...",
+  "bale: error: unrecognized arguments: --include docs --write docs"
+ ],
+ "captured": "probe of session 2026-10-03-friction-return-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.45) on 2026-10-03, in a throwaway repo under /tmp/office-probe.waUkTl (removed)"
+}

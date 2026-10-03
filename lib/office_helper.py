@@ -9,7 +9,8 @@ the caller should report, 2 on a usage or internal error, and 3 where a
 subcommand documents a second outcome (an incomplete profile, an unmet
 renovation declaration, include-group drift, a catalog defect, a
 project in the floor plan that cannot be read, a folder whose facts
-disagree, a filed page changed other than at its end), and 4
+disagree, a filed page changed other than at its end, a sitting's page
+refused or malformed), and 4
 when record-session finds the id already recorded.
 """
 
@@ -21,6 +22,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import tarfile
 import tomllib
 
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
@@ -728,8 +730,8 @@ def read_projects(manifest):
 #               session on the project: a directory inside another repo,
 #               a whole repo, or a file; absolute or ~/
 #   after_land  commands run in the project's repo after one of its
-#               sessions lands (office land runs them; this release only
-#               declares and shows them)
+#               sessions lands (office land runs them, in order, once bale
+#               has applied the session; never after a HOLD)
 
 DECLARATION_KEYS = ("rides", "after_land")
 
@@ -1511,6 +1513,120 @@ def ascii_escape(text):
     return out, escaped
 
 
+# --- a sitting's words, filed from the brief that carries them --------------
+#
+# A read-only sitting lands nothing itself. Its words reach the notepad
+# when office start sends out a session whose brief carries them (the
+# ruling of sitting 2026-10-02-friction-wave-sitting-001, second page):
+# each page sits between two marker lines, and its path, a new page
+# named by the sitting, is on the first.
+#
+#   --- NOTEPAD PAGE BEGIN notepad/2026-10-05-some-sitting-001.md ---
+#   ...the page's lines...
+#   --- NOTEPAD PAGE END ---
+#
+# The page is the lines between the markers with a trailing newline,
+# kept ASCII as office note keeps it. A page already filed with the same
+# bytes is a no-op; a different page at that path is refused and never
+# overwritten (filed paper). Bare `--- PAGE BEGIN ---` markers, which
+# briefs from before this convention carry for office-src's own record,
+# are not these and are never filed.
+
+NOTEPAD_PAGE_BEGIN_RE = re.compile(r"^--- NOTEPAD PAGE BEGIN (.*) ---$")
+NOTEPAD_PAGE_END = "--- NOTEPAD PAGE END ---"
+SITTING_PAGE_RE = re.compile(r"^notepad/(\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
+
+
+def sitting_page_path_problem(path):
+    """None when path names a new page of a sitting's words, else why not."""
+    m = SITTING_PAGE_RE.match(path)
+    if not m:
+        return (f"{path!r} is not a sitting's page: it must be notepad/DATE-SLUG.md, the slug in "
+                "lowercase letters, digits and dashes (doctrine section 5)")
+    try:
+        dt.date.fromisoformat(m.group(1))
+    except ValueError:
+        return f"{path!r}: {m.group(1)} is not a date"
+    return None
+
+
+def sitting_pages(text):
+    """(pages, problems) from a brief's text: pages is a list of (path,
+    bytes), each page's lines between its markers, ASCII-escaped, with a
+    trailing newline; problems names every marker that does not pair or
+    names no page, and nothing between such markers is taken."""
+    pages, problems = [], []
+    lines = text.replace("\r\n", "\n").split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        m = NOTEPAD_PAGE_BEGIN_RE.match(line)
+        if line == NOTEPAD_PAGE_END:
+            problems.append(f"line {i + 1}: a NOTEPAD PAGE END with no BEGIN before it")
+            i += 1
+            continue
+        if not m:
+            i += 1
+            continue
+        path = m.group(1).strip()
+        end = None
+        for j in range(i + 1, len(lines)):
+            if lines[j] == NOTEPAD_PAGE_END:
+                end = j
+                break
+            if NOTEPAD_PAGE_BEGIN_RE.match(lines[j]):
+                break
+        if end is None:
+            problems.append(f"line {i + 1}: NOTEPAD PAGE BEGIN {path} has no END before the next page "
+                            "or the end of the brief; nothing of it is filed")
+            i += 1
+            continue
+        why = sitting_page_path_problem(path)
+        if why:
+            problems.append(f"line {i + 1}: {why}; nothing of it is filed")
+        else:
+            body, _ = ascii_escape("\n".join(lines[i + 1:end]) + "\n")
+            pages.append((path, body.encode("ascii")))
+        i = end + 1
+    return pages, problems
+
+
+def file_sitting_pages(root, text):
+    """File each page a brief carries into the office at root. Returns a
+    list of (state, path, why): filed, same (already filed with these
+    bytes), refused (a different page is there; it is never
+    overwritten), or malformed (path None)."""
+    root = pathlib.Path(root)
+    pages, problems = sitting_pages(text)
+    out = [("malformed", None, p) for p in problems]
+    for path, data in pages:
+        target = root / path
+        if target.is_file():
+            if target.read_bytes() == data:
+                out.append(("same", path, None))
+            else:
+                out.append(("refused", path, "a different page is already filed there; filed paper is never "
+                                              "overwritten, so this one was not filed"))
+            continue
+        if target.exists():
+            out.append(("refused", path, "something other than a page is there"))
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        out.append(("filed", path, None))
+    return out
+
+
+def brief_from_request(tarball):
+    """The README.md a request tarball shipped (its brief), as text, or
+    None when it shipped none."""
+    with tarfile.open(tarball) as t:
+        for member in t.getmembers():
+            if member.isfile() and re.fullmatch(r"[^/]+/README\.md", member.name):
+                return t.extractfile(member).read().decode("utf-8", "backslashreplace")
+    return None
+
+
 TEMPLATE_KEY_RE = re.compile(r"\{\{([a-z_]+)\}\}")
 # A field line in a template: `- label: {{key}}` and nothing else on it.
 TEMPLATE_FIELD_RE = re.compile(r"^- [a-z][a-z ]*: \{\{([a-z_]+)\}\}$")
@@ -1998,6 +2114,21 @@ def cmd_ascii_escape(a):
     sys.stdout.write(out)
 
 
+def cmd_file_sitting_pages(a):
+    """One line per page: filed, same, refused or malformed, tab-separated
+    with the path and why. Exit 3 when any was refused or malformed."""
+    if a.request:
+        text = brief_from_request(a.request)
+    else:
+        text = pathlib.Path(a.brief).read_bytes().decode("utf-8", "backslashreplace")
+    if text is None:
+        return 0
+    results = file_sitting_pages(a.root, text)
+    for state, path, why in results:
+        print("\t".join([state, path or "-"] + ([why] if why else [])))
+    return 3 if any(state in ("refused", "malformed") for state, _, _ in results) else 0
+
+
 def cmd_render_template(a):
     """key=value arguments; a key given more than once is a list, one
     field line per value."""
@@ -2094,6 +2225,11 @@ def main(argv=None):
     p.set_defaults(fn=cmd_append_check)
     p = sub.add_parser("project-names"); p.add_argument("manifest"); p.set_defaults(fn=cmd_project_names)
     p = sub.add_parser("ascii-escape"); p.set_defaults(fn=cmd_ascii_escape)
+    p = sub.add_parser("file-sitting-pages"); p.add_argument("root")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--request", help="a request tarball: the pages its README.md carries")
+    g.add_argument("--brief", help="a brief file")
+    p.set_defaults(fn=cmd_file_sitting_pages)
     p = sub.add_parser("render-template"); p.add_argument("template"); p.add_argument("values", nargs="*")
     p.set_defaults(fn=cmd_render_template)
     p = sub.add_parser("recent-notes"); p.add_argument("notepad"); p.add_argument("count", type=int)

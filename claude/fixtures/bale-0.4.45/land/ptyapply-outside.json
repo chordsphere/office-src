@@ -1,0 +1,79 @@
+{
+ "argv": [
+  "apply",
+  "/tmp/office-probe.waUkTl/dl/response-2026-10-03-probe-outsidepty-001.tar.gz"
+ ],
+ "cwd": "/tmp/office-probe.waUkTl/outsidepty",
+ "mode": "split (stdin on a pty, no controlling terminal)",
+ "exit": 1,
+ "events": [
+  [
+   "out",
+   "[bale] applying response-2026-10-03-probe-outsidepty-001.tar.gz against session 2026-10-03-probe-outsidepty-001\n[bale] apply.sh and validation.sh syntax checks passed\n[bale] manifest schema validation passed\n\n  1 changes[] path(s) lie outside session 2026-10-03-probe-outsidepty-001's write forecast. Out-of-forecast work is worker judgment past the ask (ADR-0015); admit each path or decline.\n  write forecast: notes\n\n  path:     docs/outside.md\n  reason:   probe: created docs/outside.md\n  admit docs/outside.md? [y/N] "
+  ],
+  [
+   "sent",
+   "\\n"
+  ],
+  [
+   "tty",
+   "\r\n"
+  ],
+  [
+   "out",
+   "[bale] admission prompt declined at docs/outside.md (empty answer at a decline default); nothing admitted at the prompt, nothing lands partially\n[bale] [REJECT] own-forecast drift (BALE.md \u00a711 row 22): 1 changes[] path(s) outside session 2026-10-03-probe-outsidepty-001's write forecast \u2014 docs/outside.md; write forecast: notes\n\n  [SCOPE-DRIFT-REFUSED] 2026-10-03-probe-outsidepty-001\n  past the forecast: docs/outside.md\n  write forecast:    notes\n  admission prompt:  declined \u2014 nothing admitted, nothing lands partially\n  telemetry:         recorded claude/telemetry/2026-10-03-probe-outsidepty-001.json\n\nThe session stays open; nothing was staged or committed. Out-of-forecast work is worker judgment past the ask (ADR-0015): check the response's notes.md for its enumeration, then either:\n  - admit every drifted path deliberately by pasting this line (delete a flag to admit less):\n      bale apply 'response-2026-10-03-probe-outsidepty-001.tar.gz' --allow-out-of-scope 'docs/outside.md'\n  - regenerate the response inside the forecast and re-run `bale apply`,\n  - or reforecast: `bale unlock 2026-10-03-probe-outsidepty-001` and re-pack with a write forecast covering the work.\n"
+  ]
+ ],
+ "stdout": [
+  "[bale] applying response-2026-10-03-probe-outsidepty-001.tar.gz against session 2026-10-03-probe-outsidepty-001",
+  "[bale] apply.sh and validation.sh syntax checks passed",
+  "[bale] manifest schema validation passed",
+  "",
+  "  1 changes[] path(s) lie outside session 2026-10-03-probe-outsidepty-001's write forecast. Out-of-forecast work is worker judgment past the ask (ADR-0015); admit each path or decline.",
+  "  write forecast: notes",
+  "",
+  "  path:     docs/outside.md",
+  "  reason:   probe: created docs/outside.md",
+  "  admit docs/outside.md? [y/N] [bale] admission prompt declined at docs/outside.md (empty answer at a decline default); nothing admitted at the prompt, nothing lands partially",
+  "[bale] [REJECT] own-forecast drift (BALE.md \u00a711 row 22): 1 changes[] path(s) outside session 2026-10-03-probe-outsidepty-001's write forecast \u2014 docs/outside.md; write forecast: notes",
+  "",
+  "  [SCOPE-DRIFT-REFUSED] 2026-10-03-probe-outsidepty-001",
+  "  past the forecast: docs/outside.md",
+  "  write forecast:    notes",
+  "  admission prompt:  declined \u2014 nothing admitted, nothing lands partially",
+  "  telemetry:         recorded claude/telemetry/2026-10-03-probe-outsidepty-001.json",
+  "",
+  "The session stays open; nothing was staged or committed. Out-of-forecast work is worker judgment past the ask (ADR-0015): check the response's notes.md for its enumeration, then either:",
+  "  - admit every drifted path deliberately by pasting this line (delete a flag to admit less):",
+  "      bale apply 'response-2026-10-03-probe-outsidepty-001.tar.gz' --allow-out-of-scope 'docs/outside.md'",
+  "  - regenerate the response inside the forecast and re-run `bale apply`,",
+  "  - or reforecast: `bale unlock 2026-10-03-probe-outsidepty-001` and re-pack with a write forecast covering the work."
+ ],
+ "stdout_sha256": [
+  "a9c0960625a717f185da9aa62a40976f40b103bdcfffb0c2a6682605ec94a46c",
+  "9b3238e1b728cff6eef4c6d18c1c3a62b8fa3ec73784723040150c6e43097ee5",
+  "91cd0479f3cb9bb7b0465ad956b23e42a7e7ae3c68151d2d85cb4dc350f7b8bd",
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "f9a85545f5469dad102e27097a47c780806e931b4a43fabcbda9d1e2bcfca129",
+  "921a37af8b078578f1fd39e7af6ce6e9c21c60c04f138b39bba3adc6ade50571",
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "eed0a1684aa64d758412df6626d4ac4bc1130b05b19c8a3212840865b0cfcde5",
+  "d5ca7e960b71e8323c23ca2c83630bf8a70081e7040cbdc6cb26e948cb6d4dd6",
+  "f933672ef14ae581743b71904174f05f6c2db10d4135ae455b274b4033c4209d",
+  "41d3df22cf3c541442e2bebe656ce6e154f6dc86be3df41101d34cedcd6bdd9c",
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "5c021a3ed18a6d2577e2d6498f490c7ddf7c37ce53b885005b5dc6304ff0efc8",
+  "7f1d825d3219dcdf74a0684391c21b61e3b9b14d91740f45550231ed4df4567c",
+  "066fc316ffba4d0a2d56fad3bd9fa5ca61d9e62f84787f217fd9a60d23f6a7a5",
+  "4cb7619470ea9421a24dd7fdd2db29002434263cd821cb8c0f48dc14b14db98a",
+  "ae8634799649e35ac712bfe18815239bed60cf8137e4afe47557098cf5626352",
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "b80d89c51d2132b613782394e767c8a9635a88b3c6ce8072faf86f2d714cf172",
+  "306a26c623686b08021534429921c27a04d4c06d55e0dab0fb888c1fd0445ad7",
+  "3572cea7c520cd644c7c50527e07e5e953101c367d70de7b240209197c2adf14",
+  "2bf7a27ac5950de9d57654ac949daa8d57d1e3e186485d3cb3dc1d163d52cd95",
+  "aa2d4f613c4a7474e6506fffd989abb60c0648b61c069212da7103e207606e37"
+ ],
+ "stdin": "a pseudo-terminal, not a controlling terminal; the events are what the probe saw and sent, in order",
+ "captured": "probe of session 2026-10-03-friction-return-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.45) on 2026-10-03, in a throwaway repo under /tmp/office-probe.waUkTl (removed)"
+}

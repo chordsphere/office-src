@@ -1,0 +1,17 @@
+{
+ "argv": [
+  "status",
+  "--json"
+ ],
+ "cwd": "/tmp/office-probe.waUkTl/drift",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"status\", \"version\": \"0.4.45\", \"sid\": \"2026-10-03-probe-drift-001\", \"repo\": {\"root\": \"/tmp/office-probe.waUkTl/drift\", \"branch\": \"main\", \"tree_clean\": false, \"tree_change_count\": 1, \"bale_initialised\": true}, \"session\": {\"state\": \"packed\", \"goal\": \"Probe: drift\", \"expects_probe\": \"agent-decides\", \"clarification\": null}, \"staging\": {\"present\": false, \"path\": \"/tmp/office-probe.waUkTl/drift/.bale/staging\", \"sessions\": {\"2026-10-03-probe-drift-001\": {\"present\": false, \"path\": \"/tmp/office-probe.waUkTl/drift/.bale/staging/2026-10-03-probe-drift-001\", \"strategy\": \"working-tree\", \"untracked_inputs\": []}}, \"stale\": []}, \"outbox\": [\"request-2026-10-03-probe-drift-001.tar.gz\"], \"applied\": {\"count\": 0, \"latest\": null}, \"sessions\": [\"2026-10-03-probe-drift-001\"], \"scopes\": {\"2026-10-03-probe-drift-001\": [\"notes\"]}, \"integration_lock\": null, \"config\": {\"project\": \"/tmp/office-probe.waUkTl/drift/bale.toml\", \"global\": \"/home/chordsphere/bale/user/bale.toml\", \"hooks_wired\": [\"post_pack\"], \"search_paths\": 1, \"baleignore\": false, \"summary_failed\": false}}"
+ ],
+ "stdout_sha256": [
+  "13e51ea187a467353a4085bbddfc71f7a4294036910058f92e5080210151a4c9"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-03-friction-return-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.45) on 2026-10-03, in a throwaway repo under /tmp/office-probe.waUkTl (removed)"
+}

@@ -1,0 +1,43 @@
+{
+ "argv": [
+  "apply",
+  "/tmp/office-probe.waUkTl/dl/response-2026-10-03-probe-drift-001.tar.gz"
+ ],
+ "cwd": "/tmp/office-probe.waUkTl/drift",
+ "stdin": "closed",
+ "exit": 1,
+ "stdout": [
+  "[bale] applying response-2026-10-03-probe-drift-001.tar.gz against session 2026-10-03-probe-drift-001",
+  "[bale] apply.sh and validation.sh syntax checks passed",
+  "[bale] manifest schema validation passed",
+  "[bale] file presence, sha256, and path safety verified",
+  "[bale] [REJECT] base drift (BALE.md \u00a711 row 36): 1 changes[] path(s) whose base moved since pack \u2014 notes/job/folder.md; the whole-file overlay would revert the intervening edits",
+  "",
+  "  [BASE-DRIFT-REFUSED] 2026-10-03-probe-drift-001",
+  "  base moved: notes/job/folder.md \u2014 stamped 885ac2969003 at pack, now aa2aa5498d6b",
+  "  telemetry:  recorded claude/telemetry/2026-10-03-probe-drift-001.json",
+  "",
+  "The base moved under this session: the named files changed on the target branch after the request was packed, and the response's whole-file mirror was built against the old bytes \u2014 applying it would revert those intervening edits. Nothing was staged or committed, and the session stays open. Either:",
+  "  - regenerate the response against the current tree (a fresh `bale pack` restamps against today's base by construction), recommended when the intervening edits must survive,",
+  "  - or land the response's bytes over the moved base deliberately, superseding those edits for exactly the named paths, by pasting this line (delete a flag to admit less):",
+  "      bale apply 'response-2026-10-03-probe-drift-001.tar.gz' --accept-base-drift 'notes/job/folder.md'"
+ ],
+ "stdout_sha256": [
+  "c019f337f90db12065257d398e7768ca3db6ab85c334b605fd7751ca166d2c50",
+  "9b3238e1b728cff6eef4c6d18c1c3a62b8fa3ec73784723040150c6e43097ee5",
+  "91cd0479f3cb9bb7b0465ad956b23e42a7e7ae3c68151d2d85cb4dc350f7b8bd",
+  "372460aa2737e5e4c0a27c432316bab288a6f970295498cc10e91de91441eadb",
+  "2c99101e9fa4ef3dd445d39ea532f5623a81a87277dc967a06e75195b2daf722",
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "76b41514242f8266bd823ba74103aa31ba2915f6d60cb6f89f4d155669137fb7",
+  "1509404d4e7b3aa45515eafeedec59145a158302c7917b47c2d3a478e3aded46",
+  "7c3cf12d917f13f2c3ef21ecaf4931aaf7116bb79fdf215722a157d97fe6b531",
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "502dc19e49e747c9d1f10f8af528e7e96d7eb8754093cd279904aac2dc1b35fb",
+  "88b97a0befcf795fc40fd5120c3b2c553d1f4025969c60d9ebeaef8fbdcaf903",
+  "f796bfc7972c3ee114b1c77d01fb53a94ef4389933fa43928764ebd0b0de88c3",
+  "c7e88db0a2036b68d27eb5f6878270fc9f73897437eee9e0746d4c5f5bf67345"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-03-friction-return-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.45) on 2026-10-03, in a throwaway repo under /tmp/office-probe.waUkTl (removed)"
+}

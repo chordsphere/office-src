@@ -952,7 +952,7 @@ class TestWalkingIn(unittest.TestCase):
         for want in ("The sample office", "UNFOUNDED", "current with office-src", "In flight:",
                      "this office scopes no projects", "On the desk:",
                      "-job  next: (not written yet)", "no calendar", "a thought", "Suggestion box: 1 slip(s).",
-                     "From here: office start, office note"):
+                     "From here: office start, office land, office note"):
             self.assertIn(want, out)
 
     def test_walking_in_from_anywhere_uses_the_default(self):
@@ -1087,7 +1087,7 @@ class TestCatalogs(unittest.TestCase):
         verbs that move a folder: lands means exists after, so close
         lands the cabinet alone and reopen the desk alone."""
         v = verbs_catalog()["verbs"]
-        prose = {"init", "upgrade", "default", "start"}
+        prose = {"init", "upgrade", "default", "start", "land"}
         moves = {"close": ["filing-cabinet/{folder}"], "reopen": ["desk/{folder}"]}
         for name, verb in v.items():
             if verb["kind"] != "script" or name in DECLARED_KINDS:
@@ -1104,6 +1104,8 @@ class TestCatalogs(unittest.TestCase):
             elif name not in prose:
                 self.assertEqual(verb["lands"], verb["writes"], name)
         self.assertEqual(v["start"]["lands"], ["desk/{folder}/folder.md"])
+        # A HOLD lands nothing, so land guarantees nothing.
+        self.assertEqual(v["land"]["lands"], [])
         for name in ("founding", "work", "prep", "meeting", "renovate", "build"):
             self.assertTrue(v[name]["attended"], name)
         self.assertEqual(v["build"]["lands"], [])
@@ -1222,6 +1224,7 @@ WORDS_SHA256 = {
     "2026-09-29-continue-plan-002-3": "6e1e0c056307d3606da8a3d595d973fd15280833d980324574966fc87fc69eaf",
     "2026-09-29-continue-plan-002-4": "da1fbbc5514918a2d57aadb7affdd052d8a008560e749c32219d551e775d3c6d",
     "2026-10-02-friction-wave-sitting-001": "97a2df5f66da24b7a75a13024da98403e9aa4229865014e5c993410de592ddf2",
+    "2026-10-02-friction-wave-sitting-001-2": "2db9f41b29aa1adaac51fa6a4f06aec8f0eb397f05493862f405138c0b24c13e",
 }
 
 

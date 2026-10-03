@@ -1,0 +1,27 @@
+{
+ "argv": [
+  "apply",
+  "/tmp/office-probe.waUkTl/dl/response-2026-10-03-probe-appliedwhole-001.tar.gz"
+ ],
+ "cwd": "/tmp/office-probe.waUkTl/appliedwhole",
+ "mode": "whole (stdin and stdout/stderr on a pty, no controlling terminal)",
+ "exit": 0,
+ "events": [
+  [
+   "tty",
+   "[bale] applying response-2026-10-03-probe-appliedwhole-001.tar.gz against session 2026-10-03-probe-appliedwhole-001\r\n[bale] apply.sh and validation.sh syntax checks passed\r\n[bale] manifest schema validation passed\r\n[bale] file presence, sha256, and path safety verified\r\n[bale] running apply.sh in staging (confined: network off, writes limited to staging + session log)...\r\n[bale] apply.sh exited 0\r\n[bale] staged into /tmp/office-probe.waUkTl/appliedwhole/.bale/staging/2026-10-03-probe-appliedwhole-001\r\n[bale] reconciled staging against manifest: 0 created, 0 deleted, 1 modified\r\n[bale] created branch bale/2026-10-03-probe-appliedwhole-001 at main tip (0c02267)\r\n[bale] running validation.sh in staging (confined: network off, writes limited to staging + session log)...\r\n[bale] validation.sh exit code: 0\r\n[bale] acquired integration lock for 2026-10-03-probe-appliedwhole-001\r\n[bale] built session commit d0bb862 (tree f1ed37d, parent 0c02267) via temporary index\r\n[bale] committed changes to bale/2026-10-03-probe-appliedwhole-001 (d0bb862; checkout untouched)\r\n\r\n  claims (verdict in .bale/logs/2026-10-03-probe-appliedwhole-001.log):\r\n    probe: session check  claim=pass\r\n\r\n  diffstat (origin..bale/2026-10-03-probe-appliedwhole-001):\r\n     notes/other.md | 1 +\r\n     1 file changed, 1 insertion(+)\r\n\r\n  --- notes.md ---\r\n  # Notes\r\n\r\n  A probe response; the walkthrough shows this.\r\n  --- end notes.md ---\r\n\r\n  inspect:\r\n    git diff main..bale/2026-10-03-probe-appliedwhole-001\r\n    git log bale/2026-10-03-probe-appliedwhole-001\r\n    cat .bale/logs/2026-10-03-probe-appliedwhole-001.log\r\n    ls /tmp/office-probe.waUkTl/appliedwhole/.bale/staging/2026-10-03-probe-appliedwhole-001/\r\n\r\n  [PASS] 2026-10-03-probe-appliedwhole-001\r\n  origin:     main\r\n  branch:     bale/2026-10-03-probe-appliedwhole-001 (committed; ready to merge)\r\n  summary:    Probe response (normal, validation pass) for an office-src probe; nothing real.\r\n  validation: exit=0 (1 claim(s); per-check table above, verdict in log)\r\n\r\n  [Enter/m] merge into origin (default)   [r] revert \u2014 discard branch\r\n  > "
+  ],
+  [
+   "sent",
+   "y\\n"
+  ],
+  [
+   "tty",
+   "y\r\n  (unrecognized 'y'; defaulting to merge)\r\n[bale] walkthrough action: merge\r\n[bale] fast-forwarded checkout on main to merge commit 42304f8\r\n[bale] released integration lock\r\n[bale] tagged applied/2026-10-03-probe-appliedwhole-001, closed session, deleted bale/2026-10-03-probe-appliedwhole-001\r\n[bale] archived notes.md \u2192 claude/responses/2026-10-03-probe-appliedwhole-001/notes.md\r\n[bale] sweep: committed 2 file(s) as ad967c4\r\n=== RELAY BEGIN 2026-10-03-probe-appliedwhole-001 to planner ===\r\nPASTE THIS WHOLE BLOCK INTO THE PLANNER'S (MASTER'S) CHAT. It is the ratification relay \u2014 nothing needs typing beside it.\r\n\r\nAPPLIED \u2014 session 2026-10-03-probe-appliedwhole-001, merged into main (tag applied/2026-10-03-probe-appliedwhole-001).\r\nverdict: worker validation: PASS \u00b7 no blind checkpoint configured\r\nadmissions: none\r\n\r\n--- notes.md ---\r\n# Notes\r\n\r\nA probe response; the walkthrough shows this.\r\n--- end notes.md ---\r\n=== RELAY END 2026-10-03-probe-appliedwhole-001 to planner ===\r\n\r\n  [PASS] 2026-10-03-probe-appliedwhole-001\r\n  tag:       applied/2026-10-03-probe-appliedwhole-001\r\n  branch:    main (merged \u2014 checkout fast-forwarded)\r\n  files:     1 changed\r\n  staging:   /tmp/office-probe.waUkTl/appliedwhole/.bale/staging/2026-10-03-probe-appliedwhole-001 (preserved for inspection)\r\n  archive:   1 file(s) \u2192 claude/responses/2026-10-03-probe-appliedwhole-001/ (committed by sweep)\r\n  telemetry: recorded claude/telemetry/2026-10-03-probe-appliedwhole-001.json\r\n  sweep:     committed 2 file(s) as ad967c4\r\n\r\nTo roll back this bale: `bale rollback 2026-10-03-probe-appliedwhole-001`, or `bale rollback` for the most recent.\r\n"
+  ]
+ ],
+ "stdout": [],
+ "stdout_sha256": [],
+ "stdin": "a pseudo-terminal, not a controlling terminal; the events are what the probe saw and sent, in order",
+ "captured": "probe of session 2026-10-03-friction-return-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.45) on 2026-10-03, in a throwaway repo under /tmp/office-probe.waUkTl (removed)"
+}

@@ -1,0 +1,19 @@
+{
+ "argv": [
+  "stats",
+  "--sid",
+  "2026-10-03-probe-applied-001",
+  "--json"
+ ],
+ "cwd": "/tmp/office-probe.waUkTl/applied",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"dossier\", \"session_id\": \"2026-10-03-probe-applied-001\", \"found\": true, \"record\": {\"record_version\": 1, \"created_at\": \"2026-10-03T01:10:17+00:00\", \"updated_at\": \"2026-10-03T01:10:18+00:00\", \"outcome\": \"applied\", \"work_class\": \"mixed\", \"packer\": \"chordsphere\", \"in_flight\": false, \"closure\": {\"category\": \"applied\", \"unlock_reason\": null}, \"read_only\": false, \"crash_debris\": false}, \"attempts\": [{\"at\": \"2026-10-03T01:10:17+00:00\", \"command\": \"pack\", \"outcome\": \"opened\", \"closure_reason\": null, \"tarball\": null, \"scope_kind\": \"write-forecast\", \"scope\": [\"notes\"], \"change_paths\": [], \"overridden_paths\": [], \"required_check_overrides\": [], \"base_drift_overrides\": [], \"forecast_drift_paths\": null, \"validation\": null, \"checkpoint\": null, \"linkage\": null, \"clarification\": null, \"diagnostics\": null, \"provenance\": {\"work_class\": \"mixed\", \"packer\": \"chordsphere\", \"packed_at\": \"2026-10-03T01:10:17+00:00\"}, \"superseded_by\": null, \"swept_by\": null, \"cause\": null, \"bundle\": null, \"log\": \".bale/logs/2026-10-03-probe-applied-001.log\"}, {\"at\": \"2026-10-03T01:10:18+00:00\", \"command\": \"apply\", \"outcome\": \"applied\", \"closure_reason\": null, \"tarball\": \"response-2026-10-03-probe-applied-001.tar.gz\", \"scope_kind\": \"write-forecast\", \"scope\": [\"notes\"], \"change_paths\": [\"notes/other.md\", \"notes/new.md\"], \"overridden_paths\": [], \"required_check_overrides\": [], \"base_drift_overrides\": [], \"forecast_drift_paths\": [], \"validation\": {\"state\": \"PASS\", \"exit_code\": 0, \"reconciliation_parsed\": false, \"claims_declared\": 1, \"checks\": []}, \"checkpoint\": {\"configured\": false}, \"linkage\": null, \"clarification\": {\"rounds\": 0, \"records\": []}, \"diagnostics\": null, \"provenance\": null, \"superseded_by\": null, \"swept_by\": null, \"cause\": null, \"bundle\": null, \"log\": \".bale/logs/2026-10-03-probe-applied-001.log\"}], \"lineage\": {\"superseded_by\": null, \"superseded_from\": [], \"corrects\": null, \"corrected_by\": []}}"
+ ],
+ "stdout_sha256": [
+  "471fa2a0ffc62a514df8a5c60a83e18048fdd0d6a10eb7fa64d2e6d819dab008"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-03-friction-return-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.45) on 2026-10-03, in a throwaway repo under /tmp/office-probe.waUkTl (removed)"
+}

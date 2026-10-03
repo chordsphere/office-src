@@ -1,0 +1,28 @@
+{
+ "argv": [
+  "apply"
+ ],
+ "cwd": "/tmp/office-probe.waUkTl/noarg",
+ "stdin": "closed",
+ "exit": 1,
+ "stdout": [
+  "[bale] bare apply: 1 examined tarball(s) not candidates (--verbose lists each with its reason)",
+  "[bale] bare apply resolved a response tarball:",
+  "[bale]   path:        /tmp/office-probe.waUkTl/dl/response-2026-10-03-probe-noarg-001.tar.gz",
+  "[bale]   responds_to: 2026-10-03-probe-noarg-001 (the open session)",
+  "[bale]   sha256:      7ff2fffe14edf382067bb905d84d7b6ad32367bf741ff13430536070923c71d9",
+  "[bale]   modified:    2026-10-03T01:10:30+00:00"
+ ],
+ "stdout_sha256": [
+  "552bacb3b4e570ef2f5e019186d84bb84d8adabba0ddcb0d68f8d05003cc150b",
+  "e0cc9293b6129fa324f3f0518d7dc112db4017b545599b56a14abb823efd498b",
+  "601823518cfacb7073150f7e1202cc24fc15ebfe38b5468985b6b215b3ec41b7",
+  "3801b465e4a64264719b498a897405bde2922ccd36f4a4462e36c2ab9f8ee07b",
+  "1920d219292b966af5b8424a8f3007b940fca7e04d061363d1f85b1424001a0b",
+  "448ff3e87fb114c88c0548900170ccf1cb084474a6ce162c5df9238ef6c9b594"
+ ],
+ "stderr": [
+  "[bale] error: stdin is not a TTY; the bare-apply confirmation's decline default applies without a prompt (nothing applied) \u2014 the --supersedes precedent: automation never accepts a resolution guess silently. Name the tarball explicitly to apply without the prompt: bale apply /tmp/office-probe.waUkTl/dl/response-2026-10-03-probe-noarg-001.tar.gz"
+ ],
+ "captured": "probe of session 2026-10-03-friction-return-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.45) on 2026-10-03, in a throwaway repo under /tmp/office-probe.waUkTl (removed)"
+}
