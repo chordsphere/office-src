@@ -26,9 +26,12 @@ house rules, when a session is worth opening there, and how it was
 founded. An office whose profile is incomplete is unfounded and says so.
 
 The office command builds and keeps offices. `office init` builds one,
-surveys the machine, and prints the line that packs the founding session.
-`office` on its own is walking in: what is on the desk, this week, the
-last notes, the suggestion box, and what you can do from here. The
+surveys the machine, asks which projects it watches, and prints the line
+that packs the founding session. `office tour` builds a throwaway office
+to try the verbs on, walks through them, and deletes it. `office` on its
+own is walking in: what is on the desk, this week, the last notes, the
+suggestion box, what you can do from here, and, last, the one command to
+type next. The
 everyday verbs take seconds and need no session: `office note` captures a
 line, `office slip` drops a friction slip in the suggestion box, `office
 open` starts a numbered folder, `office desk` shows what is
@@ -144,7 +147,10 @@ session's id; the occupant attaches its files and pastes the opener it
 prints. An office session forecasts its folder and the notepad, so
 office sessions take turns; `--read-only` packs a sitting that forecasts
 nothing. A session whose forecast overlaps one already open is refused
-before bale is asked, and the open session is named. A session a
+before bale is asked, and the open session, its folder and the overlap are
+named; a bundle is refused the same way whenever the office can read its
+pack line, and where it cannot (a bare name bale's search finds), the
+office says so and bale's own words stand. A session a
 planning sitting authored arrives as a bundle (a .bale-bundle file):
 `office start --bundle FILE` hands it to bale's open in the place the
 occupant names, the office or the job's project, and gathers what rides
@@ -376,7 +382,7 @@ Kinds:
 
 | verb | kind | built |
 |---|---|---|
-| init | script; writes bale.toml and prints the founding session's pack line | yes |
+| init | script; writes bale.toml, asks which projects the office watches, and prints the founding session's pack line | yes |
 | survey | script | yes |
 | status | script, read-only | yes |
 | upgrade | script; prints a renovation pack line when a migration needs judgment | yes |
@@ -391,6 +397,7 @@ Kinds:
 | projects | script: list the projects this office scopes, add one, declare what rides with it and what runs after it lands, render what bale records about them | yes |
 | start | script: pack a session for a folder, in the office or on a project, or open a planner's bundle; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
 | land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, and the planner's ratification | yes |
+| tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes |
 | founding | office session: the profile, the occupant's words, the timezone | yes, via init |
 | work | office session: answer, draft, probe, decide, deliver | yes, via start |
 | build | project session: change a project for a folder | yes, via start |
@@ -413,7 +420,10 @@ explains the field when the answer is `?`, and asks again, with the
 reason, when an answer is not one the field takes. A plain return skips
 a question that may be skipped. A verb asks only for what matters to
 it, so a folder is opened in four answers (title, size, lane, source);
-the other fields are flags, and `--help` explains each.
+the other fields are flags, and `--help` explains each. `office help`
+lists the verbs by what the occupant wants to do (look around, capture,
+start a job, send a session out, bring one back, look after the office),
+and every verb's `--help` carries at least one example.
 
 A session whose goal the occupant overrides midway keeps the override
 words on its notepad page, and the new ask becomes a new folder or
@@ -426,7 +436,16 @@ sessions in flight in its projects and in the office itself, with the
 folder each belongs to, how many folders are ready, parked and
 candidates, and the first three ready ones with their next moves, this
 week and its gaps, the last notepad lines, how many slips are in the
-suggestion box, and the verbs to reach for. It only reads the office;
+suggestion box, and the verbs to reach for. It ends with one Next line:
+the one command to type now, its arguments filled in, worked out from the
+office on every walk-in and never written down. In the order they win: an
+office out of step with the install (upgrade it); a session out (land it,
+or, when bale held it, land its corrected response); an unfounded office;
+the first ready folder (start it); an open folder no session is out for;
+no projects (add one); slips enough to be a job of their own; folders
+that wait; and nothing to do. Whether a response has arrived is bale's to
+say, and no --json surface of bale says it, so the line says the session
+is out and that land finds its response. It only reads the office;
 the one thing it keeps is the day of the walk-in, on this machine and
 outside the office, so the desk can say which gates cleared since.
 
@@ -493,8 +512,10 @@ and the difference is written down, never smoothed.
 The projects an office scopes are its floor plan's [projects] table: a
 name and the path of each project's repo on this machine, absolute or
 under the home directory, written by `office projects add` and never by
-hand. An office with no table scopes nothing, and every rendering says
-so rather than showing an empty screen as if it were true. A project on
+hand; `office init` asks which projects a new office watches and adds
+each through the same questions. An office with no table scopes nothing,
+and every rendering says so rather than showing an empty screen as if it
+were true. A project on
 another machine is not read. The office reads each project's records
 only through bale's --json surfaces, run in the project's directory with
 no prompt, never by parsing .bale/, and it never writes what bale
@@ -566,8 +587,10 @@ starts with TODO. An office with an incomplete profile is unfounded and
 says so on every command. Capture still works in an unfounded office.
 
 Spawning an office is a conversation, not a form. `office init` builds
-the skeleton, writes bale.toml, surveys the machine, commits, and prints
-the pack line for the founding session. It refuses to build from an
+the skeleton, writes bale.toml, surveys the machine, commits, asks which
+projects the office watches (each through the questions of `office
+projects add`, until a plain return, with `--project` as the flag twin),
+and prints the pack line for the founding session. It refuses to build from an
 install whose own catalogs have a defect; for an office already built,
 `office status` reports the defect and the office keeps working. The founding session is scoped:
 it may write profile.md, the notepad and the floor plan, so one trip

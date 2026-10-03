@@ -326,7 +326,7 @@ class TestWizards(unittest.TestCase):
         self.assertTrue(list((self.o.root / "filing-cabinet").glob("*-job")))
         code, seen = terminal(self.env, self.o.e.home, [self.bin, "init"],
                               [("(--path):", "?"), ("(--path):", str(self.o.e.home / "second")),
-                               ("[second]:", "")])
+                               ("[second]:", ""), ("(--project PATH) [return skips]:", "")])
         self.assertEqual(code, 0, seen)
         self.assertIn("(--path):", seen)
         self.assertIn("It becomes its own git", seen)

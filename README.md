@@ -10,6 +10,134 @@ office-src is project agnostic. Every office is specific and says why it
 exists in its required profile. How offices work is doctrine/OFFICE.md,
 which ships with every office session.
 
+## What you want to do
+
+| you want to | type |
+|---|---|
+| see what an office is like before committing to anything | `office tour` |
+| walk in: what is out, what is ready, and the one command to type next | `office` |
+| capture a thought | `office note TEXT` |
+| drop a friction slip | `office slip TEXT` |
+| start a job | `office open` |
+| send a session out for it | `office start` |
+| bring the session back | `office land` |
+| build an office | `office init` |
+| see every verb, grouped by what you want to do | `office help` |
+
+Every verb is a wizard on a terminal: it asks for what you left out, `?`
+explains a question, and every question has a flag, so the same command
+can be typed in full and piped input is never asked anything. `office
+VERB --help` (or `office help VERB`) explains one verb, with examples.
+
+If you already use bale: with the office you never type a session id,
+never assemble an include list, and never forget a landing step. `office
+start` reads the folder's lane, forecast and work class and what rides
+with each project; `office land` knows which repo, which response, and
+what runs after it applies. bale stays visible: start and land run bale's
+own pack, open, apply and retry, bale asks its own questions and only you
+answer them, `office start --help` and `office land --help` name the bale
+commands they run, and `OFFICE_DEBUG=1` shows every bale call. Any bale
+command still works by hand beside the office.
+
+### Take the tour
+
+    office tour
+
+It builds a throwaway office in a temporary directory, with sample
+folders, a note, a slip and a calendar with a gap, and walks you through
+the verbs on it: walking in, capturing, opening a folder, the desk, the
+week, and what `office start` and `office land` do. Each step runs one
+command, shows what it printed, and says what it did and why you would
+type it; start and land are shown and explained, never run. On a
+terminal it waits for a return between steps (`q` ends it), and at the
+end it offers a shell inside the tour office to play in (`--play`,
+`--no-play`; `--no-pause` runs straight through). Then it deletes the
+office and says so, and it deletes it too when stopped or interrupted. It
+never touches your offices, this machine's default office, the walk-in
+record or bale: a stand-in bale that refuses everything is first on its
+PATH, and git's global config is switched off for it.
+
+### Walk in
+
+    office
+
+Walking in shows the office's name, the date and time in its timezone,
+whether it is founded and current, the sessions in flight in its projects
+and in the office itself with the folder each belongs to, how many
+folders are ready, parked and candidates and the first three ready ones,
+this week and its gaps, the last notepad lines and the slips, and the
+verbs to reach for. It ends with one Next line: the one command to type
+now, with its arguments filled in, worked out from the office on every
+walk-in and never written down. In the order they win:
+
+| the office | Next |
+|---|---|
+| is behind the install, or ahead of it | `office upgrade` (or `office status`, which names the versions) |
+| has a session out | `office land SID` (when its response is in your downloads, land finds it) |
+| is unfounded | `office status` (names the profile sections still to write) |
+| has a ready folder | `office start FOLDER` (`--on PROJECT` when its lane names one) |
+| has an open folder no session is out for | `office start FOLDER` (or `office close` it when it is done) |
+| watches no projects | `office projects add` |
+| has five or more slips | `office open triage-the-suggestion-box ...` |
+| has only parked folders and candidates | `office desk` |
+| has nothing waiting | `office open`, when a job comes in |
+
+### Capture
+
+    office note called the bank; rate locks Friday   # a timed line on today's notepad page
+    office slip --about bale pack needs too many flags  # a friction slip, its own page in the suggestion box
+
+Each verb commits only the paths it touched. `office note` and `office
+slip` work in an unfounded office and in one that needs an upgrade; they
+warn and write. `office note` commits a notepad page only when its
+committed bytes are untouched and the new lines are at its end. `office
+slip` asks on a terminal what the slip is about (the office, bale,
+office-src, or one of the office's projects) unless `--about` says so.
+
+### Start a job, and finish one
+
+    office open                                      # a folder on the desk; asks for what it needs
+    office open house-hunt --thread < thread.txt     # ...seeded with the thread that started it
+    office desk                                      # in flight, ready in order, parked, candidates
+    office week                                      # this week's calendar and its gaps
+    office close fix-login                           # to the filing cabinet, done
+    office reopen fix-login                          # back to the desk, history and all
+
+A folder is named by the date and a slug, and can be named by any unique
+part of that name or by its number, `folder 12`. Folders, their fields,
+statuses and gates are below.
+
+### Send a session out
+
+    office start                       # asks: which job, in the office or on a project, the goal
+
+It packs the session with bale where the work lands, records it in the
+folder, and puts every file to attach in one out tray, `~/out-tray/SID`,
+beside the opener it prints: attach the tray's files to a fresh chat and
+paste the opener. The details are below.
+
+### Bring it back
+
+    office land                          # the session out: bale apply, how it ended, the relay
+
+It finds the session the response answers, runs bale apply in the repo it
+belongs to, says how it ended, hands you the relay to carry, runs the
+project's after-land actions, and records the planner's ratification. The
+details are below.
+
+### Build an office
+
+    office init ~/offices/home   # build an office; asks which projects it watches; prints the founding session's pack line
+
+On a terminal, after building, `office init` asks which projects the
+office watches: one at a time, through the same questions as `office
+projects add` (the path, the name, what rides with it, what runs after it
+lands), until a plain return. `--project PATH` (or `--project
+NAME=PATH`, repeatable) is the flag twin, each checked before anything is
+built, and `--no-projects` skips the question; piped, it asks nothing.
+The office is unfounded until its founding session writes the profile;
+init prints the line that packs that session.
+
 ## Install
 
 From a clone of this repo:
@@ -32,40 +160,21 @@ rendering says bale is missing and the rest of the command works.
 
 `office version` prints the installed version and where it came from.
 
-## Use
+## Reference
 
-    office init ~/offices/home # build an office; prints the founding session's pack line
-    office                     # walk in: sessions in flight, the desk, this week, recent notes, slips
+### Looking after an office
+
     office status              # version, skew, profile, survey age, hung items, catalogs, folders, filed pages, bale, projects
     office survey              # rewrite floor-plan/survey.md, report what changed
     office upgrade             # run pending migrations: dry run, then one commit
     office where               # the office a command here acts on
     office default [PATH]      # this machine's default office
+    office version             # the installed version and where it came from
 
 A command acts on OFFICE_ROOT if set, else the office around the working
 directory (found by walking up to floor-plan/manifest.toml), else the
 machine's default, kept in ~/.config/office-src/default-office. The
 first `office init` on a machine sets it.
-
-### Every day
-
-    office note called the bank; rate locks Friday   # a timed line on today's notepad page
-    office slip --about bale pack needs too many flags  # a friction slip, its own page in the suggestion box
-    office open                                      # a folder on the desk; asks for what it needs
-    office open house-hunt --thread < thread.txt     # ...seeded with the thread that started it
-    office desk                                      # in flight, ready in order, parked, candidates
-    office week                                      # this week's calendar and its gaps
-    office close fix-login                           # to the filing cabinet, done
-    office reopen fix-login                          # back to the desk, history and all
-
-Each verb commits only the paths it touched. `office note` and `office
-slip` work in an unfounded office and in one that needs an upgrade; they
-warn and write. `office note` commits a notepad page only when its
-committed bytes are untouched and the new lines are at its end. `office
-slip` asks on a terminal what the slip is about (the office, bale,
-office-src, or one of the office's projects) unless `--about` says so.
-A folder is named by the date and a slug, and can be named by any unique
-part of that name or by its number, `folder 12`.
 
 ### Folders: numbers, fields, statuses and gates
 
@@ -128,7 +237,7 @@ has one) for a commit that did more than add at the end. It reports and
 exits 0; `office init` refuses to build from an install whose catalogs
 have a defect.
 
-### Sending a session out
+### Sending a session out: the details
 
     office start                       # asks: which job, in the office or on a project, the goal
     office start fix-login --on office-src --goal "Fix the login redirect"
@@ -160,6 +269,11 @@ word): it asks which job and where the work lands, as for a pack, then
 hands the bundle to `bale open` there. The bundle's pack line is the
 whole session, its goal, forecast and brief; the office adds nothing to
 it and says when it leaves out something the office would have carried.
+When the bundle is a file the office can read, a forecast that overlaps
+an open session is refused before bale runs, in the office's words and
+naming the session, its folder and the overlap, as for a pack; given as a
+bare name bale's search finds, the bundle cannot be read first, so the
+office says so and leaves that refusal to bale.
 When the brief carries a page of the sitting's words between
 `--- NOTEPAD PAGE BEGIN notepad/DATE-SLUG.md ---` and
 `--- NOTEPAD PAGE END ---`, `office start` files that page in the
@@ -172,7 +286,7 @@ clipboard. `~/.config/office-src/machine.toml` changes that per machine:
 `out_tray = "~/somewhere"`, `clipboard_command = "..."`,
 `open_command = "..."`, and `""` turns a step off.
 
-### Bringing a session back
+### Bringing a session back: the details
 
     office land                          # the session out: bale apply, how it ended, the relay
     office land fix-login                # the session out for a folder
@@ -257,7 +371,7 @@ matches the floor plan.
 |---|---|
 | bin/office | the command (bash) |
 | lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library) |
-| lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after |
+| lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after |
 | doctrine/OFFICE.md | how every office works |
 | doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |
 | share/spaces.toml | every space an office can have; the base ones are the default floor plan; a space files itself whole or as a list of paths |

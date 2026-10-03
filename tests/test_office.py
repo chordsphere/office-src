@@ -1085,9 +1085,10 @@ class TestCatalogs(unittest.TestCase):
         also runs; build attended until a build kind with a landing is
         proven by hand. The ruling of the fourth page relaxes the pin for
         verbs that move a folder: lands means exists after, so close
-        lands the cabinet alone and reopen the desk alone."""
+        lands the cabinet alone and reopen the desk alone. tour writes a
+        throwaway office it deletes before it ends, so it lands nothing."""
         v = verbs_catalog()["verbs"]
-        prose = {"init", "upgrade", "default", "start", "land"}
+        prose = {"init", "upgrade", "default", "start", "land", "tour"}
         moves = {"close": ["filing-cabinet/{folder}"], "reopen": ["desk/{folder}"]}
         for name, verb in v.items():
             if verb["kind"] != "script" or name in DECLARED_KINDS:
@@ -1106,6 +1107,9 @@ class TestCatalogs(unittest.TestCase):
         self.assertEqual(v["start"]["lands"], ["desk/{folder}/folder.md"])
         # A HOLD lands nothing, so land guarantees nothing.
         self.assertEqual(v["land"]["lands"], [])
+        # The tour's office is gone when it ends.
+        self.assertEqual(v["tour"]["lands"], [])
+        self.assertTrue(v["tour"]["built"])
         for name in ("founding", "work", "prep", "meeting", "renovate", "build"):
             self.assertTrue(v[name]["attended"], name)
         self.assertEqual(v["build"]["lands"], [])
@@ -1225,6 +1229,7 @@ WORDS_SHA256 = {
     "2026-09-29-continue-plan-002-4": "da1fbbc5514918a2d57aadb7affdd052d8a008560e749c32219d551e775d3c6d",
     "2026-10-02-friction-wave-sitting-001": "97a2df5f66da24b7a75a13024da98403e9aa4229865014e5c993410de592ddf2",
     "2026-10-02-friction-wave-sitting-001-2": "2db9f41b29aa1adaac51fa6a4f06aec8f0eb397f05493862f405138c0b24c13e",
+    "2026-10-02-friction-wave-sitting-001-3": "b48fdc2ecde43007c680b59f4d75c165dc63a9eef6c70eb95367bd38dda7c44a",
 }
 
 

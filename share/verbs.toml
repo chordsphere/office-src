@@ -207,6 +207,19 @@ lands = []
 attended = true
 trigger = ["manual"]
 
+# The toy drawer: a throwaway office in a temporary directory, built,
+# walked through and deleted before the verb ends, so nothing it writes
+# exists after it. It never writes an office, this machine's default
+# office setting, the walk-in record or any bale registry, and runs no
+# bale: start and land are shown, never run.
+[verbs.tour]
+kind = "script"
+built = true
+writes = ["a throwaway office in a temporary directory, deleted before the tour ends"]
+lands = []
+attended = true
+trigger = ["manual"]
+
 [verbs.founding]
 kind = "office-session"
 built = true

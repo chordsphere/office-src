@@ -867,13 +867,166 @@ def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
     return lines
 
 
-def render_desk(rd, office_root, today, since=None, walk_in=False, now=None):
+def render_desk(rd, office_root, today, since=None, walk_in=False, now=None, groups_out=None):
     """(lines, unreadable projects): office desk, or the walk-in's two
     sections. since is the day of the previous walk-in (default today):
-    a ready folder whose gate cleared on or after it says so."""
+    a ready folder whose gate cleared on or after it says so. groups_out,
+    a dict when given, receives the desk's groups (the Next line reads
+    them, so the walk-in classifies the desk once)."""
     flight, bad, flying = in_flight(rd, office_root, now)
     groups = classify_desk(oh.read_folders(office_root), flying, since or today)
+    if groups_out is not None:
+        groups_out.update(groups)
     return desk_lines(groups, flight, walk_in=walk_in), bad
+
+
+# --- the Next line -------------------------------------------------------------------
+#
+# The walk-in ends with one line naming the one command to type next, its
+# arguments filled in. It is computed from the office's state on every
+# walk-in and never written down. The states, in the order they win, and
+# why that order:
+#
+#   1. the office ahead of or behind the install, or its stamp unreadable:
+#      most verbs refuse until that is fixed, land and start among them;
+#   2. a session out: work already sent, waiting only on its response,
+#      and an unfounded office's founding session is one of these, so
+#      landing it comes before saying the office is unfounded;
+#   3. unfounded: the profile is the office's reason to exist;
+#   4. a ready folder: the desk's first, in the desk's own order;
+#   5. an open folder with no session out: a job under way that nothing
+#      is carrying;
+#   6. no projects: setup, which a ready job outranks, since an office may
+#      scope none by choice and a nag above real work would be wrong;
+#   7. slips piling up: enough of them to be a job of their own;
+#   8. folders that wait (parked, candidates): the desk says on what;
+#   9. nothing to do.
+#
+# Whether a response is in the downloads is a bale-shaped fact no --json
+# surface of bale exposes (bale status gives only a count of search
+# directories), so the line says the session is out and that land finds
+# its response; the gap is a slip for bale-src, never a scrape.
+
+SLIPS_PILING = 5
+SLIPS_SLUG = "triage-the-suggestion-box"
+
+
+def sessions_to_land(rd, office_root):
+    """(sessions, problems): the open sessions office land can bring back,
+    held ones first, then oldest first. A session counts when a folder
+    records it, or when it is open in the office's own registry (the
+    office's founding or a renovation, which no folder records); a
+    read-only sitting lands nothing and never counts. Each is
+    open_anywhere's dict plus held and created."""
+    every, problems = open_anywhere(rd, office_root)
+    out = []
+    for x in every:
+        if x["read_only"] or not (x["folders"] or x["label"] == OFFICE_LABEL):
+            continue
+        held, created = False, ""
+        try:
+            d = rd.dossier(x["repo"], x["sid"])
+            if d is not None:
+                v = session_view(rd, d)
+                held, created = bool(v["in_flight"] and v["outcome"] == "held"), v["created"] or ""
+        except BaleError as exc:
+            # Still out, still landable; only its order is unknown.
+            debug(f"{x['sid']}: its dossier could not be read for the Next line's order: {exc}")
+        out.append(dict(x, held=held, created=created))
+    out.sort(key=lambda s: (not s["held"], s["created"] or "~", s["sid"]))
+    return out, problems
+
+
+def lane_project(folder, project_names):
+    """The project a folder's lane names (`project: paths`), when it is
+    one this office scopes, else None."""
+    lane = (folder.get("fields", {}).get("lane") or [""])[0]
+    name = lane.partition(":")[0].strip() if ":" in lane else ""
+    return name if name in project_names else None
+
+
+def start_command(folder, project_names):
+    """`office start NAME`, with --on PROJECT when the folder's lane names
+    one of the office's projects; start asks the rest (the goal)."""
+    on = lane_project(folder, project_names)
+    return f"office start {folder['name']}" + (f" --on {on}" if on else "")
+
+
+def count_slips(office_root):
+    """The pages in the suggestion box (its .keep aside)."""
+    box = pathlib.Path(office_root) / "suggestion-box"
+    return sum(1 for p in box.glob("*.md") if p.is_file()) if box.is_dir() else 0
+
+
+def next_move(skew, founded, out, groups, projects, slips):
+    """(command, why) for the walk-in's Next line, from the office's state:
+    skew (current, behind, ahead or unreadable), founded (bool), out
+    (sessions_to_land's list), groups (classify_desk's), projects (the
+    [projects] entries, or None for no table) and slips (a count). A pure
+    function, so every state is testable without an office."""
+    if skew == "ahead":
+        return ("office status", "this office was migrated past the installed office-src; install a newer one "
+                                 "(office status names both versions)")
+    if skew == "behind":
+        return ("office upgrade", "this office is behind a breaking release of office-src, and the verbs that "
+                                  "change it refuse until it is upgraded")
+    if skew != "current":
+        return ("office status", "this office's version stamp could not be read; office status says why")
+    if out:
+        s = out[0]
+        where = "this office" if s["label"] == OFFICE_LABEL else s["label"]
+        names = ", ".join(s["folders"]) or "no folder records it"
+        more = f"; {len(out) - 1} more out after it" if len(out) > 1 else ""
+        if s["held"]:
+            return (f"office land {s['sid']}",
+                    f"bale held it in {where} ({names}); land asks for the corrected response{more}")
+        return (f"office land {s['sid']}",
+                f"it is out in {where} ({names}); when its response is in your downloads, land finds it{more}")
+    if not founded:
+        return ("office status", "the profile is incomplete, so this office is unfounded; office status names "
+                                 "the sections its founding session still has to write")
+    names = {p["name"] for p in projects or []}
+    if groups.get("ready"):
+        f = groups["ready"][0]
+        more = len(groups["ready"]) - 1
+        return (start_command(f, names),
+                f"{oh.cite(f)} is ready and first on the desk; start asks for the goal and sends a session out"
+                + (f"; {more} more ready after it" if more else ""))
+    if groups.get("open"):
+        f = groups["open"][0]
+        return (start_command(f, names),
+                f"{oh.cite(f)} is open and no session is out for it; office close {f['name']} instead when its "
+                "job is done")
+    if not projects:
+        return ("office projects add", "this office watches no projects yet; add asks for a repo's path and "
+                                       "what rides with it")
+    waiting = [f for fs in groups.get("parked", {}).values() for f, _ in fs] + list(groups.get("candidates", []))
+    on_desk = waiting + list(groups.get("flying", []))
+    if slips >= SLIPS_PILING and not any(f["name"].endswith("-" + SLIPS_SLUG) for f in on_desk):
+        return (f"office open {SLIPS_SLUG} --title \"Triage the suggestion box\" --size small "
+                "--source \"the suggestion box\"",
+                f"{slips} slips are in the suggestion box, enough to be a job; a session can sort them from "
+                "that folder")
+    parked = len(waiting) - len(groups.get("candidates", []))
+    candidates = len(groups.get("candidates", []))
+    if parked or candidates:
+        return ("office desk", f"nothing is ready: {parked} parked, {candidates} candidate(s); the desk says what "
+                               "each waits for")
+    unplaced = sum(len(groups.get(g, [])) for g in ("no_status", "misplaced", "unreadable"))
+    if unplaced:
+        return ("office desk", f"{unplaced} folder(s) on the desk that it cannot order; the desk names each and why")
+    return ("office open", "nothing waits on you; open asks for a new job's title when one comes in, and office "
+                           "note TEXT captures a thought")
+
+
+def next_line(rd, office_root, skew, founded, groups):
+    """The walk-in's Next line, read from the office and bale's records."""
+    out, problems = sessions_to_land(rd, office_root)
+    for p in problems:
+        debug(f"the Next line could not read every repo: {p}")
+    command, why = next_move(skew, founded, out, groups, office_projects(office_root),
+                             count_slips(office_root))
+    return f"Next: {command}  ({why})"
 
 
 def locate(rd, projects, sid, statuses):
@@ -1330,6 +1483,42 @@ def bundle_pack_argv(bundle):
     return argv if isinstance(argv, list) and all(isinstance(a, str) for a in argv) else None
 
 
+class _ArgvParser(argparse.ArgumentParser):
+    """argparse that raises instead of printing and exiting."""
+
+    def error(self, message):
+        raise ValueError(message)
+
+
+def bundle_forecast(argv):
+    """(forecast, supersedes) from a bundle's stored pack argv, read the
+    way bale pack reads its flags (bale help pack): --write's paths, else
+    --include's, else None for the whole tree; [] for --read-only.
+    --write and --include take several paths per flag and repeat.
+    supersedes is the session a split supersession closes (bale clears
+    that one collision), or None. Raises ValueError when the argv does
+    not read as a pack line, and the office then says it is passing
+    bale's own words through."""
+    ap = _ArgvParser(prog="bale pack", add_help=False, allow_abbrev=False)
+    ap.add_argument("goal", nargs="?")
+    for flag in ("--include", "--write", "--exclude"):
+        ap.add_argument(flag, nargs="+", action="append", default=[])
+    for flag in ("--slug", "--constraint", "--out-of-scope", "--expects-probe", "--packer", "--work-class",
+                 "--supersedes", "--no-include-group", "--max-files", "--max-size", "--max-depth",
+                 "--readme-file", "--checkpoint-file"):
+        ap.add_argument(flag, action="append", default=[])
+    for flag in ("--context", "--edit", "--no-edit", "--no-readme", "--allow-checkpoint-in-scope", "--read-only",
+                 "--force", "--verbose", "--json", "--dry-run"):
+        ap.add_argument(flag, action="store_true")
+    a = ap.parse_args(list(argv))
+    supersedes = a.supersedes[-1] if a.supersedes else None
+    if a.read_only:
+        return [], supersedes
+    writes = [p for group in a.write for p in group]
+    includes = [p for group in a.include for p in group]
+    return (writes or includes or None), supersedes
+
+
 def open_bundle(rd, pack_dir, bundle):
     """Run bale open for a planner bundle in pack_dir, stdin closed, so
     no question is answered for the occupant; a pre-answered intent in
@@ -1398,19 +1587,37 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         if not ok:
             raise StartError([f"{project} cannot be packed: {why}"])
         forecast = [] if read_only else (list(writes) or list(includes) or None)
+    bundle_supersedes, argv = None, None
     if bundle:
-        # The bundle's pack line is the whole session: bale open gates its
-        # forecast against the open sessions itself, in its own words,
-        # before any session exists, and the office says what it notices.
+        # The bundle's pack line is the whole session, and the office adds
+        # nothing to it. Where the office can read that line (the bundle
+        # is a file here), it says the predictable refusal in its own
+        # words before bale runs, as for a pack; where it cannot, it says
+        # why bale's own words are passed through.
         argv = bundle_pack_argv(bundle)
         if argv is not None and where == "project" and PROJECT_CONSTRAINT not in argv:
             warnings.append(f"this bundle's pack line does not carry the office's constraint (\"{PROJECT_CONSTRAINT}\"); "
                             "the office adds nothing to a bundle, so the session goes out without it")
-        if argv is not None and where == "office" and "--read-only" not in argv \
-                and not any(argv[i] == "--write" and argv[i + 1].strip("/") in (folder, "desk")
-                            for i in range(len(argv) - 1)):
-            warnings.append(f"this bundle's forecast does not name {folder}, so the session cannot land in its folder")
         includes, writes, forecast = [], [], []
+        if argv is None:
+            forecast = None
+            why = ("it is a name bale's search finds, not a file here" if not pathlib.Path(bundle).exists()
+                   else "its pack line could not be read")
+            log(f"the office cannot read this bundle's forecast ({why}), so it cannot check it against the "
+                "sessions open there; if they overlap, bale's own words below say so")
+        else:
+            try:
+                forecast, bundle_supersedes = bundle_forecast(argv)
+            except ValueError as exc:
+                argv, forecast = None, None
+                log(f"the office cannot read this bundle's pack line as bale would ({exc}), so it cannot check "
+                    "its forecast against the sessions open there; if they overlap, bale's own words below say so")
+            # A forecast that does not hold the folder (the whole tree, the
+            # desk or the folder itself would) cannot land in it.
+            if where == "office" and forecast is not None and forecast != [] \
+                    and not any(forecast_holds(e, folder) for e in forecast):
+                warnings.append(f"this bundle's forecast does not name {folder}, so the session cannot land in "
+                                "its folder")
     for p in (writes if not read_only else []):
         if not (pathlib.Path(pack_dir) / p).exists():
             raise StartError([f"--write {p}: no such path in {pack_dir}; a forecast names existing paths "
@@ -1422,21 +1629,28 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     # The predictable refusal, said plainly before bale is asked: two
     # sessions whose forecasts overlap never run beside each other.
     naming = folders_naming(office_root)
-    clash = [] if bundle else open_overlaps(rd, pack_dir, forecast)
+    if bundle and argv is None:
+        clash = []
+    else:
+        clash = [c for c in open_overlaps(rd, pack_dir, forecast) if c[0] != bundle_supersedes]
     if clash:
         label = "this office" if where == "office" else project
-        lines = []
+        lines = [f"the bundle {pathlib.Path(bundle).name} forecasts "
+                 + (", ".join(forecast) if forecast else "the whole tree")] if bundle else []
         for sid, theirs, hit in clash:
             folders = ", ".join(naming.get(sid, [])) or "no folder records it"
-            lines.append(f"{sid} is open in {label} ({folders}); its forecast ({', '.join(theirs)}) "
-                         f"overlaps this one at {', '.join(hit)}")
+            lines.append(f"{sid} is open in {label} ({folders}); its forecast "
+                         f"({', '.join(theirs) if theirs else 'the whole tree'}) overlaps this one at {', '.join(hit)}")
+        first = clash[0][0]
+        landing = (f"land it first (office land {first}), or close it if it was abandoned "
+                   f"(bale unlock {first}, in {pack_dir})")
         if where == "office" and any("notepad" in h for _, _, h in clash):
-            lines.append("office sessions take turns on the notepad: land or close the open one first "
-                         "(bale apply its response, or bale unlock SID if it was abandoned), "
-                         "or start this one --read-only")
+            lines.append("office sessions take turns on the notepad: " + landing
+                         + (", or ask the planner for a read-only bundle" if bundle else
+                            ", or start this one --read-only"))
         else:
-            lines.append("land or close it first (bale apply its response, or bale unlock SID if it was "
-                         "abandoned), or narrow this one's forecast with --write")
+            lines.append(landing + (", or ask the planner for a bundle whose forecast does not overlap it" if bundle
+                                    else ", or narrow this one's forecast with --write"))
         raise StartError(lines)
 
     tray = Tray(tray_root)
@@ -1932,6 +2146,10 @@ def main(argv=None):
     p = sub.add_parser("desk"); p.add_argument("office"); p.add_argument("--today", required=True)
     p.add_argument("--since", help="the day of the previous walk-in (default: today)")
     p.add_argument("--walk-in", action="store_true", help="In flight and the first ready folders only")
+    p.add_argument("--next-file", help="write the walk-in's Next line to this file")
+    p.add_argument("--skew", choices=("current", "behind", "ahead", "unreadable"), default="current",
+                   help="the office's version state, for the Next line")
+    p.add_argument("--founded", choices=("yes", "no"), default="yes", help="whether the profile is complete")
     p = sub.add_parser("writers"); p.add_argument("office"); p.add_argument("paths", nargs="+")
     p = sub.add_parser("start", help="pack a session for a folder and fill its out tray; one JSON line on stdout")
     p.add_argument("office"); p.add_argument("folder", help="desk/NAME")
@@ -1985,7 +2203,17 @@ def main(argv=None):
             for day in (a.today, a.since):
                 if day is not None:
                     dt.date.fromisoformat(day)
-            lines, bad = render_desk(rd, a.office, a.today, a.since, a.walk_in)
+            groups = {}
+            lines, bad = render_desk(rd, a.office, a.today, a.since, a.walk_in, groups_out=groups)
+            if a.next_file:
+                # Never fails the walk-in: a Next line that cannot be
+                # worked out says so, and why is a debug line away.
+                try:
+                    line = next_line(rd, a.office, a.skew, a.founded == "yes", groups)
+                except (BaleError, oh.HelperError, OSError) as exc:
+                    debug(f"the Next line could not be worked out: {exc}")
+                    line = "Next: office desk  (the next move could not be worked out; OFFICE_DEBUG=1 office says why)"
+                pathlib.Path(a.next_file).write_text(line + "\n", encoding="utf-8")
         elif a.cmd == "in-flight":
             now = parse_stamp(a.now) if a.now else None
             lines, bad = render_in_flight(rd, a.office, now)

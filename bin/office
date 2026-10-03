@@ -333,14 +333,17 @@ require_sound_install() {
 }
 
 cmd_init() {
-  local path="" name="" set_default=1 parent root anc
+  local path="" name="" set_default=1 parent root anc ask_projects=1 project_specs=() checked="" pname ppath
   while [ $# -gt 0 ]; do
     case "$1" in
       --name) [ $# -ge 2 ] || die "--name needs a value"; name="$2"; shift 2 ;;
+      --project) [ $# -ge 2 ] || die "--project needs a project's repo: --project PATH, or --project NAME=PATH"
+                 project_specs+=("$2"); shift 2 ;;
+      --no-projects) ask_projects=0; shift ;;
       --path) [ $# -ge 2 ] || die "--path needs a value"; [ -z "$path" ] || die "init takes one path"; path="$2"; shift 2 ;;
       --no-default) set_default=0; shift ;;
       -h|--help) usage_init; return 0 ;;
-      -*) usage_init >&2; die "office init does not know $1; it takes a path, --name and --no-default" ;;
+      -*) usage_init >&2; die "office init does not know $1; it takes a path, --name, --no-default, --project and --no-projects" ;;
       *) [ -z "$path" ] || die "init takes one path"; path="$1"; shift ;;
     esac
   done
@@ -371,6 +374,11 @@ cmd_init() {
     die "$root exists and is not empty; init builds into an empty or new directory, and things move in after"
   fi
   git var GIT_COMMITTER_IDENT >/dev/null 2>&1 || die "git has no identity to commit with; set it once with: git config --global user.name 'Your Name' && git config --global user.email you@example.com"
+  # The projects given as flags are checked before anything is built, so
+  # one that is not a repo bale runs in builds nothing.
+  if [ "${#project_specs[@]}" -gt 0 ]; then
+    checked="$(helper project-spec "${project_specs[@]}")" || die "nothing was built; fix the --project above, or leave it out and add it later with office projects add"
+  fi
 
   [ -n "$name" ] || name="$(basename "$root")"
   [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "office name must be letters, digits, dot, dash or underscore: $name"
@@ -410,9 +418,70 @@ cmd_init() {
   if [ "$set_default" = "1" ] && [ ! -f "$DEFAULT_FILE" ]; then
     mkdir -p "$CONFIG_DIR" && printf '%s\n' "$root" > "$DEFAULT_FILE" && log "made $root this machine's default office"
   fi
+  # Which projects the office watches: the flags', then, on a terminal,
+  # asked one at a time through office projects add's own questions until
+  # a plain return.
+  while IFS=$'\t' read -r pname ppath; do
+    [ -n "$pname" ] || continue
+    # stdout stays the founding line's alone.
+    ( OFFICE_ROOT="$root" cmd_projects_add --name "$pname" --path "$ppath" ) >&2 \
+      || die "the office is built, but $pname could not be added; office projects add $pname $(shq "$ppath") tries again"
+  done <<< "$checked"
+  if [ "${#project_specs[@]}" -eq 0 ] && [ "$ask_projects" = 1 ] && can_ask; then
+    init_ask_projects "$root"
+  fi
   log "the office is unfounded until its profile is written; the line below packs the founding session"
   log "attach $DOCTRINE_DIR/.bale/outbox/context-doctrine.tar.gz beside the request it opens"
   founding_line "$root" "$name"
+}
+
+usage_survey() {
+  cat <<'USAGE'
+usage: office survey [--no-commit]
+Rewrites floor-plan/survey.md with facts about this machine (the system,
+tools and their versions, the timezone, mounts by name, the bale and
+office-src installs, and the office's own drawer/survey steps), says what
+changed since the last survey, and commits the page. Facts only.
+Examples:
+  office survey
+  office survey --no-commit
+USAGE
+}
+
+# project_dir_ok PATH: is it the top of a git repo bale runs in? When it
+# is not, the reason, indented, for a wizard to ask again.
+project_dir_ok() {
+  local why
+  if why="$(helper check-project-dir -- "$1" 2>&1 >/dev/null)"; then return 0; fi
+  printf '  %s\n' "${why#\[office\] error: }" >&2
+  return 1
+}
+
+# On a terminal, after building: which projects the office watches, one
+# at a time through office projects add's own questions (the path, the
+# name, what rides, what runs after it lands), until a plain return. A
+# path that does not check is said and asked again at once; nothing here
+# stops the office being built.
+init_ask_projects() {
+  local root="$1" p n=0 q
+  log "which projects does this office watch? Each is the top of a git repo bale runs in; office start packs its sessions and office land brings them back. A plain return ends the list, and office projects add adds one any time"
+  while :; do
+    if [ "$n" -eq 0 ]; then q="A project this office watches: the path to its repo (--project PATH)"
+    else q="Another project's path (--project PATH)"; fi
+    ask p "$q" "" 0 \
+      "The top of a project's git repo on this machine, absolute or ~/..., where bale has run (a .bale/ directory) or is set up (a bale.toml). The office reads what bale records there, packs that project's sessions there, and keeps what rides with it in its own floor plan, never in the repo. A plain return ends the list."
+    [ -n "$p" ] || break
+    case "$p" in "~"|"~/"*) p="$HOME${p#\~}" ;; esac
+    project_dir_ok "$p" || continue
+    if ( OFFICE_ROOT="$root" cmd_projects_add --path "$p" ) >&2; then
+      n=$((n + 1))
+    else
+      printf '  that one was not added (the line above says why); give another path, or a plain return\n' >&2
+    fi
+  done
+  if [ "$n" -eq 0 ]; then log "no projects yet; office projects add adds one when you want it"
+  else log "this office watches $n project(s); office projects lists them"; fi
+  return 0
 }
 
 cmd_survey() {
@@ -420,7 +489,7 @@ cmd_survey() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --no-commit) commit=0; shift ;;
-      -h|--help) printf 'usage: office survey [--no-commit]\n'; return 0 ;;
+      -h|--help) usage_survey; return 0 ;;
       *) die "unknown option for survey: $1" ;;
     esac
   done
@@ -443,8 +512,24 @@ cmd_survey() {
   fi
 }
 
+usage_status() {
+  cat <<'USAGE'
+usage: office status
+Says whether the office matches the installed tool, read-only: the version
+stamp and any skew, whether the profile is complete, the survey's age,
+whether bale.toml's include group matches the floor plan, the install's
+catalogs, folders against their History, filed pages against git, and the
+installed bale and the projects. It reports and exits 0.
+Examples:
+  office status
+  OFFICE_ROOT=~/offices/work office status
+USAGE
+}
+
 cmd_status() {
   local root report state office_v built profile rc
+  case "${1:-}" in -h|--help) usage_status; return 0 ;; esac
+  [ $# -eq 0 ] || { usage_status >&2; die "office status takes no arguments"; }
   root="$(resolve_office)" || exit 1
   report="$(skew_report "$root")" || exit 1
   state="$(printf '%s\n' "$report" | head -n 1)"
@@ -546,12 +631,26 @@ run_migrations() {
   return 0
 }
 
+usage_upgrade() {
+  cat <<'USAGE'
+usage: office upgrade [--dry-run]
+Runs the migrations a breaking release of office-src ships, after a dry run
+on a scratch clone, and lands them as one commit. A migration that needs
+judgment stops at a renovation: upgrade prints its pack line, and the next
+run checks the renovation landed and stamps the office. Additive releases
+need nothing; upgrade says so.
+Examples:
+  office upgrade --dry-run
+  office upgrade
+USAGE
+}
+
 cmd_upgrade() {
   local dry=0 root report state office_v plan scratch rc applied msg
   while [ $# -gt 0 ]; do
     case "$1" in
       --dry-run) dry=1; shift ;;
-      -h|--help) printf 'usage: office upgrade [--dry-run]\n'; return 0 ;;
+      -h|--help) usage_upgrade; return 0 ;;
       *) die "unknown option for upgrade: $1" ;;
     esac
   done
@@ -705,9 +804,23 @@ ask_folder() {
     "The folder to $verb: its directory name, any part of it that names only one folder, or its number as folder N."
 }
 
+usage_note() {
+  cat <<'USAGE'
+usage: office note TEXT...   (or lines on stdin)
+Appends a timed line to today's notepad page, notepad/DATE.md, and commits
+that page alone. Capture is instant: it works in an unfounded office and in
+one behind or ahead of the installed tool, and only warns. Each line of
+stdin is its own note.
+Examples:
+  office note called the bank; rate locks Friday
+  office note "decided: the porch light waits until spring"
+  printf '%s\n' "rate locks Friday" "lawyer on Monday" | office note
+USAGE
+}
+
 cmd_note() {
   local root tz day now page text line n=0
-  case "${1:-}" in -h|--help) printf 'usage: office note TEXT...   (or lines on stdin)\n'; return 0 ;; esac
+  case "${1:-}" in -h|--help) usage_note; return 0 ;; esac
   root="$(resolve_office)" || exit 1
   warn_on_skew "$root"
   warn_if_unfounded "$root"
@@ -753,6 +866,10 @@ office's projects, so it can be carried to that tool's project. On a
 terminal it asks for what it was not told; piped, it never asks. Like
 office note, it works in an unfounded office and one behind or ahead of
 the installed tool, and only warns.
+Examples:
+  office slip                                  (asks what caused friction, and about what)
+  office slip --about bale pack needs too many flags
+  office slip --about office-src the desk does not say why a folder waits
 USAGE
 }
 
@@ -822,6 +939,12 @@ and every field it is given. --candidate opens it as a candidate; --filed
 --sid SID files it straight into the filing cabinet, done at that session.
 On a terminal it asks for the title, size, lane and source it was not
 given: a plain return skips one, and ? explains it. Piped, it never asks.
+Examples:
+  office open                                  (asks for the title, size, lane, source)
+  office open fix-login --title "Fix the login" --size small --lane "office-src: bin/"
+  office open house-hunt --thread < thread.txt (keeps the pasted thread as thread.md)
+  office open paint-fence --after "folder 3"   (waits until folder 3 is done)
+  office open build-a-shed --candidate         (an idea on the desk, not queued yet)
 The fields, and what each takes:
 USAGE
   helper field-help all | grep -v -e '^status:' -e '^queued:' -e '^number:' -e '^sid:' | fold -s -w 76 | sed 's/^/  /'
@@ -954,11 +1077,25 @@ cmd_open() {
   printf '%s\n' "$folder"
 }
 
+usage_desk() {
+  cat <<'USAGE'
+usage: office desk
+Shows the desk in order, computed from what the folders say: In flight (the
+folders a session is open for), Ready (queued folders whose gates are met:
+by serializes after, then small first, then number), Parked (under what each
+waits for), and Candidates. A gate that cleared since you last walked in
+says so. It only reads.
+Examples:
+  office desk
+  office desk | grep -A3 Parked
+USAGE
+}
+
 # The desk's groups: In flight, Ready, Parked, Candidates (doctrine
 # section 5). A gate that cleared since the last walk-in says so.
 cmd_desk() {
   local root tz since rc
-  case "${1:-}" in -h|--help) printf 'usage: office desk\n  In flight, Ready (in order), Parked (under what each waits for), Candidates\n'; return 0 ;; esac
+  case "${1:-}" in -h|--help) usage_desk; return 0 ;; esac
   root="$(resolve_office)" || exit 1
   tz="$(office_tz "$root")"
   since="$(last_walk_in "$root")"
@@ -992,9 +1129,22 @@ record_walk_in() {
   return 0
 }
 
+usage_week() {
+  cat <<'USAGE'
+usage: office week
+Lays this week's plan (calendar/plan.md) against what happened
+(calendar/record.md), in the office's timezone: a planned item in the past
+with no record that day is a gap. An office without a calendar is told
+which renovation adds one. It only reads.
+Examples:
+  office week
+  office tour                                  (a throwaway office with a calendar gap to look at)
+USAGE
+}
+
 cmd_week() {
   local root tz
-  case "${1:-}" in -h|--help) printf 'usage: office week\n'; return 0 ;; esac
+  case "${1:-}" in -h|--help) usage_week; return 0 ;; esac
   root="$(resolve_office)" || exit 1
   if ! has_space "$root" calendar; then
     printf 'this office has no calendar. A renovation adds one: an office session that adds the calendar space to the floor plan (doctrine section 5).\n'
@@ -1058,6 +1208,11 @@ a History line. Plain close is done. --into N: absorbed into folder N;
 Each successor gets a note line pointing back. FOLDER is its name, a
 unique part of it, or folder N; on a terminal it is asked for when
 missing.
+Examples:
+  office close fix-login
+  office close "folder 12" --into 14
+  office close fix-login --split 14,15
+  office close fix-login --retired "the premise was wrong"
 USAGE
 }
 
@@ -1132,9 +1287,21 @@ cmd_close() {
   fi
 }
 
+usage_reopen() {
+  cat <<'USAGE'
+usage: office reopen [FOLDER]
+Brings a done folder back to the desk, history and all: status open, and a
+reopened line. A folder absorbed, split or retired is not reopened; its
+History names where the job went. On a terminal FOLDER is asked for.
+Examples:
+  office reopen fix-login
+  office reopen "folder 12"
+USAGE
+}
+
 cmd_reopen() {
   local want="" root name md status tz day
-  case "${1:-}" in -h|--help) printf 'usage: office reopen [FOLDER]\nBrings a done folder back to the desk, history and all: status open, and a reopened line.\n'; return 0 ;; esac
+  case "${1:-}" in -h|--help) usage_reopen; return 0 ;; esac
   want="${1:-}"
   [ $# -le 1 ] || die "reopen takes one folder"
   root="$(resolve_office)" || exit 1
@@ -1184,6 +1351,12 @@ usage: office sessions [FOLDER] [SID | -] [-m WORDS] [--ratified [--except TEXT]
   office sessions FOLDER SID|- --ratified [--except TEXT]
                                        the planner ratified that session's judgment calls,
                                        except TEXT (what was corrected, and where it went)
+office start and office land record sessions and ratifications themselves;
+this is for a session packed by hand, and for reading how each one went.
+Examples:
+  office sessions fix-login
+  office sessions fix-login 2026-10-05-fix-login-001 --ratified
+  bale pack --json --include desk/2026-10-05-fix-login "Fix it" | office sessions fix-login -
 USAGE
 }
 
@@ -1305,6 +1478,14 @@ filed in the notepad.
                  the goal, the forecast and the brief are the bundle's,
                  and the office adds nothing to it
 When the response comes back, office land brings it in.
+Under the hood: bale pack --json (or bale open for a bundle) where the work
+lands, and bale pack --context for each context tarball; OFFICE_DEBUG=1
+shows each call.
+Examples:
+  office start                                 (asks which job, where, and the goal)
+  office start fix-login --on office-src --goal "Fix the login redirect"
+  office start plan-wave --in-office --read-only --goal "Plan the next wave"
+  office start fix-login --on office-src 2026-10-05-fix-login.bale-bundle
 The out tray is ~/out-tray/SID unless this machine's
 ~/.config/office-src/machine.toml sets out_tray. On WSL the tray opens in
 Explorer and the opener goes to the clipboard; clipboard_command and
@@ -1586,6 +1767,13 @@ printed whole and, on WSL, put on the clipboard.
   --except TEXT    ...except TEXT: what was corrected, and where it went
   --not-now        do not ask about ratification; office sessions FOLDER SID
                    --ratified records it later
+Under the hood: bale apply TARBALL (bale retry for a held session) in the
+session's repo, then bale stats --sid SID --json for how it ended.
+Examples:
+  office land                                  (the session out; asked when there are several)
+  office land 2026-10-05-fix-login-001
+  office land fix-login --ratified
+  office land 2026-10-05-fix-login-001 --response "$HOME/Downloads/response-2026-10-05-fix-login-001 (1).tar.gz"
 USAGE
 }
 
@@ -1823,6 +2011,13 @@ land runs them in order once bale has applied it. Both live in this
 office's floor plan, never in the project's repo. --ride and --after-land
 replace the list they name; on a terminal, set asks for what it was not
 given.
+Examples:
+  office projects
+  office projects add                          (asks for the path, the name, what rides)
+  office projects add office-src ~/office-src
+  office projects set office-src --after-land ./install.sh
+  office projects set office-src --ride ~/nisaba-src/blueprints
+  office projects --landed bin/office
 EOF
 }
 
@@ -1882,10 +2077,14 @@ cmd_projects_add() {
     if [ -t 0 ]; then
       # A wizard on a terminal: ask for what was not given (doctrine
       # section 7); every question has its flag twin.
-      if [ -z "$path" ]; then
+      # The path is checked as soon as it is given, so a wrong one is
+      # asked again before the name and the declarations are.
+      while [ -z "$path" ]; do
         ask path "Path to the project's git repo on this machine (--path)" "" 1 \
           "The top of the project's git repo, absolute or under your home directory (~/...). bale must run there: it needs a .bale/ directory or a bale.toml."
-      fi
+        case "$path" in "~"|"~/"*) path="$HOME${path#\~}" ;; esac
+        project_dir_ok "$path" || path=""
+      done
       if [ -z "$name" ]; then
         default="$(slugify "$(basename "${path%/}")")"
         ask name "Name for it in this office (--name)" "$default" 0 \
@@ -1999,18 +2198,279 @@ cmd_projects() {
   esac
 }
 
+# --- the toy drawer: office tour ----------------------------------------------------
+#
+# A throwaway office to play in before committing to real work (the
+# construction sitting's toy drawer). It is built in a temp directory and
+# every command runs with OFFICE_ROOT pointing at it, its own config and
+# state directories (so neither this machine's default office nor the
+# walk-in record is read or written), git's global config switched off,
+# and a stand-in bale first on the PATH that refuses everything, so no
+# bale registry is ever touched. start and land are shown and explained,
+# never run. At the end, or when interrupted, the office is deleted and
+# the tour says so.
+
+usage_tour() {
+  cat <<'USAGE'
+usage: office tour [--no-pause] [--play | --no-play]
+Builds a throwaway office in a temp directory, with sample folders, notes, a
+slip and a calendar with a gap, and walks you through the verbs on it: each
+step runs one command, shows what it printed, and says what it did and why
+you would type it. office start and office land are shown and explained,
+never run. At the end it deletes the office and says so; stopped early or
+interrupted, it deletes it too. It never touches your offices, this
+machine's default office, the walk-in record, or bale.
+  --no-pause   run every step without waiting for a return between them
+  --play       at the end, open a shell where every office command acts on
+               the tour office, to try things yourself; exit ends it and
+               the office is deleted then. On a terminal the tour asks.
+  --no-play    end without asking
+Piped, it pauses for nothing and asks nothing.
+Examples:
+  office tour
+  office tour --no-pause --no-play
+  office tour --play
+USAGE
+}
+
+TOUR_DIR=""
+TOUR_ENV=()
+TOUR_PAUSE=1
+
+# The office command in the tour office: its environment, never asking.
+tour_office() {
+  env "${TOUR_ENV[@]}" "$OFFICE_SRC/bin/office" "$@" </dev/null
+}
+
+# A paragraph: a blank line, then the words wrapped and indented.
+tour_say() {
+  printf '\n'
+  printf '%s\n' "$*" | fold -s -w 74 | sed 's/ *$//; s/^/  /'
+}
+
+# tour_show ARGS...: the command line as you would type it, then what it
+# printed (stderr's lines too, as a terminal shows them), indented.
+tour_show() {
+  local shown="office" w
+  for w in "$@"; do
+    case "$w" in ""|*[!A-Za-z0-9_./:=@-]*) shown+=" $(shq "$w")" ;; *) shown+=" $w" ;; esac
+  done
+  printf '\n  $ %s\n' "$shown"
+  tour_office "$@" 2>&1 | sed 's/^/    /; s/ *$//'
+}
+
+# Between steps, on a terminal: return goes on, q ends the tour early.
+# Returns 1 when the occupant asked to end.
+tour_pause() {
+  local ans rc prompt="  [return: the next step; q: end the tour] "
+  [ "$TOUR_PAUSE" = 1 ] || return 0
+  printf '\n' >&2
+  # A read that waits forever would hold a signal that lands just before
+  # it until the next keystroke; one-second reads let the traps run at
+  # once. The terminal hands over a line only on return, so a timeout
+  # loses nothing typed.
+  while :; do
+    IFS= read -r -t 1 -p "$prompt" ans && break
+    rc=$?
+    [ "$rc" -gt 128 ] || return 1
+    prompt=""
+  done
+  case "$ans" in q|Q|quit|exit) return 1 ;; esac
+  return 0
+}
+
+tour_step() {  # tour_step N TOTAL TITLE
+  printf '\n== Step %s of %s: %s ==\n' "$1" "$2" "$3"
+}
+
+# The sample office: a written profile (a real one is written in the
+# founding session), a calendar with a gap, three folders, notes and a
+# slip, each made the way the verbs make them.
+tour_furnish() {
+  local office="$TOUR_DIR/office" tz today gap_day
+  python3 - "$SHAPE" > "$office/$PROFILE_REL" <<'PY' || return 1
+import sys, tomllib
+with open(sys.argv[1], "rb") as f:
+    shape = tomllib.load(f)
+print("# Profile: tour\n")
+print("A sample profile written by office tour. A real office writes its own in its")
+print("founding session, with you, section by section.\n")
+for s in shape["section"]:
+    print(f"## {s['heading']}\n\nThe tour's sample. In a real office this says: {s['asks']}\n")
+PY
+  # A renovation adds the calendar to a real office; the tour adds it so
+  # office week has something to show.
+  printf '\n[spaces.calendar]\npath = "calendar"\nhung = true\nfiled = false\n' >> "$office/$MANIFEST_REL" || return 1
+  tz="$(OFFICE_ROOT="$office" office_tz "$office")"; today="$(office_date "$tz")"
+  # The gap is planned for yesterday, or, on a Monday, for the first
+  # minute of today: always in the past, always this week.
+  gap_day="$today"
+  [ "$(TZ="$tz" date +%u)" = 1 ] || gap_day="$(TZ="$tz" date -d "$today -1 day" +%F)"
+  mkdir -p "$office/calendar" || return 1
+  printf '# Plan\n\nWhat should happen, one bullet per line.\n\n- %s 00:00 call the electrician about the porch light\n- %s 00:00 water the tomatoes\n' \
+    "$gap_day" "$today" > "$office/calendar/plan.md" || return 1
+  printf '# Record\n\nWhat happened, one bullet per line.\n\n- %s 00:00 water the tomatoes: done before breakfast\n' \
+    "$today" > "$office/calendar/record.md" || return 1
+  env "${TOUR_ENV[@]}" git -C "$office" add -A -- "$PROFILE_REL" "$MANIFEST_REL" calendar >/dev/null 2>>"$TOUR_DIR/furnish.log" \
+    && env "${TOUR_ENV[@]}" git -C "$office" commit -q -m "office tour: a sample profile and a calendar" >/dev/null 2>>"$TOUR_DIR/furnish.log" || return 1
+  tour_office open fix-the-porch-light --title "Fix the porch light" --size small --source "a note on the notepad" >/dev/null 2>>"$TOUR_DIR/furnish.log" || return 1
+  tour_office open paint-the-fence --title "Paint the fence" --size medium --after "folder 1" >/dev/null 2>>"$TOUR_DIR/furnish.log" || return 1
+  tour_office open build-a-shed --title "Build a shed" --candidate >/dev/null 2>>"$TOUR_DIR/furnish.log" || return 1
+  tour_office note "bought bulbs; the porch light still flickers" >/dev/null 2>>"$TOUR_DIR/furnish.log" || return 1
+  tour_office slip --about office "the tour should come with snacks" >/dev/null 2>>"$TOUR_DIR/furnish.log" || return 1
+}
+
+tour_end() {
+  rm -rf "$TOUR_DIR"
+  trap - INT TERM HUP
+  printf '\nThe tour office is deleted (%s). Nothing else was touched: your offices, this machine'"'"'s default office, the walk-in record and bale are as they were.\n' "$TOUR_DIR"
+  if [ -n "$(office_default_exists)" ]; then
+    printf '\nNext: office  (walk into your own office; office help lists every verb by what you want to do)\n'
+  else
+    printf '\nNext: office init  (build a real office; it asks where, what to call it and which projects it watches)\n'
+  fi
+}
+
+# Whether this machine has a default office or the working directory is
+# inside one (the tour's own office is gone by now): any output means yes.
+office_default_exists() {
+  if find_office_from "$PWD" >/dev/null 2>&1 || [ -f "$DEFAULT_FILE" ] || [ -n "${OFFICE_ROOT:-}" ]; then printf yes; fi
+}
+
+cmd_tour() {
+  local play="" porch ans total=6
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-pause) TOUR_PAUSE=0; shift ;;
+      --play) [ "$play" != no ] || die "--play and --no-play contradict each other"; play=yes; shift ;;
+      --no-play) [ "$play" != yes ] || die "--play and --no-play contradict each other"; play=no; shift ;;
+      -h|--help) usage_tour; return 0 ;;
+      *) usage_tour >&2; die "office tour does not know $1; it takes --no-pause, --play and --no-play" ;;
+    esac
+  done
+  if ! can_ask; then
+    [ "$play" != yes ] || die "--play opens a shell in the tour office, which needs a terminal; piped input is never asked"
+    TOUR_PAUSE=0; play=no
+  fi
+  require_tools git python3 timeout
+  TOUR_DIR="$(mktemp -d "${TMPDIR:-/tmp}/office-tour.XXXXXX")" || die "cannot make a temp directory for the tour"
+  TMP_PATHS+=("$TOUR_DIR")
+  # Interrupted, the EXIT trap deletes the tour office; say so first.
+  trap 'printf "\n[office] the tour was interrupted; deleting the tour office at %s\n" "$TOUR_DIR" >&2; exit 130' INT
+  trap 'printf "\n[office] the tour was stopped; deleting the tour office at %s\n" "$TOUR_DIR" >&2; exit 143' TERM HUP
+  mkdir -p "$TOUR_DIR/bin" "$TOUR_DIR/config" "$TOUR_DIR/state" || die "cannot furnish $TOUR_DIR"
+  cat > "$TOUR_DIR/bin/bale" <<'STUB'
+#!/usr/bin/env bash
+# office tour's stand-in for bale: the tour never runs the real one, so no
+# bale registry anywhere is touched.
+printf 'bale, in the office tour: the tour never runs bale; in a real office, office start and office land run it for you\n' >&2
+exit 97
+STUB
+  chmod +x "$TOUR_DIR/bin/bale" && ln -s "$OFFICE_SRC/bin/office" "$TOUR_DIR/bin/office" || die "cannot furnish $TOUR_DIR/bin"
+  # The tour's machine settings: an out tray inside the tour, and no
+  # clipboard or file manager, so even a start tried in the play shell
+  # leaves nothing on this machine.
+  mkdir -p "$TOUR_DIR/config/office-src" \
+    && printf 'out_tray = %s\nclipboard_command = ""\nopen_command = ""\n' "\"$TOUR_DIR/out-tray\"" \
+       > "$TOUR_DIR/config/office-src/machine.toml" || die "cannot furnish $TOUR_DIR/config"
+  TOUR_ENV=("OFFICE_ROOT=$TOUR_DIR/office" "XDG_CONFIG_HOME=$TOUR_DIR/config" "XDG_STATE_HOME=$TOUR_DIR/state"
+            "PATH=$TOUR_DIR/bin:$PATH" "GIT_CONFIG_GLOBAL=/dev/null" "GIT_CONFIG_NOSYSTEM=1"
+            "GIT_AUTHOR_NAME=office tour" "GIT_AUTHOR_EMAIL=tour@office.invalid"
+            "GIT_COMMITTER_NAME=office tour" "GIT_COMMITTER_EMAIL=tour@office.invalid" "OFFICE_TOUR=1")
+
+  printf 'office tour: a throwaway office to try the verbs on.\n'
+  tour_say "It lives in $TOUR_DIR and is deleted at the end, or as soon as you stop the tour. It never touches your offices, this machine's default office, the walk-in record, or bale: a stand-in bale that refuses everything is first on its PATH."
+  if ! tour_office init "$TOUR_DIR/office" --name tour --no-default --no-projects >/dev/null 2>"$TOUR_DIR/init.log"; then
+    sed 's/^/  /' "$TOUR_DIR/init.log" >&2
+    die "could not build the tour office; it is deleted"
+  fi
+  if ! tour_furnish; then
+    [ -f "$TOUR_DIR/furnish.log" ] && tail -n 15 "$TOUR_DIR/furnish.log" | sed 's/^/  /' >&2
+    die "could not furnish the tour office (the lines above say why); it is deleted"
+  fi
+  tour_say "Built with: office init $TOUR_DIR/office --name tour --no-default --no-projects. That made the spaces (desk, filing cabinet, notepad, suggestion box, drawer), a profile, a survey of this machine and a first commit. The tour then wrote a sample profile (a real office writes its own in its founding session), added a calendar with a gap, opened three folders, noted a line and dropped a slip."
+  tour_pause || { tour_end; return 0; }
+
+  tour_step 1 "$total" "walk in"
+  tour_show
+  tour_say "What it did: showed the room. The header says which office, the time in its timezone, and whether it is founded and current. In flight lists the sessions out (none: the tour sends none). On the desk counts the folders and shows the first ready ones. This week lays the calendar against what happened. Then the last notepad lines and the slips."
+  tour_say "The last line, Next, is the one command to type now, with its arguments filled in. It is worked out from the office on every walk-in and never written down: land a session when one is out, start the first ready folder, and so on down to nothing to do."
+  tour_say "Why you would type it: it is the front door. Walk in, read the last line, type it."
+  tour_pause || { tour_end; return 0; }
+
+  tour_step 2 "$total" "capture a thought"
+  tour_show note "the electrician can come Thursday"
+  tour_say "What it did: appended a timed line to today's notepad page and committed that page alone. office slip does the same for a friction slip, each its own page in the suggestion box."
+  tour_say "Why you would type it: capture is instant and dumb. A phone call, a decision, a thought: one line, no session, and it works even in an office that is unfounded or out of date."
+  tour_pause || { tour_end; return 0; }
+
+  tour_step 3 "$total" "start a job"
+  tour_show open fix-the-gate --title "Fix the garden gate" --size small
+  tour_say "What it did: opened a folder on the desk, numbered one more than any folder before it, status queued, with the fields it was given. On a terminal, office open with nothing after it asks for the title, size, lane and source, and ? explains each; the tour gave them as flags, so nothing was asked."
+  tour_say "Why you would type it: a job gets a folder. The folder holds why the job exists, the questions and answers, and the ids of the sessions that worked on it."
+  tour_pause || { tour_end; return 0; }
+
+  tour_step 4 "$total" "look at the desk"
+  tour_show desk
+  tour_say "What it did: put every folder in order, computed from what the folders say. Ready comes small first, then by number. Paint the fence is parked: it waits for folder 1, the porch light. Build a shed is a candidate, an idea not yet queued."
+  tour_say "Why you would type it: nobody writes the order. The desk works it out each time, and says what each parked folder waits for."
+  tour_pause || { tour_end; return 0; }
+
+  tour_step 5 "$total" "this week"
+  tour_show week
+  tour_say "What it did: laid this week's plan against the record. Watering the tomatoes was planned and recorded; calling the electrician was planned for earlier this week and nothing was recorded, so it is a gap."
+  tour_say "Why you would type it: to see what slipped. A session reads the same calendar and can ask about a gap."
+  tour_pause || { tour_end; return 0; }
+
+  porch="$(cd "$TOUR_DIR/office/desk" 2>/dev/null && ls -d -- *-fix-the-porch-light 2>/dev/null | head -n 1)"
+  tour_step 6 "$total" "send a session out, and bring it back (shown, not run)"
+  printf '\n  $ office start %s --in-office --goal %s\n' "${porch:-FOLDER}" "$(shq "Plan the porch light fix")"
+  printf '    (not run: the tour never runs bale)\n'
+  tour_say "In a real office this is the command the Next line names for a ready folder. It asks what it was not given (which job, whether the work lands in the office or on one of its projects, and the goal), then packs the session with bale where the work lands, records the session id in the folder, and puts everything to attach in one out tray, ~/out-tray/SID: the request, the doctrine, the office's context and whatever rides with the project. It prints the opener: attach the tray's files to a fresh chat and paste it. You never type a session id or an include list."
+  printf '\n  $ office land\n'
+  printf '    (not run: the tour never runs bale)\n'
+  tour_say "When the response comes back: it finds the session out, runs bale apply in the repo it belongs to (bale asks its own questions, and only you answer them), says how it ended, prints the relay to carry back to the planner, runs the project's after-land steps (an install, say), and records whether the planner ratified the session. You never forget a landing step."
+  tour_pause || { tour_end; return 0; }
+
+  printf '\n== That is the tour ==\n'
+  tour_say "office help lists every verb by what you want to do, and office VERB --help explains one, with examples."
+  if [ -z "$play" ] && can_ask; then
+    printf '\n'
+    ask ans "Play in the tour office yourself before it goes? A shell where every office command acts on it; exit ends it (--play or --no-play)" "n" 0 \
+      "y opens a shell inside the tour office with the tour's settings: office note, open, desk, week, close and the rest act on the tour office, never on yours, and start and land meet the stand-in bale. Type exit to leave; the tour office is deleted then. n ends the tour now."
+    case "$ans" in y|Y|yes|Yes|YES) play=yes ;; *) play=no ;; esac
+  fi
+  if [ "$play" = yes ]; then
+    cat > "$TOUR_DIR/tourrc" <<RC
+PS1='(office tour) \W \\\$ '
+HISTFILE=$(shq "$TOUR_DIR/history")
+cd $(shq "$TOUR_DIR/office") || exit 1
+printf '%s\n' "You are in the tour office. Every office command acts on it. Type exit to end the tour."
+RC
+    # A trap that does nothing, not an ignore: commands run in the shell
+    # can still be interrupted, and the tour is not.
+    trap ':' INT
+    env "${TOUR_ENV[@]}" bash --rcfile "$TOUR_DIR/tourrc" -i
+    trap 'printf "\n[office] the tour was interrupted; deleting the tour office at %s\n" "$TOUR_DIR" >&2; exit 130' INT
+  fi
+  tour_end
+}
+
 # Walking in: `office` with no arguments.
 walk_in() {
-  local root name tz report state slips notes founded
+  local root name tz report state skew slips notes founded is_founded next_file next
   if ! root="$(resolve_office 2>/dev/null)"; then
     usage
     printf '\nNot inside an office, and this machine has no default office. office init PATH builds one.\n'
+    printf '\nNext: office tour  (a throwaway office to try every verb on; then office init PATH builds a real one)\n'
     return 0
   fi
   name="$(helper get "$root/$MANIFEST_REL" office.name --default "(unnamed)")"
   tz="$(office_tz "$root")"
   report="$(skew_report "$root" 2>/dev/null)" && state="$(printf '%s\n' "$report" | head -n 1)" || state="unreadable"
-  if helper profile-check "$root/$PROFILE_REL" "$SHAPE" >/dev/null 2>&1; then founded="founded"; else founded="UNFOUNDED (profile incomplete: office status)"; fi
+  case "$state" in current|behind|ahead) skew="$state" ;; *) skew=unreadable ;; esac
+  if helper profile-check "$root/$PROFILE_REL" "$SHAPE" >/dev/null 2>&1; then founded="founded"; is_founded=yes
+  else founded="UNFOUNDED (profile incomplete: office status)"; is_founded=no; fi
   case "$state" in
     current) state="current with office-src $(install_version)" ;;
     behind) state="BEHIND office-src $(install_version) (run: office upgrade)" ;;
@@ -2026,11 +2486,18 @@ walk_in() {
   # since the last walk-in says so. Never fails the walk-in.
   local desk today since
   today="$(office_date "$tz")"; since="$(last_walk_in "$root")"
-  desk="$(reader desk "$root" --walk-in --today "$today" ${since:+--since "$since"})"
+  # The Next line is worked out from the same reading as the desk, so
+  # bale is asked each question once; it is printed last.
+  next_file="$(mktemp)" || die "cannot make a temp file for the walk-in"
+  TMP_PATHS+=("$next_file")
+  desk="$(reader desk "$root" --walk-in --today "$today" ${since:+--since "$since"} \
+    --next-file "$next_file" --skew "$skew" --founded "$is_founded")"
   case $? in
     0|3) printf '%s\n' "$desk" ;;
     *) printf 'In flight:\n  could not be read (OFFICE_DEBUG=1 office for why)\n\nOn the desk:\n  could not be read; office desk says why\n' ;;
   esac
+  next="$(head -n 1 "$next_file" 2>/dev/null)"
+  [ -n "$next" ] || next="Next: office desk  (the next move could not be worked out; OFFICE_DEBUG=1 office says why)"
   record_walk_in "$root" "$today"
   printf '\nThis week:\n'
   OFFICE_ROOT="$root" cmd_week | sed 's/^/  /'
@@ -2039,15 +2506,43 @@ walk_in() {
   if [ -n "$notes" ]; then printf '%s\n' "$notes" | sed 's/^/  /'; else printf '  nothing noted yet\n'; fi
   slips="$(find "$root/suggestion-box" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
   printf '\nSuggestion box: %s slip(s).\n' "$slips"
-  printf '\nFrom here: office start, office land, office note TEXT, office slip TEXT, office open, office close FOLDER, office desk, office week, office projects, office status. office help lists everything.\n'
+  printf '\nFrom here: office start, office land, office note TEXT, office slip TEXT, office open, office close FOLDER, office desk, office week, office projects, office status. office help lists everything by what you want to do; office tour tries it all on a throwaway office.\n'
+  printf '\n%s\n' "$next"
+}
+
+usage_where() {
+  cat <<'USAGE'
+usage: office where
+Prints the office a command run here acts on: OFFICE_ROOT if set, else the
+office around the working directory, else this machine's default.
+Examples:
+  office where
+  cd ~/somewhere && office where
+USAGE
 }
 
 cmd_where() {
+  case "${1:-}" in -h|--help) usage_where; return 0 ;; esac
+  [ $# -eq 0 ] || { usage_where >&2; die "office where takes no arguments"; }
   resolve_office; printf '\n'
+}
+
+usage_default() {
+  cat <<'USAGE'
+usage: office default [PATH]
+Shows this machine's default office, the one a command acts on outside any
+office, or makes PATH the default. The first office init on a machine sets
+it. It is kept in ~/.config/office-src/default-office, outside every office.
+Examples:
+  office default
+  office default ~/offices/home
+USAGE
 }
 
 cmd_default() {
   local root
+  case "${1:-}" in -h|--help) usage_default; return 0 ;; esac
+  [ $# -le 1 ] || { usage_default >&2; die "office default takes one path"; }
   if [ $# -eq 0 ]; then
     [ -f "$DEFAULT_FILE" ] || die "this machine has no default office (set one with: office default PATH)"
     head -n 1 "$DEFAULT_FILE"; return 0
@@ -2058,7 +2553,19 @@ cmd_default() {
   log "this machine's default office is now $root"
 }
 
+usage_version() {
+  cat <<'USAGE'
+usage: office version
+Prints the installed office-src version, where the install is, and where it
+was installed from (the commit and the working copy).
+Examples:
+  office version
+  office --version
+USAGE
+}
+
 cmd_version() {
+  case "${1:-}" in -h|--help) usage_version; return 0 ;; esac
   printf 'office-src %s (%s)\n' "$(install_version)" "$OFFICE_SRC"
   [ -f "$OFFICE_SRC/INSTALLED" ] && sed 's/^/  /' "$OFFICE_SRC/INSTALLED"
   return 0
@@ -2067,12 +2574,25 @@ cmd_version() {
 usage_init() {
   cat <<'EOF'
 usage: office init [PATH | --path PATH] [--name NAME] [--no-default]
+                   [--project [NAME=]PATH]... [--no-projects]
 Builds an office at PATH (new or empty): the base spaces, a profile stub,
-the version stamp, a first survey and a first commit. Prints the pack line
-for the founding sitting. Makes PATH this machine's default office when
-there is none yet, unless --no-default. On a terminal it asks for the path
-and the name when it was given no path; ? explains a question. It refuses
-to build from an install whose catalogs have a defect.
+the version stamp, a first survey and a first commit. Then, on a terminal,
+it asks which projects the office watches, one at a time through the same
+questions as office projects add, until a plain return. Prints the pack
+line for the founding sitting. Makes PATH this machine's default office
+when there is none yet, unless --no-default. On a terminal it asks for the
+path and the name when it was given no path; ? explains a question. Piped,
+it asks nothing. It refuses to build from an install whose catalogs have a
+defect.
+  --project [NAME=]PATH  a project the office watches: the top of a git repo
+                         bale runs in; NAME defaults to the directory's name.
+                         Repeatable; each is checked before anything is built.
+  --no-projects          ask no project question on a terminal
+Examples:
+  office init                                  (asks where, the name, and the projects)
+  office init ~/offices/home
+  office init ~/offices/home --project ~/office-src --project tools=~/bale-src
+  office tour                                  (try an office first, on a throwaway one)
 EOF
 }
 
@@ -2082,49 +2602,81 @@ office-src $(install_version): builds and keeps offices.
 
 usage: office [VERB [args]]
 
-  (no verb)       walk in: sessions in flight, what is ready on the desk, this week,
-                  recent notes, slips
-  note TEXT       append a dated line to the notepad (works unfounded or behind)
-  slip TEXT       drop a friction slip in the suggestion box, --about the office,
-                  a tool or a project (works unfounded or behind)
-  start [FOLDER]  pack a session for a folder, in the office or --on a project,
-                  and gather everything to attach into one out tray; records
-                  the session in the folder and prints the opener; --bundle
-                  opens a planner's bundle instead
-  land [SID]      bring a session back: bale apply in its repo, how it ended,
-                  the relay to carry, the project's after-land actions, and
-                  the planner's ratification
-  open [SLUG]     start a numbered folder on the desk; asks on a terminal for the
-                  title, size, lane and source it was not given; --candidate,
-                  --filed --sid SID, gates with --after; --help lists the fields
-  desk            in flight, ready in order, parked under what each waits for,
-                  candidates
-  week            this week's calendar and its gaps
-  close FOLDER    to the filing cabinet: done, or --into N, --split A,B,
-                  --retired WHY
-  reopen FOLDER   bring a done folder back to the desk, history and all
-  sessions FOLDER [SID|-] [--ratified [--except TEXT]]
-                  list or record the sessions that worked on a folder;
-                  - reads a bale pack --json report on stdin; listing shows
-                  each session's outcome from bale's records
-  projects        list the projects this office scopes; add NAME PATH adds one;
-                  set NAME declares what rides with it (--ride) and what runs
-                  after it lands (--after-land); --ledger, --landed PATH,
-                  --versions render bale's records
+New here? office tour builds a throwaway office, walks you through it, and
+deletes it at the end. Nothing real is touched.
 
-  init PATH       build an office and print its founding session's pack line
-  survey          rewrite floor-plan/survey.md and report what changed
-  status          version, skew, profile, survey age, hung items, catalogs, folders,
-                  filed pages, bale (read-only)
-  upgrade         run pending migrations, dry run first, one commit
-  where           print the office a command here would act on
-  default [PATH]  show or set this machine's default office
-  version         print the installed version
+What you want to do, and the command for it:
 
+Walk in and look around
+  office                    walk in: sessions out, what is ready, this week, the last
+                            notes, slips, and the one command to type next
+  office desk               in flight, ready in order, parked under what each waits
+                            for, candidates
+  office week               this week's calendar and its gaps
+  office sessions FOLDER    the sessions that worked on a job, and how each went
+  office projects           the projects this office watches; --ledger, --landed PATH
+                            and --versions show what bale records about them
+
+Capture a thought or a friction
+  office note TEXT          a timed line on today's notepad page
+  office slip TEXT          a friction slip in the suggestion box (--about the office,
+                            a tool or a project)
+
+Start a job, and finish one
+  office open               a numbered folder on the desk; asks for what it needs
+  office close FOLDER       to the filing cabinet: done, or --into N, --split A,B,
+                            --retired WHY
+  office reopen FOLDER      a done folder back on the desk, history and all
+
+Send a session out
+  office start [FOLDER]     asks which job, where the work lands and the goal; packs
+                            the session, records it in the folder, and puts every file
+                            to attach in one out tray beside the opener
+
+Bring one back
+  office land [SID]         applies the response in the right repo, says how it ended,
+                            hands you the relay, runs the after-land steps, and records
+                            the planner's ratification
+
+Look after the office
+  office init PATH          build an office; asks which projects it watches
+  office projects add       watch a project; set NAME says what rides with its sessions
+                            and what runs after one lands
+  office status             version, profile, survey age, hung items, catalogs, folders,
+                            filed pages, bale (read-only)
+  office survey             rewrite floor-plan/survey.md and say what changed
+  office upgrade            take a breaking release: dry run, then one commit
+  office where              the office a command here acts on
+  office default [PATH]     show or set this machine's default office
+  office version            the installed version
+  office tour               try every verb on a throwaway office
+
+Why the office, if you already use bale: you never type a session id, never
+assemble an include list, and never forget a landing step. start knows the
+folder's lane, the forecast, the work class and what rides with each project;
+land knows which repo, which response, and what to do after it applies. bale
+stays visible: start and land run bale's own pack, open, apply and retry, bale
+asks its own questions and only you answer them, office start --help and
+office land --help name the bale commands they run, and OFFICE_DEBUG=1 shows
+every bale call. Any bale command still works by hand beside the office.
+
+office help VERB (or office VERB --help) explains one verb, with examples.
 A command acts on OFFICE_ROOT if set, else the office around the working
 directory, else this machine's default. The doctrine is
 $DOCTRINE_DIR/OFFICE.md.
 EOF
+}
+
+# The verbs office help VERB explains, each through its own --help.
+HELP_VERBS=" init survey status upgrade where default note slip open desk week close reopen sessions projects start land tour version "
+
+# office help [VERB]: everything by task, or one verb's own help.
+cmd_help() {
+  [ $# -gt 0 ] || { usage; return 0; }
+  case "$HELP_VERBS" in
+    *" $1 "*) main "$1" --help ;;
+    *) usage >&2; die "office help knows no verb $1; the list above is every verb" ;;
+  esac
 }
 
 main() {
@@ -2148,8 +2700,9 @@ main() {
     projects) cmd_projects "$@" ;;
     start) cmd_start "$@" ;;
     land) cmd_land "$@" ;;
-    version|--version|-V) cmd_version ;;
-    help|--help|-h) usage ;;
+    version|--version|-V) cmd_version "$@" ;;
+    help|--help|-h) cmd_help "$@" ;;
+    tour) cmd_tour "$@" ;;
     *) usage >&2; die "unknown verb: $verb" ;;
   esac
 }

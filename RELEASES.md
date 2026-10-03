@@ -4,6 +4,67 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.8.0
+
+Additive: no migration, nothing to do in any office. Every older office
+shape keeps working; an office with no projects, no calendar or an empty
+suggestion box walks in the same way, with one more line at the end.
+
+The front door. Walking in now ends with one Next line: the one command
+to type now, its arguments filled in, worked out from the office on
+every walk-in and never written down. In the order they win: an office
+out of step with the install (`office upgrade`), a session out (`office
+land SID`; when bale held it, land asks for the corrected response), an
+unfounded office (`office status` names what the profile lacks), the
+first ready folder (`office start FOLDER`, with `--on PROJECT` when its
+lane names one), an open folder no session is out for, no projects
+(`office projects add`), five or more slips (a folder to triage them),
+folders that only wait (`office desk`), and nothing to do (`office
+open`). Whether a session's response has reached the downloads is a fact
+no `--json` surface of bale exposes, so the line says the session is out
+and that land finds its response.
+
+`office help` groups the verbs by what you want to do (walk in and look
+around, capture, start a job, send a session out, bring one back, look
+after the office) and says plainly what the office saves a bale user:
+never typing a session id, never assembling an include list, never
+forgetting a landing step, with bale's own commands still visible
+(start's and land's help name them; `OFFICE_DEBUG=1` shows every call).
+`office help VERB` is that verb's `--help`, and every verb's help now
+carries examples; `status`, `where`, `default` and `version` take
+`--help` too.
+
+`office tour` is the toy drawer: a throwaway office in a temporary
+directory, with sample folders, a note, a slip and a calendar with a
+gap, and six steps through it (walk in, note, open, the desk, the week,
+and what start and land do, shown and never run), each saying what the
+command did and why you would type it. On a terminal it waits between
+steps and offers a shell inside the tour office to play in (`--play`).
+It deletes the office at the end, and when stopped or interrupted, and
+says so; it never touches a real office, the default office, the walk-in
+record or any bale registry, since a stand-in bale that refuses
+everything is first on its PATH.
+
+`office init` asks, on a terminal, which projects the office watches,
+one at a time through `office projects add`'s own questions until a
+plain return; `--project [NAME=]PATH` is the flag twin, checked before
+anything is built, and `--no-projects` skips the question. `office
+projects add` now checks a path as soon as it is given and asks again,
+before the name and the declarations.
+
+`office start` with a bundle refuses, in the office's own words and
+before bale runs, a forecast that overlaps an open session, naming the
+session, its folder and the overlap, as it does for a pack, whenever it
+can read the bundle's pack line; given a bare name bale's search finds,
+it says it cannot read the forecast first and leaves the refusal to
+bale. A bundle's `--supersedes SID` clears that one session, as bale's
+own gate does.
+
+share/verbs.toml declares `tour` (a script, attended, landing nothing:
+its office is gone when it ends). The doctrine says what walking in ends
+with, how help is organized, what the tour does and that init asks for
+projects (its front sheet and sections 4, 7, 10 and 12).
+
 ## 0.7.0
 
 Additive: no migration, nothing to do in any office. Every older office
