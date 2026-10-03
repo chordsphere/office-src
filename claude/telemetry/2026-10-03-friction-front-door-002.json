@@ -1,0 +1,396 @@
+{
+  "record_version": 1,
+  "session_id": "2026-10-03-friction-front-door-002",
+  "created_at": "2026-10-03T03:11:15+00:00",
+  "attempts": [
+    {
+      "at": "2026-10-03T03:11:15+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "claude/INDEX.md",
+        "claude/context/front-sheet.md",
+        "claude/context/sittings",
+        "claude/fixtures",
+        "doctrine",
+        "lib",
+        "share",
+        "templates",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-10-03-friction-front-door-002.log",
+      "bundle": {
+        "stem": "2026-10-03-friction-front-door",
+        "brief_sha256": "dab9b912799032a55b10a79c6e913c9f331de06f17a0e80c702822e5bfb7b62e",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "41206362863c45e235955cfac7b28cdfd195d64fddebd5ec2957372b3981e943"
+      },
+      "provenance": {
+        "work_class": "mixed",
+        "packer": "chordsphere",
+        "packed_at": "2026-10-03T03:11:15+00:00"
+      }
+    },
+    {
+      "at": "2026-10-03T23:38:40+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-10-03-friction-front-door-002.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "unittest suite": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "VERSION is 0.8.0": {
+            "value": "pass",
+            "claim_basis": "predicted"
+          },
+          "the sitting's third page is byte-exact": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "help is by task, every verb's help has examples": {
+            "value": "pass",
+            "claim_basis": "predicted"
+          },
+          "the walk-in ends with a Next line and writes nothing": {
+            "value": "pass",
+            "claim_basis": "predicted"
+          },
+          "office tour runs piped and deletes its office": {
+            "value": "pass",
+            "claim_basis": "predicted"
+          },
+          "office init --project adds a watched project": {
+            "value": "pass",
+            "claim_basis": "predicted"
+          }
+        },
+        "claim_verdict": {
+          "unittest suite": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "VERSION is 0.8.0": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "the sitting's third page is byte-exact": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "help is by task, every verb's help has examples": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "the walk-in ends with a Next line and writes nothing": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "office tour runs piped and deletes its office": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "office init --project adds a watched project": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "file syntax (bash -n, python ast)",
+          "unittest suite",
+          "VERSION is 0.8.0",
+          "the sitting's third page is byte-exact",
+          "the earlier sitting pages are untouched",
+          "no migration ships (additive)",
+          "help is by task, every verb's help has examples",
+          "the walk-in ends with a Next line and writes nothing",
+          "office tour runs piped and deletes its office",
+          "office init --project adds a watched project",
+          "tour is declared and the doctrine follows",
+          "bin/office is executable",
+          "about eight minutes in all: the suite runs whole, past the two-minute target"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "claude/INDEX.md",
+        "claude/context/front-sheet.md",
+        "claude/context/sittings",
+        "claude/fixtures",
+        "doctrine",
+        "lib",
+        "share",
+        "templates",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "claude/context/sittings/2026-10-02-friction-wave-sitting-001-3.md",
+        "doctrine/OFFICE.md",
+        "lib/office_bale.py",
+        "lib/office_helper.py",
+        "share/verbs.toml",
+        "tests/test_desk_verbs.py",
+        "tests/test_front_door.py",
+        "tests/test_office.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.45",
+            "contract_docs": {
+              "AGENT.md": "5124250b3d6362ae362801f89e2c0498a6e493c638a398de2f4c3d13d6c12285",
+              "TARBALL.md": "004d4389c984e322c6b0e2ac57e1a2ee87fbc62d8f70ddacfc2104cc17464bab",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "5af584b98ed0591b57fbb146baf1441f8130a894e050882d22b3cd62c5cd17d5"
+            },
+            "packer": "chordsphere",
+            "work_class": "mixed",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-10-03T03:11:15+00:00",
+            "base_files": {
+              "README.md": "bc916559afffc4a9d67b0dcb25b156a5c695d2e395b7e801382a8a59c47841e5",
+              "RELEASES.md": "670db555a1d4880e8a1165c9f65c59fb01a904ee33cb6f3c2a3d3e8288d408fb",
+              "VERSION": "967d9afb101346667166f2e76e81910bc190488d7d41d50ca0072e9d92f00e32",
+              "bin/office": "6481b4d77a351c9ae33b3bf1823a37b4adaddb4a1fc1b2cf558544aaa61ae942",
+              "claude/INDEX.md": "19cd1480c77c550c5f31eb5415656902cd284c518281e4e5c29c4b82353adcb9",
+              "claude/context/front-sheet.md": "ff07b787fa588de96185e3b7cc7248bceff75f68577f4dd027d91d635c1959fa",
+              "claude/context/sittings/2026-09-23-office-construction-001.md": "9c804c7dae8ee5056e571720bdc5defc42acd6a497fcc0299d87286aad930a64",
+              "claude/context/sittings/2026-09-29-continue-plan-002-2.md": "b5a3f09fd59ac66f3fd0023a98a23dd0d13ac35188a4dce6a01624ee1ca18c78",
+              "claude/context/sittings/2026-09-29-continue-plan-002-3.md": "6e1e0c056307d3606da8a3d595d973fd15280833d980324574966fc87fc69eaf",
+              "claude/context/sittings/2026-09-29-continue-plan-002-4.md": "da1fbbc5514918a2d57aadb7affdd052d8a008560e749c32219d551e775d3c6d",
+              "claude/context/sittings/2026-09-29-continue-plan-002.md": "6d1097bb8986ebafdc8902db26019d3ce1f0ba2eaa174917b08345cc850f5c4a",
+              "claude/context/sittings/2026-10-02-friction-wave-sitting-001-2.md": "2db9f41b29aa1adaac51fa6a4f06aec8f0eb397f05493862f405138c0b24c13e",
+              "claude/context/sittings/2026-10-02-friction-wave-sitting-001.md": "97a2df5f66da24b7a75a13024da98403e9aa4229865014e5c993410de592ddf2",
+              "claude/fixtures/bale-0.4.45/README.md": "469b561c4d479403fee52114a2c01678da4694323cab48b66c7ae2ec2f74aed8",
+              "claude/fixtures/bale-0.4.45/anywhere/version.json": "efb0c5b1da6af160375e70e3b0ff7b4a527b388ad2a0176f050305972c54bbae",
+              "claude/fixtures/bale-0.4.45/land/README.md": "64b8aaba36be5db0f84d39dbeaadb299cdcac367722eedbb187694b5d569a87a",
+              "claude/fixtures/bale-0.4.45/land/apply-applied.json": "5f6dc450ba4e915dbd4db5ab50c43cb7a46dd044472b1e5070aafce5bd25f105",
+              "claude/fixtures/bale-0.4.45/land/apply-appliedj.json": "915b325c6c7263539055a09829e4796d80e008aee544924f53161a89cc0a684a",
+              "claude/fixtures/bale-0.4.45/land/apply-bare.json": "6a9e1d84e3549122a4a52ecce52b66fe33d6c3c4008edf7161cb5b0dc50398a4",
+              "claude/fixtures/bale-0.4.45/land/apply-clar.json": "ca26f2008a9921ef37a835a9d6792ba6cddf8b3a5d4e43c28b555d41af221c13",
+              "claude/fixtures/bale-0.4.45/land/apply-drift.json": "70d0c7977cc7741d3ff6e044789a316ae1e218dd259d4eed922e18f024a55167",
+              "claude/fixtures/bale-0.4.45/land/apply-driftrestored.json": "9c946941f3ecfe21ae882730bb15c610d0729b524d54f9820b5ec296eb7d1dc9",
+              "claude/fixtures/bale-0.4.45/land/apply-hold.json": "033c7f5f8b951b6baa657bd4e4bd6c51173dad7cb6394413a715f788014e5c22",
+              "claude/fixtures/bale-0.4.45/land/apply-missing.json": "dff795785e6aa835edaa9e3ff17948145aa73f5b682bdc8d71a4b32fac2f00d3",
+              "claude/fixtures/bale-0.4.45/land/apply-noarg.json": "c95460e0f9f721449a4c95148d38e766b6cd18f3a0439b5f992e4114b7ae4801",
+              "claude/fixtures/bale-0.4.45/land/apply-outside.json": "6d8ee75c6bf9a32629dd154558662d958a6c98f0e7a9177f31c60a55a5502e78",
+              "claude/fixtures/bale-0.4.45/land/dossier-applied.json": "a01931638605b5b2a1624007ebf46a4fcc3e685f3b9a1e5c179139dd3b351134",
+              "claude/fixtures/bale-0.4.45/land/dossier-clar.json": "36da8048ed66a45f292c4d0d8d4411e600f2931be113e7b72b30c5a8420acd20",
+              "claude/fixtures/bale-0.4.45/land/dossier-drift.json": "48bfed8cdfdcd37b6f7026cf03888d1acd02f4da783cbc2eac849da991e28f92",
+              "claude/fixtures/bale-0.4.45/land/dossier-driftrestored.json": "f203eaca9bd91a4762fb16b1c0d56b18964725fcb34d5138bbc68f9d713eab2b",
+              "claude/fixtures/bale-0.4.45/land/dossier-hold.json": "ecf3b6cf7aa2c34ecaa08ea81c6bec46785463e16d8db89d579772f980450983",
+              "claude/fixtures/bale-0.4.45/land/dossier-openb.json": "455bb38ed1132b471821f0fbc097e666b0b79d053679840435fad88883a7e875",
+              "claude/fixtures/bale-0.4.45/land/dossier-outside.json": "0162d17d5ce7bca70d5374ec38cdcf37ebca5cfb0bb302736796e4a0938567e2",
+              "claude/fixtures/bale-0.4.45/land/dry-1.json": "738b4942d55919dae5823d3a4b07f7c6ae8796eedb9fbe3d6779a89be5a6a901",
+              "claude/fixtures/bale-0.4.45/land/help-apply.json": "d78c930779d35a11ec1a4579ca8965d799a254f47efcef3cf9425d62d1c0714f",
+              "claude/fixtures/bale-0.4.45/land/help-open.json": "d4c64cff216de0fab2a2f330d206e6b2dc5d146788e5ac94ba525040a2f3a82f",
+              "claude/fixtures/bale-0.4.45/land/help-relay.json": "399a48112065710396c6d41f91476a373ca2d892adfdd5e096664d6b43a9a1b7",
+              "claude/fixtures/bale-0.4.45/land/help-retry.json": "1676407a3e31e0cf159963a6dc3f55d6084fb75f986c24aa314bbdad544da3d0",
+              "claude/fixtures/bale-0.4.45/land/help-unlock.json": "f945df4cb1da76bfd680e0d5f63b339f556edebf8695490a6852aba178502c60",
+              "claude/fixtures/bale-0.4.45/land/help.json": "9283011d9bd664d448f69c921b8d4a58310bda5678cef6cc98cc9a4b1c24b377",
+              "claude/fixtures/bale-0.4.45/land/open-brief.json": "0e30fb5355a3a507ff5d1c29fa2cf64babad0f00cca7c42f7bbe916a3290afaf",
+              "claude/fixtures/bale-0.4.45/land/open-extra-flags.json": "dbe9024c02be17a50977de110bf3ba2e6e9553461fe735bbc39a4fdfbd51da10",
+              "claude/fixtures/bale-0.4.45/land/open-missing.json": "20a21c20297dadb598ec2403f11adb989ba4efb982bbf56efa56a90f3cdc482e",
+              "claude/fixtures/bale-0.4.45/land/open-ro-bare.json": "6e081b2b7159a57575915106771f0052d98902136fa2ded865cda44dc44626d7",
+              "claude/fixtures/bale-0.4.45/land/pack-drift.json": "554dba7d0a2864e6efc41b4058f1044612c51186c8d7ad2d122158cb537c2828",
+              "claude/fixtures/bale-0.4.45/land/ptyapply-driftn.json": "aaeb21fe91ccac6c536cacf60ebe051ad7f0103b6570a33602ec919a6f1e16a2",
+              "claude/fixtures/bale-0.4.45/land/ptyapply-drifty.json": "7a60bf7adf2124f5827277c2f641be9391dc39ef3c970ddde38a3b50ccc18847",
+              "claude/fixtures/bale-0.4.45/land/ptyapply-outside.json": "97898ec38e78adbea2854d9b2d03dd3c02540d8839ee5fcffc628a8c0d939c92",
+              "claude/fixtures/bale-0.4.45/land/ptyapply-split.json": "79c9498d85661f38578857522ea6872f75fef779137fc23c15afbeb219604c96",
+              "claude/fixtures/bale-0.4.45/land/ptyapply-whole.json": "953356ddd4ae0c945d823ecc94289f4cfe74ed032972c3f446ffe20c26e0375c",
+              "claude/fixtures/bale-0.4.45/land/ptyopen-split.json": "40fd69d8fd566043f21d3e797e3758a06fcd3cd8957c733ce20694425d02ff92",
+              "claude/fixtures/bale-0.4.45/land/relay-clar.json": "643a6c1cf2bd53d295914fee191aa5edcd0782915761b15c1f21ffddce1a4bd9",
+              "claude/fixtures/bale-0.4.45/land/status-applied.json": "221cabbe683e1a3ba86960e93ad4a761552e1ccd7be5d9c8bfc06cc8d0929083",
+              "claude/fixtures/bale-0.4.45/land/status-clar.json": "4ca3f74e3bd62fb94dcb8134204836c4c0c1fc91d1a54d6321f8cdaf044544a6",
+              "claude/fixtures/bale-0.4.45/land/status-drift.json": "56008abde1df9cd49b16e26ef02cd06087485cae71f8c63e64e89e95139349e3",
+              "claude/fixtures/bale-0.4.45/land/status-hold.json": "227a42e984637b3facc616a897008533d7c4543d5782bddacba5049f6d47dd99",
+              "claude/fixtures/bale-0.4.45/land/status-openb.json": "4ed57a0fd82d0a212af93666ff280ec02c0795f11598db3560273b089bf5b135",
+              "claude/fixtures/bale-0.4.45/land/status-openro.json": "592ce5fb20db0e91ddb59359ec24b93f161c25c2dc6969d40ddbe0b887b96bed",
+              "claude/fixtures/bale-0.4.45/office-src/stats_json.json": "a1b0dbf48bfda830a7ffeb8cb01ebc748242fc883033d02ab621b3e9d795de4b",
+              "claude/fixtures/bale-0.4.45/office-src/stats_json_work-class_meta.json": "4634e4766b1abc3bd815b8aec048153f8e6e19731c7db82738f2ed2b73bd65d7",
+              "claude/fixtures/bale-0.4.45/office-src/stats_json_work-class_mixed.json": "ef9ae95c2d18dbf873f0462deec8349bd0e7b3a95fa6788ebaa093baa7521c22",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-01-01-no-such-session-001_json.json": "d8518ea77cb9ecfa98f32c8e7ca633655e9761b9b0cb825c5ca211f8bb3c0f71",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-core-001_json.json": "04363ee7c1cc5f65fdd40870a03bc3427a2827ebeb1d27bea3fce7a3d0cb81e0",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-core-001_since_2026-09-01_json.json": "b72292c04b01a403ca5c9bd5dccfb387ba1400230bc4e7c45ac67d90325f3f3d",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-office-src-verbs-002_json.json": "b6fc28b8edc6e5e0eea8b8dc93ff4005fa01d663bc3baad875ed1ed3c384d347",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-24-smoothing-003_json.json": "ab6553228f68ee96207bf7a1823c0b1856409fd99d1da76190d6f3af37bfac05",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-continue-plan-002_json.json": "09be6288ae1d3d214f3230991b5b191a7c76421e357c8598a9b6ce8bd6e30c5d",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-drafting-table-sitting-001_json.json": "068be3f995cbb62d7afba58e161b05cec4942a56a14aa22018b5093b5de3a88c",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-drafting-table-space-003_json.json": "ed14f71fc9c05a759310063f1b307fd9a678bc349ce9bd7e4db8ddea2a22ba90",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-29-verb-table-columns-004_json.json": "870b8ad34c55fd0ea382e470a82e872b02910650426f8a60a6ccc287170e37c1",
+              "claude/fixtures/bale-0.4.45/office-src/stats_sid_2026-09-30-read-side-001_json.json": "745eed58c6ec075a47e102e3d9cff6b0a268a64d37ae698c865ca35a7a9a9cdf",
+              "claude/fixtures/bale-0.4.45/office-src/status_json.json": "4aac175b0dffa2ac394959ec8bb7b18ab0f9d7ac2c85bf2efb83441e45ff2fbe",
+              "claude/fixtures/bale-0.4.45/pack/README.md": "7fda3b91ab2df15264b5c69b8270855653296a160108c1a9e1c86f81a5a35ba3",
+              "claude/fixtures/bale-0.4.45/pack/ctx-other-include.json": "8e99841daa4d2b4bce5aca4b91a14f6acd287034881326d67ea082515e734c95",
+              "claude/fixtures/bale-0.4.45/pack/ctx-other-inside.json": "3d84eee7ce21868c04bba668e9da8d284c89b1619acbb853175535c5d692f465",
+              "claude/fixtures/bale-0.4.45/pack/ctx-plain.json": "5da715135bbc7728d85b16637f573bf8865f813b47b75d7975ee45960c85fa46",
+              "claude/fixtures/bale-0.4.45/pack/office-context-include.json": "b4aa1024f5c2dc1a2693b8a995783889fb830daa8a028322f64b15130702d5ba",
+              "claude/fixtures/bale-0.4.45/pack/office-context-whole.json": "b5da4e98cea8ff49754264f86345ceaa573edc37816b760665386f4a785510dd",
+              "claude/fixtures/bale-0.4.45/pack/office-pack.json": "c65862849087aaac35c5fc24686407b8e283e4a5190531eb43250f5dbde06dd4",
+              "claude/fixtures/bale-0.4.45/pack/office-second-pack-plain.json": "4251be81b4c707a867624fb4be107fb8c1caa75cfe7645188ddb3720a4f2b07b",
+              "claude/fixtures/bale-0.4.45/pack/office-second-pack.json": "3aca7ca62d6928e9119443e47090b992ea8942565a5428800d5615f82336a150",
+              "claude/fixtures/bale-0.4.45/pack/office-status.json": "efe07d621916d9032698994cb17200d2ae8523beedf5e61b60ede1ebd9581924",
+              "claude/fixtures/bale-0.4.45/pack/pack_help.json": "5280a7bb3b17e897923e88b97b153c65297675cd30b72dd529c65ef2f72536d7",
+              "claude/fixtures/bale-0.4.45/pack/project-pack-plain.json": "1d39b6be46923a28d40b0c85164a0e0c95fc7e2b70836ac172ae84f740b7c750",
+              "claude/fixtures/bale-0.4.45/pack/project-pack.json": "5d464ac0c12a72b658275b75297571b97cf6ef649ed7cc571aadd12eee8fa819",
+              "claude/fixtures/bale-0.4.45/test-office/status_json.json": "4b2cf1a076e8fb95607d48699ec9e10cdc18c02fee3d0fee02790df67a03d95c",
+              "doctrine/OFFICE.md": "606468c61d0de772fda71a7f19c2940c6ed675b638301f2ed401e7a27ada137d",
+              "doctrine/checks/filed-append-only.sh": "0f52ed5870f32c3d985e032fc99df071e256f7cad2e343d9dba8b6a2e7099e95",
+              "lib/office_bale.py": "3c7aac6ac4971493b63198384d6f6e1802ccf5ed109c09af25a6179a9f8ef74f",
+              "lib/office_helper.py": "5e52d862e08a0d9cdefc647b008b555572474efb87e93cdda609bc98f657d3a4",
+              "share/bale-consumption.toml": "ec70047330f6822cdfaa5fb4e0e18ac1bd3e4a1a09a9d772a02703cca9f0cdd5",
+              "share/profile-shape.toml": "42245342f7f64086db352e5a5e0f02b3ed47fa5c785d0f13348a567d40e1d930",
+              "share/spaces.toml": "f76750a30fa15d37777ef27f297531a6abba66794523d8930ace43b5c4a8d920",
+              "share/verbs.toml": "a78b161afaadcf83c7e52f008b0db35728356d7233965105518889b7a6ae82f1",
+              "templates/blueprint.md": "5c76d1c1a3c07908e2934898c5931b4694e9261c901830038c0a2ce3515f44da",
+              "templates/clipboard-series.md": "a5d9eb92961bd491b10225321c7564ba0afd3bbb8d9bedd6913f26be36866f22",
+              "templates/clipboard-sheet.md": "3a49bc3bc432964a963d3a8167ab19ac237119f309d9f1943c9313c9e61bd769",
+              "templates/close-report.md": "2ed79c13360c2c9b2dc354b7203d22104344670be50bbe7b70409b32de1012fe",
+              "templates/drafting-table-README.md": "84c6a2462d7e17bb50114f2062792699440113c863919631183beb4a68aa586a",
+              "templates/drafting-table-agenda.md": "ec2c50086d54a7e29c253cc98d7bd20b749a58862e0ede7a42e70fe5f56e15f0",
+              "templates/drafting-table-evidence.md": "2db0ee33c42518ec534463f8d28782d6446eca05fa63a4c6a3f2f33603397516",
+              "templates/drafting-table-moves.md": "ec06d442075329054ff2d90f2a04b065b32fa4392e7e96a2bd46b90eda2ecd8b",
+              "templates/drafting-table-riders.md": "997a09888b6e5d981f968683629861cace9005f9e1759b5a2ece42ca4f2d2b43",
+              "templates/drafting-table-rulings.md": "a4ddb5c4f2a1845df986110d6b811c78b5204c47c5ed7536dc7075229da5e356",
+              "templates/drafting-table-watch-log.md": "31a7191f31277c183325a9dd848037e44e65ac293df433eaba5bde049554cbac",
+              "templates/drafting-table-watches.md": "9f4a8152ae222961c47f305a65154151b0a040244108ece7af8063b056418294",
+              "templates/folder.md": "602c95dc370519a977a50456da1da89bbec5c6620951bccf1431675652fc8f8d",
+              "templates/handbook-chapter.md": "90c939906c6aa4c1615e75b7a904b61c1b7afa67d1e97853bbc1c410e6c06b96",
+              "templates/notepad-page.md": "692df506823206c9db5f7153bf90aa0bf46014ad80fe2962163a5997f8e065de",
+              "templates/profile.md": "c57c886d2d71ff7c07969282a6778da8f0c7a6e352f08021ce50574ce4c7a708",
+              "templates/rolodex-card.md": "833635ca21cc16ed318ae9a8103c9afc8fd8e98027a1fa4eb013cee9cf386833",
+              "templates/suggestion-slip.md": "8b95b77a645429817ace549f81822ff0c65b1369746bb580635a4be6ac87c5d1",
+              "tests/test_desk_verbs.py": "e8c6f0be1e0171f3c2860fba7e43d68f4490c39e02c684dd9f75207da7d23e32",
+              "tests/test_filed_append_only.py": "9daf033c18db0969190168fb2276dd835c3abd71a56f5bd01d0d6f0edd76d45b",
+              "tests/test_land.py": "47fa30cd99904a6c281a82c7269949a0006348ed30b8e7623891d5af84c9e7ba",
+              "tests/test_office.py": "aa01351e0fcdccd00b087439b22a8d32fd786f81296e4950ead97b72d010ea56",
+              "tests/test_read_side.py": "3cac6e376a755f4853dd43def44efb6c4c820ccdee78f7f7a11609e5fce53ddf",
+              "tests/test_start.py": "b7e79f1fb9d36409b48c9535ed58824c80993295b7def8c6e1a84c470d9bbe6a"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "a folder with no move means folders on the desk none of which is ready (parked or candidates), so the Next line names office desk",
+            "the walk-in's From here line stays beside the new Next line, which ends the screen"
+          ],
+          "judgment_calls": [
+            "the Next line's order puts a session out before an unfounded office (the founding session is one) and no projects after a ready or open folder",
+            "an unfounded office's Next line says office status, since nothing can reprint the founding line until the founding door",
+            "the tour offers a play shell at the end (--play, --no-play), beyond the guided steps the brief asked for",
+            "the tour's isolation adds GIT_CONFIG_GLOBAL=/dev/null, its own machine.toml and a refusing stand-in bale",
+            "office projects add now checks a path as soon as it is given, before the name and the declarations",
+            "a bundle argv the office cannot read as bale pack would is passed to bale with a line saying why, never guessed at",
+            "no probe: BALE_HELP.md shows no bale --json surface exposes search paths or responses found"
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [],
+          "compaction_occurred": {
+            "occurred": false,
+            "disclosure_ref": null
+          },
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md META through section 11.2",
+            "README.md (the brief)",
+            "TARBALL.md sections 1, 2, 5, 7, 10",
+            "BALE_HELP.md bale help pack, apply, status, stats, config",
+            "claude/context/front-sheet.md",
+            "claude/INDEX.md",
+            "claude/responses/2026-10-02-friction-out-and-in-002/notes.md",
+            "claude/responses/2026-10-03-friction-return-trip-001/notes.md",
+            "claude/context/sittings/2026-09-29-continue-plan-002-4.md",
+            "doctrine/OFFICE.md",
+            "README.md",
+            "share/verbs.toml",
+            "bin/office",
+            "lib/office_bale.py",
+            "tools/craft_response.py (header, CLI, main)",
+            "tools/response_lint.py (header)"
+          ]
+        }
+      },
+      "log": ".bale/logs/2026-10-03-friction-front-door-002.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-10-03T23:38:40+00:00",
+  "outcome": "applied"
+}
