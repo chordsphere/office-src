@@ -1,0 +1,28 @@
+{
+ "argv": [
+  "unlock",
+  "2026-10-04-probe-unlock-two-b-006",
+  "--json"
+ ],
+ "cwd": "/tmp/office-probe.DPIe0v/repo",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"unlocked\", \"sid\": \"2026-10-04-probe-unlock-two-b-006\", \"log\": \"/tmp/office-probe.DPIe0v/repo/.bale/logs/2026-10-04-probe-unlock-two-b-006.log\", \"closure_reason\": \"closed-read-only\", \"session_dir_wiped\": true, \"branch_preserved\": false, \"telemetry\": \"claude/telemetry/2026-10-04-probe-unlock-two-b-006.json\", \"debris\": null, \"sweep\": {\"status\": \"committed\", \"detail\": \"committed 1 file(s) as 39542f7\", \"sha\": \"39542f7\", \"files\": [\"claude/telemetry/2026-10-04-probe-unlock-two-b-006.json\"]}}"
+ ],
+ "stdout_sha256": [
+  "6e80fca62e40f4e4a7efb1b2b75800d72995c59a5a50d46484e6e094f07b9ed3"
+ ],
+ "stderr": [
+  "[bale] unlock: 2026-10-04-probe-unlock-two-b-006",
+  "[bale] closed session 2026-10-04-probe-unlock-two-b-006 in the registry",
+  "[bale] wiped /tmp/office-probe.DPIe0v/repo/.bale/sessions/2026-10-04-probe-unlock-two-b-006",
+  "[bale] sweep: committed 1 file(s) as 39542f7",
+  "",
+  "  [UNLOCK] 2026-10-04-probe-unlock-two-b-006",
+  "  lock:      cleared",
+  "  session:   wiped (/tmp/office-probe.DPIe0v/repo/.bale/sessions/2026-10-04-probe-unlock-two-b-006)",
+  "  telemetry: recorded claude/telemetry/2026-10-04-probe-unlock-two-b-006.json"
+ ],
+ "captured": "probe of session 2026-10-04-friction-second-trip-001, run on the machine office-src is built on, in a throwaway repo under /tmp/office-probe.DPIe0v (removed)"
+}

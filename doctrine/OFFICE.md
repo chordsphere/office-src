@@ -50,8 +50,10 @@ lands in the office or on a project, and the goal, then runs bale's pack
 puts every file to attach in one out tray beside the opener to paste.
 `office land` brings it back: it runs bale's apply in the repo the session
 belongs to, says how it ended, hands you whatever bale printed for you to
-carry, and after an applied landing runs the project's after-land actions
-and asks whether the planner ratified the session's judgment calls. The
+carry, and after an applied landing runs the project's after-land actions,
+asks whether the planner ratified the session's judgment calls, and ends
+by saying what became of each action; given a read-only sitting it sent
+out, it ends the sitting with bale's unlock instead. The
 office runs bale when you ask, as your hands at the terminal; bale asks its
 own questions and only you answer them. It never schedules a session,
 never hands one to a model and never carries pastes. bale carries the
@@ -251,7 +253,8 @@ names its successors, and each successor gets a line pointing back.
 in another folder, or was retired, is not reopened. Its History section
 is one dated line per event, `- YYYY-MM-DD verb: text`, from a closed
 set of verbs, appended and never rewritten, and the status line always
-agrees with the last line that changed it. `office sessions FOLDER SID
+agrees with the last line that changed it (`ended`, which `office land`
+writes when it ends a read-only sitting, changes nothing). `office sessions FOLDER SID
 --ratified` records that the planner ratified a session's judgment
 calls, with `--except` for what was corrected and where it went.
 
@@ -356,7 +359,11 @@ without a list on the pack line. `office init` writes it; a renovation
 that adds a space or hangs an item updates it; `office status` reports
 when it no longer matches the floor plan. Every office session ships:
 
-- this doctrine, as a context tarball from the install;
+- this doctrine, as a context tarball from the install, once: a session
+  whose packed tree carries the same doctrine/ (office-src's own) reads
+  it there, and one whose tree carries a different doctrine/ gets the
+  install's beside it, named as the install's, since that is the
+  doctrine the office runs on;
 - the office's hung items: at least profile.md and floor-plan/survey.md;
 - whatever its verb names in the install's verb declarations.
 
@@ -366,7 +373,8 @@ A session may always write the notepad and the suggestion box.
 
 Verbs declare what a session ships and where it lands. office-src runs
 bale's pack and apply when the occupant asks, as the occupant's hands at
-the terminal: `office start` packs, and `office land` applies. It never
+the terminal: `office start` packs, and `office land` applies, or, for a
+read-only sitting the office sent out, ends it with bale's unlock. It never
 schedules a session, never
 dispatches one to a model and never carries pastes, so whoever carries
 sessions (the occupant, bale, a future harness) can change freely
@@ -396,7 +404,7 @@ Kinds:
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes |
 | projects | script: list the projects this office scopes, add one, declare what rides with it and what runs after it lands, render what bale records about them | yes |
 | start | script: pack a session for a folder, in the office or on a project, or open a planner's bundle; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
-| land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, and the planner's ratification | yes |
+| land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, and what became of each action; or end a read-only sitting the office sent out | yes |
 | tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes |
 | founding | office session: the profile, the occupant's words, the timezone | yes, via init |
 | work | office session: answer, draft, probe, decide, deliver | yes, via start |
@@ -431,9 +439,13 @@ blueprint, never an exception counted against the old one.
 
 Walking in is `office` with no verb, from inside an office or anywhere on
 the machine (the per-machine default). It shows the office's name, the
-date and time in its timezone, whether it is founded and current, the
-sessions in flight in its projects and in the office itself, with the
-folder each belongs to, how many folders are ready, parked and
+date and time in its timezone (and, when the floor plan's zone does not
+resolve, that the office is on UTC instead), whether it is founded and
+current, the sessions in flight in its projects and in the office
+itself, with the folder each belongs to (a read-only sitting a folder
+records says that `office land SID` ends it when the sitting is over;
+the Next line never names one, since nothing in the office knows when a
+sitting is over), how many folders are ready, parked and
 candidates, and the first three ready ones with their next moves, this
 week and its gaps, the last notepad lines, how many slips are in the
 suggestion box, and the verbs to reach for. It ends with one Next line:
@@ -520,7 +532,10 @@ another machine is not read. The office reads each project's records
 only through bale's --json surfaces, run in the project's directory with
 no prompt, never by parsing .bale/, and it never writes what bale
 records. The verbs that run bale to make or land a session do so with
-the occupant at the terminal: a question bale asks is his to answer, and
+the occupant at the terminal (pack and open in `office start`; apply,
+retry and relay in `office land`, and unlock when `office land` ends a
+read-only sitting the office sent out, and no other session): a question
+bale asks is his to answer, and
 where bale prints a block for him to carry and no --json key holds it,
 the office takes the lines between the markers the manifest below
 declares. The install's share/bale-consumption.toml names every bale verb,
@@ -540,7 +555,12 @@ directory inside another repo, a whole repo, or a file), and
 `after_land`, the commands run in the project's repo after one of its
 sessions lands: `office land` runs them in order once bale has applied
 the session, never after a HOLD, and says loudly when one fails, with
-the line that runs it again. Both are set by `office projects add` and
+the line that runs it again; its last lines say what became of each
+action (ran, failed, not run), or that the project declares none. The
+actions run only through `office land`: a session applied by hand with
+bale apply runs none, and `office status` says when the install has
+fallen behind the working copy it was installed from. Both are set by
+`office projects add` and
 `office projects set`, a wizard with flag twins, and never by hand or in
 the project's own repo: what rides is office context, and a project's
 audience must not see the office's choices. A table without them is
@@ -614,7 +634,12 @@ network calls; whether a remote host is reachable is a probe's question.
 The page is overwritten on every run and never edited by hand. Each run
 reports what changed since the previous survey, on the terminal and at
 the foot of the page, and commits the page. `office init` runs the first
-survey.
+survey, and `office start` runs it again before every pack and commits
+the page alone, so the survey a session reads first is never older than
+the session; while an open session's forecast holds the page (the
+one-writer rule), or when the survey cannot run, start leaves it as it
+is and says how old it is. `office status` names its age and the
+office-src version it records beside the installed one.
 
 An office adds its own steps as executables in drawer/survey/. Each runs
 from the office root under a timeout, and its output (best written as

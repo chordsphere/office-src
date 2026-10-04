@@ -18,10 +18,12 @@ reaches it only through `office upgrade`. Every day: `office` to walk in
 to capture a line, `office slip` to drop a friction slip, `office start` to send a
 session out for a folder (it packs the session with bale, or opens a
 planner's bundle, records it in the folder and puts everything to attach
-in one out tray beside the opener), `office land` to bring it back (bale
-applies it in its repo, the office says how it ended, hands over the
-relay to carry, runs the project's after-land actions and records the
-planner's ratification), `office open`, `desk`, `close` and `reopen` for folders (numbered,
+in one out tray beside the opener; it surveys the machine first, and asks
+which of the project's ride-alongs go this time), `office land` to bring
+it back (bale applies it in its repo, the office says how it ended, hands
+over the relay to carry, runs the project's after-land actions, records
+the planner's ratification and ends saying how each action went; given a
+read-only sitting, it ends the sitting), `office open`, `desk`, `close` and `reopen` for folders (numbered,
 with statuses, gates and a History, and a desk that orders itself),
 `office week` for the calendar, and `office sessions` to record which
 sessions worked on a job and see how each one went. `office projects` names the
@@ -37,12 +39,32 @@ what you want to do, and every verb's `--help` has examples.
 The occupant, on every machine that has an office. Installed per machine
 at ~/.local/share/office-src from the committed tree and run as
 `office`. It runs only when called. It runs bale's pack and apply when
-the occupant asks (`office start`, `office land`), as the occupant's
+the occupant asks (`office start`, `office land`), and bale's unlock to
+end a read-only sitting the office sent out, as the occupant's
 hands at the terminal, and leaves every question bale asks to him; it
 schedules nothing, never hands a session to a model and never carries
 pastes.
 
 ## Recent changes
+
+- 0.9.0 (session 2026-10-04-friction-second-trip-001): the second trip,
+  five frictions the first real round trip found. `office start` shows
+  what rides with the project and lets one stay home this once
+  (`--leave-out`, `--no-rides`), and carries the doctrine once (twice
+  only when the project's own copy differs, the install's named so). It
+  surveys the machine before every pack, so the hung survey is never
+  stale. `office land SID` ends a read-only sitting the office sent out
+  (bale unlock, and an `ended` History line), and the walk-in says so
+  beside the sitting. A bundle's where question defaults to the place
+  whose tree holds its paths, and a bundle whose paths are nowhere, or
+  elsewhere, is refused before bale runs. A timezone that does not
+  resolve is named with its remedy (the warning, `office status`, the
+  walk-in). `office land` ends with what became of each after-land
+  action, and `office status` says when the install is behind the
+  working copy it came from. Why 0.8.0's install did not move: 0.8.0
+  was applied by hand with `bale apply`, which runs no after-land
+  action; nothing in the office failed. Additive: no migration, no
+  office needs anything done.
 
 - 0.8.0 (session 2026-10-03-friction-front-door-002): the front door,
   the third and last session of the friction wave. Walking in ends with
@@ -202,6 +224,14 @@ pastes.
   office with a calendar will tell whether it fits.
 - Offices on WSL report the machine's zone (UTC on chordsphere) until
   the founding session sets the real one.
+- After-land actions run only through `office land`. A session applied
+  by hand with `bale apply` runs none; for office-src that means the
+  install stays where it was (0.8.0's did, until `./install.sh` was run
+  by hand). `office status`'s `source:` line shows it; nothing makes the
+  office notice it on the walk-in yet.
+- Founding still writes a timezone without checking it resolves (the
+  founding door's), and moving a floor plan to a zone's canonical name is
+  a hand edit of its timezone line, by design for a one-off.
 
 ## Questions likely to come up
 
@@ -220,6 +250,13 @@ pastes.
   is stopped.
 - *Who marks a renovation done?* `office upgrade`, by checking what the
   renovation declared. No session edits the version stamp.
+- *Why did the install not move when a release landed?* Either it was
+  applied by hand with `bale apply` (no after-land action runs), or
+  `./install.sh` failed, which `office land`'s last lines now say.
+  `office status` shows whether the install is level with its source.
+- *How does a planning sitting end?* `office land SID`, from the office,
+  when the sitting is over: bale unlock, and a line in the folder. The
+  folder stays open until you close it.
 
 ## Public documentation
 

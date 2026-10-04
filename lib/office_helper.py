@@ -197,6 +197,8 @@ def check_profile(profile_path, shape):
 # --- survey ---------------------------------------------------------------
 
 SURVEY_TIME_KEY = "survey.surveyed_at"
+# The office-src version the survey recorded (gather_facts in bin/office).
+SURVEY_OFFICE_SRC_KEY = "office-src.version"
 
 
 def read_facts(path):
@@ -1032,9 +1034,11 @@ CABINET_STATUSES = ("done", "absorbed", "split", "retired")
 STATUSES = DESK_STATUSES + CABINET_STATUSES
 # The History verbs, a closed set. `candidate` is the line office open
 # --candidate writes, the one state the blueprint's set had no verb for.
+# `ended` is the line office land writes when it ends a read-only sitting
+# (bale unlock); it changes no status.
 HISTORY_VERBS = ("candidate", "queued", "opened", "ratified", "gated", "cleared", "grown",
                  "re-scoped", "corrected", "ruled", "carried", "consumed", "done",
-                 "absorbed", "split", "retired", "reopened", "note")
+                 "absorbed", "split", "retired", "reopened", "note", "ended")
 # The state-changing verbs and the status each leaves the folder in:
 # candidate -> queued -> open -> done; any desk status -> absorbed,
 # split or retired; done -> reopened -> open.
@@ -1870,8 +1874,18 @@ def cmd_survey_age(a):
     if not page.is_file():
         print("never surveyed")
         return 0
-    stamp, delta = survey_age(page.read_text(encoding="utf-8", errors="replace"))
-    print(f"{stamp} ({describe_age(delta)})")
+    text = page.read_text(encoding="utf-8", errors="replace")
+    stamp, delta = survey_age(text)
+    recorded = facts_from_page(text).get(SURVEY_OFFICE_SRC_KEY)
+    what = describe_age(delta)
+    if a.install:
+        if recorded is None:
+            what += "; records no office-src version"
+        elif recorded == a.install:
+            what += f"; records office-src {recorded}, as installed"
+        else:
+            what += f"; records office-src {recorded}, not the installed {a.install}"
+    print(f"{stamp} ({what})")
 
 
 def cmd_skew(a):
@@ -2228,7 +2242,9 @@ def main(argv=None):
     p = sub.add_parser("survey-render"); p.add_argument("--facts", required=True)
     p.add_argument("--previous", required=True); p.add_argument("--out", required=True)
     p.set_defaults(fn=cmd_survey_render)
-    p = sub.add_parser("survey-age"); p.add_argument("page"); p.set_defaults(fn=cmd_survey_age)
+    p = sub.add_parser("survey-age"); p.add_argument("page")
+    p.add_argument("--install", help="the installed office-src version, to compare with the one the survey records")
+    p.set_defaults(fn=cmd_survey_age)
     p = sub.add_parser("skew"); p.add_argument("office_version"); p.add_argument("install_version")
     p.add_argument("migrations"); p.set_defaults(fn=cmd_skew)
 

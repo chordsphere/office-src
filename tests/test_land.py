@@ -60,6 +60,7 @@ FAKE_LAND_BALE = r'''#!/usr/bin/env python3
 # state sits in the same state file as the packing fake's, under "land".
 import hashlib, io, json, os, pathlib, re, shutil, subprocess, sys, tarfile, tempfile
 FIX = pathlib.Path({fixtures!r})
+UNLOCK_FIX = FIX.parent / "unlock"
 MISS = pathlib.Path({miss!r})
 STATE = pathlib.Path({state!r})
 CALLS = pathlib.Path({calls!r})
@@ -72,7 +73,8 @@ def fx(label):
     return json.loads((FIX / (label + ".json")).read_text(encoding="utf-8"))
 def load():
     s = json.loads(STATE.read_text()) if STATE.is_file() else {{"repos": {{}}, "fail": []}}
-    s.setdefault("land", {{"base": {{}}, "attempts": {{}}, "held": [], "clar": {{}}, "packed": {{}}}})
+    s.setdefault("land", {{"base": {{}}, "attempts": {{}}, "held": [], "clar": {{}}, "packed": {{}}, "unlocked": []}})
+    s["land"].setdefault("unlocked", [])
     return s
 def save(s):
     STATE.write_text(json.dumps(s))
@@ -241,6 +243,37 @@ if argv[0] in ("apply", "retry"):
     say(lines[at:])
     sys.exit(0)
 
+if argv[0] == "unlock":
+    # bale unlock SID --json, as the second-trip probe captured it: the
+    # session leaves the registry, its record is committed alone as the
+    # sweep, the JSON line on stdout and the human lines on stderr.
+    if len(argv) != 3 or argv[2] != "--json":
+        print("fake bale: built for bale unlock SID --json only", file=sys.stderr); sys.exit(97)
+    sid = argv[1]
+    old_sid, old_root = "2026-10-04-probe-unlock-json-001", "/tmp/office-probe.DPIe0v/repo"
+    if sid not in repo["sessions"]:
+        cap = json.loads((UNLOCK_FIX / "unlock-ro-again.json").read_text(encoding="utf-8"))
+        say(swap(cap["stderr"], old_sid, sid, old_root, cwd), err=True); sys.exit(1)
+    if os.environ.get("FAKE_BALE_UNLOCK_FAILS") == sid:
+        print("[bale] error: unlock " + sid + ": refused for the test", file=sys.stderr); sys.exit(1)
+    s = load()
+    r = s["repos"][cwd]
+    reason = "closed-read-only" if r["scopes"].get(sid) == [] else "abandoned"
+    r["sessions"].remove(sid); r["scopes"].pop(sid, None)
+    s["land"]["unlocked"].append(sid)
+    save(s)
+    rec = pathlib.Path(cwd) / ("cla" + "ude") / "telemetry" / (sid + ".json")
+    rec.parent.mkdir(parents=True, exist_ok=True)
+    rec.write_text(json.dumps({{"session_id": sid, "outcome": "unlocked"}}) + "\n")
+    git("add", "--", str(rec.relative_to(cwd)))
+    git("commit", "-q", "-m", "[bale sweep " + sid + "] " + reason, "--", str(rec.relative_to(cwd)))
+    sha = git("rev-parse", "--short", "HEAD").stdout.strip()
+    cap = json.loads((UNLOCK_FIX / "unlock-ro-json.json").read_text(encoding="utf-8"))
+    extra = [("dcd55ba", sha), ("closed-read-only", reason)]
+    say(swap(cap["stderr"], old_sid, sid, old_root, cwd, extra), err=True)
+    say(swap(cap["stdout"], old_sid, sid, old_root, cwd, extra))
+    sys.exit(0)
+
 if argv[:2] == ["stats", "--sid"] and argv[3:] == ["--json"]:
     sid = argv[2]
     if sid not in L["packed"]:
@@ -255,6 +288,9 @@ if argv[:2] == ["stats", "--sid"] and argv[3:] == ["--json"]:
     rec["outcome"] = tries[-1]["outcome"] if tries else "opened"
     rec["in_flight"] = is_open
     rec["closure"] = {{"category": "applied", "unlock_reason": None}} if not is_open else None
+    if sid in L["unlocked"]:
+        rec.update(outcome="unlocked", in_flight=False, read_only=True,
+                   closure={{"category": "unlocked", "unlock_reason": "closed-read-only"}})
     attempts = [dict(pack_a)]
     for t in tries:
         a = dict(apply_a)
@@ -733,11 +769,13 @@ class TestLandWhichSession(LandCase):
         response_tarball(self.downloads, b, {"docs/d.md": "new\n"})
         self.assertIn(f"Landed: {b}", self.run_office("land", b, check=0).stdout)
 
-    def test_a_read_only_sitting_has_nothing_to_land(self):
+    def test_a_read_only_sitting_is_never_the_session_out(self):
+        """Bare land never picks a sitting (nothing in the office knows
+        when one is over); named, land ends it (tests/test_second_trip.py)."""
         sid = self.start("fix-login", "--in-office", "--read-only", "--goal", "g")
-        proc = self.run_office("land", sid, check=1)
-        self.assertIn("read-only session: it lands nothing", proc.stderr)
         self.assertIn("no session is out", self.run_office("land", check=1).stderr)
+        self.assertEqual(self.fake.calls_of("unlock"), [])
+        self.assertIn(f"Ended: the sitting {sid}", self.run_office("land", sid, check=0).stdout)
 
     def test_flags_that_contradict(self):
         for args, words in ((("--ratified", "--not-now"), "contradict"), (("--except", "x"), "goes with --ratified"),

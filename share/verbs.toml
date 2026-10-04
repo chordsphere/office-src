@@ -184,11 +184,13 @@ trigger = ["manual"]
 # folder, opens one first when asked for a new job, and files each page
 # of a sitting's words the brief carries as its own notepad page; what
 # it writes outside the office is bale's registry where the pack runs and
-# the out tray on this machine.
+# the out tray on this machine. Before it packs it surveys the machine
+# again and commits the page, so the hung survey is never older than the
+# session that reads it.
 [verbs.start]
 kind = "script"
 built = true
-writes = ["desk/{folder}", "notepad/{date}-{slug}.md", "bale's registry where the session is packed", "the out tray"]
+writes = ["desk/{folder}", "notepad/{date}-{slug}.md", "floor-plan/survey.md", "bale's registry where the session is packed", "the out tray"]
 lands = ["desk/{folder}/folder.md"]
 attended = true
 trigger = ["manual"]
@@ -197,11 +199,13 @@ trigger = ["manual"]
 # belongs to, then, once bale has applied it, the project's after-land
 # actions and the planner's ratification in the folder. An office
 # session's folder record is taken out while bale lands and put back
-# after. Nothing is guaranteed to exist after it: a HOLD lands nothing.
+# after. A read-only sitting the office sent out is ended instead: bale
+# unlock in its repo, and an ended line in its folder's History.
+# Nothing is guaranteed to exist after it: a HOLD lands nothing.
 [verbs.land]
 kind = "script"
 built = true
-writes = ["the repo the session belongs to, through bale's apply", "desk/{folder}/folder.md",
+writes = ["the repo the session belongs to, through bale's apply (or, for a read-only sitting, bale's unlock)", "desk/{folder}/folder.md",
           "filing-cabinet/{folder}/folder.md", "what the project's after-land actions write"]
 lands = []
 attended = true

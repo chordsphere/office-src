@@ -61,7 +61,9 @@ PATH, and git's global config is switched off for it.
 
     office
 
-Walking in shows the office's name, the date and time in its timezone,
+Walking in shows the office's name, the date and time in its timezone
+(and that it is on UTC, when the floor plan's zone does not resolve;
+`office status` names what fixes that),
 whether it is founded and current, the sessions in flight in its projects
 and in the office itself with the folder each belongs to, how many
 folders are ready, parked and candidates and the first three ready ones,
@@ -164,7 +166,7 @@ rendering says bale is missing and the rest of the command works.
 
 ### Looking after an office
 
-    office status              # version, skew, profile, survey age, hung items, catalogs, folders, filed pages, bale, projects
+    office status              # version, skew, the install against its source, profile, survey age, timezone, hung items, catalogs, folders, filed pages, bale, projects
     office survey              # rewrite floor-plan/survey.md, report what changed
     office upgrade             # run pending migrations: dry run, then one commit
     office where               # the office a command here acts on
@@ -243,6 +245,7 @@ have a defect.
     office start fix-login --on office-src --goal "Fix the login redirect"
     office start plan-wave --in-office --read-only --goal "Plan the next wave"
     office start fix-login --on office-src 2026-10-05-fix-login.bale-bundle   # a planner's bundle
+    office start fix-login --on office-src --goal "Fix it" --no-rides         # nothing declared rides this time
 
 `office start` packs a session for a folder and gathers everything to
 attach into one out tray, `~/out-tray/SID`: the request, the doctrine,
@@ -253,7 +256,15 @@ session but never lands in this project.", and the office's context
 with each path the project declares (`office projects set`). In the
 office, it is packed from the office, forecasting the folder and the
 notepad, and the project the folder's lane names rides beside it with
-its declarations. The forecast of a project session comes from the
+its declarations. On a terminal it lists what the project declares to
+ride, with sizes, and asks which ride this time: a plain return rides
+them all; `none`, or the numbers to leave out, keep them home for this
+session only (`--leave-out PATH`, `--no-rides`; piped, everything
+declared rides). The doctrine rides once: a project whose own tree
+carries the same `doctrine/` (office-src's) ships it there, and one
+whose `doctrine/` differs gets the install's beside it, named as the
+install's. Before it packs, start surveys the machine again and commits
+the page, so the survey every session reads first is current. The forecast of a project session comes from the
 folder's lane, the work class from its class, the slug from its name;
 the goal is the one thing asked. It records the session in the folder
 and prints the opener: attach the tray's files to a fresh chat and paste
@@ -269,6 +280,10 @@ word): it asks which job and where the work lands, as for a pack, then
 hands the bundle to `bale open` there. The bundle's pack line is the
 whole session, its goal, forecast and brief; the office adds nothing to
 it and says when it leaves out something the office would have carried.
+Where the work lands defaults to the one place whose tree holds every
+path the bundle names, and the question's `?` says why; a bundle whose
+paths no one place holds, or one sent where its paths are not, is
+refused before bale runs, naming each path and where it is.
 When the bundle is a file the office can read, a forecast that overlaps
 an open session is refused before bale runs, in the office's words and
 naming the session, its folder and the overlap, as for a pack; given as a
@@ -312,7 +327,18 @@ declares them), stopping loudly at the first that fails with the lines
 that rerun it and the rest. Then it asks whether the planner ratified the
 session's judgment calls: yes, yes except TEXT, or not now
 (`--ratified`, `--except TEXT`, `--not-now`), and records the answer in
-the folder. A HOLD, a refusal or a clarification lands nothing: nothing
+the folder. Its last lines say what became of each action (ran, failed,
+not run), or that the project declares none. The actions run only
+through `office land`: a session applied by hand with `bale apply` runs
+none, so office-src's own `./install.sh` does not run, and `office
+status`'s `source:` line then says the install is behind its working
+copy, with the line that brings it level.
+
+A read-only sitting the office sent out lands nothing; when it is over,
+`office land SID` (or the folder) ends it: `bale unlock` in its repo,
+and an `ended` line in the folder's History. The folder stays as it is,
+since a planning folder may outlive one sitting; `office close` is
+yours. A HOLD, a refusal or a clarification lands nothing: nothing
 is ratified, nothing runs after, and the next line is named. An office
 session's folder changed after its pack, when `office start` recorded the
 session; `office land` puts it back as it was packed while bale lands, so

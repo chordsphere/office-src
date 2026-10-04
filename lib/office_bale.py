@@ -260,6 +260,15 @@ class Reader:
                 log("interrupted; waiting for bale to stop")
         return proc.wait()
 
+    def unlock(self, cwd, sid):
+        """End a read-only sitting: bale unlock SID --json in its repo,
+        stdin closed, since bale asks nothing there (the second-trip probe
+        found it so, on a terminal and piped). Never cached; what was
+        cached about the repo is dropped, since the registry changed."""
+        proc, shown, where = self.invoke("unlock", cwd, whole_why=True, sid=sid)
+        self.forget(cwd)
+        return self.parse("unlock", proc, shown, where)
+
     def pack(self, surface, cwd, **values):
         """Run one of the surfaces that make something (a session, a
         context tarball): never cached, since each run makes a new one.
@@ -525,15 +534,20 @@ def in_flight(rd, office_root, now=None):
                 folders = naming.get(sid, [])
                 flying.update(folders)
                 d = rd.dossier(cwd, sid)
+                # What ends a sitting the office sent out; never on the
+                # Next line, since nothing in the office knows when a
+                # sitting is over. A sitting no folder records is not
+                # the office's to end.
+                ends = f" (office land {sid} when the sitting is over)" if read_only and folders else ""
                 if d is None:
                     lines.append(f"{label}: {sid} open, with no record in bale's telemetry yet"
-                                 f" -> {', '.join(folders) or 'no folder'}")
+                                 f" -> {', '.join(folders) or 'no folder'}{ends}")
                     continue
                 v = session_view(rd, d)
                 state = "read-only" if read_only else outcome_word(v)
                 age = describe_age(parse_stamp(v["created"]), now)
                 lines.append(f"{label}: {sid} {state}, opened {age} ago"
-                             f" -> {', '.join(folders) or 'no folder'}")
+                             f" -> {', '.join(folders) or 'no folder'}{ends}")
         except BaleError as exc:
             bad += 1
             lines.append(f"{label}: cannot read: {exc}")
@@ -1447,22 +1461,57 @@ class Tray:
         shutil.rmtree(self.dir, ignore_errors=True)
 
 
-def context_into_tray(rd, tray, directory, includes, what):
-    """One context pack in directory, its tarball copied into the tray."""
+def context_into_tray(rd, tray, directory, includes, what, name=None):
+    """One context pack in directory, its tarball copied into the tray
+    (as name, when given)."""
     report, _ = rd.pack("context", directory, includes=includes or None)
     tarball = rd.key(report, "context", "tarball")
-    name = tray.take(tarball, f"context-{rd.key(report, 'context', 'tree_name')}.tar.gz")
+    name = tray.take(tarball, name or f"context-{rd.key(report, 'context', 'tree_name')}.tar.gz")
     return f"{name}: {what}"
 
 
-def scratch_context(rd, tray, source, what):
+def scratch_context(rd, tray, source, what, name=None):
     """A context pack of a directory outside git, made from a scratch
     copy under the same name, so nothing is written into the original
     (the install's doctrine directory among them)."""
     with tempfile.TemporaryDirectory(prefix="office-start-") as tmp:
         copy = pathlib.Path(tmp) / pathlib.Path(source).name
         shutil.copytree(source, copy, ignore=shutil.ignore_patterns(".bale", "__pycache__"))
-        return context_into_tray(rd, tray, copy, None, what)
+        return context_into_tray(rd, tray, copy, None, what, name)
+
+
+def install_version_here():
+    """The install's VERSION, for a line that names it."""
+    try:
+        return (INSTALL / "VERSION").read_text(encoding="utf-8").splitlines()[0].strip()
+    except (OSError, IndexError):
+        return "of unknown version"
+
+
+def ride_choice(entry, project, leave_out):
+    """(rides, left out) for a session: the project's declared ride-alongs
+    minus the ones named to stay home this once. A name matches a
+    declaration as declared or by the path it resolves to; a name that
+    matches none refuses, naming what is declared."""
+    declared = list(entry["rides"]) if entry is not None else []
+    if not leave_out:
+        return declared, []
+    if not declared:
+        raise StartError([f"--leave-out {leave_out[0]}: nothing rides with {project or 'this session'}, "
+                          "so there is nothing to leave out"])
+    left = []
+    for want in leave_out:
+        try:
+            want_path = pathlib.Path(os.path.expanduser(want)).resolve()
+        except (OSError, RuntimeError):
+            want_path = None
+        hit = [r for r in declared if r == want.rstrip("/")
+               or (want_path is not None and oh.expand_project_path(r).resolve() == want_path)]
+        if not hit:
+            raise StartError([f"--leave-out {want}: not one of what rides with {project} "
+                              f"({', '.join(declared)}); office projects {project} lists them"])
+        left += [h for h in hit if h not in left]
+    return [r for r in declared if r not in left], left
 
 
 def bundle_pack_argv(bundle):
@@ -1490,15 +1539,10 @@ class _ArgvParser(argparse.ArgumentParser):
         raise ValueError(message)
 
 
-def bundle_forecast(argv):
-    """(forecast, supersedes) from a bundle's stored pack argv, read the
-    way bale pack reads its flags (bale help pack): --write's paths, else
-    --include's, else None for the whole tree; [] for --read-only.
-    --write and --include take several paths per flag and repeat.
-    supersedes is the session a split supersession closes (bale clears
-    that one collision), or None. Raises ValueError when the argv does
-    not read as a pack line, and the office then says it is passing
-    bale's own words through."""
+def bundle_argv_parts(argv):
+    """The parsed pack argv (argparse namespace) of a bundle, read the way
+    bale pack reads its flags (bale help pack). Raises ValueError when it
+    does not read as a pack line."""
     ap = _ArgvParser(prog="bale pack", add_help=False, allow_abbrev=False)
     ap.add_argument("goal", nargs="?")
     for flag in ("--include", "--write", "--exclude"):
@@ -1510,13 +1554,158 @@ def bundle_forecast(argv):
     for flag in ("--context", "--edit", "--no-edit", "--no-readme", "--allow-checkpoint-in-scope", "--read-only",
                  "--force", "--verbose", "--json", "--dry-run"):
         ap.add_argument(flag, action="store_true")
-    a = ap.parse_args(list(argv))
+    return ap.parse_args(list(argv))
+
+
+def bundle_paths(argv):
+    """(includes, writes, excludes) a bundle's pack argv names, each a
+    list of paths relative to the repo it opens in."""
+    a = bundle_argv_parts(argv)
+    flat = lambda groups: [p for group in groups for p in group]  # noqa: E731
+    return flat(a.include), flat(a.write), flat(a.exclude)
+
+
+def bundle_forecast(argv):
+    """(forecast, supersedes) from a bundle's stored pack argv, read the
+    way bale pack reads its flags (bale help pack): --write's paths, else
+    --include's, else None for the whole tree; [] for --read-only.
+    --write and --include take several paths per flag and repeat.
+    supersedes is the session a split supersession closes (bale clears
+    that one collision), or None. Raises ValueError when the argv does
+    not read as a pack line, and the office then says it is passing
+    bale's own words through."""
+    a = bundle_argv_parts(argv)
     supersedes = a.supersedes[-1] if a.supersedes else None
     if a.read_only:
         return [], supersedes
     writes = [p for group in a.write for p in group]
     includes = [p for group in a.include for p in group]
     return (writes or includes or None), supersedes
+
+
+def bundle_places(office_root, paths):
+    """[(label, directory, missing paths)] for every place a bundle could
+    open in: the office, then each project it scopes that can be read,
+    by name. A place whose missing list is empty holds every path."""
+    root = pathlib.Path(office_root).resolve()
+    places = [("office", root)]
+    for p in office_projects(root) or []:
+        if not p["problem"] and p["resolved"].is_dir():
+            places.append((p["name"], p["resolved"]))
+    return [(label, d, [x for x in paths if not (d / x.strip("/")).exists()]) for label, d in places]
+
+
+def bundle_where(office_root, bundle, lane=None):
+    """Where a bundle opens by default, for office start's where question:
+    (default, why), or None when the office cannot read the bundle's pack
+    line (a bare name bale's search finds), so the lane's default stands.
+    The default is the one place whose tree holds every path the bundle's
+    pack line names; when several do, the lane's project, else the office.
+    Raises StartError, before bale runs, when no one place holds them all,
+    naming the paths and where each is (or that it is nowhere)."""
+    argv = bundle_pack_argv(bundle)
+    if argv is None:
+        return None
+    try:
+        includes, writes, _ = bundle_paths(argv)
+    except ValueError:
+        return None
+    paths = list(dict.fromkeys(includes + writes))
+    places = bundle_places(office_root, paths)
+    holders = [label for label, _, missing in places if not missing]
+    named = ", ".join(paths)
+    if not holders:
+        raise StartError(bundle_nowhere_lines(bundle, paths, places))
+    if len(holders) == 1:
+        where = holders[0]
+        return where, (f"every path the bundle names ({named}) is in {place_words(where)}'s tree, and in no other "
+                       "place the office scopes")
+    pick = lane if lane in holders else ("office" if "office" in holders else holders[0])
+    what = f"every path the bundle names ({named})" if paths else "the bundle names no path, so the whole tree, and it"
+    because = "the folder's lane names it" if pick == lane else (
+        "the folder's lane names no place that holds them" if lane else "the folder's lane names no project")
+    return pick, (f"{what} is in several places ({', '.join(place_words(h) for h in holders)}); "
+                  f"{place_words(pick)}, because {because}")
+
+
+def place_words(label):
+    return "the office" if label == "office" else label
+
+
+def bundle_nowhere_lines(bundle, paths, places, chosen=None):
+    """Why a bundle cannot open where it was sent: each path it names that
+    the chosen place (or every place) lacks, and where it is instead."""
+    lines = []
+    name = pathlib.Path(bundle).name
+    holders = {x: [label for label, _, missing in places if x not in missing] for x in paths}
+    nowhere = [x for x in paths if not holders[x]]
+    if chosen is None:
+        lines.append(f"the bundle {name} names paths no one place the office can see holds, so bale would refuse it "
+                     "wherever it opened; nothing ran")
+    for x in paths:
+        if chosen is not None and chosen in holders[x]:
+            continue
+        where = ", ".join(place_words(h) for h in holders[x]) if holders[x] else "nowhere the office can see"
+        lines.append(f"  {x}: in {where}")
+    if nowhere:
+        lines.append(f"{', '.join(nowhere)} exist{'s' if len(nowhere) == 1 else ''} in neither the office nor any "
+                     "project it scopes; ask the planner for a bundle whose paths exist here")
+    return lines
+
+
+DOCTRINE_IGNORE = ("__pycache__", ".bale")
+
+
+def doctrine_files(directory):
+    """{relative path: bytes} of a doctrine directory, caches aside."""
+    d = pathlib.Path(directory)
+    out = {}
+    for f in sorted(d.rglob("*")):
+        rel = f.relative_to(d)
+        if f.is_file() and not any(part in DOCTRINE_IGNORE for part in rel.parts):
+            out[str(rel)] = f.read_bytes()
+    return out
+
+
+def ships(path, includes, excludes=()):
+    """Does a pack with these includes (None: the whole tree) and
+    excludes ship the path? An entry holds the path when it is the path
+    or a directory above it."""
+    holds = lambda e, p: (e.strip("/") in ("", ".") or p == e.strip("/")  # noqa: E731
+                          or p.startswith(e.strip("/") + "/"))
+    if any(holds(e, path) for e in excludes):
+        return False
+    return includes is None or any(holds(e, path) for e in includes)
+
+
+def doctrine_in_tree(tree, includes, excludes=()):
+    """The doctrine directory a packed tree ships beside the install's,
+    or None: tree/doctrine/OFFICE.md, when the pack's includes reach it
+    (office-src itself is the case): every file of it, not only
+    OFFICE.md, since the install's copy stays home on the strength of it."""
+    if tree is None:
+        return None
+    d = pathlib.Path(tree) / "doctrine"
+    if not (d / "OFFICE.md").is_file():
+        return None
+    # Every file of it, or the session would lack the rest (its checks)
+    # if the install's copy stayed home.
+    return d if all(ships(f"doctrine/{rel}", includes, excludes) for rel in doctrine_files(d)) else None
+
+
+def survey_before_pack(office_root):
+    """office survey --before-pack in the office: the survey page again,
+    committed alone, never fatal (doctrine section 13). Its words go to
+    stderr, since stdout is office start's one JSON line."""
+    env = dict(os.environ, OFFICE_ROOT=str(office_root), PYTHONDONTWRITEBYTECODE="1")
+    try:
+        proc = subprocess.run([str(INSTALL / "bin" / "office"), "survey", "--before-pack"], env=env,
+                              stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr, timeout=PACK_TIMEOUT)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log(f"warning: the survey before the pack could not run ({exc}); the session reads the survey as it was")
+        return
+    if proc.returncode != 0:
+        log(f"warning: the survey before the pack exited {proc.returncode}; the session reads the survey as it was")
 
 
 def open_bundle(rd, pack_dir, bundle):
@@ -1549,13 +1738,18 @@ def open_bundle(rd, pack_dir, bundle):
 
 
 def start(rd, office_root, folder, where, project, goal, slug, includes, writes, read_only,
-          brief, work_class, tray_root, bundle=None):
+          brief, work_class, tray_root, bundle=None, leave_out=()):
     """Pack a session for a folder and fill its out tray. Returns a dict:
     sid, tray, files, opener (lines, or None), carried (what each file
     is), warnings. Raises StartError with lines to print when it cannot
     go on. With a bundle, bale open replays the bundle's own pack line in
     place of a pack the office composes: goal, slug, forecast, includes
-    and brief are the bundle's, and the office adds nothing to them."""
+    and brief are the bundle's, and the office adds nothing to them.
+    leave_out names declared ride-alongs (as declared, or the path each
+    resolves to) that stay home for this session; a name no declaration
+    matches refuses. The install's doctrine rides unless the packed tree
+    ships a doctrine of its own: identical, it rides once (inside the
+    tree); different, the install's rides too, named as the install's."""
     office_root = pathlib.Path(office_root).resolve()
     manifest = oh.read_toml(office_root / "floor-plan" / "manifest.toml")
     projects = {p["name"]: p for p in oh.read_projects(manifest) or []}
@@ -1569,6 +1763,7 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         problems += entry["declaration_problems"]
         if problems:
             raise StartError([f"{project}: {p}" for p in problems])
+    rides, left = ride_choice(entry, project, leave_out)
     rd.bale()
 
     # Where the pack runs, and its forecast.
@@ -1599,6 +1794,25 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             warnings.append(f"this bundle's pack line does not carry the office's constraint (\"{PROJECT_CONSTRAINT}\"); "
                             "the office adds nothing to a bundle, so the session goes out without it")
         includes, writes, forecast = [], [], []
+        if argv is not None:
+            # Every path the bundle's line names must be in the tree it
+            # opens in; bale would refuse otherwise, after the office had
+            # gathered everything. Said here, naming where each path is.
+            try:
+                b_inc, b_wr, b_exc = bundle_paths(argv)
+            except ValueError:
+                b_inc, b_wr, b_exc = [], [], []
+            named = list(dict.fromkeys(b_inc + b_wr))
+            label = "office" if where == "office" else project
+            places = bundle_places(office_root, named)
+            mine = next((m for lab, _, m in places if lab == label), None)
+            if mine is None:
+                mine = [x for x in named if not (pathlib.Path(pack_dir) / x.strip("/")).exists()]
+            if mine:
+                raise StartError([f"the bundle {pathlib.Path(bundle).name} names paths that are not in "
+                                  f"{place_words(label)}'s tree, so it cannot open there; nothing ran"]
+                                 + bundle_nowhere_lines(bundle, named, places, chosen=label))
+            bundle_tree_includes, bundle_tree_excludes = (b_inc or None), b_exc
         if argv is None:
             forecast = None
             why = ("it is a name bale's search finds, not a file here" if not pathlib.Path(bundle).exists()
@@ -1653,12 +1867,45 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                                     else ", or narrow this one's forecast with --write"))
         raise StartError(lines)
 
+    # Every check has passed: survey the machine again before anything
+    # is packed, so the hung survey this session reads is current, and a
+    # refused start commits nothing.
+    survey_before_pack(office_root)
+
+    # The packed trees that may carry a doctrine of their own: the
+    # request's (a project session's repo) and, for an office session
+    # about a project, the project's tree riding as context.
+    if bundle:
+        req_tree = pack_dir if argv is not None and where == "project" else None
+        req_inc, req_exc = (bundle_tree_includes, bundle_tree_excludes) if req_tree else (None, ())
+    else:
+        req_tree = pack_dir if where == "project" else None
+        req_inc, req_exc = (list(includes) or None), ()
+    own = doctrine_in_tree(req_tree, req_inc, req_exc)
+    if own is None and where == "office" and entry is not None:
+        own = doctrine_in_tree(entry["resolved"], None)
+    if own is not None:
+        same = doctrine_files(own) == doctrine_files(INSTALL / "doctrine")
+        tree_label = project if where == "project" or entry is not None else "the request"
+
     tray = Tray(tray_root)
     carried = []
     stage = "a context pack"
     try:
         # The doctrine, from a scratch copy: the install is never written.
-        carried.append(scratch_context(rd, tray, INSTALL / "doctrine", "the doctrine (OFFICE.md and its checks)"))
+        # Once is enough: a packed tree that ships the same doctrine
+        # carries it; one that ships another gets the install's beside
+        # it, named so, since that is the doctrine the office runs on.
+        if own is None:
+            carried.append(scratch_context(rd, tray, INSTALL / "doctrine", "the doctrine (OFFICE.md and its checks)"))
+        elif same:
+            carried.append(f"(the doctrine rides once, inside {tree_label}'s tree at doctrine/: it is the same as "
+                           f"the install's, office-src {install_version_here()})")
+        else:
+            carried.append(scratch_context(rd, tray, INSTALL / "doctrine",
+                                           f"the doctrine the office runs on, from the install (office-src "
+                                           f"{install_version_here()}); {tree_label}'s tree carries a different "
+                                           "doctrine/ of its own", name="context-doctrine-install.tar.gz"))
         if where == "project":
             # The office's context rides beside the request, never inside
             # it: the folder and the hung items, named, because include
@@ -1669,9 +1916,11 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         elif entry is not None:
             # An office session about a project reads the project's tree.
             carried.append(context_into_tray(rd, tray, entry["resolved"], None, f"{project}'s tree"))
+        for ride in left:
+            carried.append(f"(left out of this session: {ride}, which rides with {project} as declared)")
         if entry is not None:
             grouped = {}
-            for ride in entry["rides"]:
+            for ride in rides:
                 kind, place, inc = ride_plan(oh.expand_project_path(ride))
                 if kind == "copy":
                     carried.append(f"{tray.take(place)}: rides with {project} ({ride})")
@@ -1723,7 +1972,7 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     carried.insert(0, f"{name}: the request ({kind}" + (f", from the bundle {pathlib.Path(bundle).name})" if bundle else ")"))
     return {"sid": sid, "tray": str(final), "files": sorted(tray.files), "carried": carried,
             "opener": opened["opener"], "pack_dir": str(pack_dir), "request": str(final / name),
-            "warnings": warnings}
+            "warnings": warnings, "sitting": forecast == []}
 
 
 # --- bringing a session back: office land -------------------------------------------
@@ -1895,9 +2144,7 @@ def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None):
                              "project it scopes (office start sends one out)"] + problems)
     landable = [x for x in found if not x["read_only"]]
     if not landable:
-        x = found[0]
-        raise LandError([f"{x['sid']} is a read-only session: it lands nothing, so there is no response to land "
-                         f"(when the sitting is over, bale unlock {x['sid']} in {x['repo']} closes it)"])
+        return sitting_plan(found, tarball, problems)
     if len(landable) > 1:
         raise LandError(["more than one session is out; name one: office land SID"]
                         + [f"  {x['sid']}  ({x['label']}; {', '.join(x['folders']) or 'no folder records it'})"
@@ -1918,6 +2165,78 @@ def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None):
             plan["record"]["folder"] = f
             break
     return plan
+
+
+def sitting_plan(found, tarball, problems):
+    """The plan for ending a read-only sitting, named by its id or its
+    folder: land runs bale unlock in its repo, and nothing else. Only a
+    sitting a folder records is the office's to end (one started by hand
+    in a project is that project's business), and a sitting has no
+    response to land."""
+    if len(found) > 1:
+        raise LandError(["more than one read-only sitting is open for that folder; name one: office land SID"]
+                        + [f"  {x['sid']}  ({x['label']})" for x in found])
+    x = found[0]
+    if not x["folders"]:
+        raise LandError([f"{x['sid']} is a read-only session no folder records, so it is not a sitting the office sent "
+                         f"out and office land does not end it; bale unlock {x['sid']}, in {x['repo']}, ends it by hand"])
+    if tarball is not None:
+        raise LandError([f"{x['sid']} is a read-only sitting: it lands nothing, so there is no response to land; "
+                         f"office land {x['sid']}, with no response, ends it when the sitting is over"])
+    plan = dict(x)
+    plan.update(verb="unlock", held=False, tarball=None, needs_response=False, attempts_before=0,
+                office_session=x["label"] == OFFICE_LABEL, problems=problems, record=None)
+    return plan
+
+
+def end_sitting(rd, office_root, plan, day):
+    """bale unlock for a read-only sitting, then one History line in each
+    folder that records it, committed alone. The folder keeps its status:
+    a planning folder may outlive one sitting, and closing it is the
+    occupant's (office close). Returns (words, told lines)."""
+    sid, repo = plan["sid"], plan["repo"]
+    try:
+        report = rd.unlock(repo, sid)
+    except BaleError as exc:
+        raise LandError([f"bale unlock {sid} did not end the sitting: {exc}"])
+    # From here the sitting is closed in bale, and a second land would be
+    # refused as not open, so nothing below raises: what could not be
+    # read or written is said, and the words still come back.
+    told = []
+    try:
+        reason = rd.key(report, "unlock", "closure_reason")
+        sweep = rd.key(report, "unlock", "sweep")
+        swept = bool(sweep) and rd.key(sweep, "unlock", "sweep.status") == "committed"
+        detail = rd.key(sweep, "unlock", "sweep.detail") if sweep else "bale reported no sweep"
+    except BaleError as exc:
+        reason, swept, detail = "reason unread", False, f"its report could not be read ({exc})"
+    told.append(f"bale closed {sid} in {plan['label']} ({reason}); its sweep: {detail}")
+    if not swept:
+        told.append(f"bale did not commit its record of {sid}; git status in {repo} shows what it left")
+    root = pathlib.Path(office_root)
+    for folder in plan["folders"]:
+        rel = f"{folder}/folder.md"
+        try:
+            _, wrote = oh.folder_event(root / rel, day, "ended", f"{sid}, a read-only sitting, closed by office land")
+        except (OSError, UnicodeDecodeError, oh.HelperError) as exc:
+            told.append(f"{rel}: the end of {sid} could not be written there ({exc}); the sitting is closed in bale")
+            continue
+        if not wrote:
+            told.append(f"{rel} has no History section, so the end of {sid} is not written there")
+            continue
+        try:
+            git(root, "add", "--", rel)
+            git(root, "commit", "-q", "-m", f"office land: {sid} ended in {pathlib.Path(folder).name}", "--", rel)
+        except LandError as exc:
+            # The sitting is already closed in bale; the line stands on
+            # disk and the occupant hears why it is not committed.
+            told.append(f"{rel}: History: {day} ended: {sid}, written but not committed ({' '.join(exc.lines)})")
+            continue
+        told.append(f"{rel}: History: {day} ended: {sid}")
+    names = ", ".join(plan["folders"])
+    words = (f"Ended: the sitting {sid} is closed in {plan['label']}; it landed nothing, by design. "
+             f"{names} stays as it was: closing a folder is yours (office close FOLDER).")
+    return words, told
 
 
 def take_record_out(office_root, plan):
@@ -2110,6 +2429,10 @@ def land_main(a):
             pathlib.Path(a.plan).write_text(json.dumps(plan), encoding="utf-8")
             return 0
         plan = json.loads(pathlib.Path(a.plan).read_text(encoding="utf-8"))
+        if a.cmd == "land-end":
+            words, told = end_sitting(rd, a.office, plan, a.day)
+            print(json.dumps({"words": words, "told": told}))
+            return 0
         if a.cmd == "land-prepare":
             line = take_record_out(a.office, plan)
             pathlib.Path(a.plan).write_text(json.dumps(plan), encoding="utf-8")
@@ -2160,12 +2483,18 @@ def main(argv=None):
     p.add_argument("--read-only", action="store_true"); p.add_argument("--brief")
     p.add_argument("--work-class"); p.add_argument("--tray-root", required=True)
     p.add_argument("--bundle", help="a planner bundle: bale open replays its pack line in place of a pack")
+    p.add_argument("--leave-out", action="append", default=[],
+                   help="a declared ride-along that stays home for this session (repeatable)")
+    p = sub.add_parser("bundle-where", help="where a bundle opens by default: DEFAULT<tab>WHY, or nothing")
+    p.add_argument("office"); p.add_argument("--bundle", required=True); p.add_argument("--lane")
     p = sub.add_parser("land-out", help="the sessions out: sid, where, folders; one per line")
     p.add_argument("office")
     p = sub.add_parser("land-plan", help="the one session to land and how, as JSON into --plan")
     p.add_argument("office"); p.add_argument("--sid"); p.add_argument("--folder"); p.add_argument("--response")
     p.add_argument("--cwd", help="where a relative response path is read from (default: here)")
     p.add_argument("--plan", required=True)
+    p = sub.add_parser("land-end", help="end a read-only sitting: bale unlock, then the folder's History; one JSON line")
+    p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--day", required=True)
     p = sub.add_parser("land-prepare", help="take the office's record out of an office session's folder")
     p.add_argument("office"); p.add_argument("--plan", required=True)
     p = sub.add_parser("land-run", help="bale apply or retry, the terminal's; exits with bale's code")
@@ -2176,10 +2505,23 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.cmd.startswith("land-"):
         return land_main(a)
+    if a.cmd == "bundle-where":
+        try:
+            found = bundle_where(a.office, a.bundle, a.lane or None)
+        except StartError as exc:
+            for line in exc.lines:
+                log(f"error: {line}")
+            return 1
+        except (oh.HelperError, OSError) as exc:
+            log(f"error: {exc}")
+            return 1
+        if found is not None:
+            print(f"{found[0]}\t{found[1]}")
+        return 0
     if a.cmd == "start":
         try:
             result = start(Reader(), a.office, a.folder, a.where, a.project, a.goal, a.slug, a.include,
-                           a.write, a.read_only, a.brief, a.work_class, a.tray_root, a.bundle)
+                           a.write, a.read_only, a.brief, a.work_class, a.tray_root, a.bundle, a.leave_out)
         except StartError as exc:
             for line in exc.lines:
                 log(f"error: {line}")
