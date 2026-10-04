@@ -11,7 +11,8 @@
 # It never writes what bale records. The surfaces after the reads run a
 # bale verb when the occupant asks: office start makes a session and its
 # context tarballs (pack, context, open), and office land lands one
-# (apply, retry) and carries a clarification back (relay). A datum the
+# (apply, retry), carries a clarification back (relay), and ends a
+# read-only sitting the office sent out (unlock). A datum the
 # office needs and bale does not stamp is a slip for bale-src, never a
 # scrape and never a guess (doctrine section 10); where bale prints a
 # block for a person to carry and no --json key holds it, the office
@@ -234,3 +235,25 @@ argv = ["relay", "{sid}"]
 format = "text"
 contract = "bale relay --help (v0.4.22)"
 block = ["BALE EXCHANGE BEGIN {sid}", "BALE EXCHANGE END"]
+
+# Ending a read-only sitting: office land SID on a read-only session a
+# folder records, and on no other session (the ruling of sitting
+# 2026-10-03-plan-4b-sitting-001, extending the 2026-10-01 ruling on pack
+# and apply to this one case). Probed in 2026-10-04-friction-second-trip-001
+# on bale 0.4.45, in a throwaway repo: unlock asks nothing, on a terminal
+# or piped, so it runs with stdin closed like a read. bale infers the
+# reason, closed-read-only, from the empty scope, and its sweep commits
+# the session's telemetry record alone, as
+# `[bale sweep SID] closed-read-only`, leaving any other change in the
+# tree as it was. The human summary is on stderr.
+[surfaces.unlock]
+argv = ["unlock", "{sid}", "--json"]
+contract = "format_unlock_json's docstring, bin/bale_report.py; bale unlock --help (v0.4.45)"
+outcome = "unlocked"
+keys = [
+  "outcome",
+  "closure_reason",   # closed-read-only for a read-only session
+  "sweep",
+  "sweep.status",     # committed when bale committed the record
+  "sweep.detail",     # bale's words for what its sweep did
+]

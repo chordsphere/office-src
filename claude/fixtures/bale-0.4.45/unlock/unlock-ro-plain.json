@@ -1,0 +1,33 @@
+{
+ "argv": [
+  "unlock",
+  "2026-10-04-probe-unlock-plain-002"
+ ],
+ "cwd": "/tmp/office-probe.DPIe0v/repo",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "[bale] unlock: 2026-10-04-probe-unlock-plain-002",
+  "[bale] closed session 2026-10-04-probe-unlock-plain-002 in the registry",
+  "[bale] wiped /tmp/office-probe.DPIe0v/repo/.bale/sessions/2026-10-04-probe-unlock-plain-002",
+  "[bale] sweep: committed 1 file(s) as 69029ce",
+  "",
+  "  [UNLOCK] 2026-10-04-probe-unlock-plain-002",
+  "  lock:      cleared",
+  "  session:   wiped (/tmp/office-probe.DPIe0v/repo/.bale/sessions/2026-10-04-probe-unlock-plain-002)",
+  "  telemetry: recorded claude/telemetry/2026-10-04-probe-unlock-plain-002.json"
+ ],
+ "stdout_sha256": [
+  "318bd4d03cee1f3594a6c0cf0a2f8b232f692644a17acc7bdef552651313c95a",
+  "d207347d81b9f332616285c6f9f300f6c5d075de2c71c10d3ed1f3eb79e307a5",
+  "212176949ac01497e96bc69845d48f0dd37aa3f9853d350c116788aa72989655",
+  "ecaeddbba596bdc279553a5bbe24543e59bc07afb40916ca3290774b15b036e4",
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "dd754f4dad509a8b5371b7076bb53ddf9aead969fadbb02aeaca049295af39a7",
+  "032e2c2eb0c7cf45d0ea93308e6e66065443d7eb2c01559d60070a1aeb1c3469",
+  "c1f308765a85ab91f7427a6ad7e636491063f53314d911fead3fa51b8ed92d3d",
+  "6ab473d8e4c2a20f609181d08af4d8327d4f3eaf14e721aa4cbe0f78da78c43b"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-04-friction-second-trip-001, run on the machine office-src is built on, in a throwaway repo under /tmp/office-probe.DPIe0v (removed)"
+}

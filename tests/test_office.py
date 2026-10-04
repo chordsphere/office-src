@@ -1230,6 +1230,10 @@ WORDS_SHA256 = {
     "2026-10-02-friction-wave-sitting-001": "97a2df5f66da24b7a75a13024da98403e9aa4229865014e5c993410de592ddf2",
     "2026-10-02-friction-wave-sitting-001-2": "2db9f41b29aa1adaac51fa6a4f06aec8f0eb397f05493862f405138c0b24c13e",
     "2026-10-02-friction-wave-sitting-001-3": "b48fdc2ecde43007c680b59f4d75c165dc63a9eef6c70eb95367bd38dda7c44a",
+    # The last sitting page office-src receives: from sitting
+    # 2026-10-03-plan-4b-sitting-001 on, a sitting's words go to the
+    # office's notepad through the pages its bundles carry.
+    "2026-10-02-friction-wave-sitting-001-4": "b215511da03ba2ad32462e3600f5862b0a5f135291058af4a347fcf070eb81f5",
 }
 
 

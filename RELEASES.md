@@ -4,6 +4,78 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.9.0
+
+Additive: no migration, nothing to do in any office. Every older office
+shape keeps working: a project without ride-alongs or after-land actions
+starts and lands as before, and an office whose zone resolves walks in
+as before.
+
+The second trip: the five frictions the first real round trip through
+`office start` and `office land` found, and an answer to why the install
+did not move when 0.8.0 landed.
+
+`office start` shows, on a terminal, what rides with the project and the
+size of each, and asks which ride with this session: a plain return
+rides them all, as declared; `none`, or the numbers to leave out, keep
+them home this once and change no declaration. `--leave-out PATH`
+(repeatable) and `--no-rides` are the flag twins, and a bundle takes
+them too; piped, everything declared rides. The doctrine rides once: a
+project whose packed tree carries the same `doctrine/` (office-src's
+own) reads it there, and the tray's listing says so; one whose tree
+carries a different `doctrine/` gets the install's beside it, as
+`context-doctrine-install.tar.gz`, named as the doctrine the office runs
+on, so a worker sees which one the office actually runs.
+
+`office start` surveys the machine again before every pack and commits
+the page alone (`office start: survey: N facts changed`), so the survey
+a session reads first is never older than the session. While an open
+session's forecast holds the page (the one-writer rule), or when the
+survey cannot run, start leaves it as it is and says how old it is.
+`office status` names the survey's age and the office-src version it
+records beside the installed one.
+
+`office land SID` on a read-only sitting the office sent out ends it:
+`bale unlock SID --json` in the sitting's repo (bale asks nothing, infers
+`closed-read-only` from the empty scope, and commits its telemetry
+record alone), then an `ended` line in the folder's History, committed
+alone. The folder keeps its status: closing it is the occupant's. Land
+never picks a sitting by itself, and a read-only session no folder
+records is not the office's to end. The walk-in's In flight line for a
+sitting says `office land SID` ends it when the sitting is over; the
+Next line never names one.
+
+`office start` with a bundle the office can read defaults the where
+question to the one place whose tree holds every path the bundle's pack
+line names (the office, or one of its projects; when several do, the
+lane's project, else the office), and the question's help says why. A
+bundle whose paths no one place holds, or that is sent where its paths
+are not, is refused before bale runs, naming each path and where it is.
+
+A floor plan's timezone that does not resolve is named with its remedy:
+the warning every verb prints, a `timezone:` problem line in `office
+status`, and the walk-in's header, which says it is on UTC and why. The
+remedy is the canonical spelling when the zone database holds one by the
+zone's last name (`America/Indiana/Indianapolis` for
+`America/Indianapolis`), and the package that keeps the legacy names
+(`tzdata-legacy` on Debian and Ubuntu) otherwise. `TZDIR` names another
+zone database, as for the C library.
+
+`office land` ends with what became of each after-land action (ran,
+failed, not run, with the line that reruns from the failed one), after
+the ratification, so the outcome of an install is the last thing on the
+screen; a project with no after-land action is said so rather than
+passed over. 0.7.0 and 0.8.0 ran an empty action for such a project and
+said "1 action(s) ran"; that is gone. `office status` gains a `source:`
+line comparing the install with the working copy it was installed from
+(install.sh's INSTALLED stamp): an install that is not the source's HEAD
+says BEHIND, with the line that brings it level. One exit code changes:
+a landing whose project declarations do not read now exits 1 (the session
+landed, its actions did not run), as a failing action already did. Why
+0.8.0's install did
+not move: it was applied by hand with `bale apply`, which runs no
+after-land action; nothing in the office failed.
+
 ## 0.8.0
 
 Additive: no migration, nothing to do in any office. Every older office

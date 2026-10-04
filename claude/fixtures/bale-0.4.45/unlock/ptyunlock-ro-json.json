@@ -1,0 +1,40 @@
+{
+ "argv": [
+  "unlock",
+  "2026-10-04-probe-unlock-tty-003",
+  "--json"
+ ],
+ "cwd": "/tmp/office-probe.DPIe0v/repo",
+ "stdin": "pty (stderr the same pty, stdout piped)",
+ "exit": 0,
+ "events": [
+  [
+   "tty",
+   "[bale] unlock: 2026-10-04-probe-unlock-tty-003\r\n"
+  ],
+  [
+   "tty",
+   "[bale] closed session 2026-10-04-probe-unlock-tty-003 in the registry\r\n[bale] wiped /tmp/office-probe.DPIe0v/repo/.bale/sessions/2026-10-04-probe-unlock-tty-003\r\n"
+  ],
+  [
+   "tty",
+   "[bale] sweep: committed 1 file(s) as c3dd9ae\r\n"
+  ],
+  [
+   "tty",
+   "\r\n  [UNLOCK] 2026-10-04-probe-unlock-tty-003\r\n  lock:      cleared\r\n  session:   wiped (/tmp/office-probe.DPIe0v/repo/.bale/sessions/2026-10-04-probe-unlock-tty-003)\r\n  telemetry: recorded claude/telemetry/2026-10-04-probe-unlock-tty-003.json\r\n"
+  ],
+  [
+   "out",
+   "{\"outcome\": \"unlocked\", \"sid\": \"2026-10-04-probe-unlock-tty-003\", \"log\": \"/tmp/office-probe.DPIe0v/repo/.bale/logs/2026-10-04-probe-unlock-tty-003.log\", \"closure_reason\": \"closed-read-only\", \"session_dir_wiped\": true, \"branch_preserved\": false, \"telemetry\": \"claude/telemetry/2026-10-04-probe-unlock-tty-003.json\", \"debris\": null, \"sweep\": {\"status\": \"committed\", \"detail\": \"committed 1 file(s) as c3dd9ae\", \"sha\": \"c3dd9ae\", \"files\": [\"claude/telemetry/2026-10-04-probe-unlock-tty-003.json\"]}}\n"
+  ]
+ ],
+ "stdout": [
+  "{\"outcome\": \"unlocked\", \"sid\": \"2026-10-04-probe-unlock-tty-003\", \"log\": \"/tmp/office-probe.DPIe0v/repo/.bale/logs/2026-10-04-probe-unlock-tty-003.log\", \"closure_reason\": \"closed-read-only\", \"session_dir_wiped\": true, \"branch_preserved\": false, \"telemetry\": \"claude/telemetry/2026-10-04-probe-unlock-tty-003.json\", \"debris\": null, \"sweep\": {\"status\": \"committed\", \"detail\": \"committed 1 file(s) as c3dd9ae\", \"sha\": \"c3dd9ae\", \"files\": [\"claude/telemetry/2026-10-04-probe-unlock-tty-003.json\"]}}"
+ ],
+ "stdout_sha256": [
+  "5bc1b4dd3efd2149b4d173b62ef4653bb47ff35b2becc4c3fb194b7221b76acb"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-04-friction-second-trip-001, run on the machine office-src is built on, in a throwaway repo under /tmp/office-probe.DPIe0v (removed)"
+}

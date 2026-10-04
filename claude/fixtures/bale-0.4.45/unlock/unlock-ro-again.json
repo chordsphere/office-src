@@ -1,0 +1,16 @@
+{
+ "argv": [
+  "unlock",
+  "2026-10-04-probe-unlock-json-001",
+  "--json"
+ ],
+ "cwd": "/tmp/office-probe.DPIe0v/repo",
+ "stdin": "closed",
+ "exit": 1,
+ "stdout": [],
+ "stdout_sha256": [],
+ "stderr": [
+  "[bale] error: session 2026-10-04-probe-unlock-json-001 is not open; nothing to unlock. No sessions are open."
+ ],
+ "captured": "probe of session 2026-10-04-friction-second-trip-001, run on the machine office-src is built on, in a throwaway repo under /tmp/office-probe.DPIe0v (removed)"
+}

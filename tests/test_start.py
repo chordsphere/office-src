@@ -833,6 +833,8 @@ class TestStartOnATerminal(StartCase):
             (b"office, or one of this office's projects: alpha", ""),
             (b"in one sentence (--goal):", "?"),
             (b"becomes the request's goal", "Fix the login redirect"),
+            # 0.9.0: what rides with alpha is shown, and a plain return rides it all.
+            (b"Which ride with this session: all, none, or the numbers to leave out", ""),
         ])
         self.assertEqual(code, 0, seen)
         self.assertIn("Packed ", seen)

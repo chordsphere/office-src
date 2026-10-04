@@ -437,11 +437,14 @@ cmd_init() {
 
 usage_survey() {
   cat <<'USAGE'
-usage: office survey [--no-commit]
+usage: office survey [--no-commit | --before-pack]
 Rewrites floor-plan/survey.md with facts about this machine (the system,
 tools and their versions, the timezone, mounts by name, the bale and
 office-src installs, and the office's own drawer/survey steps), says what
 changed since the last survey, and commits the page. Facts only.
+--before-pack is how office start runs it, once its checks have passed
+and before it packs: never fatal, and left alone while an open session's
+forecast holds the page.
 Examples:
   office survey
   office survey --no-commit
@@ -485,16 +488,21 @@ init_ask_projects() {
 }
 
 cmd_survey() {
-  local commit=1 root
+  local commit=1 root before_pack=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --no-commit) commit=0; shift ;;
+      --before-pack) before_pack=1; shift ;;
       -h|--help) usage_survey; return 0 ;;
       *) die "unknown option for survey: $1" ;;
     esac
   done
   require_tools python3 timeout
   root="$(resolve_office)" || exit 1
+  if [ "$before_pack" = 1 ]; then
+    [ "$commit" = 1 ] || die "--before-pack commits the page; it takes no --no-commit"
+    refresh_survey "$root"; return 0
+  fi
   require_current "$root"
   warn_if_unfounded "$root"
   log "surveying $(hostname 2>/dev/null) for $root"
@@ -502,28 +510,98 @@ cmd_survey() {
   report="$(write_survey "$root")" || exit 1
   printf '%s\n' "$report"
   if [ "$commit" = "1" ] && git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    git -C "$root" add -- "$SURVEY_REL"
-    if git -C "$root" diff --cached --quiet -- "$SURVEY_REL"; then
-      log "survey page unchanged in git"
-    else
-      git -C "$root" commit -q -m "office survey: $(printf '%s\n' "$report" | grep -c '^\(added\|removed\|changed\) ' || true) facts changed" -- "$SURVEY_REL" || die "could not commit $SURVEY_REL"
-      log "committed $SURVEY_REL"
-    fi
+    commit_survey "$root" "$report" "office survey" || die "could not commit $SURVEY_REL"
   fi
+}
+
+# commit_survey ROOT REPORT WHO: commit the survey page alone, its
+# subject counting the facts that changed.
+commit_survey() {
+  local root="$1" report="$2" who="$3" n
+  git -C "$root" add -- "$SURVEY_REL" || return 1
+  if git -C "$root" diff --cached --quiet -- "$SURVEY_REL"; then
+    log "survey page unchanged in git"; return 0
+  fi
+  n="$(printf '%s\n' "$report" | grep -c '^\(added\|removed\|changed\) ' || true)"
+  git -C "$root" commit -q -m "$who: $n facts changed" -- "$SURVEY_REL" || return 1
+  log "committed $SURVEY_REL ($n facts changed)"
+}
+
+# Before office start packs anything (office survey --before-pack, which
+# the start in lib/office_bale.py runs once its checks have passed, so a
+# refused start commits nothing): survey the machine again, so the hung
+# survey every session reads first is never older than its pack
+# (doctrine section 13). One commit, the page alone. Never fails a
+# start: a survey that cannot run, or a page an open session's forecast
+# holds (the one-writer rule), leaves the page as it is and says how old
+# it is and which office-src it records.
+refresh_survey() {
+  local root="$1" held rc report age
+  age="$(helper survey-age "$root/$SURVEY_REL" --install "$(install_version)" 2>/dev/null || printf 'unreadable')"
+  held="$(reader writers "$root" "$SURVEY_REL" 2>/dev/null)"; rc=$?
+  case $rc in
+    0) ;;
+    3) warn "an open session holds $SURVEY_REL (the one-writer rule), so office start leaves the survey as it is: $age"
+       printf '%s\n' "$held" | sed 's/^/[office]   /' >&2
+       return 0 ;;
+    *) warn "bale's registry in this office could not be read, so office start leaves the survey as it is: $age"
+       return 0 ;;
+  esac
+  if ! report="$( (write_survey "$root") 2>/dev/null )"; then
+    warn "the survey could not run, so the session reads the survey as it was: $age (office survey says why)"
+    return 0
+  fi
+  if git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    commit_survey "$root" "$report" "office start: survey" \
+      || warn "the survey was refreshed but not committed; $SURVEY_REL is changed on disk"
+  fi
+  log "surveyed this machine again for the session ($(helper survey-age "$root/$SURVEY_REL" --install "$(install_version)" 2>/dev/null))"
 }
 
 usage_status() {
   cat <<'USAGE'
 usage: office status
 Says whether the office matches the installed tool, read-only: the version
-stamp and any skew, whether the profile is complete, the survey's age,
-whether bale.toml's include group matches the floor plan, the install's
-catalogs, folders against their History, filed pages against git, and the
-installed bale and the projects. It reports and exits 0.
+stamp and any skew, whether the install is level with the working copy it
+was installed from, whether the profile is complete, the survey's age and
+the office-src it records, whether the floor plan's timezone resolves (and
+what fixes it when it does not), whether bale.toml's include group matches
+the floor plan, the install's catalogs, folders against their History,
+filed pages against git, and the installed bale and the projects. It
+reports and exits 0.
 Examples:
   office status
   OFFICE_ROOT=~/offices/work office status
 USAGE
+}
+
+# The install against the working copy it was installed from, as
+# install.sh stamped it in INSTALLED: an install that is not the
+# source's HEAD says so, with the line that brings it level. An install
+# moves only when install.sh runs (office land runs it for office-src as
+# an after-land action, when office land lands the session); this line
+# is how an install left behind is seen.
+install_source_line() {
+  local stamp="$OFFICE_SRC/INSTALLED" src commit head have v
+  if [ ! -f "$stamp" ]; then
+    printf 'source:     none recorded (no INSTALLED stamp: this office-src runs from a working copy, not an install)\n'
+    return 0
+  fi
+  src="$(sed -n 's/^source: //p' "$stamp" | head -n 1)"
+  commit="$(sed -n 's/^commit: //p' "$stamp" | head -n 1)"
+  if [ -z "$src" ] || ! git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    printf 'source:     %s, which is not a git work tree here, so the install cannot be compared with it\n' "${src:-(unrecorded)}"
+    return 0
+  fi
+  head="$(git -C "$src" rev-parse HEAD 2>/dev/null)"
+  have="$(git -C "$src" rev-parse --verify --quiet "${commit}^{commit}" 2>/dev/null)"
+  if [ -n "$have" ] && [ "$have" = "$head" ]; then
+    printf 'source:     %s at %s, as installed\n' "$src" "$commit"
+  else
+    v="$(git -C "$src" show HEAD:VERSION 2>/dev/null | head -n 1)"
+    printf 'source:     BEHIND: the install is %s, and %s is now at %s (office-src %s); (cd %s && ./install.sh) brings the install level\n' \
+      "$commit" "$src" "$(git -C "$src" rev-parse --short HEAD)" "${v:-?}" "$(shq "$src")"
+  fi
 }
 
 cmd_status() {
@@ -538,6 +616,7 @@ cmd_status() {
   printf 'office:     %s\n' "$root"
   printf 'name:       %s\n' "$(helper get "$root/$MANIFEST_REL" office.name --default "(unnamed)")"
   printf 'install:    office-src %s at %s\n' "$(install_version)" "$OFFICE_SRC"
+  install_source_line
   printf 'built from: %s\n' "$built"
   printf 'migrated:   %s\n' "$office_v"
   case "$state" in
@@ -553,7 +632,15 @@ cmd_status() {
        printf '%s\n' "$profile" | sed 's/^/  /' ;;
     *) printf 'profile:    could not be checked\n' ;;
   esac
-  printf 'survey:     %s\n' "$(helper survey-age "$root/$SURVEY_REL" 2>/dev/null || printf 'unreadable')"
+  printf 'survey:     %s\n' "$(helper survey-age "$root/$SURVEY_REL" --install "$(install_version)" 2>/dev/null || printf 'unreadable')"
+  local tz_named
+  tz_named="$(office_tz_named "$root")"
+  if zone_resolves "$tz_named"; then
+    printf 'timezone:   %s\n' "$tz_named"
+  else
+    printf 'timezone:   PROBLEM: the floor plan names %s, which is not in %s, so the office runs on UTC\n' "$tz_named" "$(zoneinfo_dir)"
+    printf '  %s\n' "$(zone_remedy "$tz_named")"
+  fi
   local drift
   drift="$(helper include-group-check "$root/$MANIFEST_REL" "$root/$BALE_TOML_REL" "$root")"
   case $? in
@@ -715,13 +802,47 @@ cmd_upgrade() {
 # network. Each commits exactly the paths it touched, so the occupant's
 # other work in progress is never swept into a verb's commit.
 
+# The zone database the office checks a timezone against: TZDIR when it
+# is set (the variable the C library reads too), else the usual place.
+zoneinfo_dir() { printf '%s' "${TZDIR:-/usr/share/zoneinfo}"; }
+
+# The timezone the floor plan names, as written (UTC when it names none).
+office_tz_named() {
+  helper get "$1/$MANIFEST_REL" office.timezone --default UTC 2>/dev/null || printf 'UTC'
+}
+
+# zone_resolves NAME: is NAME a zone file under the zone database?
+zone_resolves() {
+  local tz="$1"
+  [ "$tz" = UTC ] && return 0
+  case "$tz" in ""|/*|*..*) return 1 ;; esac
+  [ -f "$(zoneinfo_dir)/$tz" ]
+}
+
+# zone_remedy NAME: what makes a zone that does not resolve resolve.
+# Ubuntu 24.04 moved the legacy names (America/Indianapolis among them)
+# to the tzdata-legacy package; the canonical spelling is found by the
+# zone's last name (Indianapolis -> America/Indiana/Indianapolis).
+zone_remedy() {
+  local tz="$1" dir base found
+  dir="$(zoneinfo_dir)"; base="${tz##*/}"
+  found="$(cd "$dir" 2>/dev/null && find . \( -path ./posix -o -path ./right \) -prune -o -type f -name "$base" -print 2>/dev/null \
+    | sed 's#^\./##' | sort | head -n 3 | paste -sd, - | sed 's/,/, /g')"
+  if [ -n "$found" ]; then
+    printf 'this zone database spells it %s: the floor plan'"'"'s timezone line can name that, or the package that keeps the legacy names (tzdata-legacy on Debian and Ubuntu) brings %s back' "$found" "$tz"
+  else
+    printf 'no zone here is named %s: install the package that keeps the legacy names (tzdata-legacy on Debian and Ubuntu), or name a zone %s holds in the floor plan'"'"'s timezone line' "$base" "$dir"
+  fi
+}
+
 # The office's timezone from its floor plan, checked against the zone
-# database; a bad or missing zone falls back to UTC, loudly.
+# database; a bad or missing zone falls back to UTC, loudly, with what
+# fixes it.
 office_tz() {
   local root="$1" tz
-  tz="$(helper get "$root/$MANIFEST_REL" office.timezone --default UTC 2>/dev/null)" || tz="UTC"
-  if [ "$tz" != "UTC" ] && [ ! -e "/usr/share/zoneinfo/$tz" ]; then
-    warn "the floor plan's timezone '$tz' is not in /usr/share/zoneinfo; using UTC"
+  tz="$(office_tz_named "$root")"
+  if ! zone_resolves "$tz"; then
+    warn "the floor plan's timezone '$tz' is not in $(zoneinfo_dir), so the office runs on UTC; $(zone_remedy "$tz")"
     tz="UTC"
   fi
   printf '%s' "$tz"
@@ -1447,14 +1568,19 @@ usage_start() {
   cat <<'USAGE'
 usage: office start [FOLDER] [--in-office | --on PROJECT] [--goal TEXT] [--slug SLUG]
                     [--write PATH]... [--include PATH]... [--brief FILE] [--read-only]
-       office start [FOLDER] [--in-office | --on PROJECT] --bundle FILE
+                    [--leave-out PATH]... [--no-rides]
+       office start [FOLDER] [--in-office | --on PROJECT] --bundle FILE [--leave-out PATH]... [--no-rides]
 Packs a session for a folder on the desk and gathers everything to attach
 into one out tray: the request, the doctrine, and whatever rides with the
 work (on a project, the office's context and the project's ride-alongs;
 in the office, the project its lane names, when it names one). Records
 the session id in the folder and prints the opener to paste. A page of a
 sitting's words that the brief carries (between NOTEPAD PAGE markers) is
-filed in the notepad.
+filed in the notepad. Before it packs, it surveys the machine again, so
+the survey every session reads first is current; the doctrine rides once
+(a project whose own tree carries the same doctrine/ ships it there; one
+whose doctrine differs gets the install's beside it, named as the
+install's).
   FOLDER         the job: its name, a unique part of it, or folder N;
                  on a terminal it is asked for, and new opens one through
                  office open's own questions
@@ -1472,11 +1598,21 @@ filed in the notepad.
                  by default)
   --brief FILE   a brief to ship as the request's README.md
   --read-only    forecast nothing: a sitting that lands nothing itself
+                 (office land SID ends it when the sitting is over)
+  --leave-out PATH
+                 a path that rides with the project (office projects
+                 lists them) stays home for this session; repeatable. On
+                 a terminal, start shows what rides and asks; piped,
+                 everything declared rides
+  --no-rides     every ride-along stays home for this session
   --bundle FILE  a planner's bundle (FILE.bale-bundle, a path or the bare
                  name bale's search finds; given as a word, it needs no
                  flag): bale open replays the bundle's own pack line, so
                  the goal, the forecast and the brief are the bundle's,
-                 and the office adds nothing to it
+                 and the office adds nothing to it. Where defaults to the
+                 one place whose tree holds every path the bundle names,
+                 and a bundle whose paths no one place holds is refused
+                 before bale runs
 When the response comes back, office land brings it in.
 Under the hood: bale pack --json (or bale open for a bundle) where the work
 lands, and bale pack --context for each context tarball; OFFICE_DEBUG=1
@@ -1486,6 +1622,7 @@ Examples:
   office start fix-login --on office-src --goal "Fix the login redirect"
   office start plan-wave --in-office --read-only --goal "Plan the next wave"
   office start fix-login --on office-src 2026-10-05-fix-login.bale-bundle
+  office start fix-login --on office-src --goal "Fix it" --leave-out ~/nisaba-src/blueprints
 The out tray is ~/out-tray/SID unless this machine's
 ~/.config/office-src/machine.toml sets out_tray. On WSL the tray opens in
 Explorer and the opener goes to the clipboard; clipboard_command and
@@ -1509,8 +1646,46 @@ ask_start_folder() {
     "The folder the session works on. new opens one first, with office open's questions (title, size, lane, source)."
 }
 
+# ask_rides VAR PROJECT RIDE...: on a terminal, what rides with the
+# project, each with its size, and which stay home this once. VAR gets
+# the ones left out (the flag twin is --leave-out, repeatable, or
+# --no-rides). The default is that everything rides, as declared.
+ask_rides() {
+  local __var="$1" project="$2" ans n i size picked=() w; shift 2
+  local rides=("$@")
+  printf 'What rides with %s (declared; office projects set %s changes it for good):\n' "$project" "$project" >&2
+  i=0
+  for w in "${rides[@]}"; do
+    i=$((i + 1))
+    size="$w"
+    case "$size" in "~") size="$HOME" ;; "~/"*) size="$HOME/${size#\~/}" ;; esac
+    size="$(timeout 3 du -sh "$size" 2>/dev/null | cut -f1)"
+    printf '  %s. %s%s\n' "$i" "$w" "${size:+  ($size)}" >&2
+  done
+  while :; do
+    ask ans "Which ride with this session: all, none, or the numbers to leave out (--leave-out PATH, --no-rides)" \
+      "all" 1 \
+      "Each declared ride-along is packed as context beside the request. Leave one out when this session does not need it: it stays home this once, and the declaration is unchanged. all rides everything; none leaves everything out; 1 3 leaves out the first and the third."
+    case "$ans" in
+      all|All|ALL) eval "$__var=()"; return 0 ;;
+      none|None|NONE) eval "$__var=(\"\${rides[@]}\")"; return 0 ;;
+    esac
+    picked=(); n=0
+    for w in ${ans//,/ }; do
+      if [[ "$w" =~ ^[0-9]+$ ]] && [ "$w" -ge 1 ] && [ "$w" -le "${#rides[@]}" ]; then
+        picked+=("${rides[$((w - 1))]}"); n=$((n + 1))
+      else
+        n=-1; break
+      fi
+    done
+    if [ "$n" -gt 0 ]; then eval "$__var=(\"\${picked[@]}\")"; return 0; fi
+    printf '  all, none, or numbers from the list above\n' >&2
+  done
+}
+
 cmd_start() {
   local want="" where="" project="" goal="" slug="" brief="" read_only=0 includes=() writes=() set_w=0 bundle=""
+  local leave_out=() no_rides=0
   local root name md status lane lane_project lane_paths names cls ans tz day out sid tray tray_root rel about="" args=() v
   local packed_flags=()
   while [ $# -gt 0 ]; do
@@ -1526,6 +1701,9 @@ cmd_start() {
       --bundle) [ $# -ge 2 ] || die "--bundle needs the bundle: a path, or the name bale's search finds"
                 [ -z "$bundle" ] || die "office start takes one bundle"; bundle="$2"; shift 2 ;;
       --read-only) read_only=1; packed_flags+=("$1"); shift ;;
+      --leave-out) [ $# -ge 2 ] || die "--leave-out needs a path that rides with the project (office projects lists them)"
+                   leave_out+=("$2"); shift 2 ;;
+      --no-rides) no_rides=1; shift ;;
       -h|--help) usage_start; return 0 ;;
       -*) usage_start >&2; die "office start does not know $1; the flags above are what it takes" ;;
       *.bale-bundle) [ -z "$bundle" ] || die "office start takes one bundle"; bundle="$1"; shift ;;
@@ -1533,6 +1711,7 @@ cmd_start() {
     esac
   done
   [ "$read_only" = 0 ] || [ "$set_w" = 0 ] || die "--read-only forecasts nothing, so it takes no --write"
+  [ "$no_rides" = 0 ] || [ "${#leave_out[@]}" -eq 0 ] || die "--no-rides leaves every ride-along out, so it takes no --leave-out"
   if [ -n "$bundle" ]; then
     [ "${#packed_flags[@]}" -eq 0 ] || die "a bundle carries its own pack line (goal, forecast, brief), so it takes no ${packed_flags[*]}; give the folder and where the work lands, nothing else"
     # A file here is handed to bale by its full path; a bare name is
@@ -1570,12 +1749,24 @@ cmd_start() {
   printf '%s\n' "$names" | grep -qxF -- "$lane_project" || lane_project=""
 
   # Where the work lands: two choices, the kind names behind the curtain.
+  # For a bundle the office can read, the default is the one place whose
+  # tree holds every path the bundle names, and a bundle whose paths no
+  # one place holds is refused here, before bale runs.
+  local where_default="${lane_project:-office}" where_why=""
+  if [ -n "$bundle" ] && [ -f "$bundle" ]; then
+    local found
+    found="$(reader bundle-where "$root" --bundle "$bundle" ${lane_project:+--lane "$lane_project"})" || exit 1
+    if [ -n "$found" ]; then
+      where_default="${found%%$'\t'*}"; where_why="${found#*$'\t'}"
+      debug "where defaults to $where_default for this bundle: $where_why"
+    fi
+  fi
   if [ -z "$where" ]; then
     can_ask || die "say where the work lands: --in-office, or --on PROJECT ($(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')); piped input is never asked"
     while :; do
       ask ans "Where the work lands: office, or the project it changes ($(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')) (--in-office or --on PROJECT)" \
-        "${lane_project:-office}" 1 \
-        "office: the session works in this office (the folder, the notepad) and is packed here. A project's name: the session changes that project's repo and is packed there, with this office's context riding beside it, never inside it."
+        "$where_default" 1 \
+        "office: the session works in this office (the folder, the notepad) and is packed here. A project's name: the session changes that project's repo and is packed there, with this office's context riding beside it, never inside it.${where_why:+ The default is $where_default because $where_why.}"
       if [ "$ans" = office ]; then where=office; break; fi
       if printf '%s\n' "$names" | grep -qxF -- "$ans"; then where=project; project="$ans"; break; fi
       printf '  office, or one of this office'"'"'s projects: %s\n' "$(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')" >&2
@@ -1622,6 +1813,21 @@ cmd_start() {
     fi
     [ "${#writes[@]}" -gt 0 ] || log "no forecast given: bale forecasts the whole of $project, so no other session there runs beside this one"
   fi
+  # What rides with the project: shown on a terminal, where a declared
+  # ride-along can stay home for this session; piped, everything rides
+  # as declared unless --leave-out or --no-rides says otherwise.
+  local ride_project="" rides=() r
+  if [ "$where" = project ]; then ride_project="$project"; else ride_project="$about"; fi
+  if [ -n "$ride_project" ]; then
+    mapfile -t rides < <(helper project-facts "$root/$MANIFEST_REL" "$ride_project" 2>/dev/null | awk -F'\t' '$1 == "rides" {print $2}')
+  fi
+  if [ "$no_rides" = 1 ]; then
+    [ "${#rides[@]}" -gt 0 ] || log "nothing rides with ${ride_project:-this session}, so --no-rides changes nothing"
+    leave_out=("${rides[@]}")
+  elif [ "${#rides[@]}" -gt 0 ] && [ "${#leave_out[@]}" -eq 0 ] && can_ask; then
+    ask_rides leave_out "$ride_project" "${rides[@]}"
+  fi
+
   args=(--where "$where" --goal "$goal" --slug "$slug")
   [ "$where" = project ] && args+=(--project "$project")
   [ -z "$about" ] || args+=(--project "$about")
@@ -1631,6 +1837,7 @@ cmd_start() {
   if [ -n "$brief" ]; then [ -f "$brief" ] || die "--brief $brief: no such file"; args+=(--brief "$brief"); fi
   [ -z "$cls" ] || [ -n "$bundle" ] || args+=(--work-class "$cls")
   [ -z "$bundle" ] || args+=(--bundle "$bundle")
+  for r in "${leave_out[@]}"; do args+=(--leave-out "$r"); done
   tray_root="$(machine_setting out_tray "$HOME/out-tray")"
   case "$tray_root" in "~"|"~/"*) tray_root="$HOME${tray_root#\~}" ;; esac
 
@@ -1664,7 +1871,11 @@ if r["opener"] is not None:
     return "$filed_rc"
   fi
   printf -- '--8<-- session opener --8<--\n%s\n--8<-- end session opener --8<--\n' "$opener"
-  printf '\nWhen the response comes back: office land %s\n' "$sid"
+  if [ -n "$(printf '%s' "$out" | python3 -c 'import json,sys; print("yes" if json.load(sys.stdin).get("sitting") else "")')" ]; then
+    printf '\nA read-only sitting lands nothing; when it is over: office land %s ends it\n' "$sid"
+  else
+    printf '\nWhen the response comes back: office land %s\n' "$sid"
+  fi
   start_desktop "$tray" "$opener"
   [ "$filed_rc" = 0 ] || warn "the session is open and its tray is ready, but a page of the sitting's words was not filed (the lines above say why)"
   return "$filed_rc"
@@ -1755,8 +1966,13 @@ office itself; bale retry when bale held the session), and says how it
 ended. bale asks its own questions (an admission, the merge, a hook) and
 only you answer them. After an applied landing it runs the project's
 after-land actions in order, then asks whether the planner ratified the
-session's judgment calls. Anything bale prints for you to carry is
-printed whole and, on WSL, put on the clipboard.
+session's judgment calls, and ends by saying what became of each action
+(ran, failed, not run). Anything bale prints for you to carry is printed
+whole and, on WSL, put on the clipboard. Given a read-only sitting the
+office sent out (by its id or its folder), land ends it instead: bale
+unlock in its repo and an `ended` line in the folder's History; the
+folder stays as it is. An after-land action runs only through office
+land: a session applied by hand with bale apply runs none.
   (nothing)        the session the office has out; asked when there are several
   SID, --sid       a session by its id
   FOLDER, --folder the session out for a folder: its name, part of it, or folder N
@@ -1768,14 +1984,19 @@ printed whole and, on WSL, put on the clipboard.
   --not-now        do not ask about ratification; office sessions FOLDER SID
                    --ratified records it later
 Under the hood: bale apply TARBALL (bale retry for a held session) in the
-session's repo, then bale stats --sid SID --json for how it ended.
+session's repo, then bale stats --sid SID --json for how it ended; for a
+sitting, bale unlock SID --json in its repo.
 Examples:
   office land                                  (the session out; asked when there are several)
   office land 2026-10-05-fix-login-001
   office land fix-login --ratified
+  office land 2026-10-05-plan-wave-office-001  (a read-only sitting: ends it)
   office land 2026-10-05-fix-login-001 --response "$HOME/Downloads/response-2026-10-05-fix-login-001 (1).tar.gz"
 USAGE
 }
+
+# What became of each after-land action, for land's last lines.
+AFTER_LAND_REPORT=()
 
 # run_after_land REPO CMD...: the project's after-land actions, in order,
 # in its repo. The first that fails stops the rest, loudly, with the one
@@ -1790,13 +2011,19 @@ run_after_land() {
     if [ "$rc" -ne 0 ]; then
       warn "AFTER-LAND ACTION FAILED (exit $rc): $c"
       warn "nothing after it ran; rerun from there with:"
+      AFTER_LAND_REPORT+=("FAILED (exit $rc): $c")
       i=0
       for c in "$@"; do
         i=$((i + 1))
         [ "$i" -ge "$n" ] && printf '[office]   (cd %s && %s)\n' "$(shq "$repo")" "$c" >&2
+        [ "$i" -gt "$n" ] && AFTER_LAND_REPORT+=("not run: $c")
       done
+      local rerun="" r
+      for r in "${@:$n}"; do rerun="${rerun:+$rerun && }$r"; done
+      AFTER_LAND_REPORT+=("rerun from the failed one: (cd $(shq "$repo") && $rerun)")
       return 1
     fi
+    AFTER_LAND_REPORT+=("ran (exit 0): $c")
   done
   [ "$total" -eq 0 ] || log "after land: $total action(s) ran"
   return 0
@@ -1896,6 +2123,21 @@ cmd_land() {
   fi
   plan_field "$plan" problems | while IFS= read -r line; do [ -n "$line" ] && warn "$line"; done
   verb="$(plan_field "$plan" verb)"; repo="$(plan_field "$plan" repo)"; label="$(plan_field "$plan" label)"
+
+  # A read-only sitting the office sent out lands nothing; landing it
+  # ends it (the ruling of sitting 2026-10-03-plan-4b-sitting-001): bale
+  # unlock in its repo, and the folder's History line. Nothing runs
+  # after it and nothing is ratified.
+  if [ "$verb" = unlock ]; then
+    [ -z "$ratify$except" ] || log "a sitting lands nothing, so nothing is ratified"
+    log "ending the read-only sitting $sid ($label; $(plan_field "$plan" folders | paste -sd, - | sed 's/,/, /g')): bale unlock $sid, in $repo"
+    out="$(reader land-end "$root" --plan "$plan" --day "$day")" || exit 1
+    printf '\n%s\n' "$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["words"])')"
+    printf '%s' "$out" | python3 -c 'import json,sys
+for l in json.load(sys.stdin)["told"]:
+    print(l)' | while IFS= read -r line; do log "$line"; done
+    return 0
+  fi
   log "landing $sid ($label; $(plan_field "$plan" folders | paste -sd, - | sed 's/,/, /g; s/^$/no folder records it/')): bale $verb $(plan_field "$plan" tarball), in $repo"
   line="$(reader land-prepare "$root" --plan "$plan")" || exit 1
   [ -z "$line" ] || log "$line"
@@ -1939,12 +2181,26 @@ for l in json.load(sys.stdin)["told"]:
   fi
 
   # After an applied landing: the project's after-land actions, in order.
-  local problem actions=()
+  # What became of each is said again as land's last lines, after the
+  # ratification, so it is never lost above a long screen.
+  local problem actions=() project
+  AFTER_LAND_REPORT=()
+  project="$(plan_field "$plan" project)"
   problem="$(plan_field "$plan" after_land_problem)"
-  [ -z "$problem" ] || warn "after-land actions not run: the project's declarations do not read ($problem; office projects set fixes them)"
-  mapfile -t actions < <(plan_field "$plan" after_land)
-  if [ "${#actions[@]}" -gt 0 ]; then
+  # An empty list prints one empty line; it is no action (0.7.0 and 0.8.0
+  # ran it as `bash -c ""` and said "1 action(s) ran").
+  mapfile -t actions < <(plan_field "$plan" after_land | grep -v '^$')
+  if [ -n "$problem" ]; then
+    warn "after-land actions not run: the project's declarations do not read ($problem; office projects set fixes them)"
+    AFTER_LAND_REPORT+=("not run: $project's declarations do not read ($problem); office projects set $project fixes them")
+    rc=1
+  elif [ "${#actions[@]}" -gt 0 ]; then
     run_after_land "$repo" "${actions[@]}" || rc=1
+  elif [ -n "$project" ]; then
+    log "after land: $project declares no after-land action, so nothing ran (office projects set $project --after-land CMD declares one)"
+    AFTER_LAND_REPORT+=("none: $project declares no after-land action")
+  else
+    debug "after land: an office session runs no after-land actions"
   fi
 
   # The planner's ratification, through the same step as office sessions.
@@ -1952,6 +2208,7 @@ for l in json.load(sys.stdin)["told"]:
   folders="$(plan_field "$plan" folders | head -n 1)"
   if [ -z "$folders" ]; then
     log "no folder records $sid, so there is nothing to ratify in"
+    after_land_summary "$repo"
     return "$rc"
   fi
   space="${folders%%/*}"; name="${folders#*/}"
@@ -1973,16 +2230,28 @@ for l in json.load(sys.stdin)["told"]:
   if [ "$ratify" = yes ]; then
     md="$root/$space/$name/folder.md"
     if [ "$has_except" = 1 ]; then
-      out="$(helper ratify "$md" "$sid" --day "$day" --except "$except")" || return 1
+      out="$(helper ratify "$md" "$sid" --day "$day" --except "$except")" || { after_land_summary "$repo"; return 1; }
     else
-      out="$(helper ratify "$md" "$sid" --day "$day")" || return 1
+      out="$(helper ratify "$md" "$sid" --day "$day")" || { after_land_summary "$repo"; return 1; }
     fi
     log "$name: $out"
     commit_paths "$root" "office sessions: $sid ratified in $name" "$space/$name/folder.md" || true
   else
     log "not ratified; when the planner rules: office sessions $name $sid --ratified (or --ratified --except TEXT)"
   fi
+  after_land_summary "$repo"
   return "$rc"
+}
+
+# land's last lines after an applied landing: what became of each
+# after-land action (ran, failed, not run), on stdout, so the outcome of
+# an install or a deploy is the last thing on the screen and never a
+# guess afterwards.
+after_land_summary() {
+  local repo="$1" line
+  [ "${#AFTER_LAND_REPORT[@]}" -gt 0 ] || return 0
+  printf '\nAfter land, in %s:\n' "$repo"
+  for line in "${AFTER_LAND_REPORT[@]}"; do printf '  %s\n' "$line"; done
 }
 
 # The projects this office scopes, and what bale records about them.
@@ -2467,6 +2736,10 @@ walk_in() {
   fi
   name="$(helper get "$root/$MANIFEST_REL" office.name --default "(unnamed)")"
   tz="$(office_tz "$root")"
+  local tz_named tz_shown
+  tz_named="$(office_tz_named "$root")"
+  tz_shown="$tz"
+  [ "$tz_named" = "$tz" ] || tz_shown="$tz (the floor plan's $tz_named does not resolve here; office status says what fixes it)"
   report="$(skew_report "$root" 2>/dev/null)" && state="$(printf '%s\n' "$report" | head -n 1)" || state="unreadable"
   case "$state" in current|behind|ahead) skew="$state" ;; *) skew=unreadable ;; esac
   if helper profile-check "$root/$PROFILE_REL" "$SHAPE" >/dev/null 2>&1; then founded="founded"; is_founded=yes
@@ -2478,7 +2751,7 @@ walk_in() {
     *) state="version stamp unreadable" ;;
   esac
   printf 'The %s office, %s\n' "$name" "$root"
-  printf '%s, %s %s. %s; %s.\n\n' "$(TZ="$tz" date '+%A %F')" "$(office_time "$tz")" "$tz" "$founded" "$state"
+  printf '%s, %s %s. %s; %s.\n\n' "$(TZ="$tz" date '+%A %F')" "$(office_time "$tz")" "$tz_shown" "$founded" "$state"
 
   # In flight: one line per session open in the projects this office
   # scopes and in the office itself, and the folder that names it; then
@@ -2635,15 +2908,17 @@ Send a session out
 
 Bring one back
   office land [SID]         applies the response in the right repo, says how it ended,
-                            hands you the relay, runs the after-land steps, and records
-                            the planner's ratification
+                            hands you the relay, runs the after-land steps, records the
+                            planner's ratification, and ends saying how each step went;
+                            given a read-only sitting's id, ends the sitting
 
 Look after the office
   office init PATH          build an office; asks which projects it watches
   office projects add       watch a project; set NAME says what rides with its sessions
                             and what runs after one lands
-  office status             version, profile, survey age, hung items, catalogs, folders,
-                            filed pages, bale (read-only)
+  office status             version, the install against its source, profile, survey
+                            age, timezone, hung items, catalogs, folders, filed pages,
+                            bale (read-only)
   office survey             rewrite floor-plan/survey.md and say what changed
   office upgrade            take a breaking release: dry run, then one commit
   office where              the office a command here acts on
@@ -2655,7 +2930,8 @@ Why the office, if you already use bale: you never type a session id, never
 assemble an include list, and never forget a landing step. start knows the
 folder's lane, the forecast, the work class and what rides with each project;
 land knows which repo, which response, and what to do after it applies. bale
-stays visible: start and land run bale's own pack, open, apply and retry, bale
+stays visible: start and land run bale's own pack, open, apply, retry and
+unlock (only to end a read-only sitting the office sent out), bale
 asks its own questions and only you answer them, office start --help and
 office land --help name the bale commands they run, and OFFICE_DEBUG=1 shows
 every bale call. Any bale command still works by hand beside the office.
