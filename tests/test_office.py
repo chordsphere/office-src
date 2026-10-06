@@ -999,7 +999,21 @@ class TestIncludeGroup(unittest.TestCase):
 # The kinds share/verbs.toml declares ahead of the command, as a registry
 # for the shell and for whoever spawns sessions. Blueprint section 6 of
 # the drafting-table declares them; the verbs session builds them.
-DECLARED_KINDS = ("sitting", "chat", "cleanup", "blueprint-close", "digest", "review", "check", "retry")
+DECLARED_KINDS = ("sitting", "chat", "cleanup", "digest", "review", "check", "retry")
+# The drafting table's scripts (blueprint session 4b), whose lands follow
+# the blueprint's section 3 table rather than the earlier verbs' lands =
+# writes: the verb that writes the drafting table first also brings its
+# front page, the floor plan's entry and bale.toml's trigger, which it
+# writes and never guarantees (they exist already after the first).
+DRAFTING_LANDS = {
+    "moves": ["drafting-table/moves.md"],
+    "blueprint-open": ["drafting-table/blueprints/{id}/blueprint.md"],
+    "blueprint-ratify": ["drafting-table/blueprints/{id}/blueprint.md"],
+    "rider-add": ["drafting-table/riders.md"],
+    "rider-carry": ["desk/{folder}/folder.md", "drafting-table/riders.md"],
+    "rider-consumed": ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md"],
+    "riders": [], "agenda-add": ["drafting-table/agenda.md"], "rulings": [], "evidence": [],
+}
 
 
 def verbs_catalog():
@@ -1093,6 +1107,14 @@ class TestCatalogs(unittest.TestCase):
         for name, verb in v.items():
             if verb["kind"] != "script" or name in DECLARED_KINDS:
                 continue
+            if name in DRAFTING_LANDS:
+                # Blueprint section 3's table: moves runs with nobody
+                # there after a sitting; the rest are attended, manual.
+                self.assertEqual(verb["lands"], DRAFTING_LANDS[name], name)
+                self.assertEqual(verb["attended"], name != "moves", name)
+                self.assertEqual(verb["trigger"], ["after-sitting", "manual"] if name == "moves" else ["manual"], name)
+                self.assertTrue(verb["built"], name)
+                continue
             if name == "sessions":
                 self.assertFalse(verb["attended"])
                 self.assertEqual(verb["trigger"], ["manual", "after-build"])
@@ -1132,8 +1154,10 @@ class TestCatalogs(unittest.TestCase):
             self.assertTrue(v[name]["attended"], name)
         self.assertEqual(v["review"]["trigger"], ["on-hold"])
         self.assertEqual(v["retry"]["trigger"], ["on-correctable-hold"])
-        # Session 4 declares the other scripts of the blueprint's table.
-        for name in ("watches", "watches-check", "moves", "riders", "rulings", "evidence"):
+        # 4b-1 declared moves, the blueprint, rider and agenda verbs,
+        # riders, rulings and evidence (test_drafting_table checks them);
+        # the watches verbs come with 4b-2.
+        for name in ("watches", "watches-check"):
             self.assertNotIn(name, v)
 
     def test_the_shipped_spaces_catalog_holds(self):
@@ -1383,7 +1407,8 @@ class TestText(unittest.TestCase):
         verbs = verbs_catalog()["verbs"]
         doctrine = (REPO / "doctrine/OFFICE.md").read_text()
         cells = re.findall(r"^\| ([a-z, -]+) \|", doctrine, re.M)
-        named = {n.strip() for cell in cells for n in cell.split(",")}
+        # A two-word verb (blueprint open) is hyphenated in the catalog.
+        named = {n.strip().replace(" ", "-") for cell in cells for n in cell.split(",")}
         for name, verb in verbs.items():
             if name in DECLARED_KINDS and not verb["built"] and name not in named:
                 continue
@@ -1396,7 +1421,7 @@ class TestText(unittest.TestCase):
         usage = subprocess.run([str(REPO / "bin/office"), "help"], capture_output=True, text=True).stdout
         for name, v in verbs.items():
             if v["kind"] == "script" and v["built"]:
-                self.assertIn(name, usage, name)
+                self.assertIn(name.replace("-", " "), usage, name)
         self.assertNotIn("digest", usage)
 
     def test_bale_office_line_is_verbatim(self):

@@ -6,7 +6,12 @@ here, page by page:
 
 - blueprints/YYYY-MM-DD-slug/blueprint.md, one arc each: its charter,
   its decomposition into folders, its watch list and its history. Live
-  until the arc closes; the charter freezes once it is ratified.
+  until the arc closes; the charter freezes once it is ratified. The
+  ratified line is the charter's last, `- ratified: YYYY-MM-DD, words at
+  notepad/PAGE.md` (or `at SID`), with a `ratified` History line; from
+  then on the charter's bytes never change, and a charter that must
+  change is a new blueprint whose History opens `supersedes: blueprint
+  ID`.
 - blueprints/YYYY-MM-DD-slug/close.md, the arc's close report, written
   once at close and filed.
 - agenda.md, rulings awaiting a sitting. Live.

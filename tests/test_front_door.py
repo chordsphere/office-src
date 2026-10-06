@@ -197,7 +197,8 @@ class TestNextOnTheWalkIn(LandCase):
 # --- help by task ----------------------------------------------------------------------
 
 TASKS = ["Walk in and look around", "Capture a thought or a friction", "Start a job, and finish one",
-         "Send a session out", "Bring one back", "Look after the office"]
+         "Plan work too big for one folder", "Send a session out", "Bring one back", "Look after the office"]
+TWO_WORD = ("blueprint-open", "blueprint-ratify", "rider-add", "rider-carry", "rider-consumed", "agenda-add")
 
 
 class TestHelpByTask(unittest.TestCase):
@@ -225,14 +226,19 @@ class TestHelpByTask(unittest.TestCase):
         verbs = [n for n, v in verbs_catalog()["verbs"].items() if v["kind"] == "script" and v["built"]]
         self.assertIn("tour", verbs)
         for name in verbs + ["version"]:
-            proc = self.e.run(name, "--help")
+            # A two-word verb's key is hyphenated: blueprint-open is
+            # office blueprint open, and office help blueprint open.
+            words = name.split("-") if name in TWO_WORD else [name]
+            proc = self.e.run(*words, "--help")
             self.assertEqual(proc.returncode, 0, f"{name}: {proc.stderr}")
             text = proc.stdout
-            self.assertIn(f"usage: office {name}", text, name)
+            self.assertIn(f"usage: office {' '.join(words)}", text, name)
             examples = text.split("Examples:\n", 1)
             self.assertEqual(len(examples), 2, f"{name} --help has no Examples")
-            self.assertRegex(examples[1], rf"(?m)^  (office {name}\b|office --version)", name)
-            self.assertEqual(self.help("help", name), text, name)
+            self.assertRegex(examples[1], rf"(?m)^  (office {' '.join(words)}\b|office --version)", name)
+            self.assertEqual(self.help("help", *words), text, name)
+            if name in TWO_WORD:
+                self.assertEqual(self.help("help", name), text, name)
 
     def test_start_and_land_name_the_bale_commands_they_run(self):
         self.assertIn("Under the hood: bale pack --json (or bale open", self.help("start", "--help"))

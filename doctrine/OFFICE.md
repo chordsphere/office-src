@@ -199,8 +199,10 @@ office.
 The floor plan (floor-plan/manifest.toml) lists the spaces an office
 has, and, in its [projects] table, the projects it scopes on this
 machine (section 10). `office init` builds the base spaces. The others are added by a
-renovation session when real work asks for them. The install's catalog
-of spaces is share/spaces.toml.
+renovation session when real work asks for them, except the drafting
+table, whose pages hold no judgment until a sitting writes them: it
+arrives with the first verb that writes it. The install's catalog of
+spaces is share/spaces.toml.
 
 | path | what it does | base | hung | filed |
 |---|---|---|---|---|
@@ -236,9 +238,10 @@ out rather than left blank. The number is the folder's citation, folder
 N: `office open` mints it as one more than the highest number on the
 desk and in the filing cabinet, and it is never reused or renumbered. A
 folder from before numbers keeps none and is cited by its name; nothing
-ever numbers it after the fact. A verb that mints a number refuses while
-an open session in the office's own bale registry forecasts the space
-the number lands in, and names the session: sessions are kept apart by
+ever numbers it after the fact. A verb that mints a number or appends to a page (a folder, a
+rider, an agenda item, a blueprint, a desk move applied) refuses while an
+open session in the office's own bale registry forecasts the space, page
+or folder it writes, and names the session: sessions are kept apart by
 bale, and scripts are kept off sessions' paper by this one-writer rule.
 An office bale has never run in has no registry and nothing to refuse.
 
@@ -259,8 +262,8 @@ writes when it ends a read-only sitting, changes nothing). `office sessions FOLD
 calls, with `--except` for what was corrected and where it went.
 
 Gates are data on the folder that waits: `after` (do not open this
-before folder N is done, a blueprint closes, an agenda item is ruled on
-or a ruling exists), `serializes after` (never beside folder N; when both
+before folder N is done, a blueprint closes (its close report exists),
+an agenda item is ruled on or a ruling is on the ledger), `serializes after` (never beside folder N; when both
 are ready, N goes first) and `consumer` (parked for the blueprint or
 folder that will carry it). The order of the desk is computed from what
 the folders say, and nobody writes one. `office desk` shows, in order:
@@ -268,7 +271,8 @@ in flight, the folders some session is open for; ready, the queued
 folders whose gates are all met, ordered by `serializes after`, then
 size, small first, then number, each saying when a gate cleared since
 the last walk-in; parked, grouped under what each waits for, headed by
-that gate's own status; and candidates. A gate that names nothing, or a
+that gate's own status; candidates; then the riders orphaned in a closed
+folder and the desk moves not yet applied. A gate that names nothing, or a
 cycle of gates, is an error line naming the folders, and no folder is
 ever dropped from the desk.
 
@@ -308,9 +312,46 @@ each, with the ledgers a planning sitting rules in: the rulings ledger,
 the evidence ledger, the watches register and its log, the riders page,
 the agenda, and the desk moves a sitting decided. The space is part
 live, part filed: the ledgers, the watch log and the close reports are
-filed paper, and the floor plan lists them. Its templates are the
-install's; a renovation copies them in when the space arrives. A fact
-lands once, on the folder, blueprint or ledger record it belongs to,
+filed paper, and the floor plan lists them. It arrives in an office
+with the first verb that writes it, never by hand and never by a
+migration: its front page from the install's template, the floor
+plan's entry as the catalog declares it and bale.toml's trigger, and
+each page from its template on its first write, committed with the
+write that asked for it. `office status` checks a drafting table that
+exists against the catalog.
+
+Who writes what there. A sitting writes the drafting table directly: a
+blueprint, its ratified line and its close report, rulings, evidence,
+watches and their log, agenda changes, riders and desk moves. The
+office command writes what a script can: `office blueprint open` drafts
+a blueprint, `office blueprint ratify` writes the ratified line given
+outside a sitting, `office rider add`, `carry` and `consumed` keep the
+riders, `office agenda add` puts a question on the agenda, and `office
+moves` applies the desk moves, since the desk is the office command's
+to write and folder numbers are minted by it alone. No script mints a
+ruling or an evidence entry: those are judgment. `office blueprint
+close` sends out the sitting that closes an arc. `office rulings`,
+`office evidence` and `office riders` only read.
+
+A blueprint's charter freezes once its ratified line is written; `office
+status` checks its bytes against git from the ratifying commit on, and
+a charter that must change is a new blueprint whose History opens
+`supersedes: blueprint ID`. A blueprint states no order: its member
+folders' gates do, and `office desk --blueprint ID` renders it. A
+blueprint is closed when its close report exists. A rider is on the
+riders page or in exactly one folder's Riders section, never both;
+carrying it leaves one pointer line on the page, and a rider in a closed
+folder that was never consumed is an orphan, which the desk reports. An
+agenda item leaves the agenda when a sitting rules on it, and a dated
+line at the foot of the page says which ruling disposed of it. A desk
+move is one line of data, `- [ ] DATE MOVE ...`, ticked with the folder
+it acted on once applied; walking in says how many are pending and which
+session wrote them. Every pointer uses one citation form per kind of
+thing (folder N, blueprint ID, ruling ID, evidence N, watch WN, rider N,
+agenda N, a session id, a notepad page), and `office rulings --check`
+resolves them all.
+
+A fact lands once, on the folder, blueprint or ledger record it belongs to,
 and everything else cites it by id; the same fact restated in two
 records is a defect. A ruling on the ledger is reopened only by a
 sitting that names it, and a reopening is a new ruling that supersedes;
@@ -356,8 +397,8 @@ paths inside it. The office's bale.toml carries them to bale as an
 include group: its triggers are the office's spaces and its pulls are the
 hung items, so any pack whose includes touch the office ships them
 without a list on the pack line. `office init` writes it; a renovation
-that adds a space or hangs an item updates it; `office status` reports
-when it no longer matches the floor plan. Every office session ships:
+that adds a space or hangs an item updates it, as does the drafting table's arrival; `office status`
+reports when it no longer matches the floor plan. Every office session ships:
 
 - this doctrine, as a context tarball from the install, once: a session
   whose packed tree carries the same doctrine/ (office-src's own) reads
@@ -406,12 +447,19 @@ Kinds:
 | start | script: pack a session for a folder, in the office or on a project, or open a planner's bundle; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
 | land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, and what became of each action; or end a read-only sitting the office sent out | yes |
 | tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes |
+| moves | script: apply the desk moves a sitting wrote, through open's, close's and the gate flags' own code, ticking each and writing a minted number onto its blueprint's decomposition line; stops at the first line it cannot apply | yes |
+| blueprint open, blueprint ratify | script: draft a blueprint from the template; write its charter's ratified line | yes |
+| rider add, rider carry, rider consumed | script: a rider on the riders page; moved into the folder that carries it; consumed at a session | yes |
+| riders | script, read-only: the riders, where each is, the orphans, and the ones a pack's forecast would carry | yes |
+| agenda add | script: a question on the agenda for a sitting to rule on | yes |
+| rulings, evidence | script, read-only: the ledgers, one record with what points at it, and every citation resolved | yes |
 | founding | office session: the profile, the occupant's words, the timezone | yes, via init |
 | work | office session: answer, draft, probe, decide, deliver | yes, via start |
 | build | project session: change a project for a folder | yes, via start |
 | prep | office session: a briefing for a meeting | not yet |
 | meeting | office session held open during a meeting | not yet |
 | cleanup | office session: keep the office as designed | not yet |
+| blueprint close | office session: a sitting scoped to one blueprint, landing its close report and a notepad page | yes, via office blueprint close |
 | renovate | office session: change the design | by hand |
 
 Session verbs are done by hand a few times before the command learns
@@ -446,8 +494,9 @@ itself, with the folder each belongs to (a read-only sitting a folder
 records says that `office land SID` ends it when the sitting is over;
 the Next line never names one, since nothing in the office knows when a
 sitting is over), how many folders are ready, parked and
-candidates, and the first three ready ones with their next moves, this
-week and its gaps, the last notepad lines, how many slips are in the
+candidates, and the first three ready ones with their next moves, how
+many desk moves a sitting wrote are pending and which session wrote
+them, how many riders are orphaned, this week and its gaps, the last notepad lines, how many slips are in the
 suggestion box, and the verbs to reach for. It ends with one Next line:
 the one command to type now, its arguments filled in, worked out from the
 office on every walk-in and never written down. In the order they win: an
@@ -712,6 +761,10 @@ doctrine into every office session, and the worker fills in its paths,
 sizes and hashes from its own request. A script that appends to filed
 paper makes the same check before it commits: `office note` holds the
 day's page to its committed bytes and commits nothing that changed them.
+The drafting table's scripts do the same for the pages they add to:
+`office rider add` holds the riders page to its committed bytes plus the
+rider at its end, and `office agenda add` holds the agenda to its
+committed bytes plus the one entry it put above the page's Disposed list.
 
 `office status` holds the same line after the fact: it walks git's
 history of every filed page the floor plan lists, the filing cabinet

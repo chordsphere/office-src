@@ -19,6 +19,8 @@ which ships with every office session.
 | capture a thought | `office note TEXT` |
 | drop a friction slip | `office slip TEXT` |
 | start a job | `office open` |
+| plan work too big for one folder | `office blueprint open` |
+| apply the desk moves a sitting decided | `office moves` |
 | send a session out for it | `office start` |
 | bring the session back | `office land` |
 | build an office | `office init` |
@@ -108,6 +110,23 @@ office-src, or one of the office's projects) unless `--about` says so.
 A folder is named by the date and a slug, and can be named by any unique
 part of that name or by its number, `folder 12`. Folders, their fields,
 statuses and gates are below.
+
+### Plan work too big for one folder
+
+    office blueprint open rider-verbs --title "The rider verbs"   # one arc on the drafting table
+    office blueprint ratify 2026-10-05-rider-verbs --words notepad/2026-10-05-plan.md
+    office desk --blueprint 2026-10-05-rider-verbs                 # its folders, in the desk's order
+    office blueprint close 2026-10-05-rider-verbs                  # send out the sitting that closes it
+    office moves                                                   # apply the desk moves a sitting wrote
+    office rider add "Name the sweep commit" --source "proposal SID #2" --rides bin/bale_apply.py
+    office riders                                                  # where each rider is, and the orphans
+    office agenda add "Where does a chat land?" --source notepad/2026-10-05.md
+    office rulings                                                 # the rulings ledger; --check resolves every citation
+    office evidence                                                # the evidence ledger
+
+The drafting table holds blueprints and the pages a planning sitting
+rules in. It arrives in an office with the first of these verbs that
+writes it. The details are below.
 
 ### Send a session out
 
@@ -226,11 +245,15 @@ its History:
 folders a session is open for. Ready: queued folders whose gates are all
 met, by `serializes after`, then small first, then number, each saying
 when a gate cleared since you last walked in. Parked: grouped under what
-each waits for, with that gate's own status; a gate on a blueprint, an
-agenda item or a ruling waits until the drafting-table verbs can read
-them. Candidates last. A gate that names nothing, or a cycle, prints as
-an error line naming the folders; no folder is ever dropped. Walking in
-shows In flight and the first three ready folders.
+each waits for, with that gate's own status. A gate on a blueprint is
+met when its close report exists, on an agenda item when a sitting ruled
+on it, and on a ruling when the ruling is on the ledger. Candidates come
+next, then the riders orphaned in a closed folder and the desk moves
+not applied yet. A gate that names nothing, or a cycle, prints as an
+error line naming the folders; no folder is ever dropped. Walking in
+shows In flight, the first three ready folders, and a line each for
+pending desk moves (and the session that wrote them) and orphaned
+riders.
 
 `office status` checks that every folder's status agrees with the last
 line of its History that changed it, and walks git's history of every
@@ -238,6 +261,93 @@ filed page (the notepad, and the drafting table's ledgers once an office
 has one) for a commit that did more than add at the end. It reports and
 exits 0; `office init` refuses to build from an install whose catalogs
 have a defect.
+
+### The drafting table: blueprints, riders, the agenda and the ledgers
+
+`drafting-table/` holds work too big for one folder, one blueprint per
+arc, and the pages a planning sitting rules in. A sitting writes them
+directly; the scripts below do what a script can, and no script ever
+mints a ruling or an evidence entry.
+
+The space is not base, and no migration or renovation session brings it.
+It arrives with the first verb that writes it (`blueprint open`, `rider
+add`, `agenda add`, or `moves` when a sitting wrote the moves page). That
+verb writes `drafting-table/README.md` from the install's template, adds
+the space to the floor plan as `share/spaces.toml` declares it (its filed
+list: the rulings, the evidence, the watch log and each close report),
+and adds it to bale.toml's include-group triggers. Each page is made from
+its template on its first write, and all of it is committed with the
+write that asked for it. `office status` checks a drafting table that
+exists against the catalog.
+
+| page | what | who writes it |
+|---|---|---|
+| `blueprints/DATE-SLUG/blueprint.md` | one arc: charter, decomposition, watch list, history | a sitting, or `office blueprint open` and `ratify` |
+| `blueprints/DATE-SLUG/close.md` | the arc's close report, filed | the sitting `office blueprint close` sends out |
+| `agenda.md` | questions awaiting a sitting | `office agenda add`; a sitting rules and moves the item to Disposed |
+| `rulings.md`, `evidence.md` | the ledgers, filed | a sitting only; `office rulings` and `office evidence` read them |
+| `watches.md`, `watch-log.md` | the watches register and its log | a sitting (the watches verbs come next) |
+| `riders.md` | riders with no carrier yet, and pointers to carried ones | `office rider add` and `carry` |
+| `moves.md` | desk moves a sitting decided | a sitting; `office moves` applies and ticks them |
+
+Blueprints. `office blueprint open SLUG` drafts one from the template:
+the charter (`--charter`, or stdin; asked on a terminal) and a drafted
+History line. `office blueprint ratify ID --words notepad/PAGE` (or
+`--sid SID`) writes the charter's ratified line and a ratified History
+line, committed alone. It refuses an empty charter, one already
+ratified, and a closed blueprint. From then on `office status` checks the
+charter's bytes against git from the ratifying commit on; a charter that
+must change is a new blueprint whose History opens `supersedes:
+blueprint ID`. `office blueprint close ID` sends out the sitting that
+closes the arc, the way `office start` sends any session out. It opens
+a folder born for the close (`Close blueprint ID`, `source: blueprint
+ID`) unless one is on the desk. It ships the blueprint, its member
+folders, the rulings, evidence and watches pages and the close report's
+template from the install. It forecasts that folder, the notepad and the
+drafting table. You attach the tray and paste the opener; `office land`
+brings it back. A blueprint is closed when its close report exists.
+
+Desk moves. A sitting writes its decisions about folders as lines on
+`moves.md`, `- [ ] DATE MOVE ...`. The moves are `open "TITLE"
+key=value...`, `queue folder N`, `gate folder N after="X"`, `close
+folder N`, `absorb folder N into="folder M"`, `split folder N
+into="A,B"` and `retire folder N why="..."`; the page's own text lists
+the keys. `office moves` applies every pending line in order through
+`office open`'s, `office close`'s and the gate flags' own code. It ticks
+each line with the folder it acted on (`- [x] ... -> folder N`), writes
+an opened folder's number onto its blueprint's decomposition line, and
+commits everything at once. A line that does not read is named before
+anything is applied. A line that cannot be applied stops the run there,
+with the lines before it applied and committed. `--dry-run` lists what
+it would apply.
+
+Riders. `office rider add TITLE --source SRC [--rides GLOB | --carrier
+"folder N"]` adds rider N to the riders page; its text comes from stdin
+(a worker's Proposal, kept byte for byte) or `--text`. Numbers count the
+page and every folder and are never reused. `office rider carry N
+--folder M` moves the rider into folder M's Riders section and leaves
+one pointer line on the page. `office rider consumed N SID` records it
+consumed at a session. `office riders` lists them all; `--orphans` shows
+the riders in a closed folder that were never consumed, and `--forecast
+PATH...` the queued riders a pack with that forecast would carry.
+
+The agenda and the ledgers. `office agenda add TEXT --source SRC
+[--waiting "folder N"]` puts a question on the agenda for a sitting; a
+folder waiting on it gates with `--after "agenda N"`. `office rulings`
+lists the rulings. `office rulings ID` renders one with its amendments,
+who supersedes it and where it was derived. `office rulings --check`
+resolves every citation on the drafting table and the desk (`folder N`,
+`blueprint ID`, `ruling ID`, `evidence N`, `watch WN`, `rider N`,
+`agenda N`, notepad pages, session ids) and exits 1 when one does not.
+`office evidence [N]` lists the evidence ledger, or renders one entry,
+with occurrence counts by attribution, and names any record the ledger
+should not hold.
+
+Every one of these scripts that mints a number or adds to a page refuses
+while a session open in the office's own bale registry forecasts what it
+writes, and names that session: the one-writer rule. The riders page and
+the agenda are checked against their committed bytes before the commit
+(an append, and one entry put in above the Disposed list).
 
 ### Sending a session out: the details
 
@@ -404,7 +514,8 @@ matches the floor plan.
 | share/profile-shape.toml | the profile's required sections |
 | share/bale-consumption.toml | every bale verb, flag and JSON key the office reads or runs, and the bale version they were written against |
 | share/verbs.toml | what each verb ships, where it lands, whether a person must be present and what may set it off; a session kind with no declared landing may not run unattended |
-| templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), copied in by the renovation that adds the space |
+| lib/office_drafting.py | the drafting table: its arrival in an office, the one reader of its pages (blueprints, riders, the agenda, the ledgers, desk moves), the citation grammar's resolver, and what the drafting-table verbs write |
+| templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), each made into a page the first time a verb writes it |
 | migrations/ | one file per breaking release; format in migrations/README.md |
 | RELEASES.md | release notes |
 | tests/ | the test suite |

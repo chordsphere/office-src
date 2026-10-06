@@ -480,9 +480,12 @@ class TestDesk(unittest.TestCase):
         self.assertIn("ERROR: folder 8: after folder 99 names no folder on the desk or in the filing cabinet\n"
                       "    folder 8  ", parked)
         self.assertIn("waiting for folder 4 (queued): first\n    folder 5  ", parked)
-        self.assertIn("waiting for agenda 7: not readable until the drafting-table verbs land\n    folder 6  ", parked)
-        self.assertIn("parked for its consumer, blueprint 2026-10-01-twine-courier: not readable until the "
-                      "drafting-table verbs land\n    folder 7  ", parked)
+        # A drafting-table gate naming nothing on the drafting table is an
+        # error line, as a folder gate naming no folder is (this office
+        # has no drafting table; test_drafting_table resolves real ones).
+        self.assertIn("ERROR: folder 6: after agenda 7 names nothing on the agenda\n    folder 6  ", parked)
+        self.assertIn("ERROR: folder 7: consumer blueprint 2026-10-01-twine-courier names no blueprint on the "
+                      "drafting table\n    folder 7  ", parked)
         self.assertIn("  folder 9  ", self.section(out, "Candidates"))
         for n in range(1, 10):
             self.assertEqual(len(re.findall(rf"^ +folder {n}  ", out, re.M)), 1, (n, out))
@@ -657,22 +660,32 @@ class TestInitRefusesADefectiveInstall(unittest.TestCase):
 
 # --- the one-writer rule, and the office's own registry -----------------------------
 
+# home-office's registry as the drafting-table-pages probe captured it
+# (2026-10-05): the plan-4b sitting open read-only, the slips session
+# applied. An office's real status line, replayed as captured.
+HOME_OFFICE = "home-office"
+HOME_SITTING = "2026-10-03-plan-4b-sitting-001"
+
+
 def office_status_fixture(tmp, sessions, scopes):
-    """A fixture set for an office whose registry has open sessions: the
-    status line the probe captured in a project, with sessions and scopes
-    set to the test's (every key is a captured key; only the values are
-    the test's), beside the probe's real dossier of OPEN_WORKER, so the
-    In flight line has a real record to read. Kept in the test's temporary
-    directory: the development record's fixtures are captured, never
-    made."""
+    """A fixture set for an office whose registry has a session open that
+    no captured office had open: home-office's status line as the probe
+    captured it, with sessions and scopes set to the test's (every key is
+    a captured key; only those two values are the test's), beside the
+    probe's real dossier of OPEN_WORKER, so the In flight line has a real
+    record to read. Kept in the test's temporary directory: the
+    development record's fixtures are captured, never made. Where the
+    captured registry is the case, test_home_office_registry replays it
+    as it is."""
     d = pathlib.Path(tempfile.mkdtemp(prefix="office-registry-", dir=tmp))
-    for f, rec in fixture_records("office-src"):
+    for f, rec in fixture_records(HOME_OFFICE):
         if rec["argv"] == ["status", "--json"]:
             line = json.loads(rec["stdout"][0])
             line["sessions"], line["scopes"] = sessions, scopes
             rec = dict(rec, stdout=[json.dumps(line)], stdout_sha256=[])
             (d / f.name).write_text(json.dumps(rec))
-        elif rec["argv"] == ["stats", "--sid", OPEN_WORKER, "--json"]:
+    for f, rec in fixture_records("office-src"):
+        if rec["argv"] == ["stats", "--sid", OPEN_WORKER, "--json"]:
             shutil.copy(f, d / f.name)
     return d
 
@@ -714,6 +727,21 @@ class TestOneWriter(unittest.TestCase):
         (self.o.root / ".bale").mkdir()
         proc = self.o.run("open", "job", extra={"PATH": path_without_bale()})
         self.assertIn("minting without the one-writer check", proc.stderr)
+
+    def test_home_office_registry_as_captured(self):
+        """The office's real registry, unchanged: a read-only sitting
+        holds nothing, so open mints beside it, and the walk-in shows it
+        in flight with the line that ends it once a folder records it."""
+        (self.o.root / ".bale").mkdir()
+        fake = self.bale({str(self.o.root): HOME_OFFICE})
+        self.o.open("job")
+        self.o.run("sessions", "job", HOME_SITTING)
+        flight = self.o.run("desk").stdout.split("In flight:\n", 1)[1].split("\n\n", 1)[0]
+        self.assertRegex(flight, rf"this office: {HOME_SITTING} read-only, opened \d+[mhd] ago -> desk/\S+-job "
+                                 rf"\(office land {HOME_SITTING} when the sitting is over\)")
+        self.assertIn([str(self.o.root), ["stats", "--sid", HOME_SITTING, "--json"]],
+                      [[os.path.realpath(c), a] for c, a in
+                       (json.loads(l) for l in fake.calls.read_text().splitlines())])
 
     def test_forecast_holds(self):
         for entry, target, holds in (("desk", "desk", True), (".", "desk", True), ("", "filing-cabinet", True),

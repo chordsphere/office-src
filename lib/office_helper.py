@@ -110,7 +110,8 @@ def render_manifest(spaces_catalog, name, version, built_at, timezone):
         "# Floor plan of this office. The office command finds an office by",
         "# this file and reads it on every run. Only office upgrade writes",
         "# migrated_to. The founding session sets the timezone; renovation",
-        "# sessions change the spaces; office projects add and set write",
+        "# sessions change the spaces (the drafting table arrives with the",
+        "# first verb that writes it); office projects add and set write",
         "# the [projects] table. Nothing else should change it.",
         "",
         "[office]",
@@ -1314,6 +1315,42 @@ def folder_event(folder_md, day, verb, text, status=None):
     return old, wrote
 
 
+GATE_FIELDS = ("after", "serializes after", "consumer")
+
+
+def folder_gate(folder_md, key, value, day):
+    """Gate a folder: one more `after`, `serializes after` or `consumer`
+    line in its field block, where FIELD_KEYS order puts it, and a
+    `gated` History line. The office command's edit, as office open's
+    gate flags write them; office moves applies a sitting's `gate` move
+    through it. A folder from before the field block, or one already
+    carrying the same gate, is refused and left as it is. Returns the
+    History line's text."""
+    if key not in GATE_FIELDS:
+        raise HelperError(f"{key!r} is not a gate ({', '.join(GATE_FIELDS)})")
+    value = normalize_field(key, value)
+    path = pathlib.Path(folder_md)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    f = parse_folder("\n".join(lines))
+    if not f["has_status_line"] or not f["has_history"]:
+        raise HelperError(f"{path}: a folder from before the field block takes no gate (it has no status line "
+                          "or no History)")
+    if value in [normalize_field(key, v) for v in f["fields"].get(key, []) if v]:
+        raise HelperError(f"{path.parent.name} already carries `{key}: {value}`")
+    first_section = next((i for i, l in enumerate(lines) if l.startswith("## ")), len(lines))
+    rank = FIELD_KEYS.index(key)
+    at = 1
+    for i in range(1, first_section):
+        m = FIELD_LINE_RE.match(lines[i])
+        if m and m.group(1) in FIELD_KEYS and FIELD_KEYS.index(m.group(1)) <= rank:
+            at = i + 1
+    lines.insert(at, f"- {key}: {value}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    text = f"{key} {value}"
+    folder_event(folder_md, day, "gated", text)
+    return text
+
+
 def record_session_opening(folder_md, sid, day, words=None):
     """record_session, and with the first sid a folder records, the
     `opened` History line and status open, when the folder is a
@@ -1442,7 +1479,23 @@ def append_problem(old, new):
     return f"changed bytes already filed (first difference at byte {first_difference(old, new)} of {len(old)})"
 
 
-def append_check(root, rel):
+def insertion_problem(old, new):
+    """None when new is old with one run of bytes inserted somewhere (at
+    its end included), else what broke: the check a script makes before
+    it commits an entry it put above a page's foot (the agenda's items
+    sit above its Disposed list), where a byte prefix cannot hold."""
+    if len(new) < len(old):
+        return f"cut to {len(new)} bytes from {len(old)}"
+    head = first_difference(old, new)
+    tail = 0
+    while tail < len(old) - head and old[len(old) - 1 - tail] == new[len(new) - 1 - tail]:
+        tail += 1
+    if head + tail >= len(old):
+        return None
+    return f"changed bytes already committed (first difference at byte {head} of {len(old)})"
+
+
+def append_check(root, rel, insertion=False):
     """None when the page at rel (relative to the repo at root) is new
     to git or grows its committed bytes only at its end, else what
     broke. The check doctrine section 15 asks of a script that appends
@@ -1463,6 +1516,8 @@ def append_check(root, rel):
     disk = root / rel
     if not disk.is_file():
         return "the page is committed but missing from disk"
+    if insertion:
+        return insertion_problem(shown.stdout, disk.read_bytes())
     return append_problem(shown.stdout, disk.read_bytes())
 
 
@@ -2118,6 +2173,10 @@ def cmd_folder_event(a):
           else "no History section (a folder from before the field block): no line written")
 
 
+def cmd_folder_gate(a):
+    print(f"History: {a.day} gated: {folder_gate(a.folder_md, a.key.replace('-', ' '), a.value, a.day)}")
+
+
 def cmd_ratify(a):
     print(ratify_session(a.folder_md, a.sid, a.day, a.except_text))
 
@@ -2155,7 +2214,7 @@ def cmd_filed_check(a):
 def cmd_append_check(a):
     """Exit 0 when the page only grew at its end (or is new), 3 with the
     reason on stdout when it changed bytes already committed."""
-    why = append_check(a.root, a.path)
+    why = append_check(a.root, a.path, a.insertion)
     if why:
         print(why)
         return 3
@@ -2282,6 +2341,8 @@ def main(argv=None):
     p = sub.add_parser("folder-event"); p.add_argument("folder_md"); p.add_argument("--day", required=True)
     p.add_argument("--verb", required=True); p.add_argument("--text", required=True)
     p.add_argument("--status"); p.set_defaults(fn=cmd_folder_event)
+    p = sub.add_parser("folder-gate"); p.add_argument("folder_md"); p.add_argument("--key", required=True)
+    p.add_argument("--value", required=True); p.add_argument("--day", required=True); p.set_defaults(fn=cmd_folder_gate)
     p = sub.add_parser("ratify"); p.add_argument("folder_md"); p.add_argument("sid")
     p.add_argument("--day", required=True); p.add_argument("--except", dest="except_text")
     p.set_defaults(fn=cmd_ratify)
@@ -2290,6 +2351,8 @@ def main(argv=None):
     p = sub.add_parser("folder-summary"); p.add_argument("folder_md"); p.add_argument("template")
     p.set_defaults(fn=cmd_folder_summary)
     p = sub.add_parser("append-check"); p.add_argument("root"); p.add_argument("path")
+    p.add_argument("--insertion", action="store_true",
+                   help="one run of bytes inserted anywhere, for a live page whose foot stays last")
     p.set_defaults(fn=cmd_append_check)
     p = sub.add_parser("project-names"); p.add_argument("manifest"); p.set_defaults(fn=cmd_project_names)
     p = sub.add_parser("ascii-escape"); p.set_defaults(fn=cmd_ascii_escape)

@@ -1,6 +1,8 @@
 # The spaces an office can have. office init builds every space marked
 # base = true; the others arrive by renovation when real work asks for
-# them. doctrine/OFFICE.md section 5 says what each space is for.
+# them, except the drafting table, which arrives with the first verb that
+# writes it (its entry below is what that verb copies into the floor
+# plan). doctrine/OFFICE.md section 5 says what each space is for.
 #
 # path   where the space lives inside the office
 # base   built by office init
