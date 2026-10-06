@@ -224,6 +224,102 @@ lands = []
 attended = true
 trigger = ["manual"]
 
+# The drafting table's verbs (the blueprint's section 3). Every verb that
+# writes the drafting table may be the one it arrives with: its front
+# page from the install's template, the floor plan's entry and bale.toml's
+# include-group trigger, committed with the write that asked for them, so
+# those three are in its writes (and in no lands: they exist already
+# after the first). A two-word verb's key is hyphenated.
+
+# Applies a sitting's desk moves through office open, office close and
+# the gate flags; a script a harness may run after a sitting lands.
+[verbs.moves]
+kind = "script"
+built = true
+writes = ["desk", "filing-cabinet", "drafting-table/moves.md", "drafting-table/blueprints/{id}/blueprint.md",
+          "drafting-table/README.md", "floor-plan/manifest.toml", "bale.toml"]
+lands = ["drafting-table/moves.md"]
+attended = false
+trigger = ["after-sitting", "manual"]
+
+[verbs.blueprint-open]
+kind = "script"
+built = true
+writes = ["drafting-table/blueprints/{id}", "drafting-table/README.md", "floor-plan/manifest.toml", "bale.toml"]
+lands = ["drafting-table/blueprints/{id}/blueprint.md"]
+attended = true
+trigger = ["manual"]
+
+[verbs.blueprint-ratify]
+kind = "script"
+built = true
+writes = ["drafting-table/blueprints/{id}/blueprint.md"]
+lands = ["drafting-table/blueprints/{id}/blueprint.md"]
+attended = true
+trigger = ["manual"]
+
+[verbs.rider-add]
+kind = "script"
+built = true
+writes = ["drafting-table/riders.md", "drafting-table/README.md", "floor-plan/manifest.toml", "bale.toml"]
+lands = ["drafting-table/riders.md"]
+attended = true
+trigger = ["manual"]
+
+# The rider moves into the folder and a pointer stays on the page.
+[verbs.rider-carry]
+kind = "script"
+built = true
+writes = ["drafting-table/riders.md", "desk/{folder}/folder.md"]
+lands = ["desk/{folder}/folder.md", "drafting-table/riders.md"]
+attended = true
+trigger = ["manual"]
+
+# The folder that carries the rider, on the desk or in the cabinet; lands
+# names both, one of which it lands.
+[verbs.rider-consumed]
+kind = "script"
+built = true
+writes = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md"]
+lands = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md"]
+attended = true
+trigger = ["manual"]
+
+# Read-only; --forecast PATH... is what a sitting runs when it writes a
+# pack line.
+[verbs.riders]
+kind = "script"
+built = true
+writes = []
+lands = []
+attended = true
+trigger = ["manual"]
+
+[verbs.agenda-add]
+kind = "script"
+built = true
+writes = ["drafting-table/agenda.md", "drafting-table/README.md", "floor-plan/manifest.toml", "bale.toml"]
+lands = ["drafting-table/agenda.md"]
+attended = true
+trigger = ["manual"]
+
+# Writing either ledger is a sitting's; these only read.
+[verbs.rulings]
+kind = "script"
+built = true
+writes = []
+lands = []
+attended = true
+trigger = ["manual"]
+
+[verbs.evidence]
+kind = "script"
+built = true
+writes = []
+lands = []
+attended = true
+trigger = ["manual"]
+
 [verbs.founding]
 kind = "office-session"
 built = true
@@ -312,11 +408,15 @@ lands = ["desk/{folder}/folder.md"]
 attended = false
 trigger = ["after-build", "after-sitting", "schedule"]
 
+# A sitting scoped to one blueprint (the blueprint's section 3.3), sent
+# out by office blueprint close through office start's own code: a folder
+# born for the close records it, and the close report's template rides
+# from the install beside the request.
 [verbs.blueprint-close]
-kind = "office-session"   # a sitting scoped to one blueprint (§3.3)
-built = false
-ships = ["drafting-table/blueprints/{id}", "desk/{member folders}", "drafting-table/rulings.md", "drafting-table/evidence.md", "drafting-table/watches.md"]
-writes = ["drafting-table", "notepad"]
+kind = "office-session"
+built = true
+ships = ["drafting-table/blueprints/{id}", "desk/{member folders}", "drafting-table/rulings.md", "drafting-table/evidence.md", "drafting-table/watches.md", "the close report's template"]
+writes = ["drafting-table", "notepad", "desk/{folder}"]
 lands = ["drafting-table/blueprints/{id}/close.md", "notepad/{date}-{slug}.md"]
 attended = true
 trigger = ["manual"]

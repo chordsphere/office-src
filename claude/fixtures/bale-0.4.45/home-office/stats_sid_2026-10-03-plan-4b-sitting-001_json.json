@@ -1,0 +1,19 @@
+{
+ "argv": [
+  "stats",
+  "--sid",
+  "2026-10-03-plan-4b-sitting-001",
+  "--json"
+ ],
+ "cwd": "/home/chordsphere/home-office",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"dossier\", \"session_id\": \"2026-10-03-plan-4b-sitting-001\", \"found\": true, \"record\": {\"record_version\": 1, \"created_at\": \"2026-10-03T23:49:58+00:00\", \"updated_at\": \"2026-10-03T23:49:58+00:00\", \"outcome\": \"opened\", \"work_class\": \"meta\", \"packer\": \"chordsphere\", \"in_flight\": true, \"closure\": null, \"read_only\": false, \"crash_debris\": false}, \"attempts\": [{\"at\": \"2026-10-03T23:49:58+00:00\", \"command\": \"pack\", \"outcome\": \"opened\", \"closure_reason\": null, \"tarball\": null, \"scope_kind\": \"write-forecast\", \"scope\": [], \"change_paths\": [], \"overridden_paths\": [], \"required_check_overrides\": [], \"base_drift_overrides\": [], \"forecast_drift_paths\": null, \"validation\": null, \"checkpoint\": null, \"linkage\": null, \"clarification\": null, \"diagnostics\": null, \"provenance\": {\"work_class\": \"meta\", \"packer\": \"chordsphere\", \"packed_at\": \"2026-10-03T23:49:58+00:00\"}, \"superseded_by\": null, \"swept_by\": null, \"cause\": null, \"bundle\": {\"stem\": \"2026-10-03-plan-4b-sitting-2\", \"brief_sha256\": \"d0d03c633d5229cac8b456044a71a434e96d58f325e4b36fe5352d439dd88f53\", \"checkpoint_sha256\": null, \"manifest_sha256\": \"853d86d2f78b760bfeaab4580d1c043a9b9790f056a1b74265c66b91b85ec483\"}, \"log\": \".bale/logs/2026-10-03-plan-4b-sitting-001.log\"}], \"lineage\": {\"superseded_by\": null, \"superseded_from\": [], \"corrects\": null, \"corrected_by\": []}}"
+ ],
+ "stdout_sha256": [
+  "5c4e973cc1e634233f2eacf4d63d8fd689ab9e57262f9be6240d8f519b642a6c"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-05-drafting-table-pages-001, 2026-10-05T00:26:34Z: bale 0.4.45 run in home-office (the machine's real office), stdin closed; each stdout line's sha256 printed by the probe and re-verified on the paste"
+}

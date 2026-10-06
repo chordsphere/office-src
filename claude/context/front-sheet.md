@@ -29,7 +29,14 @@ with statuses, gates and a History, and a desk that orders itself),
 sessions worked on a job and see how each one went. `office projects` names the
 projects an office scopes, declares what rides beside each one's
 sessions and what runs after they land, and shows what bale records
-about them: the trust ledger, who last landed a file, the version trail. Walking in
+about them: the trust ledger, who last landed a file, the version trail.
+For work too big for one folder there is the drafting table, which
+arrives in an office with the first verb that writes it: `office
+blueprint open`, `ratify` and `close` for an arc, `office moves` to
+apply the desk moves a sitting decided, `office rider` and `office
+riders` for small work with a named carrier, `office agenda add` for a
+question a sitting will rule on, and `office rulings` and `office
+evidence` to read the ledgers a sitting keeps. Walking in
 shows the sessions open in those projects. `office status`, `survey` and
 `upgrade` look after the office itself. `office help` lists every verb by
 what you want to do, and every verb's `--help` has examples.
@@ -46,6 +53,26 @@ schedules nothing, never hands a session to a model and never carries
 pastes.
 
 ## Recent changes
+
+- 0.10.0 (session 2026-10-05-drafting-table-pages-001): the first half
+  of blueprint session 4b. The drafting table arrives in an office with
+  the first verb that writes it (its front page, the floor plan's entry
+  and bale.toml's trigger, and each page on its first write, in the same
+  commit), so no migration and no renovation session bring it. `office
+  moves` applies a sitting's desk moves through open's, close's and the
+  gate flags' own code, ticks each, writes minted numbers onto the
+  blueprint, and stops at the first line it cannot apply. `office
+  blueprint open`, `ratify` (and `office status`'s check that a ratified
+  charter never changes) and `close`, which sends the close sitting out
+  through `office start`. `office rider add`, `carry`, `consumed` and
+  `office riders`; `office agenda add`; `office rulings [ID] [--check]`
+  and `office evidence [N]`. The desk resolves blueprint, agenda and
+  ruling gates and shows orphaned riders and pending desk moves (the
+  walk-in names the session that wrote them); `office desk --blueprint
+  ID` shows one arc. The one-writer rule holds every script that mints a
+  number or adds to a page. `office slip` titles a slip from a numbered
+  list by its words. Additive: no migration, no office needs anything
+  done.
 
 - 0.9.0 (session 2026-10-04-friction-second-trip-001): the second trip,
   five frictions the first real round trip found. `office start` shows
@@ -217,9 +244,27 @@ pastes.
 - ~~The doctrine says a script that appends to filed paper checks the
   page's prefix before it commits; `office note` does not yet.~~ Struck
   in 0.6.0: `office note` checks before it commits.
-- `office desk` cannot yet read a gate on a blueprint, an agenda item or
+- ~~`office desk` cannot yet read a gate on a blueprint, an agenda item or
   a ruling: such a folder waits under that name, as not readable until
-  the drafting-table verbs land.
+  the drafting-table verbs land.~~ Struck in 0.10.0: those gates resolve
+  through the drafting table (a close report, an agenda item's disposal,
+  a ruling's record), and one naming nothing is an error line.
+- Blueprint session 4b's second half is still owed (its own session,
+  serialized after 0.10.0): `share/watch-queries.toml`, `office
+  watches`, `office watches check` (`--record` calling `helper
+  append-check`), the `bale stats --json --since` probe and its
+  fixtures, and `office digest` last. Until then `watches.md` and
+  `watch-log.md` are a sitting's to write by hand, `digest` and the
+  watches verbs are declared `built = false`, and the drafting table's
+  front page still says the digest does not exist yet.
+- The drafting table arrives with a verb, not by renovation; the
+  doctrine's section 5 says so. The renovation kind remains for spaces
+  whose arrival needs judgment, and `office upgrade` never brings this
+  one.
+- A rider consumed in a folder already in the filing cabinet gets its
+  dated `consumed` line, but its `status:` field keeps the value it had
+  when the folder closed, because a filed folder only gains lines. The
+  dated lines are the record; every reader takes the last of them.
 - The calendar's two-page format is the tool's first guess; the first
   office with a calendar will tell whether it fits.
 - Offices on WSL report the machine's zone (UTC on chordsphere) until
@@ -257,6 +302,13 @@ pastes.
 - *How does a planning sitting end?* `office land SID`, from the office,
   when the sitting is over: bale unlock, and a line in the folder. The
   folder stays open until you close it.
+- *How does an office get a drafting table?* The first time a verb writes
+  one: `office blueprint open`, `office rider add` or `office agenda add`
+  (or `office moves`, once a sitting wrote moves). Nothing is made by
+  hand, and nothing happens in offices that never use one.
+- *A sitting landed with desk moves. What now?* `office moves`. Walking
+  in says how many are pending and which session wrote them until it is
+  run.
 
 ## Public documentation
 

@@ -42,6 +42,7 @@ import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import office_helper as oh  # noqa: E402
+import office_drafting as od  # noqa: E402
 
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 CONSUMPTION = INSTALL / "share" / "bale-consumption.toml"
@@ -604,14 +605,15 @@ def writers_holding(rd, office_root, targets):
 # --- the desk ----------------------------------------------------------------------
 #
 # What `office desk` renders (the blueprint's section 2.3), in order: In
-# flight, Ready, Parked, Candidates. Orphaned riders and pending desk moves
-# follow Candidates once the drafting-table verbs exist to read them.
-# Every folder on the desk lands in exactly one group, and a folder whose
-# facts the desk cannot place is shown with the reason, never dropped.
+# flight, Ready, Parked, Candidates, then orphaned riders and pending desk
+# moves, read from the drafting table. Every folder on the desk lands in
+# exactly one group, and a folder whose facts the desk cannot place is
+# shown with the reason, never dropped. A gate on a blueprint, an agenda
+# item or a ruling resolves through the drafting table's one reader
+# (office_drafting.Table.gate).
 
 FOLDER_TEMPLATE = INSTALL / "templates" / "folder.md"
 SIZE_RANK = {size: n for n, size in enumerate(oh.SIZES)}
-NOT_YET = "not readable until the drafting-table verbs land"
 SUCCESSOR_RE = re.compile(r"folders?\s+([\d,\s]+)")
 
 
@@ -635,13 +637,20 @@ def successors(f):
     return [int(n) for n in re.findall(r"\d+", m.group(1))] if m else []
 
 
-def gate_state(gate, by_number, seen=()):
+def gate_state(gate, by_number, seen=(), table=None):
     """Where a gate stands: (state, words, cleared) where state is met,
-    wait, notyet or error; words name the gate's own status; cleared is
-    the day a met folder gate cleared, when its History says."""
+    wait or error; words name the gate's own status; cleared is the day a
+    met gate cleared, when the record says (a folder's History, a
+    blueprint's close report, an agenda item's disposal, a ruling's
+    date). A blueprint, agenda or ruling gate reads the drafting table."""
     kind, _, ref = gate.partition(" ")
     if kind != "folder":
-        return "notyet", f"{gate}: {NOT_YET}", None
+        if table is None:
+            return "error", f"{gate}: the drafting table was not read", None
+        try:
+            return table.gate(gate)
+        except (OSError, UnicodeDecodeError, oh.HelperError) as exc:
+            return "error", f"{gate}: the drafting table could not be read ({exc})", None
     n = int(ref)  # read_gates normalized it: `folder N`
     if n in seen:
         return "error", f"{gate} leads back to the folder that waits on it", None
@@ -662,7 +671,7 @@ def gate_state(gate, by_number, seen=()):
         nexts = successors(t)
         if not nexts:
             return "error", f"{gate} was {status}, and its History names no successor", None
-        states = [gate_state(f"folder {m}", by_number, seen + (n,)) for m in nexts]
+        states = [gate_state(f"folder {m}", by_number, seen + (n,), table) for m in nexts]
         for st in states:
             if st[0] != "met":
                 return st[0], f"{gate} ({status} into " + ", ".join(f"folder {m}" for m in nexts) + f"): {st[1]}", None
@@ -743,13 +752,22 @@ def read_gates(f, key, errors):
     return out
 
 
-def classify_desk(folders, flying, since):
+def classify_desk(folders, flying, since, table=None):
     """The desk's groups from its folders: a dict of lists, plus the
-    error lines the Ready group carries."""
+    error lines the Ready group carries. table, the drafting table's
+    reader, resolves the gates that are not folders and gives the
+    orphaned riders and the pending desk moves."""
     by_number = oh.folders_by_number(folders)
     desk = [f for f in folders if f["space"] == "desk"]
     groups = {"flying": [], "open": [], "ready": [], "parked": {}, "candidates": [], "no_status": [],
-              "misplaced": [], "unreadable": [], "ready_errors": [], "cleared": {}}
+              "misplaced": [], "unreadable": [], "ready_errors": [], "cleared": {},
+              "orphans": [], "moves": (0, "", []), "drafting_error": None}
+    if table is not None:
+        try:
+            groups["orphans"] = table.orphans()
+            groups["moves"] = od.moves_summary(table.root)
+        except (OSError, UnicodeDecodeError, oh.HelperError) as exc:
+            groups["drafting_error"] = f"the drafting table could not be read: {exc}"
     cyclic = {}
     for cycle in after_cycles(desk, by_number):
         words = "ERROR: after gates in a cycle: " + " -> ".join(f"folder {n}" for n in cycle)
@@ -782,22 +800,18 @@ def classify_desk(folders, flying, since):
             me = (f["number"],) if f.get("number") else ()
             gates = {key: read_gates(f, key, waits) for key in ("after", "consumer", "serializes after")}
             for g in gates["after"]:
-                state, words, day = gate_state(g, by_number, me)
+                state, words, day = gate_state(g, by_number, me, table)
                 if state == "met":
                     if day and day >= since:
                         cleared.append(f"gate cleared: {words} {day}")
                 elif state == "error":
                     waits.append(f"ERROR: {oh.cite(f)}: after {words}")
-                elif state == "notyet":
-                    waits.append(f"waiting for {words}")
                 else:
                     waits.append(f"waiting for {words}")
             for g in gates["consumer"]:
-                state, words, _ = gate_state(g, by_number, me)
+                state, words, _ = gate_state(g, by_number, me, table)
                 if state == "error":
                     waits.append(f"ERROR: {oh.cite(f)}: consumer {words}")
-                elif state == "notyet":
-                    waits.append(f"parked for its consumer, {words}")
                 else:
                     waits.append(f"parked for its consumer, {words}")
             for g in gates["serializes after"]:
@@ -854,9 +868,11 @@ def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
             lines.append("  nothing is ready")
         if errors:
             lines.append(f"  {errors} gate error(s): office desk names them")
+        lines += drafting_lines(groups, walk_in=True)
         return lines
     if not on_desk:
-        return lines + ["", "the desk is clear"]
+        extra = drafting_lines(groups)
+        return lines + ["", "the desk is clear"] + extra
     if groups["ready"] or groups["ready_errors"]:
         lines += ["", "Ready:"] + [f"  {e}" for e in groups["ready_errors"]] + ready_block(groups["ready"])
     if groups["parked"]:
@@ -868,8 +884,7 @@ def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
                 lines += [f"      and {a}" for a in also]
     if groups["candidates"]:
         lines += ["", "Candidates:"] + [f"  {folder_line(f)}" for f in groups["candidates"]]
-    # Orphaned riders and pending desk moves join here with the
-    # drafting-table verbs.
+    lines += drafting_lines(groups)
     if groups["no_status"]:
         lines += ["", "No status line (folders from before the field block; the desk cannot order them):"]
         lines += [f"  {folder_line(f)}" for f in groups["no_status"]]
@@ -881,17 +896,104 @@ def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
     return lines
 
 
-def render_desk(rd, office_root, today, since=None, walk_in=False, now=None, groups_out=None):
+def drafting_lines(groups, walk_in=False):
+    """The desk's last two groups, orphaned riders and pending desk
+    moves; on the walk-in, one line each, and nothing when there are
+    none."""
+    out = []
+    count, sources, errors = groups.get("moves", (0, "", []))
+    orphans = groups.get("orphans", [])
+    if groups.get("drafting_error"):
+        out += ["", f"Drafting table: {groups['drafting_error']}"] if not walk_in else \
+            [f"  {groups['drafting_error']}"]
+    if walk_in:
+        if count:
+            out.append(f"  {count} desk move(s) pending ({sources}): office moves applies them")
+        if errors:
+            out.append(f"  {len(errors)} line(s) of drafting-table/moves.md do not read: office moves names them")
+        if orphans:
+            out.append(f"  {len(orphans)} orphaned rider(s), in a closed folder and never consumed: "
+                       "office riders --orphans")
+        return out
+    if orphans:
+        out += ["", "Orphaned riders (in a closed folder, never consumed):"]
+        out += [f"  rider {r['number']}  {r['title']}  ({r['home']}, {r['status'] or 'no status'})" for r in orphans]
+    if count or errors:
+        out += ["", f"Pending desk moves ({count}, {sources or 'none readable'}; office moves applies them):"]
+        out += [f"  ERROR: {e}" for e in errors]
+    return out
+
+
+def render_desk(rd, office_root, today, since=None, walk_in=False, now=None, groups_out=None, blueprint=None):
     """(lines, unreadable projects): office desk, or the walk-in's two
     sections. since is the day of the previous walk-in (default today):
     a ready folder whose gate cleared on or after it says so. groups_out,
     a dict when given, receives the desk's groups (the Next line reads
     them, so the walk-in classifies the desk once)."""
     flight, bad, flying = in_flight(rd, office_root, now)
-    groups = classify_desk(oh.read_folders(office_root), flying, since or today)
+    table = od.Table(office_root)
+    folders = oh.read_folders(office_root)
+    if blueprint is not None:
+        return blueprint_desk(table, folders, flying, since or today, blueprint, flight), bad
+    groups = classify_desk(folders, flying, since or today, table)
     if groups_out is not None:
         groups_out.update(groups)
-    return desk_lines(groups, flight, walk_in=walk_in), bad
+    if not walk_in and groups["moves"][0]:
+        # Each pending move by line, so the desk shows what office moves
+        # will do; the words are the sitting's, as it wrote them.
+        try:
+            moves, _ = od.pending_moves(office_root)
+            src = od.move_sources(office_root)
+            groups["move_lines"] = [f"  line {m['line']}: {m['day']} {m['text']}  (from {src.get(m['line'], '?')})"
+                                    for m in moves]
+        except (OSError, oh.HelperError) as exc:
+            groups["move_lines"] = [f"  could not be listed: {exc}"]
+    lines = desk_lines(groups, flight, walk_in=walk_in)
+    if groups.get("move_lines"):
+        at = next(i for i, l in enumerate(lines) if l.startswith("Pending desk moves"))
+        lines[at + 1:at + 1] = groups["move_lines"]
+    return lines, bad
+
+
+def blueprint_desk(table, folders, flying, since, bid, flight):
+    """office desk --blueprint ID: the arc's member folders in the desk's
+    own order, computed from their gates, then the members already filed.
+    The blueprint states no order; this is the only place it is shown."""
+    b = table.blueprints().get(bid)
+    if b is None:
+        raise oh.HelperError(f"no blueprint {bid} on the drafting table")
+    members = set(od.blueprint_members(table, bid))
+    groups = classify_desk(folders, flying, since, table)
+    keep = lambda f: f["rel"] in members  # noqa: E731
+    state = "closed" if b["closed"] else ("ratified " + b["ratified"][0] if b["ratified"] else "not ratified")
+    out = [f"blueprint {bid}: {b['title']} ({state})"]
+    flying_lines = [l for l in flight if any(m in l for m in members)]
+    if flying_lines or any(keep(f) for f in groups["open"]):
+        out += ["", "In flight:"] + [f"  {l}" for l in flying_lines]
+        out += [f"  {folder_line(f)}  [open, no session in flight]" for f in groups["open"] if keep(f)]
+    ready = [f for f in groups["ready"] if keep(f)]
+    if ready:
+        out += ["", "Ready, in order:"] + [f"  {folder_line(f)}" for f in ready]
+    parked = {h: [(f, a) for f, a in fs if keep(f)] for h, fs in groups["parked"].items()}
+    parked = {h: fs for h, fs in parked.items() if fs}
+    if parked:
+        out += ["", "Parked:"]
+        for heading in sorted(parked, key=lambda h: (not h.startswith("ERROR"), h)):
+            out.append(f"  {heading}")
+            out += [f"    {folder_line(f)}" for f, _ in parked[heading]]
+    cands = [f for f in groups["candidates"] if keep(f)]
+    if cands:
+        out += ["", "Candidates:"] + [f"  {folder_line(f)}" for f in cands]
+    filed = [f for f in folders if keep(f) and f["space"] == "filing-cabinet"]
+    if filed:
+        out += ["", "Filed:"] + [f"  {oh.cite(f)}  {f['name']}  [{f.get('status') or 'no status line'}]" for f in filed]
+    open_lines = [d for d in b["decomposition"] if d["folder"] is None]
+    if open_lines:
+        out += ["", "Decomposition lines with no folder yet (a desk move opens each):"]
+        out += [f"  line {d['n']}: {d['goal']}" for d in open_lines]
+    if len(out) == 1:
+        out.append("  no member folders yet")
+    return out
 
 
 # --- the Next line -------------------------------------------------------------------
@@ -1738,7 +1840,7 @@ def open_bundle(rd, pack_dir, bundle):
 
 
 def start(rd, office_root, folder, where, project, goal, slug, includes, writes, read_only,
-          brief, work_class, tray_root, bundle=None, leave_out=()):
+          brief, work_class, tray_root, bundle=None, leave_out=(), install_files=()):
     """Pack a session for a folder and fill its out tray. Returns a dict:
     sid, tray, files, opener (lines, or None), carried (what each file
     is), warnings. Raises StartError with lines to print when it cannot
@@ -1749,7 +1851,10 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     resolves to) that stay home for this session; a name no declaration
     matches refuses. The install's doctrine rides unless the packed tree
     ships a doctrine of its own: identical, it rides once (inside the
-    tree); different, the install's rides too, named as the install's."""
+    tree); different, the install's rides too, named as the install's.
+    install_files are install-relative files (a template the session
+    writes from) that ride as one more context tarball, made from a
+    scratch copy so the install is never written."""
     office_root = pathlib.Path(office_root).resolve()
     manifest = oh.read_toml(office_root / "floor-plan" / "manifest.toml")
     projects = {p["name"]: p for p in oh.read_projects(manifest) or []}
@@ -1906,6 +2011,16 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                                            f"the doctrine the office runs on, from the install (office-src "
                                            f"{install_version_here()}); {tree_label}'s tree carries a different "
                                            "doctrine/ of its own", name="context-doctrine-install.tar.gz"))
+        if install_files:
+            with tempfile.TemporaryDirectory(prefix="office-install-files-") as tmp:
+                holder = pathlib.Path(tmp) / "office-src-install"
+                for rel in install_files:
+                    src = INSTALL / rel
+                    if not src.is_file():
+                        raise StartError([f"the install has no {rel}, which this session writes from"])
+                    (holder / rel).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, holder / rel)
+                carried.append(scratch_context(rd, tray, holder, "from the install: " + ", ".join(install_files)))
         if where == "project":
             # The office's context rides beside the request, never inside
             # it: the folder and the hung items, named, because include
@@ -2473,6 +2588,7 @@ def main(argv=None):
     p.add_argument("--skew", choices=("current", "behind", "ahead", "unreadable"), default="current",
                    help="the office's version state, for the Next line")
     p.add_argument("--founded", choices=("yes", "no"), default="yes", help="whether the profile is complete")
+    p.add_argument("--blueprint", help="only this blueprint's member folders, in the desk's order")
     p = sub.add_parser("writers"); p.add_argument("office"); p.add_argument("paths", nargs="+")
     p = sub.add_parser("start", help="pack a session for a folder and fill its out tray; one JSON line on stdout")
     p.add_argument("office"); p.add_argument("folder", help="desk/NAME")
@@ -2485,6 +2601,8 @@ def main(argv=None):
     p.add_argument("--bundle", help="a planner bundle: bale open replays its pack line in place of a pack")
     p.add_argument("--leave-out", action="append", default=[],
                    help="a declared ride-along that stays home for this session (repeatable)")
+    p.add_argument("--install-file", action="append", default=[],
+                   help="an install-relative file that rides beside the request (repeatable)")
     p = sub.add_parser("bundle-where", help="where a bundle opens by default: DEFAULT<tab>WHY, or nothing")
     p.add_argument("office"); p.add_argument("--bundle", required=True); p.add_argument("--lane")
     p = sub.add_parser("land-out", help="the sessions out: sid, where, folders; one per line")
@@ -2521,7 +2639,8 @@ def main(argv=None):
     if a.cmd == "start":
         try:
             result = start(Reader(), a.office, a.folder, a.where, a.project, a.goal, a.slug, a.include,
-                           a.write, a.read_only, a.brief, a.work_class, a.tray_root, a.bundle, a.leave_out)
+                           a.write, a.read_only, a.brief, a.work_class, a.tray_root, a.bundle, a.leave_out,
+                           a.install_file)
         except StartError as exc:
             for line in exc.lines:
                 log(f"error: {line}")
@@ -2546,7 +2665,8 @@ def main(argv=None):
                 if day is not None:
                     dt.date.fromisoformat(day)
             groups = {}
-            lines, bad = render_desk(rd, a.office, a.today, a.since, a.walk_in, groups_out=groups)
+            lines, bad = render_desk(rd, a.office, a.today, a.since, a.walk_in, groups_out=groups,
+                                     blueprint=a.blueprint)
             if a.next_file:
                 # Never fails the walk-in: a Next line that cannot be
                 # worked out says so, and why is a debug line away.

@@ -567,8 +567,9 @@ was installed from, whether the profile is complete, the survey's age and
 the office-src it records, whether the floor plan's timezone resolves (and
 what fixes it when it does not), whether bale.toml's include group matches
 the floor plan, the install's catalogs, folders against their History,
-filed pages against git, and the installed bale and the projects. It
-reports and exits 0.
+filed pages against git, the drafting table against the catalog and each
+ratified charter against git from its ratifying commit on, and the
+installed bale and the projects. It reports and exits 0.
 Examples:
   office status
   OFFICE_ROOT=~/offices/work office status
@@ -668,6 +669,11 @@ cmd_status() {
   # through neither bale nor a script.
   helper filed-check "$root" 2>/dev/null
   case $? in 0|3) ;; *) printf 'filed:      could not be checked (is the office a git repo?)\n' ;; esac
+  # The drafting table, when it exists, against the install's catalog;
+  # and every ratified charter's bytes against git from its ratifying
+  # commit on.
+  drafting table-check "$root" 2>/dev/null
+  case $? in 0|3) ;; *) printf 'drafting:   could not be checked\n' ;; esac
   # The read side: which bale is installed against the version the
   # office's reads were written for, and whether each project in scope
   # can be read. Lines, never a refusal.
@@ -852,9 +858,17 @@ office_date() { TZ="$1" date +%F; }
 office_time() { TZ="$1" date +%H:%M; }
 
 # Commit only the named paths. Returns 1 (after a warning) when there is
-# no repo or git refuses; the change on disk stands either way.
+# no repo or git refuses; the change on disk stands either way. While
+# DEFER_COMMITS names a file (office moves, applying a sitting's moves
+# through the verbs' own code), the paths are written there instead, and
+# the caller commits them all at once.
 commit_paths() {
   local root="$1" msg="$2"; shift 2
+  if [ -n "${DEFER_COMMITS:-}" ]; then
+    printf '%s\n' "$@" >> "$DEFER_COMMITS" || die "could not keep the paths to commit in $DEFER_COMMITS"
+    debug "deferred to office moves' commit: $msg"
+    return 0
+  fi
   if ! git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     warn "$root is not a git repo; nothing committed"; return 1
   fi
@@ -994,6 +1008,13 @@ Examples:
 USAGE
 }
 
+# A title from words as typed: a leading list marker (1. 2) - * +) and
+# emphasis markers (** __ *) taken out, so a slip lifted from a numbered
+# Markdown list is titled by its words. The text itself stays as typed.
+title_words() {
+  sed -E 's/^[[:space:]]*([0-9]+[.)]|[-*+])[[:space:]]+//; s/\*\*|__//g; s/(^|[^[:alnum:]])\*+/\1/g; s/\*+([^[:alnum:]]|$)/\1/g'
+}
+
 # A slip is about the office, a tool or a project: one word, the way a
 # project is named.
 slip_about_choices() {
@@ -1034,9 +1055,9 @@ cmd_slip() {
   tz="$(office_tz "$root")"; day="$(office_date "$tz")"; now="$(office_time "$tz")"
   # The slug from the words as typed, as office open makes one: an
   # escape is no part of a file name.
-  slug="$(short_slug "$(printf '%s\n' "$text" | grep -m 1 '[^[:space:]]')")"; [ -n "$slug" ] || slug="slip"
+  slug="$(short_slug "$(printf '%s\n' "$text" | grep -m 1 '[^[:space:]]' | title_words)")"; [ -n "$slug" ] || slug="slip"
   text="$(printf '%s' "$text" | helper ascii-escape)"
-  title="$(printf '%s\n' "$text" | grep -m 1 '[^[:space:]]' | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
+  title="$(printf '%s\n' "$text" | grep -m 1 '[^[:space:]]' | title_words | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
   [ "${#title}" -le 72 ] || title="${title:0:69}..."
   base="suggestion-box/$day-$slug"; page="$base.md"
   while [ -e "$root/$page" ]; do n=$((n + 1)); page="$base-$n.md"; done
@@ -1167,9 +1188,9 @@ cmd_open() {
   if [ "$filed" = 1 ]; then
     space=filing-cabinet; status=done; verb=done; text="office open --filed, done at $sid"
   elif [ "$candidate" = 1 ]; then
-    space=desk; status=candidate; verb=candidate; text="office open --candidate"
+    space=desk; status=candidate; verb=candidate; text="${MOVE_TEXT:-office open --candidate}"
   else
-    space=desk; status=queued; verb=queued; text="office open"
+    space=desk; status=queued; verb=queued; text="${MOVE_TEXT:-office open}"
   fi
   folder="$space/$name"
   require_one_writer "$root" "$space"
@@ -1200,14 +1221,21 @@ cmd_open() {
 
 usage_desk() {
   cat <<'USAGE'
-usage: office desk
+usage: office desk [--blueprint ID]
 Shows the desk in order, computed from what the folders say: In flight (the
 folders a session is open for), Ready (queued folders whose gates are met:
 by serializes after, then small first, then number), Parked (under what each
-waits for), and Candidates. A gate that cleared since you last walked in
-says so. It only reads.
+waits for), Candidates, then the riders orphaned in a closed folder and the
+desk moves a sitting wrote that office moves has not applied yet. A gate
+names a folder, a blueprint (met when its close report exists), an agenda
+item (met when a sitting ruled on it) or a ruling (met when it is on the
+ledger); one that names nothing is an error line. A gate that cleared
+since you last walked in says so. --blueprint ID shows only that arc's
+folders, in the same order, then the ones already filed and the
+decomposition lines with no folder yet. It only reads.
 Examples:
   office desk
+  office desk --blueprint 2026-10-05-rider-verbs
   office desk | grep -A3 Parked
 USAGE
 }
@@ -1215,12 +1243,18 @@ USAGE
 # The desk's groups: In flight, Ready, Parked, Candidates (doctrine
 # section 5). A gate that cleared since the last walk-in says so.
 cmd_desk() {
-  local root tz since rc
-  case "${1:-}" in -h|--help) usage_desk; return 0 ;; esac
+  local root tz since rc bp=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --blueprint) [ $# -ge 2 ] || die "--blueprint needs the blueprint's id"; bp="${2#blueprint }"; shift 2 ;;
+      -h|--help) usage_desk; return 0 ;;
+      *) usage_desk >&2; die "office desk does not know $1" ;;
+    esac
+  done
   root="$(resolve_office)" || exit 1
   tz="$(office_tz "$root")"
   since="$(last_walk_in "$root")"
-  reader desk "$root" --today "$(office_date "$tz")" ${since:+--since "$since"}; rc=$?
+  reader desk "$root" --today "$(office_date "$tz")" ${since:+--since "$since"} ${bp:+--blueprint "$bp"}; rc=$?
   case $rc in
     0) return 0 ;;
     3) warn "some of this office's projects could not be read; In flight says which"; return 0 ;;
@@ -1384,7 +1418,7 @@ cmd_close() {
     [ -n "${retired//[[:space:]]/}" ] || die "--retired needs the reason, in a few words"
     verb=retired; status=retired; text="$(printf '%s' "$retired" | helper ascii-escape)"
   else
-    verb=done; status=done; text="office close"
+    verb=done; status=done; text="${MOVE_TEXT:-office close}"
   fi
   tz="$(office_tz "$root")"; day="$(office_date "$tz")"
   # The status and History lines go in while the folder is on the desk,
@@ -1541,6 +1575,746 @@ cmd_sessions() {
   record_session "$root" "$space/$name" "$sid" "$words" "$day"
 }
 
+# --- the drafting table -----------------------------------------------------------
+#
+# Blueprints for work too big for one folder, and the pages a sitting
+# rules in (doctrine section 5). The space arrives in an office with the
+# first verb that writes it: drafting-table/README.md from the install's
+# template, the floor plan's entry and bale.toml's trigger, and each page
+# from its template on its first write, committed with the write that
+# asked for it. lib/office_drafting.py reads and writes the pages; these
+# verbs ask, hold the one-writer rule, check what they append, and commit
+# exactly what they touched.
+
+DRAFTING="$OFFICE_SRC/lib/office_drafting.py"
+drafting() { python3 -B "$DRAFTING" "$@"; }
+
+# one_writer ROOT VERB TARGET...: a script that mints a number or appends
+# to a page refuses while an open session in the office's own registry
+# forecasts what it writes, and names the session (the blueprint's
+# section 5.4). An office bale has never run in has no registry and
+# nothing to refuse; a registry that cannot be read is said loudly.
+one_writer() {
+  local root="$1" verb="$2" out rc; shift 2
+  out="$(reader writers "$root" "$@")"; rc=$?
+  case $rc in
+    0) debug "one-writer rule: no open session in this office's registry holds $*" ;;
+    3) printf '%s\n' "$out" | sed 's/^/[office]   /' >&2
+       die "an open session holds what office $verb writes, so it waits (the one-writer rule); run it once that session is applied or closed" ;;
+    *) warn "bale's registry in this office could not be read (the line above says why); office $verb runs without the one-writer check" ;;
+  esac
+}
+
+# What the drafting table's arrival writes, when it has not arrived: the
+# floor plan, bale.toml and the space's front page, for the rule above.
+arrival_targets() {
+  local root="$1"
+  if helper get "$root/$MANIFEST_REL" "spaces.drafting-table.path" >/dev/null 2>&1 && [ -f "$root/drafting-table/README.md" ]; then
+    return 0
+  fi
+  printf '%s\n' "$MANIFEST_REL" "$BALE_TOML_REL" "drafting-table/README.md"
+}
+
+# check_page ROOT PAGE [--insertion]: a page a verb added to, against its
+# committed bytes, before the commit: appended at its end (or, with
+# --insertion, one entry put in above its foot), nothing else changed.
+check_page() {
+  local root="$1" page="$2" why; shift 2
+  why="$(helper append-check "$root" "$page" "$@")"
+  case $? in
+    0) return 0 ;;
+    3) die "$page differs from its committed bytes other than by this entry ($why); the entry is on disk but not committed, and nothing else was" ;;
+    *) die "could not check $page against its committed bytes; the entry is on disk but not committed" ;;
+  esac
+}
+
+# run_drafting VAR ARGS...: run a writing subcommand; VAR gets what it
+# printed (its citation first, then the paths it changed).
+run_drafting() {
+  local __var="$1" __out; shift
+  __out="$(drafting "$@")" || exit 1
+  printf -v "$__var" '%s' "$__out"
+}
+
+# A rider, agenda item or blueprint named as N, `rider N` and so on.
+bare_number() {  # bare_number KIND WORD
+  local w
+  w="$(printf '%s' "$2" | sed -E "s/^[[:space:]]*($1[[:space:]]+)?//; s/[[:space:]]+\$//")"
+  [[ "$w" =~ ^[0-9]+$ ]] || die "$1 takes a number ($1 N), not $(shq "$2")"
+  printf '%s' "$((10#$w))"
+}
+
+usage_blueprint() {
+  cat <<'USAGE'
+usage: office blueprint open SLUG | ratify ID | close ID
+A blueprint is work too big for one folder: one arc on the drafting table,
+drafting-table/blueprints/DATE-SLUG/blueprint.md, with its charter, its
+decomposition into folders, its watch list and its history.
+  office blueprint open SLUG     draft one from the template
+  office blueprint ratify ID     write the charter's ratified line
+  office blueprint close ID      send out the sitting that writes its close report
+office blueprint VERB --help explains each, with examples. office desk
+--blueprint ID shows the arc's folders in the desk's order.
+Examples:
+  office blueprint open rider-verbs --title "The rider verbs"
+  office blueprint ratify 2026-10-05-rider-verbs --words notepad/2026-10-05-plan.md
+  office blueprint close 2026-10-05-rider-verbs
+USAGE
+}
+
+cmd_blueprint() {
+  local sub="${1:-}"
+  case "$sub" in
+    open) shift; cmd_blueprint_open "$@" ;;
+    ratify) shift; cmd_blueprint_ratify "$@" ;;
+    close) shift; cmd_blueprint_close "$@" ;;
+    ""|-h|--help) usage_blueprint ;;
+    *) usage_blueprint >&2; die "office blueprint does not know $sub; it takes open, ratify or close" ;;
+  esac
+}
+
+usage_blueprint_open() {
+  cat <<'USAGE'
+usage: office blueprint open [SLUG] [--title TITLE] [--charter TEXT]   (or the charter on stdin)
+Drafts a blueprint: drafting-table/blueprints/DATE-SLUG/blueprint.md from
+the install's template, with a drafted History line, committed alone. The
+blueprint's id is DATE-SLUG, in the office's timezone; it is cited as
+blueprint DATE-SLUG. The charter says what the arc is for and what done
+means; left out, it is marked not written yet, and ratify refuses it until
+it is. The first blueprint brings the drafting table into the office (its
+front page, the floor plan's entry and bale.toml's trigger), in the same
+commit. On a terminal it asks for the slug, title and charter it was not
+given; piped, it never asks. A sitting may equally draft a blueprint
+itself; this is for the occupant drafting alone.
+Examples:
+  office blueprint open                        (asks for the slug, title and charter)
+  office blueprint open rider-verbs --title "The rider verbs" --charter "Riders get verbs; done when ..."
+  printf '%s\n' "What the arc is for ..." | office blueprint open rider-verbs --title "The rider verbs"
+USAGE
+}
+
+cmd_blueprint_open() {
+  local slug="" title="" charter="" have_charter=0 root tz day out tmp paths=() cite
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --title|--charter) [ $# -ge 2 ] || die "$1 needs a value (office blueprint open --help)"
+        case "$1" in --title) title="$2" ;; --charter) charter="$2"; have_charter=1 ;; esac; shift 2 ;;
+      -h|--help) usage_blueprint_open; return 0 ;;
+      -*) usage_blueprint_open >&2; die "office blueprint open does not know $1" ;;
+      *) [ -z "$slug" ] || die "blueprint open takes one slug (quote a title with --title)"; slug="$1"; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ "$have_charter" = 0 ] && [ ! -t 0 ]; then charter="$(cat)"; fi
+  if can_ask; then
+    [ -n "$slug" ] || [ -n "$title" ] || ask title "Title, in a few words (--title)" "" 1 \
+      "The blueprint's name in words, its first line. The slug, the id after the date, is made from it unless you give one."
+    [ -n "$slug" ] || slug="$(short_slug "$title")"
+    [ -n "$title" ] || ask title "Title, in a few words (--title)" "$(printf '%s' "$slug" | tr '-' ' ')" 1 \
+      "The blueprint's name in words, its first line."
+    [ "$have_charter" = 1 ] || ask charter "Charter: what the arc is for and what done means (--charter)" "" 0 \
+      "In the asker's words where there are words to keep. It freezes once ratified. A plain return leaves it marked not written yet; ratify refuses it until it is."
+  else
+    [ -n "$slug" ] || [ -n "$title" ] || die "blueprint open needs a slug or a title: office blueprint open SLUG, or --title TITLE; piped input is never asked"
+  fi
+  [ -n "$slug" ] || slug="$(short_slug "$title")"
+  slug="$(slugify "$slug")"; [ -n "$slug" ] || die "the slug has no letters or digits (give one: office blueprint open SLUG)"
+  [ -n "$title" ] || title="$(printf '%s' "$slug" | tr '-' ' ')"
+  mapfile -t paths < <(arrival_targets "$root")
+  one_writer "$root" "blueprint open" "drafting-table/blueprints" "${paths[@]}"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  tmp="$(mktemp)" || die "cannot make a temp file"; TMP_PATHS+=("$tmp")
+  printf '%s' "$charter" > "$tmp"
+  run_drafting out blueprint-open "$root" "$slug" --day "$day" --title "$title" --charter-file "$tmp"
+  cite="$(printf '%s\n' "$out" | head -n 1)"
+  mapfile -t paths < <(printf '%s\n' "$out" | tail -n +2)
+  commit_paths "$root" "office blueprint open: ${cite#blueprint }" "${paths[@]}" || true
+  printf '%s\n' "$cite"
+}
+
+# The blueprints on the drafting table, then the question.
+ask_blueprint() {
+  local __var="$1" root="$2" verb="$3" list
+  list="$(drafting blueprints "$root" 2>/dev/null)"
+  [ -n "$list" ] || die "no blueprint on the drafting table to $verb (office blueprint open drafts one)"
+  printf 'Blueprints:\n' >&2
+  printf '%s\n' "$list" | awk -F'\t' '{printf "  %s  [%s]  %s\n", $1, $2, $3}' >&2
+  ask "$__var" "Which blueprint: its id, DATE-SLUG (office blueprint $verb ID)" "" 1 \
+    "The blueprint's id is its directory's name under drafting-table/blueprints/, the date and the slug."
+}
+
+usage_blueprint_ratify() {
+  cat <<'USAGE'
+usage: office blueprint ratify [ID] [--words notepad/PAGE | --sid SID]
+Writes the charter's ratified line, last in its Charter section, and a
+ratified History line, and commits the blueprint alone: that commit is the
+one office status checks the charter's bytes against from then on. The
+ratification names where its words are: the notepad page that carries
+them (--words), or the session they were given in (--sid). It refuses a
+blueprint already ratified or closed, and a charter not written yet. A
+sitting can write the same two lines itself; this is for a ratification
+given outside one (an "as assumed" reply). On a terminal it asks for what
+it was not given; piped, it never asks.
+Examples:
+  office blueprint ratify 2026-10-05-rider-verbs --words notepad/2026-10-05-plan.md
+  office blueprint ratify 2026-10-05-rider-verbs --sid 2026-10-05-plan-sitting-001
+USAGE
+}
+
+cmd_blueprint_ratify() {
+  local id="" words="" sid="" root tz day out paths=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --words|--sid) [ $# -ge 2 ] || die "$1 needs a value (office blueprint ratify --help)"
+        case "$1" in --words) words="$2" ;; --sid) sid="$2" ;; esac; shift 2 ;;
+      -h|--help) usage_blueprint_ratify; return 0 ;;
+      -*) usage_blueprint_ratify >&2; die "office blueprint ratify does not know $1" ;;
+      *) [ -z "$id" ] || die "blueprint ratify takes one blueprint"; id="${1#blueprint }"; shift ;;
+    esac
+  done
+  [ -z "$words" ] || [ -z "$sid" ] || die "--words and --sid are two places the words can be; give one"
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ -z "$id" ]; then
+    can_ask || { usage_blueprint_ratify >&2; die "name the blueprint: office blueprint ratify ID; piped input is never asked"; }
+    ask_blueprint id "$root" ratify
+  fi
+  if [ -z "$words" ] && [ -z "$sid" ]; then
+    can_ask || die "say where the ratifying words are: --words notepad/PAGE or --sid SID; piped input is never asked"
+    ask words "The notepad page that carries the ratifying words, notepad/PAGE.md (--words; --sid SID for a session)" "" 1 \
+      "Ratification points at the words that gave it, never copies them: a notepad page (office note writes the day's page), or a session id given as --sid."
+    case "$words" in [0-9][0-9][0-9][0-9]-*-[0-9][0-9][0-9]) sid="$words"; words="" ;; esac
+  fi
+  one_writer "$root" "blueprint ratify" "drafting-table/blueprints/$id/blueprint.md"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  if [ -n "$words" ]; then
+    run_drafting out blueprint-ratify "$root" "$id" --day "$day" --words "$words"
+  else
+    run_drafting out blueprint-ratify "$root" "$id" --day "$day" --sid "$sid"
+  fi
+  mapfile -t paths < <(printf '%s\n' "$out")
+  commit_paths "$root" "office blueprint ratify: $id" "${paths[@]}" || true
+}
+
+usage_blueprint_close() {
+  cat <<'USAGE'
+usage: office blueprint close [ID] [--goal TEXT]
+Sends out the sitting that closes a blueprint, the way office start sends
+any session out: a folder born for the close (Close blueprint ID, source
+blueprint ID), opened unless one is on the desk already; the session
+packed in the office, forecasting that folder, the notepad and the
+drafting table; the blueprint, its member folders, the rulings, evidence
+and watches pages, and the close report's template from the install,
+shipped; a brief saying what lands. The sitting writes close.md and its
+notepad page, and puts the member folders' endings on the desk moves page
+for office moves. You attach the out tray and paste the opener, as for
+office start; office land brings it back.
+Under the hood: office open, then office start's own code (bale pack --json,
+bale pack --context for each context tarball).
+Examples:
+  office blueprint close 2026-10-05-rider-verbs
+  office blueprint close                       (asks which blueprint)
+USAGE
+}
+
+cmd_blueprint_close() {
+  local id="" goal="" root plan tmp folder rel members=() m title close_folder includes=() ledgers=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --goal) [ $# -ge 2 ] || die "--goal needs a sentence"; goal="$2"; shift 2 ;;
+      -h|--help) usage_blueprint_close; return 0 ;;
+      -*) usage_blueprint_close >&2; die "office blueprint close does not know $1" ;;
+      *) [ -z "$id" ] || die "blueprint close takes one blueprint"; id="${1#blueprint }"; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ -z "$id" ]; then
+    can_ask || { usage_blueprint_close >&2; die "name the blueprint: office blueprint close ID; piped input is never asked"; }
+    ask_blueprint id "$root" close
+  fi
+  tmp="$(mktemp)" || die "cannot make a temp file"; TMP_PATHS+=("$tmp")
+  plan="$(drafting blueprint-close-plan "$root" "$id" --brief "$tmp")" || exit 1
+  title="$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin)["title"])')"
+  close_folder="$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin)["close_folder"] or "")')"
+  mapfile -t members < <(printf '%s' "$plan" | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["members"]))')
+  mapfile -t ledgers < <(printf '%s' "$plan" | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["ledgers"]))')
+  command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office blueprint close sends the close sitting out with bale pack"
+  if [ -n "$close_folder" ]; then
+    rel="$close_folder"
+    log "the close's folder is already on the desk: $rel"
+  else
+    rel="$(cmd_open "close-${id#[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-}" --title "Close blueprint $id" \
+      --source "blueprint $id" --blueprint "$id" --size small --class meta < /dev/null)" || exit 1
+  fi
+  includes=(--include "drafting-table/blueprints/$id")
+  for m in "${members[@]}" "${ledgers[@]}"; do
+    [ -n "$m" ] && [ "$m" != "$rel" ] && includes+=(--include "$m")
+  done
+  [ -n "$goal" ] || goal="Close blueprint $id ($title): write its close report and the sitting's notepad page, and put its member folders' endings on the desk moves page"
+  START_INSTALL_FILES=("templates/close-report.md")
+  cmd_start "${rel#desk/}" --in-office --goal "$goal" --write drafting-table "${includes[@]}" --brief "$tmp"
+}
+
+usage_moves() {
+  cat <<'USAGE'
+usage: office moves [--dry-run]
+Applies the desk moves a sitting wrote on drafting-table/moves.md, every
+pending line in order, through the same code as office open, office close
+and the gate flags: open a folder, queue a candidate, gate a folder,
+close, absorb, split or retire one. Each line applied is ticked with the
+folder it acted on (- [x] ... -> folder N), an opened folder of a
+blueprint has its number written onto the blueprint's decomposition line,
+and everything is committed at once. A line that does not read is named
+before anything is applied; a line that cannot be applied stops the run
+there, named, with the lines before it applied and committed. Walking in
+says how many moves are pending and which session wrote them.
+--dry-run lists the pending moves and applies nothing.
+Examples:
+  office moves
+  office moves --dry-run
+USAGE
+}
+
+cmd_moves() {
+  local dry=0 root plan tz day lineno verb folder mday bp dline argstr args=() rel number n=0 stopped="" paths=()
+  local key i
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --dry-run) dry=1; shift ;;
+      -h|--help) usage_moves; return 0 ;;
+      *) usage_moves >&2; die "office moves does not know $1" ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  [ -f "$root/drafting-table/moves.md" ] || { log "no drafting-table/moves.md in this office: no desk moves pending"; return 0; }
+  plan="$(drafting moves-plan "$root" --shell)"
+  case $? in
+    0) ;;
+    1) printf '%s\n' "$plan" | sed 's/^/[office]   /' >&2
+       die "drafting-table/moves.md has line(s) that do not read (above); nothing was applied" ;;
+    *) die "could not read drafting-table/moves.md" ;;
+  esac
+  if [ -z "$plan" ]; then log "no desk moves pending in drafting-table/moves.md"; return 0; fi
+  if [ "$dry" = 1 ]; then
+    printf 'Pending desk moves, in the order office moves applies them:\n'
+    printf '%s\n' "$plan" | awk -F'\036' '{printf "  line %s: %s %s\n", $1, $4, $8}'
+    return 0
+  fi
+  mapfile -t paths < <(arrival_targets "$root")
+  one_writer "$root" moves desk filing-cabinet "drafting-table/moves.md" "drafting-table/blueprints" "${paths[@]}"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  DEFER_COMMITS="$(mktemp)" || die "cannot make a temp file"; TMP_PATHS+=("$DEFER_COMMITS")
+  drafting arrive "$root" >> "$DEFER_COMMITS" || { DEFER_COMMITS=""; die "the drafting table could not arrive"; }
+  while IFS=$'\x1e' read -r lineno verb folder mday bp dline argstr _ <&3; do
+    IFS=$'\x1f' read -r -a args <<< "$argstr"
+    MOVE_TEXT="office moves: drafting-table/moves.md line $lineno, decided $mday${bp:+; blueprint $bp, decomposition line $dline}"
+    log "line $lineno: $verb${folder:+ folder $folder}"
+    case "$verb" in
+      open)
+        if ! rel="$(cmd_open "${args[@]}" < /dev/null)"; then stopped="$lineno"; break; fi
+        number="$(folder_fact "$root/$rel/folder.md" number)" ;;
+      queue)
+        if ! (move_queue "$root" "$folder" "$day") < /dev/null; then stopped="$lineno"; break; fi
+        number="$folder" ;;
+      gate)
+        if ! (move_gate "$root" "$folder" "$day" "${args[@]}") < /dev/null; then stopped="$lineno"; break; fi
+        number="$folder" ;;
+      close|absorb|split|retire)
+        if ! (cmd_close "${args[@]}") < /dev/null; then stopped="$lineno"; break; fi
+        number="$folder" ;;
+      *) stopped="$lineno"; warn "line $lineno: no such move: $verb"; break ;;
+    esac
+    if ! drafting moves-tick "$root" "$lineno" "$number" ${bp:+--blueprint "$bp" --decomposition "$dline"} >> "$DEFER_COMMITS"; then
+      stopped="$lineno"; break
+    fi
+    n=$((n + 1))
+  done 3< <(printf '%s\n' "$plan")
+  mapfile -t paths < <(sort -u "$DEFER_COMMITS" | grep -v '^$')
+  DEFER_COMMITS=""; MOVE_TEXT=""
+  if [ "$n" -gt 0 ]; then
+    commit_paths "$root" "office moves: $n desk move(s) from drafting-table/moves.md" "${paths[@]}" || true
+    log "applied $n desk move(s)"
+  elif [ "${#paths[@]}" -gt 0 ]; then
+    commit_paths "$root" "office moves: the drafting table arrives" "${paths[@]}" || true
+  fi
+  if [ -n "$stopped" ]; then
+    die "office moves stopped at drafting-table/moves.md line $stopped, which could not be applied (the lines above say why); $n move(s) before it are applied and committed, and nothing after it ran"
+  fi
+}
+
+# A candidate folder becomes queued: the one move no other verb makes.
+move_queue() {
+  local root="$1" number="$2" day="$3" rel status
+  rel="$(helper folder-by-number "$root" "folder $number")" || exit 1
+  [ "${rel%%/*}" = desk ] || die "folder $number is in the filing cabinet; only a candidate on the desk is queued"
+  status="$(folder_fact "$root/$rel/folder.md" status)"
+  [ "$status" = candidate ] || die "folder $number is ${status:-without a status line}, not a candidate; only a candidate is queued"
+  folder_event "$root/$rel/folder.md" "$day" queued "$MOVE_TEXT" queued
+  commit_paths "$root" "office moves: folder $number queued" "$rel/folder.md"
+}
+
+# move_gate ROOT N DAY KEY VALUE [KEY VALUE]...: gates on a folder on the
+# desk, each a field line and a gated History line.
+move_gate() {
+  local root="$1" number="$2" day="$3" rel out; shift 3
+  rel="$(helper folder-by-number "$root" "folder $number")" || exit 1
+  [ "${rel%%/*}" = desk ] || die "folder $number is in the filing cabinet; a gate goes on a folder on the desk"
+  while [ $# -ge 2 ]; do
+    out="$(helper folder-gate "$root/$rel/folder.md" --key "$1" --value "$2" --day "$day")" || exit 1
+    log "$(basename "$rel"): $out"
+    shift 2
+  done
+  commit_paths "$root" "office moves: folder $number gated" "$rel/folder.md"
+}
+
+usage_rider() {
+  cat <<'USAGE'
+usage: office rider add TITLE | carry N | consumed N SID
+A rider is small work with a named carrier: on the drafting table's riders
+page until a folder's next session carries it, then in that folder's
+Riders section, never both. Numbers are minted across the page and every
+folder, never reused.
+  office rider add TITLE --source SRC    a rider on the riders page
+  office rider carry N --folder M        moved into folder M; a pointer stays on the page
+  office rider consumed N SID            consumed at a session, in the folder that carries it
+office riders lists them; office rider VERB --help explains each.
+Examples:
+  office rider add "Name the sweep commit" --source "proposal 2026-10-04-x-001 #2" --rides bin/bale_apply.py
+  office rider carry 3 --folder 12
+  office rider consumed 3 2026-10-06-sweep-001
+USAGE
+}
+
+cmd_rider() {
+  local sub="${1:-}"
+  case "$sub" in
+    add) shift; cmd_rider_add "$@" ;;
+    carry) shift; cmd_rider_carry "$@" ;;
+    consumed) shift; cmd_rider_consumed "$@" ;;
+    ""|-h|--help) usage_rider ;;
+    *) usage_rider >&2; die "office rider does not know $sub; it takes add, carry or consumed (office riders lists them)" ;;
+  esac
+}
+
+usage_rider_add() {
+  cat <<'USAGE'
+usage: office rider add [TITLE] --source SRC [--rides GLOB | --carrier "folder N"] [--text TEXT]
+                        (or the rider's text on stdin)
+Adds rider N to the drafting table's riders page, one more than the
+highest rider number on the page and in every folder, status queued, with
+a dated queued line, and commits the page alone. The rider's text, from
+stdin or --text, is kept as given: for a worker's Proposal, its What, Why
+and Scope hints byte for byte. A title not given is the text's first line,
+without a list marker or emphasis. --rides names the path glob whose next
+session carries it (office riders --forecast finds it when a pack touches
+it); --carrier names the folder that will. The first rider brings the
+drafting table into the office, in the same commit. On a terminal it asks
+for the title, source and carrier it was not given; piped, it never asks.
+Examples:
+  office rider add "Name the sweep commit" --source "proposal 2026-10-04-x-001 #2" --rides bin/bale_apply.py
+  office rider add --source "proposal 2026-10-04-x-001 #3" --carrier "folder 12" < proposal-3.txt
+  office rider add                             (asks for the title, source and carrier)
+USAGE
+}
+
+cmd_rider_add() {
+  local words=() title="" source="" rides="" carrier="" text="" have_text=0 root tz day out tmp paths=() cite where=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --source|--rides|--carrier|--text|--title) [ $# -ge 2 ] || die "$1 needs a value (office rider add --help)"
+        case "$1" in --source) source="$2" ;; --rides) rides="$2" ;; --carrier) carrier="$2" ;;
+                     --text) text="$2"; have_text=1 ;; --title) title="$2" ;; esac; shift 2 ;;
+      -h|--help) usage_rider_add; return 0 ;;
+      -*) usage_rider_add >&2; die "office rider add does not know $1" ;;
+      *) words+=("$1"); shift ;;
+    esac
+  done
+  [ "${#words[@]}" -eq 0 ] || title="${words[*]}"
+  [ -z "$rides" ] || [ -z "$carrier" ] || die "--rides and --carrier are two carriers; give one"
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ "$have_text" = 0 ] && [ ! -t 0 ]; then text="$(cat)"; fi
+  if can_ask; then
+    [ -n "$title" ] || [ -n "$text" ] || ask title "Title, in a few words (office rider add TITLE)" "" 1 \
+      "What the rider is, as the registry would write it. A rider is small work with a named carrier: it rides along with a folder's session rather than having a folder of its own."
+    [ -n "$source" ] || ask source "Source: where it came from (--source)" "" 1 \
+      "In one form: proposal SID #n (a worker's Proposal), ruling ID, folder N, a notepad page (notepad/...), or a person."
+    if [ -z "$rides" ] && [ -z "$carrier" ]; then
+      ask where "What carries it: a path glob, or folder N (--rides GLOB, --carrier \"folder N\")" "" 0 \
+        "A path glob (bin/bale_apply.py, docs/*.md): the next session whose forecast touches it carries it. folder N: that folder's next session will. A plain return names no carrier yet."
+      case "$where" in "") ;; folder\ *|[0-9]*) carrier="$where" ;; *) rides="$where" ;; esac
+    fi
+    if [ "$have_text" = 0 ] && [ -z "$text" ]; then
+      ask text "Its text, in a line (--text; stdin carries a whole Proposal)" "" 0 \
+        "Kept as given. For a worker's Proposal, pipe its What, Why and Scope hints on stdin instead, so they are kept byte for byte."
+    fi
+  else
+    [ -n "$title" ] || [ -n "${text//[[:space:]]/}" ] || die "rider add needs a title (office rider add TITLE) or its text on stdin; piped input is never asked"
+    [ -n "$source" ] || die "rider add needs --source SRC, where it came from; piped input is never asked"
+  fi
+  mapfile -t paths < <(arrival_targets "$root")
+  one_writer "$root" "rider add" "drafting-table/riders.md" "${paths[@]}"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  tmp="$(mktemp)" || die "cannot make a temp file"; TMP_PATHS+=("$tmp")
+  printf '%s' "$text" > "$tmp"
+  run_drafting out rider-add "$root" --day "$day" --title "$title" --source "$source" \
+    ${rides:+--rides "$rides"} ${carrier:+--carrier "$carrier"} --text-file "$tmp"
+  cite="$(printf '%s\n' "$out" | head -n 1)"
+  mapfile -t paths < <(printf '%s\n' "$out" | tail -n +2)
+  check_page "$root" "drafting-table/riders.md"
+  commit_paths "$root" "office rider add: $cite" "${paths[@]}" || true
+  printf '%s\n' "$cite"
+}
+
+usage_rider_carry() {
+  cat <<'USAGE'
+usage: office rider carry [N] [--folder M]
+Moves rider N from the riders page into folder M's Riders section, the
+folder whose next session carries it: its text moves whole, its status
+becomes carried with a dated line, the folder's History says carried, and
+one pointer line stays on the page (- rider N -> folder M). A pointer is
+not a copy. M is a folder on the desk. Commits the page and the folder.
+On a terminal it asks for what it was not given; piped, it never asks.
+Examples:
+  office rider carry 3 --folder 12
+  office rider carry "rider 3" --folder "folder 12"
+USAGE
+}
+
+cmd_rider_carry() {
+  local n="" want="" root name number tz day out paths=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --folder) [ $# -ge 2 ] || die "--folder needs the folder that carries it"; want="$2"; shift 2 ;;
+      -h|--help) usage_rider_carry; return 0 ;;
+      -*) usage_rider_carry >&2; die "office rider carry does not know $1" ;;
+      *) [ -z "$n" ] || die "rider carry takes one rider"; n="$1"; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ -z "$n" ]; then
+    can_ask || { usage_rider_carry >&2; die "name the rider: office rider carry N --folder M; piped input is never asked"; }
+    drafting riders "$root" >&2
+    ask n "Which rider: its number (office rider carry N)" "" 1 "The rider's number, as office riders lists it."
+  fi
+  n="$(bare_number rider "$n")"
+  if [ -z "$want" ]; then
+    can_ask || die "name the folder that carries it: --folder M; piped input is never asked"
+    ask_folder want "$root" desk "carry rider $n in"
+  fi
+  name="$(find_folder "$root" desk "$want")" || exit 1
+  number="$(folder_fact "$root/desk/$name/folder.md" number)"
+  [ -n "$number" ] || die "desk/$name has no number, so it cannot be cited as a rider's carrier; a folder from before numbers carries no rider"
+  one_writer "$root" "rider carry" "drafting-table/riders.md" "desk/$name/folder.md"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  run_drafting out rider-carry "$root" "$n" --folder "folder $number" --day "$day"
+  mapfile -t paths < <(printf '%s\n' "$out")
+  commit_paths "$root" "office rider carry: rider $n -> folder $number" "${paths[@]}" || true
+}
+
+usage_rider_consumed() {
+  cat <<'USAGE'
+usage: office rider consumed [N] [SID]
+Records that rider N was consumed at session SID, in the folder that
+carries it: a dated consumed line under the rider and a consumed History
+line. On the desk the rider's status line follows; in the filing cabinet
+only lines are added, as for any filed folder. A rider still on the
+riders page is carried first (office rider carry). A rider in a closed
+folder that was never consumed is an orphan, and the desk says so.
+Examples:
+  office rider consumed 3 2026-10-06-sweep-001
+USAGE
+}
+
+cmd_rider_consumed() {
+  local n="" sid="" root rel tz day out paths=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help) usage_rider_consumed; return 0 ;;
+      -*) usage_rider_consumed >&2; die "office rider consumed does not know $1" ;;
+      *) if [ -z "$n" ]; then n="$1"; elif [ -z "$sid" ]; then sid="$1"; else die "rider consumed takes a rider and a session id"; fi; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ -z "$n" ] || [ -z "$sid" ]; then
+    can_ask || { usage_rider_consumed >&2; die "give the rider and the session: office rider consumed N SID; piped input is never asked"; }
+    [ -n "$n" ] || ask n "Which rider: its number (office rider consumed N SID)" "" 1 "The rider's number, as office riders lists it."
+    [ -n "$sid" ] || ask_field sid sid "SID" "Session id it was consumed at" "" 1
+  fi
+  n="$(bare_number rider "$n")"
+  rel="$(drafting rider-home "$root" "$n")" || exit 1
+  one_writer "$root" "rider consumed" "$rel/folder.md"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  run_drafting out rider-consumed "$root" "$n" "$sid" --day "$day"
+  mapfile -t paths < <(printf '%s\n' "$out")
+  commit_paths "$root" "office rider consumed: rider $n at $sid" "${paths[@]}" || true
+}
+
+usage_riders() {
+  cat <<'USAGE'
+usage: office riders [--forecast PATH...] [--orphans]
+Lists the riders: on the drafting table's riders page (with the pointer
+each carried one left), and in folders, each with its status and carrier.
+--forecast PATH... lists the queued riders on the page whose path glob a
+pack with that forecast touches, so the pack can carry them; a sitting
+runs it when it writes a pack line. --orphans lists only the riders in a
+closed folder that were never consumed. It only reads.
+Examples:
+  office riders
+  office riders --forecast bin/ lib/office_bale.py
+  office riders --orphans
+USAGE
+}
+
+cmd_riders() {
+  local args=() root
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --forecast) shift; [ $# -gt 0 ] && [ "${1#-}" = "$1" ] || die "--forecast needs one or more paths"
+        args+=(--forecast); while [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; do args+=("$1"); shift; done ;;
+      --orphans) args+=(--orphans); shift ;;
+      -h|--help) usage_riders; return 0 ;;
+      *) usage_riders >&2; die "office riders does not know $1" ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  drafting riders "$root" "${args[@]}" || exit 1
+}
+
+usage_agenda() {
+  cat <<'USAGE'
+usage: office agenda add [TEXT...] --source SRC [--title TITLE] [--waiting "folder N"]...
+                         (or the text on stdin)
+Puts a question on the drafting table's agenda for a sitting to rule on,
+so it can wait without a session: agenda N, one more than any agenda
+number the page has held (disposed ones included), above the page's
+Disposed list, with its source and the folders waiting on it. A folder
+that must wait for the ruling gates on it: office open --after "agenda N".
+Commits the page alone. The first item brings the drafting table into the
+office, in the same commit. On a terminal it asks for the text and source
+it was not given; piped, it never asks.
+Examples:
+  office agenda add "Where does a chat land?" --source notepad/2026-10-05.md
+  office agenda add --source "folder 12" --waiting "folder 12" < question.txt
+USAGE
+}
+
+cmd_agenda() {
+  local sub="${1:-}" words=() text="" source="" title="" waiting=() have_text=0 root tz day out tmp paths=() cite
+  case "$sub" in
+    add) shift ;;
+    ""|-h|--help) usage_agenda; return 0 ;;
+    *) usage_agenda >&2; die "office agenda does not know $sub; it takes add (a sitting rules on the agenda; office desk shows what waits on it)" ;;
+  esac
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --source|--title|--waiting) [ $# -ge 2 ] || die "$1 needs a value (office agenda add --help)"
+        case "$1" in --source) source="$2" ;; --title) title="$2" ;; --waiting) waiting+=(--waiting "$2") ;; esac; shift 2 ;;
+      -h|--help) usage_agenda; return 0 ;;
+      -*) usage_agenda >&2; die "office agenda add does not know $1" ;;
+      *) words+=("$1"); shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ "${#words[@]}" -gt 0 ]; then text="${words[*]}"; have_text=1
+  elif [ ! -t 0 ]; then text="$(cat)"; have_text=1; fi
+  if can_ask; then
+    [ -n "${text//[[:space:]]/}" ] || ask text "The question, in a line or two (office agenda add TEXT)" "" 1 \
+      "A decision a sitting will rule on, not work: the question, and what turns on it."
+    [ -n "$source" ] || ask source "Source: where it came from (--source)" "" 1 \
+      "In one form: a notepad page (notepad/...), folder N, a session id, ruling ID, or a person."
+  else
+    [ -n "${text//[[:space:]]/}" ] || die "agenda add needs the question: office agenda add TEXT, or on stdin; piped input is never asked"
+    [ -n "$source" ] || die "agenda add needs --source SRC, where it came from; piped input is never asked"
+  fi
+  mapfile -t paths < <(arrival_targets "$root")
+  one_writer "$root" "agenda add" "drafting-table/agenda.md" "${paths[@]}"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  tmp="$(mktemp)" || die "cannot make a temp file"; TMP_PATHS+=("$tmp")
+  printf '%s' "$text" > "$tmp"
+  run_drafting out agenda-add "$root" --day "$day" --text-file "$tmp" --source "$source" ${title:+--title "$title"} "${waiting[@]}"
+  cite="$(printf '%s\n' "$out" | head -n 1)"
+  mapfile -t paths < <(printf '%s\n' "$out" | tail -n +2)
+  check_page "$root" "drafting-table/agenda.md" --insertion
+  commit_paths "$root" "office agenda add: $cite" "${paths[@]}" || true
+  printf '%s\n' "$cite"
+}
+
+usage_rulings() {
+  cat <<'USAGE'
+usage: office rulings [ID] [--check]
+Lists the rulings ledger (drafting-table/rulings.md): each ruling by id
+with its bold lead, how often it was amended, who supersedes it and where
+it was derived. Given an ID, renders that ruling with its fields, its text,
+its amendments in date order, its supersessions (forward, and back-pointers
+derived from later records, never written) and the folders and sessions
+it landed at. --check resolves every citation on the drafting table and
+the desk against the citation grammar (folder N, blueprint ID, ruling ID,
+evidence N, watch WN, rider N, agenda N, notepad pages, session ids) and
+names each that does not resolve; it exits 1 when one does not. Only a
+sitting writes a ruling; this only reads.
+Examples:
+  office rulings
+  office rulings 2026-10-05-riders-home
+  office rulings --check
+USAGE
+}
+
+cmd_rulings() {
+  local id="" check=0 root
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --check) check=1; shift ;;
+      -h|--help) usage_rulings; return 0 ;;
+      -*) usage_rulings >&2; die "office rulings does not know $1" ;;
+      *) [ -z "$id" ] || die "rulings takes one ruling id"; id="${1#ruling }"; shift ;;
+    esac
+  done
+  [ "$check" = 0 ] || [ -z "$id" ] || die "--check reads every citation; it takes no ruling id"
+  root="$(resolve_office)" || exit 1
+  if [ "$check" = 1 ]; then
+    drafting rulings "$root" --check
+    case $? in 0) return 0 ;; 3) die "some citations do not resolve (above)" ;; *) die "could not check the citations" ;; esac
+  fi
+  drafting rulings "$root" ${id:+"$id"} || exit 1
+}
+
+usage_evidence() {
+  cat <<'USAGE'
+usage: office evidence [N]
+Lists the evidence ledger (drafting-table/evidence.md): each entry by
+number with its title, when and by whom it was filed, and its occurrence
+count by attribution (planner, worker, operator, courier); then any record
+the ledger should not hold (an entry naming no session and no notepad
+page, a number used twice, an occurrence of no entry). Given N, renders
+evidence N with its fields, its text, and every occurrence and derivation
+pointing at it. Only a sitting writes evidence; this only reads.
+Examples:
+  office evidence
+  office evidence 13
+USAGE
+}
+
+cmd_evidence() {
+  local n="" root
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help) usage_evidence; return 0 ;;
+      -*) usage_evidence >&2; die "office evidence does not know $1" ;;
+      *) [ -z "$n" ] || die "evidence takes one entry number"; n="$(bare_number evidence "$1")"; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  drafting evidence "$root" ${n:+"$n"}
+  case $? in 0|3) return 0 ;; *) exit 1 ;; esac
+}
+
 # --- sending a session out ----------------------------------------------------
 #
 # office start: one command from a folder to an out tray. It asks which
@@ -1551,6 +2325,11 @@ cmd_sessions() {
 # the folder, and gathers every file to attach into one directory.
 
 MACHINE_FILE="$CONFIG_DIR/machine.toml"
+# Install files a session needs beside its request (a template it writes
+# from), set by the verb that sends it out through cmd_start (office
+# blueprint close): they ride as one context tarball made from a scratch
+# copy, so the install is never written.
+START_INSTALL_FILES=()
 
 # A per-machine setting, outside every office: KEY from machine.toml, or
 # the default given. An empty value in the file turns a desktop step off.
@@ -1837,6 +2616,7 @@ cmd_start() {
   if [ -n "$brief" ]; then [ -f "$brief" ] || die "--brief $brief: no such file"; args+=(--brief "$brief"); fi
   [ -z "$cls" ] || [ -n "$bundle" ] || args+=(--work-class "$cls")
   [ -z "$bundle" ] || args+=(--bundle "$bundle")
+  for v in "${START_INSTALL_FILES[@]}"; do args+=(--install-file "$v"); done
   for r in "${leave_out[@]}"; do args+=(--leave-out "$r"); done
   tray_root="$(machine_setting out_tray "$HOME/out-tray")"
   case "$tray_root" in "~"|"~/"*) tray_root="$HOME${tray_root#\~}" ;; esac
@@ -2884,7 +3664,7 @@ Walk in and look around
   office                    walk in: sessions out, what is ready, this week, the last
                             notes, slips, and the one command to type next
   office desk               in flight, ready in order, parked under what each waits
-                            for, candidates
+                            for, candidates, orphaned riders, pending desk moves
   office week               this week's calendar and its gaps
   office sessions FOLDER    the sessions that worked on a job, and how each went
   office projects           the projects this office watches; --ledger, --landed PATH
@@ -2900,6 +3680,26 @@ Start a job, and finish one
   office close FOLDER       to the filing cabinet: done, or --into N, --split A,B,
                             --retired WHY
   office reopen FOLDER      a done folder back on the desk, history and all
+
+Plan work too big for one folder (the drafting table)
+  office blueprint open SLUG
+                            draft a blueprint: one arc, its charter and its
+                            decomposition into folders
+  office blueprint ratify ID
+                            freeze its charter, pointing at the ratifying words
+  office blueprint close ID send out the sitting that writes its close report
+  office moves              apply the desk moves a sitting wrote: open, queue, gate,
+                            close or retire folders, each ticked with its folder
+  office rider add TITLE    small work with a named carrier, on the riders page
+  office rider carry N      moved into the folder that carries it (--folder M)
+  office rider consumed N SID
+                            consumed at a session
+  office riders             the riders, where each is, and the orphans;
+                            --forecast PATH... the ones a pack would carry
+  office agenda add TEXT    a question for a sitting to rule on
+  office rulings [ID]       the rulings ledger, or one ruling with its amendments;
+                            --check resolves every citation
+  office evidence [N]       the evidence ledger, or one entry with its occurrences
 
 Send a session out
   office start [FOLDER]     asks which job, where the work lands and the goal; packs
@@ -2944,11 +3744,19 @@ EOF
 }
 
 # The verbs office help VERB explains, each through its own --help.
-HELP_VERBS=" init survey status upgrade where default note slip open desk week close reopen sessions projects start land tour version "
+HELP_VERBS=" init survey status upgrade where default note slip open desk week close reopen sessions projects start land tour version moves blueprint rider riders agenda rulings evidence "
+# The two-word verbs, as office help VERB WORD (or VERB-WORD, the key
+# share/verbs.toml gives them) explains them.
+HELP_PAIRS=" blueprint-open blueprint-ratify blueprint-close rider-add rider-carry rider-consumed agenda-add "
 
-# office help [VERB]: everything by task, or one verb's own help.
+# office help [VERB [WORD]]: everything by task, or one verb's own help.
 cmd_help() {
   [ $# -gt 0 ] || { usage; return 0; }
+  local pair="${1}${2:+-$2}"
+  case "$HELP_PAIRS" in
+    *" $pair "*) main "${pair%%-*}" "${pair#*-}" --help; return ;;
+  esac
+  [ $# -le 1 ] || { usage >&2; die "office help knows no verb $*; the list above is every verb"; }
   case "$HELP_VERBS" in
     *" $1 "*) main "$1" --help ;;
     *) usage >&2; die "office help knows no verb $1; the list above is every verb" ;;
@@ -2979,6 +3787,13 @@ main() {
     version|--version|-V) cmd_version "$@" ;;
     help|--help|-h) cmd_help "$@" ;;
     tour) cmd_tour "$@" ;;
+    moves) cmd_moves "$@" ;;
+    blueprint) cmd_blueprint "$@" ;;
+    rider) cmd_rider "$@" ;;
+    riders) cmd_riders "$@" ;;
+    agenda) cmd_agenda "$@" ;;
+    rulings) cmd_rulings "$@" ;;
+    evidence) cmd_evidence "$@" ;;
     *) usage >&2; die "unknown verb: $verb" ;;
   esac
 }

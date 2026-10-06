@@ -458,7 +458,10 @@ class TestATimezoneThatDoesNotResolve(unittest.TestCase):
         text, n = re.subn(r'^timezone = ".*"$', 'timezone = "America/Indianapolis"', manifest.read_text(), flags=re.M)
         self.assertEqual(n, 1)
         manifest.write_text(text)
-        self.e.git(self.root, "commit", "-qam", "the occupant's zone, its legacy name")
+        # office init takes the machine's zone; on a machine already set to
+        # America/Indianapolis the line above changes nothing, so the
+        # commit may be empty.
+        self.e.git(self.root, "commit", "-q", "--allow-empty", "-am", "the occupant's zone, its legacy name")
         self.zones = self.e.tmp / "zoneinfo"
         (self.zones / "America" / "Indiana").mkdir(parents=True)
         (self.zones / "America" / "Indiana" / "Indianapolis").write_bytes(b"TZif fake")

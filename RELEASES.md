@@ -4,6 +4,78 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.10.0
+
+Additive: no migration, nothing to do in any office. The drafting table
+is not base and no migration brings it: it arrives in an office the
+first time a verb writes it, and an office without one keeps working as
+before. Every older office shape keeps working.
+
+The first half of blueprint session 4b: the drafting table's pages
+arriving in an office, and the verbs that write and read them.
+
+The drafting table arrives with the first verb that writes it (`office
+blueprint open`, `office rider add`, `office agenda add`, or `office
+moves` once a sitting wrote the moves page). That verb writes
+`drafting-table/README.md` from the install's template, adds the space
+to the floor plan as `share/spaces.toml` declares it (so `office status`
+and `office upgrade` read its filed list), adds it to bale.toml's
+include-group triggers, and makes each page from its template on the
+page's first write, all committed with the write that asked for it.
+Nothing already there is ever rewritten. `office status` checks a
+drafting table that exists against the catalog.
+
+`office moves` applies the desk moves a sitting wrote on
+`drafting-table/moves.md`: open a folder, queue a candidate (the one
+move nothing else made), gate a folder, or close, absorb, split or retire
+one. It runs every pending line in order through the same code as
+`office open`, `office close` and the gate flags, ticks each with the
+folder it acted on, writes an opened folder's number onto its
+blueprint's decomposition line, and commits once. A line that does not
+read is named before anything is applied; a line that cannot be applied
+stops the run there, with the earlier ones committed. `--dry-run` lists
+them.
+
+`office blueprint open`, `ratify` and `close`. Open drafts a blueprint
+from the template. Ratify writes the charter's ratified line (`--words
+notepad/PAGE` or `--sid SID`) and refuses an empty charter. `office
+status` checks every ratified charter's bytes against git from its
+ratifying commit on. Close sends out the sitting that closes an arc
+through `office start`'s own code, recorded in a folder born for the
+close, with the blueprint, its member folders, the ledgers and the close
+report's template (from the install) shipped, and the drafting table and
+the notepad forecast. Nobody copies a pack line.
+
+`office rider add`, `carry` and `consumed`, and `office riders`
+(`--orphans`, `--forecast PATH...`). A rider is on the riders page or in
+one folder's Riders section, never both, and its numbers count the page
+and every folder. `office agenda add` puts a question on the agenda for
+a sitting. `office rulings [ID] [--check]` and `office evidence [N]` read
+the ledgers; `--check` resolves every citation on the drafting table and
+the desk through the one resolver the desk's gates use.
+
+The desk reads its last gates: a blueprint gate is met when the
+blueprint's close report exists, an agenda gate when a sitting disposed
+of the item, and a ruling gate when the ruling is on the ledger; one
+naming nothing is an error line. Its last two groups are the riders
+orphaned in a closed folder and the pending desk moves. The walk-in
+says how many moves are pending and which session wrote them (from the
+`[bale SID]` commit that wrote each line). `office desk --blueprint ID`
+shows one arc's folders in the desk's order.
+
+The one-writer rule now holds every script that mints a number or adds
+to a page: moves, rider add, carry and consumed, agenda add, blueprint
+open and ratify. Each refuses while a session open in the office's own
+registry forecasts what it writes, and names it. The riders page and the
+agenda are checked against their committed bytes before each commit.
+
+`office slip` titles and names a slip lifted from a numbered Markdown
+list by its words: a leading list marker and emphasis markers are taken
+out of the title and the slug, never out of the text.
+
+A real office's own registry, captured by this session's probe, joins
+the development record's fixtures, and the one-writer tests read it.
+
 ## 0.9.0
 
 Additive: no migration, nothing to do in any office. Every older office

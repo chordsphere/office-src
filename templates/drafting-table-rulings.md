@@ -36,5 +36,9 @@ A ruling is reopened only by a sitting that names it, and a reopening
 is a new ruling that supersedes. An amendment is a record too: its own
 id on its own date, `amends: ID` naming the ruling as first minted
 (never an amendment's id), and the amending text. When a ruling's text
-lands in a project doc, a record with `derived-into: project path
-section N` is appended and the ruling stays.
+lands in a project doc, a derivation record is appended, `## ID -
+derived - YYYY-MM-DD` (the ruling's own id) with `- into: project path
+section N`, and the ruling stays. `office rulings ID` renders a ruling
+with its amendments, who supersedes it and where it was derived;
+`office rulings --check` resolves every citation on the drafting table
+and the desk.

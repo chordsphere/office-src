@@ -2,18 +2,15 @@
 
 ## Charter
 
-What the arc is for and what done means, in the asker's words where
-there are words to keep.
-
-- ratified: YYYY-MM-DD, words at notepad/YYYY-MM-DD-slug.md (or a sid)
+{{charter}}
 
 ## Decomposition
 
 One line per piece of work: its one-line goal, and the folder that
-carries it once the folder exists.
-
-- the verbs over the new fields -> folder 141
-- the read side over bale's registry -> (new; opened by `office moves`)
+carries it once the folder exists, as `- the goal -> folder N`. A line
+with no folder yet is opened by a desk move (`open "the goal"
+blueprint=ID` on drafting-table/moves.md), and `office moves` writes the
+folder's number onto it.
 
 ## Ordering and dependencies
 
@@ -27,5 +24,4 @@ this blueprint).
 
 ## History
 
-- YYYY-MM-DD drafted: sitting sid
-- YYYY-MM-DD ratified: notepad/YYYY-MM-DD-slug.md
+- {{history}}
