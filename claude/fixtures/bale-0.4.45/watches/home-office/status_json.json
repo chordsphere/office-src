@@ -1,0 +1,17 @@
+{
+ "argv": [
+  "status",
+  "--json"
+ ],
+ "cwd": "/home/chordsphere/home-office",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"status\", \"version\": \"0.4.45\", \"sid\": \"2026-10-03-plan-4b-sitting-001\", \"repo\": {\"root\": \"/home/chordsphere/home-office\", \"branch\": \"main\", \"tree_clean\": false, \"tree_change_count\": 1, \"bale_initialised\": true}, \"session\": {\"state\": \"packed\", \"goal\": \"Plan office-src's next work from home-office after the friction wave: the friction fixes, blueprint session 4b, the founding door and the bale-src slips\", \"expects_probe\": \"agent-decides\", \"clarification\": null}, \"staging\": {\"present\": true, \"path\": \"/home/chordsphere/home-office/.bale/staging\", \"sessions\": {\"2026-10-03-plan-4b-sitting-001\": {\"present\": false, \"path\": \"/home/chordsphere/home-office/.bale/staging/2026-10-03-plan-4b-sitting-001\", \"strategy\": \"working-tree\", \"untracked_inputs\": []}}, \"stale\": [\"2026-10-04-bale-src-slips-001\"]}, \"outbox\": [\"request-2026-09-30-home-office-founding-001.tar.gz\", \"request-2026-10-03-plan-4b-sitting-001.tar.gz\", \"request-2026-10-04-bale-src-slips-001.tar.gz\"], \"applied\": {\"count\": 2, \"latest\": \"2026-10-04-bale-src-slips-001\"}, \"sessions\": [\"2026-10-03-plan-4b-sitting-001\"], \"scopes\": {\"2026-10-03-plan-4b-sitting-001\": []}, \"integration_lock\": null, \"config\": {\"project\": \"/home/chordsphere/home-office/bale.toml\", \"global\": \"/home/chordsphere/bale/user/bale.toml\", \"hooks_wired\": [\"post_pack\"], \"search_paths\": 1, \"baleignore\": false, \"summary_failed\": false}, \"clipboard\": {\"command\": \"clip.exe\", \"source\": \"global\", \"key\": \"probe.clipboard_command\", \"shadowed\": null, \"problem\": null}}"
+ ],
+ "stdout_sha256": [
+  "b562f777e96cc3cf928ea441e2c1334cbe1e914230e695b315f5ae5242d31b53"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-06-drafting-table-digest-001, 2026-10-06T19:13:59Z: bale 0.4.45 run in home-office, stdin closed; each stdout line's sha256 printed by the probe and re-verified on the paste"
+}

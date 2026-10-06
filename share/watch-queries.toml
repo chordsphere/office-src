@@ -1,0 +1,111 @@
+# The watch-query catalog: each query a watch can evaluate, named once.
+# A watch on an office's drafting-table/watches.md names a query here
+# (`- evaluates: query NAME`) and a threshold (`- threshold: N`, or `any`
+# for any value above zero); it never carries a command line. office
+# watches check runs each open query watch over the window since its last
+# `fired` record, once per project the office scopes and once for the
+# office's own registry, and prints one line each: fired, not fired, or
+# cannot evaluate. A standing query is not a watch: it is a number the
+# digest shows on every run (doctrine section 13), printed as observed.
+#
+# Written from the installed bale's JSON surfaces as the probe of session
+# 2026-10-06-drafting-table-digest-001 captured them (bale 0.4.45: stats
+# --json and its --since form, in office-src, home-office and every
+# project home-office scopes), never from what bale's docs say it prints.
+# Every key a query names is declared under [surfaces.stats] in
+# share/bale-consumption.toml and read through the reader's one door for
+# catalog keys; the suite holds the two files to each other and runs
+# every query over the captured lines.
+#
+# A query bale cannot answer names the datum it lacks under needs, and
+# the check prints "cannot evaluate: bale does not stamp DATUM (slip)",
+# never not fired. Where bale lacks a session-shaped fact, that is a slip
+# for bale-src, not an office workaround (doctrine section 10).
+#
+# watch      the MASTER.md watch the query was written for (blueprint
+#            section 3.2's table), so a sitting can follow it back
+# says       what the value is, in words, for the check's lines
+# surface    the bale surface it reads (stats: bale stats --json, with
+#            --since DATE for a window)
+# value      how the value is extracted, a closed set:
+#              share        sum of numerator over sum of denominator,
+#                           across the work classes; none on a zero
+#                           denominator
+#              sum          the sum of the values key reaches
+#              count        how many distinct items the lists key
+#                           reaches hold
+#              class-rate   per work class, numerator over denominator
+#                           (standing only)
+#              class-basis  per work class, each claim basis's agreeing
+#                           checks over its checks (standing only)
+# evidence   a key holding the session ids behind the value; a fired
+#            record names them (otherwise it names the value)
+# compare    above (value > threshold) or at-least (value >= threshold);
+#            `any` as a threshold means above zero either way
+# standing   true for an observation: printed as observed, never fired,
+#            computed over bale's whole corpus
+# needs      the datum bale does not stamp; the query is not evaluated
+
+[queries.unparsed-share]
+watch = 1
+says = "share of validated attempts whose reconciliation block bale could not parse"
+surface = "stats"
+value = "share"
+numerator = "classes.*.unparsed_validated_attempts"
+denominator = "classes.*.validated_attempts"
+evidence = "classes.*.members.unparsed"
+compare = "above"
+
+# Closed on MASTER.md on 2026-08-31; kept as the precedent for a count
+# that accrues. The read side found it computable, not missing (session
+# 2026-09-30-read-side-001's notes, slip 1): the aggregate counts the
+# forecast entries an applied session's changes never touched.
+[queries.unused-forecast-entries]
+watch = 13
+says = "forecast entries an applied session's changes never touched"
+surface = "stats"
+value = "sum"
+key = "classes.*.forecast_entries_untouched"
+compare = "at-least"
+
+[queries.hold-cause-cluster]
+watch = 15
+says = "HOLDs on planner-fixture defects rather than a worker's misunderstanding"
+needs = "a HOLD cause class"
+
+[queries.stamp-mismatch-accepts]
+watch = 17
+says = "deliberate checkpoint-amendment accepts counted as oracle overrides"
+needs = "a marker telling a deliberate checkpoint-amendment accept from an override"
+
+[queries.claim-basis-split]
+watch = 21
+says = "agreeing checks over checks, per claim basis (observed, predicted, unspecified)"
+surface = "stats"
+value = "class-basis"
+key = "classes.*.claim_basis"
+checks = "classes.*.claim_basis.*.checks"
+agree = "classes.*.claim_basis.*.agree"
+standing = true
+
+[queries.hold-rate-by-class]
+watch = 22
+says = "held response attempts over response attempts"
+surface = "stats"
+value = "class-rate"
+numerator = "classes.*.held_attempts"
+denominator = "classes.*.response_attempts"
+standing = true
+
+# The aggregate lists the sessions that self-reported a clarification
+# round bale holds no promoted stamp for; bale-src's corpus has nine
+# (the probe's capture). What is still missing is the count per session
+# on the dossier, which no query here needs.
+[queries.unrelayed-rounds]
+watch = 24
+says = "sessions that self-reported a clarification round bale holds no promoted stamp for"
+surface = "stats"
+value = "count"
+key = "members.clarification_self_only"
+evidence = "members.clarification_self_only"
+compare = "at-least"

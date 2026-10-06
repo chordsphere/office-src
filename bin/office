@@ -2315,6 +2315,197 @@ cmd_evidence() {
   case $? in 0|3) return 0 ;; *) exit 1 ;; esac
 }
 
+# --- the watches and the digest -----------------------------------------------
+#
+# A watch is a named re-trigger a sitting writes on the drafting table's
+# watches register; its events are records on the watch log, filed
+# paper. lib/office_watches.py reads them, evaluates each query watch
+# through the install's share/watch-queries.toml and the reader, and
+# appends the fired records; lib/office_digest.py writes the sitting-open
+# page. These verbs hold the one-writer rule, check what they append, and
+# commit exactly what they touched.
+
+WATCHES="$OFFICE_SRC/lib/office_watches.py"
+DIGEST="$OFFICE_SRC/lib/office_digest.py"
+watches_py() { python3 -B "$WATCHES" "$@"; }
+digest_py() { python3 -B "$DIGEST" "$@"; }
+
+usage_watches() {
+  cat <<'USAGE'
+usage: office watches [--all]
+       office watches check [--record]
+Lists the watches on the drafting table's register (drafting-table/
+watches.md): each open watch with what it evaluates (a query from the
+install's share/watch-queries.toml, or eye), its threshold, scope and
+source, and its last record on the watch log. --all lists the closed ones
+too. A watch's state is read from the log, never from the entry. Only a
+sitting writes a watch, re-arms, rewords or closes one; this only reads.
+An office with no register says so and exits 0. office watches check
+evaluates them (office help watches check).
+Examples:
+  office watches
+  office watches --all
+  office watches check
+USAGE
+}
+
+usage_watches_check() {
+  cat <<'USAGE'
+usage: office watches check [--record]
+Runs every open query watch over the window since its last fired record
+(from the day after it; a watch never fired, from the day it was opened),
+once for this office's own bale registry and once for each project it
+scopes, and prints one line per watch and place: fired, not fired, or
+cannot evaluate (a query bale cannot answer says "cannot evaluate: bale
+does not stamp ... (slip)", never not fired). Every eye watch prints as
+needs an eye, with the sittings since its last record; then the standing
+lines, the catalog's observations over bale's whole corpus, as observed.
+It reads bale's stats --json surfaces through the reader and nothing
+else, and writes nothing. --record appends a fired record to the watch
+log (drafting-table/watch-log.md) for each watch that fired, after the
+one-writer rule and the filed-page check, and commits the log alone; the
+log is made from its template on its first write. Re-arming, rewording,
+closing and a not-fired record are a sitting's. Exits 0, or 3 when a
+place could not be read or a record does not read (the lines say which).
+Examples:
+  office watches check
+  office watches check --record
+USAGE
+}
+
+cmd_watches() {
+  local all=0 root
+  if [ "${1:-}" = check ]; then shift; cmd_watches_check "$@"; return; fi
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --all) all=1; shift ;;
+      -h|--help) usage_watches; return 0 ;;
+      *) usage_watches >&2; die "office watches does not know $1; it takes --all, or check" ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  watches_py list "$root" $([ "$all" = 1 ] && printf -- --all)
+  case $? in 0) return 0 ;; 3) warn "some records do not read (the lines above say which)"; return 3 ;; *) exit 1 ;; esac
+}
+
+cmd_watches_check() {
+  local record=0 root tz day changed rc paths=() targets=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --record) record=1; shift ;;
+      -h|--help) usage_watches_check; return 0 ;;
+      *) usage_watches_check >&2; die "office watches check does not know $1; it takes --record" ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  if [ "$record" = 0 ]; then
+    watches_py check "$root" --day "$day" --tz "$tz"
+    rc=$?
+    case $rc in 0|3) return "$rc" ;; *) exit 1 ;; esac
+  fi
+  require_current "$root"
+  mapfile -t targets < <(arrival_targets "$root")
+  one_writer "$root" "watches check --record" "drafting-table/watch-log.md" "${targets[@]}"
+  changed="$(mktemp)" || die "cannot make a temp file"; TMP_PATHS+=("$changed")
+  watches_py check "$root" --day "$day" --tz "$tz" --record --changed "$changed"
+  rc=$?
+  case $rc in 0|3) ;; *) exit 1 ;; esac
+  mapfile -t paths < "$changed"
+  if [ "${#paths[@]}" -gt 0 ]; then
+    check_page "$root" "drafting-table/watch-log.md"
+    commit_paths "$root" "office watches check --record: fired records on the watch log" "${paths[@]}" || true
+  fi
+  return "$rc"
+}
+
+usage_digest() {
+  cat <<'USAGE'
+usage: office digest
+Writes the sitting-open page, drafting-table/digest.md, prints it, and
+commits it alone. Every section is computed when it runs, never kept:
+versions per project (each project's latest release and the bale docs
+its latest sessions were packed under); since the last sitting (the
+sessions applied, held, bailed and still open, read from bale's records,
+the folders opened and closed and what was added to the drafting table,
+read from git, since the latest sitting's notepad page was filed, and the
+page says how it found that); the watches (office watches check's own
+lines, never recorded); the standing lines; the desk (in flight, the first
+five ready, parked by gate); the agenda (open items, oldest first); and the
+open blueprints with their member folders. The page is overwritten on every
+run and never edited by hand, like the survey; the first run brings the
+drafting table into the office. office start runs it before it packs a
+read-only office session (a sitting), and the drafting table rides with
+the sitting. Exits 0, or 3 when a project could not be read (the page says
+which).
+Examples:
+  office digest
+  office digest | less
+USAGE
+}
+
+cmd_digest() {
+  local before_pack=0 root tz changed rc paths=() targets=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --before-pack) before_pack=1; shift ;;
+      -h|--help) usage_digest; return 0 ;;
+      *) usage_digest >&2; die "office digest does not know $1; it takes no arguments" ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  if [ "$before_pack" = 1 ]; then refresh_digest "$root"; return 0; fi
+  require_current "$root"
+  tz="$(office_tz "$root")"
+  mapfile -t targets < <(arrival_targets "$root")
+  one_writer "$root" "digest" "drafting-table/digest.md" "${targets[@]}"
+  changed="$(mktemp)" || die "cannot make a temp file"; TMP_PATHS+=("$changed")
+  digest_py "$root" --tz "$tz" --changed "$changed" --print
+  rc=$?
+  case $rc in 0|3) ;; *) die "the digest could not be written (the line above says why)" ;; esac
+  mapfile -t paths < "$changed"
+  [ "${#paths[@]}" -eq 0 ] || commit_paths "$root" "office digest: the sitting-open page" "${paths[@]}" || true
+  return "$rc"
+}
+
+# Before office start packs a sitting (a read-only office session; office
+# digest --before-pack, which the start in lib/office_bale.py runs once its
+# checks and the survey have passed): the digest written again and
+# committed alone, so the sitting opens on a page computed just before it
+# was packed. Never fails a start: an open session holding the drafting
+# table (the one-writer rule), or a digest that cannot be written, leaves
+# the page as it was and says so.
+refresh_digest() {
+  local root="$1" held rc tz changed paths=() targets=()
+  mapfile -t targets < <(arrival_targets "$root")
+  held="$(reader writers "$root" "drafting-table/digest.md" "${targets[@]}" 2>/dev/null)"; rc=$?
+  case $rc in
+    0) ;;
+    3) warn "an open session holds the drafting table (the one-writer rule), so office start leaves the digest as it is"
+       printf '%s\n' "$held" | sed 's/^/[office]   /' >&2
+       return 0 ;;
+    *) warn "bale's registry in this office could not be read, so office start leaves the digest as it is"
+       return 0 ;;
+  esac
+  tz="$(office_tz "$root")"
+  changed="$(mktemp)" || { warn "cannot make a temp file, so the digest was not written"; return 0; }
+  TMP_PATHS+=("$changed")
+  digest_py "$root" --tz "$tz" --changed "$changed" >/dev/null
+  rc=$?
+  case $rc in
+    0) ;;
+    3) warn "the digest was written, but a project could not be read; the page says which" ;;
+    *) warn "the digest could not be written, so the sitting reads the page as it was (office digest says why)"
+       return 0 ;;
+  esac
+  mapfile -t paths < "$changed"
+  if [ "${#paths[@]}" -gt 0 ]; then
+    commit_paths "$root" "office start: digest" "${paths[@]}" \
+      || warn "the digest was written but not committed; drafting-table/digest.md is changed on disk"
+  fi
+  log "wrote the digest for the sitting (drafting-table/digest.md); it rides with the drafting table"
+}
+
 # --- sending a session out ----------------------------------------------------
 #
 # office start: one command from a folder to an out tray. It asks which
@@ -3700,6 +3891,11 @@ Plan work too big for one folder (the drafting table)
   office rulings [ID]       the rulings ledger, or one ruling with its amendments;
                             --check resolves every citation
   office evidence [N]       the evidence ledger, or one entry with its occurrences
+  office watches            the watches and where each stands; --all with the closed
+  office watches check      run every query watch over its window, and the standing
+                            lines; --record appends a fired record for each that fired
+  office digest             write the sitting-open page and print it: versions, since
+                            the last sitting, watches, standing lines, desk, agenda
 
 Send a session out
   office start [FOLDER]     asks which job, where the work lands and the goal; packs
@@ -3744,10 +3940,10 @@ EOF
 }
 
 # The verbs office help VERB explains, each through its own --help.
-HELP_VERBS=" init survey status upgrade where default note slip open desk week close reopen sessions projects start land tour version moves blueprint rider riders agenda rulings evidence "
+HELP_VERBS=" init survey status upgrade where default note slip open desk week close reopen sessions projects start land tour version moves blueprint rider riders agenda rulings evidence watches digest "
 # The two-word verbs, as office help VERB WORD (or VERB-WORD, the key
 # share/verbs.toml gives them) explains them.
-HELP_PAIRS=" blueprint-open blueprint-ratify blueprint-close rider-add rider-carry rider-consumed agenda-add "
+HELP_PAIRS=" blueprint-open blueprint-ratify blueprint-close rider-add rider-carry rider-consumed agenda-add watches-check "
 
 # office help [VERB [WORD]]: everything by task, or one verb's own help.
 cmd_help() {
@@ -3794,6 +3990,8 @@ main() {
     agenda) cmd_agenda "$@" ;;
     rulings) cmd_rulings "$@" ;;
     evidence) cmd_evidence "$@" ;;
+    watches) cmd_watches "$@" ;;
+    digest) cmd_digest "$@" ;;
     *) usage >&2; die "unknown verb: $verb" ;;
   esac
 }

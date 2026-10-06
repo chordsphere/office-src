@@ -688,7 +688,7 @@ class TestCatalogAndDoctrine(unittest.TestCase):
         for name in ("moves", "blueprint-open", "blueprint-ratify", "blueprint-close", "rider-add", "rider-carry",
                      "rider-consumed", "riders", "agenda-add", "rulings", "evidence"):
             self.assertTrue(v[name]["built"], name)
-        self.assertFalse(v["digest"]["built"])
+        self.assertTrue(v["digest"]["built"])  # 4b-2 built it (tests/test_watches_digest.py)
         doctrine = " ".join((REPO / "doctrine/OFFICE.md").read_text().split())
         for words in ("it arrives with the first verb that writes it", "No script mints a ruling or an evidence entry",
                       "`office rulings --check` resolves them all", "a rider in a closed folder that was never consumed "

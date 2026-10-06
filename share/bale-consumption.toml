@@ -54,13 +54,24 @@ keys = [
   "outbox",     # every request tarball name: the fullest list of a repo's sids a surface carries
 ]
 
+# The aggregate. --since DATE (ISO date, YYYY-MM-DD, inclusive, against
+# each record's created_at; a timestamp is refused) narrows its membership
+# to the sessions packed on or after that day: probed in
+# 2026-10-06-drafting-table-digest-001 on bale 0.4.45, in office-src (a
+# window holding applied sessions, one holding only an open one, one
+# holding none, and composed with --work-class), in home-office and in
+# every project home-office scopes. The keys after filters.since are the
+# ones share/watch-queries.toml names; the office reads them through
+# Reader.reach, which refuses a key not declared here.
 [surfaces.stats]
 argv = ["stats", "--json"]
-optional = [["--work-class", "{work_class}"]]
+optional = [["--work-class", "{work_class}"], ["--since", "{since}"]]
 contract = "format_stats_json's docstring, bin/bale_report.py"
 outcome = "stats"
 keys = [
   "outcome",
+  "filters",
+  "filters.since",   # the window bale applied, held to the one asked for
   "classes",
   "classes.*.sessions",
   "classes.*.response_attempts",
@@ -79,6 +90,15 @@ keys = [
   "doc_epochs.*.sessions",
   "doc_epochs.*.applied",
   "doc_epochs.*.in_flight",
+  # share/watch-queries.toml's keys, read through Reader.reach
+  "classes.*.unparsed_validated_attempts",
+  "classes.*.validated_attempts",
+  "classes.*.members.unparsed",
+  "classes.*.forecast_entries_untouched",
+  "classes.*.claim_basis",
+  "classes.*.claim_basis.*.checks",
+  "classes.*.claim_basis.*.agree",
+  "members.clarification_self_only",
 ]
 
 # One session. --work-class and --since are refused beside --sid.
@@ -121,6 +141,24 @@ keys = [
   "lineage",
   "lineage.superseded_by",
 ]
+
+# Not a call: the subjects bale 0.4.45 gives the commits it makes in a
+# repo, which the office reads from git to name the session that wrote a
+# line (office moves, the desk) and to find the sessions that closed
+# since a sitting (office digest), whose outcomes it then reads from
+# their dossiers. A convention bale follows, not a contract it declares
+# (a slip for bale-src); declared here so a change in it fails a test
+# against the probe's captured subjects instead of turning a session's
+# name into "commit abc1234". Probed in 2026-10-05-drafting-table-pages-001
+# and 2026-10-06-drafting-table-digest-001.
+#
+# subjects   kind -> the subject's start, {sid} the session id; work is
+#            the session's own changes, merge its landing, sweep its
+#            telemetry record (applied, closed-read-only, swept_by SID)
+[surfaces.commits]
+calls = false
+contract = "none: bale's habit as of 0.4.45 (a slip for bale-src asks for a declared shape or a dossier key)"
+subjects = { work = "[bale {sid}] ", merge = "Merge bale {sid}", sweep = "[bale sweep {sid}] " }
 
 # The two surfaces that make something, run only by office start when the
 # occupant asks (the office is the occupant's hands at the terminal; it

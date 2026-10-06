@@ -148,7 +148,11 @@ out tray, a directory on the machine outside every office, named by the
 session's id; the occupant attaches its files and pastes the opener it
 prints. An office session forecasts its folder and the notepad, so
 office sessions take turns; `--read-only` packs a sitting that forecasts
-nothing. A session whose forecast overlaps one already open is refused
+nothing. Before it packs a sitting, `office start` writes the digest
+again (section 5), committed alone, and the drafting table rides inside
+the sitting's request, the digest first among its pages; an open session
+holding the drafting table, or a digest that cannot be written, leaves
+the page as it was and never stops the start. A session whose forecast overlaps one already open is refused
 before bale is asked, and the open session, its folder and the overlap are
 named; a bundle is refused the same way whenever the office can read its
 pack line, and where it cannot (a bare name bale's search finds), the
@@ -331,7 +335,7 @@ moves` applies the desk moves, since the desk is the office command's
 to write and folder numbers are minted by it alone. No script mints a
 ruling or an evidence entry: those are judgment. `office blueprint
 close` sends out the sitting that closes an arc. `office rulings`,
-`office evidence` and `office riders` only read.
+`office evidence`, `office riders` and `office watches` only read.
 
 A blueprint's charter freezes once its ratified line is written; `office
 status` checks its bytes against git from the ratifying commit on, and
@@ -360,6 +364,29 @@ what live traffic earned: a record names a session id or a notepad
 page, or it is refused. An eye-watch no sitting has looked at is
 reported, never silently aged. Closed blueprints stay on the table;
 nothing is condensed.
+
+The watches register and the digest. A watch is a named re-trigger with
+no work attached: one entry on watches.md, its state never edited into
+it, every event a record on the watch log. A watch evaluates a query or
+an eye. A query is named once, in the install's
+share/watch-queries.toml (the bale surface it reads, the value it
+extracts, how it compares), and an entry names a query and a threshold,
+never a command line. `office watches check` runs every open query
+watch over the window since its last fired record, for the office's own
+registry and for each project, and says of each: fired, not fired, or
+cannot evaluate; a query bale cannot answer says so, as cannot evaluate,
+never as not fired. It prints every eye watch as needing an eye, with
+the sittings since its last record, and the standing lines, which are
+observations, not watches. With `--record` it appends a fired record
+for each watch that fired; re-arming, rewording, closing and a not-fired
+record are a sitting's. `office digest` writes digest.md, the page a
+sitting opens on: versions, what happened since the last sitting, the
+watches, the standing lines, the desk, the agenda and the open
+blueprints, every line computed when it runs. The last sitting is the
+latest sitting's page in the notepad, by the commit that filed it, and
+the page says so. The digest is overwritten on every run and never
+edited by hand, and `office start` writes it again before it packs a
+sitting, which ships the drafting table.
 
 Notepad. The occupant's words, verbatim and dated. Never edited.
 Structuring them into folders, cards and chapters is cleanup's job.
@@ -453,6 +480,8 @@ Kinds:
 | riders | script, read-only: the riders, where each is, the orphans, and the ones a pack's forecast would carry | yes |
 | agenda add | script: a question on the agenda for a sitting to rule on | yes |
 | rulings, evidence | script, read-only: the ledgers, one record with what points at it, and every citation resolved | yes |
+| watches, watches check | script: the watches and where each stands, read from the log; run every query watch over its window and the standing lines, and with --record append a fired record for each that fired | yes |
+| digest | script: write the sitting-open page, every section computed; office start runs it before it packs a sitting | yes |
 | founding | office session: the profile, the occupant's words, the timezone | yes, via init |
 | work | office session: answer, draft, probe, decide, deliver | yes, via start |
 | build | project session: change a project for a folder | yes, via start |
@@ -501,8 +530,10 @@ suggestion box, and the verbs to reach for. It ends with one Next line:
 the one command to type now, its arguments filled in, worked out from the
 office on every walk-in and never written down. In the order they win: an
 office out of step with the install (upgrade it); a session out (land it,
-or, when bale held it, land its corrected response); an unfounded office;
-the first ready folder (start it); an open folder no session is out for;
+or, when bale held it, land its corrected response); desk moves a sitting
+decided that have not run (run them: until then the desk is not in the
+order the sitting decided); an unfounded office; the first ready folder
+(start it); an open folder no session is out for;
 no projects (add one); slips enough to be a job of their own; folders
 that wait; and nothing to do. Whether a response has arrived is bale's to
 say, and no --json surface of bale says it, so the line says the session
@@ -595,8 +626,22 @@ belongs to; in `office sessions FOLDER`, each session with its outcome,
 dates, claims beside verdicts and exchange rounds; in `office projects`,
 the trust ledger per work class (the evidence a trust grant would be made
 on; the office holds no grant), the last applied session that landed a
-path, and the version trail. Wherever a count the records compute sits
-beside one written down, both are printed.
+path, and the version trail; in `office watches check` and the digest,
+each watch's query and the standing lines, from bale's stats surface,
+whole or narrowed to the sessions packed since a day (its --since form,
+which takes a day and not an instant). Wherever a count the records
+compute sits beside one written down, both are printed.
+
+The watch queries are data in the install, share/watch-queries.toml,
+written from a probe of the installed bale and held to the consumption
+manifest: a query reads only keys the manifest declares. Where bale does
+not stamp the datum a watch needs, the query says what is missing, the
+check says it cannot evaluate, and the missing datum is a slip for
+bale-src. The office also reads the subjects bale gives the commits it
+makes (a session's work, its merge, its sweep), to name the session that
+wrote a line and to find the sessions that closed since a sitting before
+reading each one's outcome from its dossier; the manifest declares that
+shape too, though bale keeps it as a habit and not as a contract.
 
 Each project's entry may also declare two things: `rides`, the other
 paths whose context rides beside every session on the project (a

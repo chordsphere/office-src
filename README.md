@@ -78,6 +78,7 @@ walk-in and never written down. In the order they win:
 |---|---|
 | is behind the install, or ahead of it | `office upgrade` (or `office status`, which names the versions) |
 | has a session out | `office land SID` (when its response is in your downloads, land finds it) |
+| has desk moves a sitting decided, not yet run | `office moves` (until they run, the desk is not in the order the sitting decided) |
 | is unfounded | `office status` (names the profile sections still to write) |
 | has a ready folder | `office start FOLDER` (`--on PROJECT` when its lane names one) |
 | has an open folder no session is out for | `office start FOLDER` (or `office close` it when it is done) |
@@ -123,10 +124,14 @@ statuses and gates are below.
     office agenda add "Where does a chat land?" --source notepad/2026-10-05.md
     office rulings                                                 # the rulings ledger; --check resolves every citation
     office evidence                                                # the evidence ledger
+    office watches                                                 # the watches, and where each stands
+    office watches check                                           # fired, not fired, cannot evaluate; --record logs firings
+    office digest                                                  # the page a sitting opens on
 
 The drafting table holds blueprints and the pages a planning sitting
 rules in. It arrives in an office with the first of these verbs that
-writes it. The details are below.
+writes it. A sitting opens on the digest: `office start` writes it again
+just before it packs one. The details are below.
 
 ### Send a session out
 
@@ -271,7 +276,9 @@ mints a ruling or an evidence entry.
 
 The space is not base, and no migration or renovation session brings it.
 It arrives with the first verb that writes it (`blueprint open`, `rider
-add`, `agenda add`, or `moves` when a sitting wrote the moves page). That
+add`, `agenda add`, `digest`, which `office start` runs before every
+sitting, `watches check --record`, or `moves` when a sitting wrote the
+moves page). That
 verb writes `drafting-table/README.md` from the install's template, adds
 the space to the floor plan as `share/spaces.toml` declares it (its filed
 list: the rulings, the evidence, the watch log and each close report),
@@ -286,7 +293,8 @@ exists against the catalog.
 | `blueprints/DATE-SLUG/close.md` | the arc's close report, filed | the sitting `office blueprint close` sends out |
 | `agenda.md` | questions awaiting a sitting | `office agenda add`; a sitting rules and moves the item to Disposed |
 | `rulings.md`, `evidence.md` | the ledgers, filed | a sitting only; `office rulings` and `office evidence` read them |
-| `watches.md`, `watch-log.md` | the watches register and its log | a sitting (the watches verbs come next) |
+| `watches.md`, `watch-log.md` | the watches register and its log, filed | a sitting; `office watches check --record` appends fired records |
+| `digest.md` | the sitting-open page, derived | `office digest`, and `office start` before a sitting; never by hand |
 | `riders.md` | riders with no carrier yet, and pointers to carried ones | `office rider add` and `carry` |
 | `moves.md` | desk moves a sitting decided | a sitting; `office moves` applies and ticks them |
 
@@ -343,6 +351,33 @@ resolves every citation on the drafting table and the desk (`folder N`,
 with occurrence counts by attribution, and names any record the ledger
 should not hold.
 
+Watches. A watch is an entry a sitting writes on `watches.md`, `## WN -
+Title` with `source`, `scope`, `condition`, `evaluates`, `threshold` and
+`re-trigger` lines; its state is read from the watch log, never written
+into it. It evaluates `query NAME`, one of the queries in the install's
+`share/watch-queries.toml`, or `eye`. `office watches` lists the open
+ones (`--all` the closed too) with their last record. `office watches
+check` runs each open query watch over the window since its last fired
+record, from the day after it (bale's `stats --since` takes a day); a
+watch never fired looks from the day it was opened. It reads the office's
+own registry and each project, one line each: `fired`, `not fired`, or
+`cannot evaluate`. A query bale cannot answer says `cannot evaluate: bale
+does not stamp ... (slip)`: today the HOLD cause class (watch 15) and the
+amendment-accept marker (watch 17). Every eye watch is `needs an eye`
+with the sittings since its last record, flagged after three. The
+standing lines, `claim-basis-split` and `hold-rate-by-class`, are printed
+as `observed`, over bale's whole corpus. `--record` appends a `fired`
+record for each watch that fired and commits the log alone; re-arming,
+rewording and closing stay a sitting's.
+
+The digest. `office digest` writes `digest.md` and prints it: versions
+per project, what happened since the last sitting (the sessions applied,
+held, bailed and still open, the folders opened and closed, and what was
+added to the drafting table), the watches, the standing lines, the desk,
+the agenda and the open blueprints. The last sitting is the latest
+sitting's page in the notepad, by the commit that filed it, and the page
+says which. Every line is computed; the page is rewritten on every run.
+
 Every one of these scripts that mints a number or adds to a page refuses
 while a session open in the office's own bale registry forecasts what it
 writes, and names that session: the one-writer rule. The riders page and
@@ -374,7 +409,12 @@ declared rides). The doctrine rides once: a project whose own tree
 carries the same `doctrine/` (office-src's) ships it there, and one
 whose `doctrine/` differs gets the install's beside it, named as the
 install's. Before it packs, start surveys the machine again and commits
-the page, so the survey every session reads first is current. The forecast of a project session comes from the
+the page, so the survey every session reads first is current. Before it
+packs a sitting (`--read-only` in the office, or a bundle that forecasts
+nothing), it writes the digest again and commits it, and the drafting
+table rides inside the sitting's request; an open session holding the
+drafting table leaves the digest as it was and never stops the start. A
+scoped office session gets no digest. The forecast of a project session comes from the
 folder's lane, the work class from its class, the slug from its name;
 the goal is the one thing asked. It records the session in the folder
 and prints the opener: attach the tray's files to a fresh chat and paste
@@ -515,6 +555,9 @@ matches the floor plan.
 | share/bale-consumption.toml | every bale verb, flag and JSON key the office reads or runs, and the bale version they were written against |
 | share/verbs.toml | what each verb ships, where it lands, whether a person must be present and what may set it off; a session kind with no declared landing may not run unattended |
 | lib/office_drafting.py | the drafting table: its arrival in an office, the one reader of its pages (blueprints, riders, the agenda, the ledgers, desk moves), the citation grammar's resolver, and what the drafting-table verbs write |
+| lib/office_watches.py | the watches: the query catalog, the register and its log, the check and its fired records |
+| lib/office_digest.py | the digest: the sitting-open page, every section computed |
+| share/watch-queries.toml | every query a watch can evaluate: the bale surface it reads, the value, how it compares, or the datum bale does not stamp yet |
 | templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), each made into a page the first time a verb writes it |
 | migrations/ | one file per breaking release; format in migrations/README.md |
 | RELEASES.md | release notes |

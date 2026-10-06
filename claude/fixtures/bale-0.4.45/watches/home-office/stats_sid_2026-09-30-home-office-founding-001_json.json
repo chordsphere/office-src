@@ -1,0 +1,19 @@
+{
+ "argv": [
+  "stats",
+  "--sid",
+  "2026-09-30-home-office-founding-001",
+  "--json"
+ ],
+ "cwd": "/home/chordsphere/home-office",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"dossier\", \"session_id\": \"2026-09-30-home-office-founding-001\", \"found\": true, \"record\": {\"record_version\": 1, \"created_at\": \"2026-09-30T23:42:30+00:00\", \"updated_at\": \"2026-10-01T21:28:32+00:00\", \"outcome\": \"applied\", \"work_class\": \"mixed\", \"packer\": \"chordsphere\", \"in_flight\": false, \"closure\": {\"category\": \"applied\", \"unlock_reason\": null}, \"read_only\": false, \"crash_debris\": false}, \"attempts\": [{\"at\": \"2026-09-30T23:42:30+00:00\", \"command\": \"pack\", \"outcome\": \"opened\", \"closure_reason\": null, \"tarball\": null, \"scope_kind\": \"write-forecast\", \"scope\": [\"floor-plan\", \"notepad\", \"profile.md\"], \"change_paths\": [], \"overridden_paths\": [], \"required_check_overrides\": [], \"base_drift_overrides\": [], \"forecast_drift_paths\": null, \"validation\": null, \"checkpoint\": null, \"linkage\": null, \"clarification\": null, \"diagnostics\": null, \"provenance\": {\"work_class\": \"mixed\", \"packer\": \"chordsphere\", \"packed_at\": \"2026-09-30T23:42:30+00:00\"}, \"superseded_by\": null, \"swept_by\": null, \"cause\": null, \"bundle\": null, \"log\": \".bale/logs/2026-09-30-home-office-founding-001.log\"}, {\"at\": \"2026-10-01T21:28:32+00:00\", \"command\": \"apply\", \"outcome\": \"applied\", \"closure_reason\": null, \"tarball\": \"response-2026-09-30-home-office-founding-001 (1).tar.gz\", \"scope_kind\": \"write-forecast\", \"scope\": [\"floor-plan\", \"notepad\", \"profile.md\"], \"change_paths\": [\"floor-plan/manifest.toml\", \"notepad/2026-09-30-founding.md\", \"profile.md\"], \"overridden_paths\": [], \"required_check_overrides\": [], \"base_drift_overrides\": [], \"forecast_drift_paths\": [], \"validation\": {\"state\": \"PASS\", \"exit_code\": 0, \"reconciliation_parsed\": true, \"claims_declared\": 4, \"checks\": [{\"check\": \"floor plan: only the timezone line changed\", \"claim\": \"pass\", \"verdict\": \"pass\", \"agreement\": \"agree\", \"claim_basis\": \"observed\"}, {\"check\": \"notepad page filed: exists, ASCII, append-only (new), .keep untouched\", \"claim\": \"pass\", \"verdict\": \"pass\", \"agreement\": \"agree\", \"claim_basis\": \"observed\"}, {\"check\": \"profile Site names the floor plan's timezone\", \"claim\": \"pass\", \"verdict\": \"pass\", \"agreement\": \"agree\", \"claim_basis\": \"observed\"}, {\"check\": \"profile complete: every required section has text outside comments and no TODO line\", \"claim\": \"pass\", \"verdict\": \"pass\", \"agreement\": \"agree\", \"claim_basis\": \"observed\"}]}, \"checkpoint\": {\"configured\": false}, \"linkage\": {\"kind\": \"clarification\", \"point\": \"pre-build\", \"depends_on\": null}, \"clarification\": {\"rounds\": 1, \"records\": [{\"n\": 1, \"at\": \"2026-10-01T00:31:37+00:00\", \"blocking_questions\": 7, \"from\": \"worker\", \"answers\": null}]}, \"diagnostics\": null, \"provenance\": null, \"superseded_by\": null, \"swept_by\": null, \"cause\": null, \"bundle\": null, \"log\": \".bale/logs/2026-09-30-home-office-founding-001.log\"}], \"lineage\": {\"superseded_by\": null, \"superseded_from\": [], \"corrects\": null, \"corrected_by\": []}}"
+ ],
+ "stdout_sha256": [
+  "49840de8b484722fd538cda4930770ee773522badd2b475856a15bac271a2341"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-06-drafting-table-digest-001, 2026-10-06T19:13:59Z: bale 0.4.45 run in home-office, stdin closed; each stdout line's sha256 printed by the probe and re-verified on the paste"
+}

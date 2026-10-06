@@ -1,0 +1,17 @@
+{
+ "argv": [
+  "stats",
+  "--json",
+  "--since",
+  "2026-10-06T00:00:00"
+ ],
+ "cwd": "/home/chordsphere/office-src",
+ "stdin": "closed",
+ "exit": 1,
+ "stdout": [],
+ "stdout_sha256": [],
+ "stderr": [
+  "[bale] error: --since must be an ISO date (YYYY-MM-DD); got '2026-10-06T00:00:00'"
+ ],
+ "captured": "probe of session 2026-10-06-drafting-table-digest-001, 2026-10-06T19:13:59Z: bale 0.4.45 run in office-src, stdin closed; each stdout line's sha256 printed by the probe and re-verified on the paste"
+}

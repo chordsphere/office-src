@@ -320,6 +320,39 @@ lands = []
 attended = true
 trigger = ["manual"]
 
+# Read-only: the register, each watch's state read from its log.
+[verbs.watches]
+kind = "script"
+built = true
+writes = []
+lands = []
+attended = true
+trigger = ["manual"]
+
+# Writes nothing without --record; with it, a fired record for each watch
+# that fired, on the watch log (made from its template, and the drafting
+# table with it, on the first write). What it lands is a report, and a
+# record only when a watch fired, so lands guarantees no path.
+[verbs.watches-check]
+kind = "script"
+built = true
+writes = ["drafting-table/watch-log.md", "drafting-table/README.md", "floor-plan/manifest.toml", "bale.toml"]
+lands = []
+attended = false
+trigger = ["before-sitting", "after-build", "manual"]
+
+# The sitting-open page, rewritten whole on every run like the survey;
+# office start runs it before it packs a sitting. The blueprint's section
+# 3 departs from the seed here: everything on the page is computed, so it
+# is a script, not a session kind.
+[verbs.digest]
+kind = "script"
+built = true
+writes = ["drafting-table/digest.md", "drafting-table/README.md", "floor-plan/manifest.toml", "bale.toml"]
+lands = ["drafting-table/digest.md"]
+attended = false
+trigger = ["before-sitting", "manual"]
+
 [verbs.founding]
 kind = "office-session"
 built = true
@@ -420,14 +453,6 @@ writes = ["drafting-table", "notepad", "desk/{folder}"]
 lands = ["drafting-table/blueprints/{id}/close.md", "notepad/{date}-{slug}.md"]
 attended = true
 trigger = ["manual"]
-
-[verbs.digest]
-kind = "script"
-built = false
-writes = ["drafting-table/digest.md"]
-lands = ["drafting-table/digest.md"]
-attended = false
-trigger = ["before-sitting", "manual"]
 
 [verbs.review]
 kind = "project-session"

@@ -35,8 +35,15 @@ arrives in an office with the first verb that writes it: `office
 blueprint open`, `ratify` and `close` for an arc, `office moves` to
 apply the desk moves a sitting decided, `office rider` and `office
 riders` for small work with a named carrier, `office agenda add` for a
-question a sitting will rule on, and `office rulings` and `office
-evidence` to read the ledgers a sitting keeps. Walking in
+question a sitting will rule on, `office rulings` and `office
+evidence` to read the ledgers a sitting keeps, `office watches` and
+`office watches check` for the watches a sitting set (fired, not fired,
+or cannot evaluate, from bale's records), and `office digest`, the one
+page a sitting opens on: versions, what happened since the last
+sitting, the watches, the standing numbers, the desk, the agenda and the
+open blueprints, all computed when it runs. `office start` writes the
+digest again just before it packs a sitting and sends the drafting table
+with it. Walking in
 shows the sessions open in those projects. `office status`, `survey` and
 `upgrade` look after the office itself. `office help` lists every verb by
 what you want to do, and every verb's `--help` has examples.
@@ -53,6 +60,20 @@ schedules nothing, never hands a session to a model and never carries
 pastes.
 
 ## Recent changes
+
+- 0.11.0 (session 2026-10-06-drafting-table-digest-001): the second and
+  last half of blueprint session 4b. `share/watch-queries.toml` names
+  the seven watch queries once, written from a probe of bale 0.4.45's
+  `stats --json --since`. `office watches` lists the watches and their
+  state from the log; `office watches check` runs each one over the
+  window since it last fired, for the office's own registry and each
+  project, and `--record` logs the firings. `office digest` writes the
+  sitting-open page; `office start` writes it before every sitting and
+  ships the drafting table with it. The Next line names `office moves`
+  while desk moves are pending, after a session out and before an
+  unfounded office (an order change, to ratify). The consumption
+  manifest declares `--since`, the catalog's keys and bale's commit
+  subjects. Additive: no migration, no office needs anything done.
 
 - 0.10.0 (session 2026-10-05-drafting-table-pages-001): the first half
   of blueprint session 4b. The drafting table arrives in an office with
@@ -249,14 +270,33 @@ pastes.
   the drafting-table verbs land.~~ Struck in 0.10.0: those gates resolve
   through the drafting table (a close report, an agenda item's disposal,
   a ruling's record), and one naming nothing is an error line.
-- Blueprint session 4b's second half is still owed (its own session,
-  serialized after 0.10.0): `share/watch-queries.toml`, `office
-  watches`, `office watches check` (`--record` calling `helper
-  append-check`), the `bale stats --json --since` probe and its
-  fixtures, and `office digest` last. Until then `watches.md` and
-  `watch-log.md` are a sitting's to write by hand, `digest` and the
-  watches verbs are declared `built = false`, and the drafting table's
-  front page still says the digest does not exist yet.
+- ~~Blueprint session 4b's second half is still owed.~~ Struck in
+  0.11.0: the catalog, the watches verbs, the probe's fixtures and the
+  digest are built.
+- `office watches check` prints two watches as "cannot evaluate: bale
+  does not stamp ... (slip)": watch 15 (`hold-cause-cluster`, a HOLD
+  cause class) and watch 17 (`stamp-mismatch-accepts`, a marker telling
+  a deliberate checkpoint-amendment accept from an override). Both are
+  slips home-office's suggestion box already holds for bale-src. Watch
+  24 (`unrelayed-rounds`) is evaluated from the aggregate's list of
+  sessions that self-reported a round bale holds no stamp for; the
+  per-session count on the dossier is the slip it still waits on, and no
+  watch needs it yet. Watch 13's datum was never missing.
+- bale's `stats --since` takes a day, not an instant. A watch that fired
+  looks again from the day after, so a session packed later on the day
+  a watch fired is never seen by that watch (a slip for bale-src:
+  `--since` taking an instant). The digest's "since the last sitting"
+  is exact, because it reads each session's dossier for its times.
+- The digest finds the sessions that closed since a sitting from the
+  subjects bale gives its commits (`[bale SID] ...`, `Merge bale SID`,
+  `[bale sweep SID] ...`), then reads each one's outcome from its
+  dossier. The subjects are bale's habit, not its contract; the
+  consumption manifest declares them so a change fails a test (a slip
+  for bale-src). A long window (an office with no sitting's page yet)
+  reads at most 60 dossiers per project and says how many it left.
+- The digest's eye-watch count reads three sittings as "unlooked-at";
+  the blueprint lets a profile house rule change the number, and no
+  profile line is read for it yet.
 - The drafting table arrives with a verb, not by renovation; the
   doctrine's section 5 says so. The renovation kind remains for spaces
   whose arrival needs judgment, and `office upgrade` never brings this
@@ -309,6 +349,15 @@ pastes.
 - *A sitting landed with desk moves. What now?* `office moves`. Walking
   in says how many are pending and which session wrote them until it is
   run.
+
+- *What window is the digest's "since the last sitting"?* From the
+  commit that filed the latest sitting's page in the notepad
+  (`notepad/DATE-SLUG.md`, which `office start` files from a sitting's
+  brief) to now. The page names that page and commit, so you can
+  disagree with it.
+- *Why does a watch say "cannot evaluate" and not "not fired"?* Because
+  bale does not record what it would need. Not fired would claim it was
+  looked at.
 
 ## Public documentation
 

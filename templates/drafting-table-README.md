@@ -23,9 +23,9 @@ here, page by page:
 - riders.md, small work with a named carrier and no folder yet. Live.
 - moves.md, desk moves a sitting decided, for the office command to
   apply. Live.
-- digest.md, the sitting-open page. Derived: a script rewrites it on
-  every run and nobody edits it. The script does not exist yet, so the
-  page does not either; it arrives with the drafting-table verbs.
+- digest.md, the sitting-open page. Derived: `office digest` rewrites
+  it whole on every run, and `office start` runs it just before it packs
+  a sitting, so a sitting opens on it; nobody edits it.
 
 Filed pages grow at their end and the bytes already there never change
 (doctrine section 15). A fact lands once, on the folder, blueprint or

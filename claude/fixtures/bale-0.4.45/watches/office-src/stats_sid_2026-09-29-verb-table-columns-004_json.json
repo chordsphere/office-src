@@ -1,0 +1,19 @@
+{
+ "argv": [
+  "stats",
+  "--sid",
+  "2026-09-29-verb-table-columns-004",
+  "--json"
+ ],
+ "cwd": "/home/chordsphere/office-src",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"dossier\", \"session_id\": \"2026-09-29-verb-table-columns-004\", \"found\": true, \"record\": {\"record_version\": 1, \"created_at\": \"2026-09-29T23:58:52+00:00\", \"updated_at\": \"2026-09-30T00:32:45+00:00\", \"outcome\": \"applied\", \"work_class\": \"mixed\", \"packer\": \"chordsphere\", \"in_flight\": false, \"closure\": {\"category\": \"applied\", \"unlock_reason\": null}, \"read_only\": false, \"crash_debris\": false}, \"attempts\": [{\"at\": \"2026-09-29T23:58:52+00:00\", \"command\": \"pack\", \"outcome\": \"opened\", \"closure_reason\": null, \"tarball\": null, \"scope_kind\": \"write-forecast\", \"scope\": [\"README.md\", \"RELEASES.md\", \"VERSION\", \"bin\", \"claude/context/front-sheet.md\", \"lib\", \"share/verbs.toml\", \"tests\"], \"change_paths\": [], \"overridden_paths\": [], \"required_check_overrides\": [], \"base_drift_overrides\": [], \"forecast_drift_paths\": null, \"validation\": null, \"checkpoint\": null, \"linkage\": null, \"clarification\": null, \"diagnostics\": null, \"provenance\": {\"work_class\": \"mixed\", \"packer\": \"chordsphere\", \"packed_at\": \"2026-09-29T23:58:52+00:00\"}, \"superseded_by\": null, \"swept_by\": null, \"cause\": null, \"bundle\": {\"stem\": \"2026-09-29-verb-table-columns\", \"brief_sha256\": \"03539b437f95ecf7af0aa2a6e71f98541dc2b68142aaefc5f8b57772d35b8989\", \"checkpoint_sha256\": null, \"manifest_sha256\": \"5bc9068c16d5659c7090741a0c659993440161d18c5a42819a16b58dad00e678\"}, \"log\": \".bale/logs/2026-09-29-verb-table-columns-004.log\"}, {\"at\": \"2026-09-30T00:32:45+00:00\", \"command\": \"apply\", \"outcome\": \"applied\", \"closure_reason\": null, \"tarball\": \"response-2026-09-29-verb-table-columns-004.tar.gz\", \"scope_kind\": \"write-forecast\", \"scope\": [\"README.md\", \"RELEASES.md\", \"VERSION\", \"bin\", \"claude/context/front-sheet.md\", \"lib\", \"share/verbs.toml\", \"tests\"], \"change_paths\": [\"README.md\", \"RELEASES.md\", \"VERSION\", \"bin/office\", \"claude/context/front-sheet.md\", \"lib/office_helper.py\", \"share/verbs.toml\", \"tests/test_office.py\"], \"overridden_paths\": [], \"required_check_overrides\": [], \"base_drift_overrides\": [], \"forecast_drift_paths\": [], \"validation\": {\"state\": \"PASS\", \"exit_code\": 0, \"reconciliation_parsed\": true, \"claims_declared\": 2, \"checks\": [{\"check\": \"session assertions: catalog rule\", \"claim\": \"pass\", \"verdict\": \"pass\", \"agreement\": \"agree\", \"claim_basis\": \"observed\"}, {\"check\": \"unittest suite\", \"claim\": \"pass\", \"verdict\": \"pass\", \"agreement\": \"agree\", \"claim_basis\": \"predicted\"}]}, \"checkpoint\": {\"configured\": false}, \"linkage\": {\"kind\": \"probe\", \"point\": \"pre-build\", \"depends_on\": null}, \"clarification\": {\"rounds\": 0, \"records\": []}, \"diagnostics\": null, \"provenance\": null, \"superseded_by\": null, \"swept_by\": null, \"cause\": null, \"bundle\": null, \"log\": \".bale/logs/2026-09-29-verb-table-columns-004.log\"}], \"lineage\": {\"superseded_by\": null, \"superseded_from\": [], \"corrects\": null, \"corrected_by\": []}}"
+ ],
+ "stdout_sha256": [
+  "751cf3533a56b6ae3448a5b0544241be6143f975d165c0af49b76d7fd7016ed6"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-06-drafting-table-digest-001, 2026-10-06T19:13:59Z: bale 0.4.45 run in office-src, stdin closed; each stdout line's sha256 printed by the probe and re-verified on the paste"
+}

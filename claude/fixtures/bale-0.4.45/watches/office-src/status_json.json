@@ -1,0 +1,17 @@
+{
+ "argv": [
+  "status",
+  "--json"
+ ],
+ "cwd": "/home/chordsphere/office-src",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"status\", \"version\": \"0.4.45\", \"sid\": \"2026-10-06-drafting-table-digest-001\", \"repo\": {\"root\": \"/home/chordsphere/office-src\", \"branch\": \"master\", \"tree_clean\": false, \"tree_change_count\": 1, \"bale_initialised\": true}, \"session\": {\"state\": \"packed\", \"goal\": \"Build the second half of blueprint session 4b: probe bale stats --since, write the watch-query catalog, office watches and watches check, office digest, the digest before a sitting is packed, and the two small items 4b-1 proposed\", \"expects_probe\": \"agent-decides\", \"clarification\": null}, \"staging\": {\"present\": true, \"path\": \"/home/chordsphere/office-src/.bale/staging\", \"sessions\": {\"2026-10-06-drafting-table-digest-001\": {\"present\": false, \"path\": \"/home/chordsphere/office-src/.bale/staging/2026-10-06-drafting-table-digest-001\", \"strategy\": \"working-tree\", \"untracked_inputs\": []}}, \"stale\": [\"2026-10-05-drafting-table-pages-001\"]}, \"outbox\": [\"request-2026-09-24-office-src-core-001.tar.gz\", \"request-2026-09-24-office-src-verbs-002.tar.gz\", \"request-2026-09-24-smoothing-003.tar.gz\", \"request-2026-09-29-continue-plan-002.tar.gz\", \"request-2026-09-29-drafting-table-sitting-001.tar.gz\", \"request-2026-09-29-drafting-table-space-003.tar.gz\", \"request-2026-09-29-verb-table-columns-004.tar.gz\", \"request-2026-09-30-desk-verbs-002.tar.gz\", \"request-2026-09-30-read-side-001.tar.gz\", \"request-2026-10-02-friction-out-and-in-002.tar.gz\", \"request-2026-10-02-friction-wave-sitting-001.tar.gz\", \"request-2026-10-03-friction-front-door-002.tar.gz\", \"request-2026-10-03-friction-return-trip-001.tar.gz\", \"request-2026-10-04-friction-second-trip-001.tar.gz\", \"request-2026-10-05-drafting-table-pages-001.tar.gz\", \"request-2026-10-06-drafting-table-digest-001.tar.gz\"], \"applied\": {\"count\": 11, \"latest\": \"2026-10-05-drafting-table-pages-001\"}, \"sessions\": [\"2026-10-06-drafting-table-digest-001\"], \"scopes\": {\"2026-10-06-drafting-table-digest-001\": [\".\"]}, \"integration_lock\": null, \"config\": {\"project\": null, \"global\": \"/home/chordsphere/bale/user/bale.toml\", \"hooks_wired\": [\"post_pack\"], \"search_paths\": 1, \"baleignore\": false, \"summary_failed\": false}, \"clipboard\": {\"command\": \"clip.exe\", \"source\": \"global\", \"key\": \"probe.clipboard_command\", \"shadowed\": null, \"problem\": null}}"
+ ],
+ "stdout_sha256": [
+  "d78121e0d88eec72de416c2df6e182af74d08f3a17cce52c329d3ee5d27c8c54"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-06-drafting-table-digest-001, 2026-10-06T19:13:59Z: bale 0.4.45 run in office-src, stdin closed; each stdout line's sha256 printed by the probe and re-verified on the paste"
+}
