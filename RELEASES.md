@@ -4,6 +4,64 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.11.0
+
+Additive: no migration, nothing to do in any office. An office that has
+no drafting table gets one the first time `office digest` runs, which
+`office start` does before it packs a sitting, the same way any verb
+that writes the drafting table brings it (0.10.0). Every older office
+shape keeps working.
+
+The second and last half of blueprint session 4b: the watches, bale's
+stats surface narrowed to a window, and the digest a sitting opens on.
+
+`share/watch-queries.toml`, the watch-query catalog, written from a probe
+of the installed bale 0.4.45's `stats --json` and its `--since DATE`
+form, in office-src, home-office and every project home-office scopes.
+It names each of the seven queries of the blueprint's section 3.2 once:
+the surface it reads, the value it extracts, how it compares. Two, the
+HOLD cause class (watch 15) and the amendment-accept marker (watch 17),
+name the datum bale does not stamp, and are never evaluated. Every key a
+query names is declared in the consumption manifest and read through
+the reader's one door for catalog keys.
+
+`office watches [--all]` lists the watches on the drafting table's
+register with their state, read from the watch log. `office watches
+check` runs each open query watch over the window since its last fired
+record (from the day after it: bale's `--since` takes a day), once for
+the office's own registry and once for each project, and prints fired,
+not fired or cannot evaluate per watch and place; every eye watch as
+needs an eye with the sittings since its last record; and the standing
+lines, claim basis and HOLD rate per work class, as observed. A query
+bale cannot answer prints "cannot evaluate: bale does not stamp ...
+(slip)", never not fired. `--record` appends a fired record per watch
+that fired, after the one-writer rule and the filed-page check, and
+commits the log alone.
+
+`office digest` writes `drafting-table/digest.md` and prints it:
+versions per project, what happened since the last sitting (from bale's
+records and git: the sessions applied, held, bailed and still open, the
+folders opened and closed, what was added to the drafting table), the
+watches, the standing lines, the desk, the agenda and the open
+blueprints. The last sitting is the latest sitting's page in the
+notepad, by the commit that filed it, and the page says so. `office
+start` runs it just before it packs a sitting (a read-only office
+session) and ships the drafting table with it, the way it surveys the
+machine before every pack: its own commit, never fatal.
+
+The walk-in's Next line changed order: pending desk moves now come after
+a session out and before an unfounded office (`office moves`), so the
+line never names a folder a move is about to retire. The 0.8.0 order
+was ratified; this step is the plan-4b sitting's, ratified the same way.
+
+The consumption manifest declares `stats`'s `--since` flag and the keys
+the catalog reads, and the subjects bale gives the commits it makes
+(`[bale SID] ...`, `Merge bale SID`, `[bale sweep SID] ...`), which the
+office reads to name the session that wrote a line and to find the
+sessions that closed since a sitting. `digest`, `watches` and
+`watches-check` are built verbs in `share/verbs.toml`. The probe's
+captures join the development record's fixtures.
+
 ## 0.10.0
 
 Additive: no migration, nothing to do in any office. The drafting table

@@ -999,7 +999,7 @@ class TestIncludeGroup(unittest.TestCase):
 # The kinds share/verbs.toml declares ahead of the command, as a registry
 # for the shell and for whoever spawns sessions. Blueprint section 6 of
 # the drafting-table declares them; the verbs session builds them.
-DECLARED_KINDS = ("sitting", "chat", "cleanup", "digest", "review", "check", "retry")
+DECLARED_KINDS = ("sitting", "chat", "cleanup", "review", "check", "retry")
 # The drafting table's scripts (blueprint session 4b), whose lands follow
 # the blueprint's section 3 table rather than the earlier verbs' lands =
 # writes: the verb that writes the drafting table first also brings its
@@ -1013,6 +1013,14 @@ DRAFTING_LANDS = {
     "rider-carry": ["desk/{folder}/folder.md", "drafting-table/riders.md"],
     "rider-consumed": ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md"],
     "riders": [], "agenda-add": ["drafting-table/agenda.md"], "rulings": [], "evidence": [],
+    "watches": [], "watches-check": [], "digest": ["drafting-table/digest.md"],
+}
+# Blueprint section 3's attended and trigger columns for the drafting
+# table's scripts that are not attended and manual alone.
+DRAFTING_RUNS = {
+    "moves": (False, ["after-sitting", "manual"]),
+    "watches-check": (False, ["before-sitting", "after-build", "manual"]),
+    "digest": (False, ["before-sitting", "manual"]),
 }
 
 
@@ -1111,8 +1119,9 @@ class TestCatalogs(unittest.TestCase):
                 # Blueprint section 3's table: moves runs with nobody
                 # there after a sitting; the rest are attended, manual.
                 self.assertEqual(verb["lands"], DRAFTING_LANDS[name], name)
-                self.assertEqual(verb["attended"], name != "moves", name)
-                self.assertEqual(verb["trigger"], ["after-sitting", "manual"] if name == "moves" else ["manual"], name)
+                attended, trigger = DRAFTING_RUNS.get(name, (True, ["manual"]))
+                self.assertEqual(verb["attended"], attended, name)
+                self.assertEqual(verb["trigger"], trigger, name)
                 self.assertTrue(verb["built"], name)
                 continue
             if name == "sessions":
@@ -1146,7 +1155,6 @@ class TestCatalogs(unittest.TestCase):
         self.assertEqual(v["cleanup"]["trigger"], ["after-build", "after-sitting", "schedule"])
         self.assertIn("drafting-table/riders.md", v["cleanup"]["ships"])
         self.assertIn("drafting-table/riders.md", v["cleanup"]["writes"])
-        self.assertEqual(v["digest"]["kind"], "script")
         self.assertEqual(v["blueprint-close"]["kind"], "office-session")
         for name in ("review", "check", "retry"):
             self.assertEqual(v[name]["kind"], "project-session", name)
@@ -1155,10 +1163,11 @@ class TestCatalogs(unittest.TestCase):
         self.assertEqual(v["review"]["trigger"], ["on-hold"])
         self.assertEqual(v["retry"]["trigger"], ["on-correctable-hold"])
         # 4b-1 declared moves, the blueprint, rider and agenda verbs,
-        # riders, rulings and evidence (test_drafting_table checks them);
-        # the watches verbs come with 4b-2.
-        for name in ("watches", "watches-check"):
-            self.assertNotIn(name, v)
+        # riders, rulings and evidence; 4b-2 the watches verbs and the
+        # digest, which leaves the declared kinds a script, built.
+        for name in ("watches", "watches-check", "digest"):
+            self.assertEqual(v[name]["kind"], "script", name)
+            self.assertTrue(v[name]["built"], name)
 
     def test_the_shipped_spaces_catalog_holds(self):
         """The rider from session 1: filed and hung are both lists of
@@ -1422,7 +1431,8 @@ class TestText(unittest.TestCase):
         for name, v in verbs.items():
             if v["kind"] == "script" and v["built"]:
                 self.assertIn(name.replace("-", " "), usage, name)
-        self.assertNotIn("digest", usage)
+        # A kind declared ahead of the command is not in the help.
+        self.assertNotIn("office sitting", usage)
 
     def test_bale_office_line_is_verbatim(self):
         line = ("The line between bale and office. Test: is this about a session or about a job? "

@@ -133,6 +133,25 @@ class Consumption:
                 out.append(flag)
         return out
 
+    def subject_sid(self, subject):
+        """(kind, sid) when a commit subject has one of the shapes bale
+        gives its commits ([surfaces.commits]): work, merge or sweep;
+        None for any other subject. A convention bale follows, declared
+        here so a change in it fails a test (a slip for bale-src)."""
+        shapes = self.surface("commits").get("subjects", {})
+        for kind, shape in shapes.items():
+            head, _, tail = shape.partition("{sid}")
+            if not subject.startswith(head):
+                continue
+            rest = subject[len(head):]
+            sid, sep, after = rest.partition(tail) if tail else (rest.split(" ", 1)[0], "", "")
+            if tail and not sep:
+                # A tail that ends the shape (merge: none) is matched at the end.
+                continue
+            if oh.SID_RE.match(sid):
+                return kind, sid
+        return None
+
 
 # --- the reader ------------------------------------------------------------------
 
@@ -162,6 +181,48 @@ class Reader:
                             f"written against bale {self.consumption.floor} or later "
                             f"(installed: {self._installed or 'unknown'})")
         return obj[name]
+
+    # The door for the watch catalog's keys (share/watch-queries.toml):
+    # a query names its keys as data, so they cannot be literal reads
+    # above; each is held to the manifest here, the same way.
+    def reach(self, obj, surface, path, at=None):
+        """Every value a declared key path reaches in obj: a[].b is b in
+        each element of a, a.*.b is b in every value of the map a. at, a
+        prefix of path, says where obj already sits (a class's row is at
+        classes.*). A parent that lacks a key is an error naming the bale
+        the reads were written against, as Reader.key's is."""
+        if path not in self.consumption.keys(surface):
+            raise BaleError("undeclared", f"the office reads {surface} key {path!r}, which "
+                            f"{self.consumption.path.name} does not declare (a defect in office-src)")
+        self.touched.add((surface, path))
+        parts = path.split(".")
+        if at is not None:
+            skip = at.split(".")
+            if parts[:len(skip)] != skip:
+                raise BaleError("undeclared", f"{path!r} does not sit under {at!r}")
+            parts = parts[len(skip):]
+        frontier = [obj]
+        for part in parts:
+            name = part.removesuffix("[]")
+            nxt = []
+            for node in frontier:
+                if node is None:
+                    continue
+                if name == "*":
+                    if isinstance(node, dict):
+                        nxt.extend(node.values())
+                    continue
+                if not isinstance(node, dict) or name not in node:
+                    raise BaleError("key", f"bale's {surface} line has no key {path!r}; the office's reads were "
+                                    f"written against bale {self.consumption.floor} or later "
+                                    f"(installed: {self._installed or 'unknown'})")
+                value = node[name]
+                if part.endswith("[]"):
+                    nxt.extend(value or [])
+                else:
+                    nxt.append(value)
+            frontier = nxt
+        return frontier
 
     def bale(self):
         exe = shutil.which("bale")
@@ -345,8 +406,20 @@ class Reader:
             raise BaleError("output", f"bale's record for {sid} in {cwd} is a newer record version than it reads")
         return None
 
-    def aggregate(self, cwd, work_class=None):
-        return self.run("stats", cwd, work_class=work_class)
+    def aggregate(self, cwd, work_class=None, since=None):
+        """bale stats --json, the whole corpus or narrowed: to one work
+        class, and to the sessions packed on or after the day since (an
+        ISO date; bale refuses a timestamp). The window bale says it
+        applied is held to the one asked for."""
+        if since is not None:
+            dt.date.fromisoformat(since)
+        agg = self.run("stats", cwd, work_class=work_class, since=since)
+        filters = self.key(agg, "stats", "filters")
+        applied = self.key(filters, "stats", "filters.since")
+        if applied != since:
+            raise BaleError("output", f"bale stats in {cwd} reports the window since {applied!r}, "
+                                      f"not the {since!r} the office asked for")
+        return agg
 
 
 # --- plain data from a dossier ---------------------------------------------------
@@ -1008,15 +1081,19 @@ def blueprint_desk(table, folders, flying, since, bid, flight):
 #   2. a session out: work already sent, waiting only on its response,
 #      and an unfounded office's founding session is one of these, so
 #      landing it comes before saying the office is unfounded;
-#   3. unfounded: the profile is the office's reason to exist;
-#   4. a ready folder: the desk's first, in the desk's own order;
-#   5. an open folder with no session out: a job under way that nothing
+#   3. desk moves pending: until office moves runs them, the desk is not
+#      in the order the sitting decided, so the next two states could
+#      name a folder a move retires or miss one a move opens (0.11.0;
+#      0.8.0's order ratified, this step added by the plan-4b sitting);
+#   4. unfounded: the profile is the office's reason to exist;
+#   5. a ready folder: the desk's first, in the desk's own order;
+#   6. an open folder with no session out: a job under way that nothing
 #      is carrying;
-#   6. no projects: setup, which a ready job outranks, since an office may
+#   7. no projects: setup, which a ready job outranks, since an office may
 #      scope none by choice and a nag above real work would be wrong;
-#   7. slips piling up: enough of them to be a job of their own;
-#   8. folders that wait (parked, candidates): the desk says on what;
-#   9. nothing to do.
+#   8. slips piling up: enough of them to be a job of their own;
+#   9. folders that wait (parked, candidates): the desk says on what;
+#  10. nothing to do.
 #
 # Whether a response is in the downloads is a bale-shaped fact no --json
 # surface of bale exposes (bale status gives only a count of search
@@ -1098,6 +1175,14 @@ def next_move(skew, founded, out, groups, projects, slips):
                     f"bale held it in {where} ({names}); land asks for the corrected response{more}")
         return (f"office land {s['sid']}",
                 f"it is out in {where} ({names}); when its response is in your downloads, land finds it{more}")
+    count, sources, errors = groups.get("moves", (0, "", []))
+    if count or errors:
+        unread = f"; {len(errors)} line(s) of drafting-table/moves.md do not read, and moves names them" \
+            if errors else ""
+        return ("office moves",
+                (f"{count} desk move(s) a sitting decided are pending ({sources})" if count else
+                 "drafting-table/moves.md holds lines that do not read")
+                + "; until they run, the desk is not in the order the sitting decided" + unread)
     if not founded:
         return ("office status", "the profile is incomplete, so this office is unfounded; office status names "
                                  "the sections its founding session still has to write")
@@ -1810,6 +1895,23 @@ def survey_before_pack(office_root):
         log(f"warning: the survey before the pack exited {proc.returncode}; the session reads the survey as it was")
 
 
+def digest_before_pack(office_root):
+    """office digest --before-pack in the office, before a sitting is
+    packed (the blueprint's section 5.1: the digest first, run just
+    before the pack): the sitting-open page written again and committed
+    alone, never fatal. Its words go to stderr, since stdout is office
+    start's one JSON line."""
+    env = dict(os.environ, OFFICE_ROOT=str(office_root), PYTHONDONTWRITEBYTECODE="1")
+    try:
+        proc = subprocess.run([str(INSTALL / "bin" / "office"), "digest", "--before-pack"], env=env,
+                              stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr, timeout=PACK_TIMEOUT)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log(f"warning: the digest before the pack could not run ({exc}); the sitting reads the page as it was")
+        return
+    if proc.returncode != 0:
+        log(f"warning: the digest before the pack exited {proc.returncode}; the sitting reads the page as it was")
+
+
 def open_bundle(rd, pack_dir, bundle):
     """Run bale open for a planner bundle in pack_dir, stdin closed, so
     no question is answered for the occupant; a pre-answered intent in
@@ -1976,6 +2078,16 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     # is packed, so the hung survey this session reads is current, and a
     # refused start commits nothing.
     survey_before_pack(office_root)
+    # A sitting (a read-only office session, a bundle's included) opens on
+    # the digest: written just before the pack, and the drafting table
+    # rides with the sitting whenever the office has one. A bundle's pack
+    # line is the planner's, so the office adds no include to it; the
+    # digest is still written, and rides if the bundle includes the table.
+    sitting = where == "office" and forecast == []
+    if sitting:
+        digest_before_pack(office_root)
+        if not bundle and (office_root / od.SPACE).is_dir() and od.SPACE not in includes:
+            includes = [*includes, od.SPACE]
 
     # The packed trees that may carry a doctrine of their own: the
     # request's (a project session's repo) and, for an office session
@@ -2031,6 +2143,9 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         elif entry is not None:
             # An office session about a project reads the project's tree.
             carried.append(context_into_tray(rd, tray, entry["resolved"], None, f"{project}'s tree"))
+        if sitting and od.SPACE in includes:
+            carried.append(f"(the drafting table rides inside the request, its {od.SPACE}/digest.md written "
+                           "just before the pack)")
         for ride in left:
             carried.append(f"(left out of this session: {ride}, which rides with {project} as declared)")
         if entry is not None:

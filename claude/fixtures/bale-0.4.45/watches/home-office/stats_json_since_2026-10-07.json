@@ -1,0 +1,19 @@
+{
+ "argv": [
+  "stats",
+  "--json",
+  "--since",
+  "2026-10-07"
+ ],
+ "cwd": "/home/chordsphere/home-office",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"stats\", \"epoch\": {\"first_sid\": \"2026-09-30-home-office-founding-001\", \"first_created_at\": \"2026-09-30T23:42:30+00:00\"}, \"coverage\": {\"closure_reason\": {\"first_sid\": \"2026-09-30-home-office-founding-001\", \"records_lacking\": 0}, \"clarification\": {\"first_sid\": \"2026-09-30-home-office-founding-001\", \"records_lacking\": 1}, \"checkpoint\": {\"first_sid\": \"2026-09-30-home-office-founding-001\", \"records_lacking\": 1}, \"scope_kind\": {\"first_sid\": \"2026-09-30-home-office-founding-001\", \"records_lacking\": 0}}, \"filters\": {\"work_class\": null, \"since\": \"2026-10-07\"}, \"corpus\": {\"records\": 3, \"parse_failures\": 0, \"filtered_record_versions\": 0, \"read_only_sessions\": 0, \"crash_debris_sessions\": 0, \"sessions\": 0, \"in_flight_sessions\": 0, \"response_attempts\": 0, \"validated_attempts\": 0, \"checks\": 0, \"handoff_origin_sessions\": 0, \"docs_read\": {\"sessions\": 0, \"tokens\": {}}, \"light_blocks_total\": 0, \"paste_carried_rounds_total\": 0, \"clarification_rounds_total\": 0}, \"classes\": {}, \"closure_mix\": {\"applied\": 0, \"reverted\": 0, \"bailout\": 0, \"unlocked\": {}}, \"churn\": {\"rolled_back\": 0, \"re_applied\": 0}, \"cross_checks\": {\"clarification\": {\"self_reported_sessions\": 0, \"promoted_sessions\": 0, \"both\": 0, \"self_only\": 0, \"promoted_only\": 0}, \"budget\": {\"pressure\": {}, \"bailed_with_pressure_none\": 0, \"compaction\": {\"reporting_sessions\": 0, \"occurred_sessions\": 0}}, \"forecast_departures\": {\"declared_paths\": 0, \"admitted_paths\": 0, \"both\": 0, \"admitted_only\": 0, \"declared_only\": 0}}, \"packers\": {}, \"doc_epochs\": {}, \"members\": {\"in_flight\": [], \"read_only\": [], \"crash_debris\": [], \"clarification_self_only\": [], \"clarification_promoted_only\": [], \"forecast_admitted_only\": [], \"forecast_declared_only\": [], \"bailed_with_pressure_none\": [], \"compaction_occurred\": []}}"
+ ],
+ "stdout_sha256": [
+  "1f7ec90d2ea3c56ac2254ddf62e51edd7f0baa6639ad45a61d97898b7eb58232"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-06-drafting-table-digest-001, 2026-10-06T19:13:59Z: bale 0.4.45 run in home-office, stdin closed; each stdout line's sha256 printed by the probe and re-verified on the paste"
+}

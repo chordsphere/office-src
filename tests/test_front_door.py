@@ -198,7 +198,8 @@ class TestNextOnTheWalkIn(LandCase):
 
 TASKS = ["Walk in and look around", "Capture a thought or a friction", "Start a job, and finish one",
          "Plan work too big for one folder", "Send a session out", "Bring one back", "Look after the office"]
-TWO_WORD = ("blueprint-open", "blueprint-ratify", "rider-add", "rider-carry", "rider-consumed", "agenda-add")
+TWO_WORD = ("blueprint-open", "blueprint-ratify", "rider-add", "rider-carry", "rider-consumed", "agenda-add",
+            "watches-check")
 
 
 class TestHelpByTask(unittest.TestCase):

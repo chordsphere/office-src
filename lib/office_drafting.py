@@ -54,8 +54,8 @@ MANIFEST_REL = "floor-plan/manifest.toml"
 BALE_TOML_REL = "bale.toml"
 
 # Every page the space can hold, and the template it starts from. The
-# digest is derived by a script that does not exist yet (4b-2), and the
-# blueprints have their own templates.
+# digest is derived (office digest writes it whole on every run, from no
+# template), and the blueprints have their own templates.
 PAGES = {
     "README.md": "drafting-table-README.md",
     "agenda.md": "drafting-table-agenda.md",
@@ -367,21 +367,7 @@ class Table:
     def agenda(self):
         """({N: entry}, {N: disposed line}) from agenda.md."""
         if "agenda" not in self._cache:
-            lines = self.page("agenda.md")
-            entries, disposed = {}, {}
-            heads = [(i, AGENDA_HEAD_RE.match(l)) for i, l in unfenced(lines) if l.startswith("## ")]
-            for k, (i, m) in enumerate(heads):
-                if not m:
-                    continue
-                end = heads[k + 1][0] if k + 1 < len(heads) else len(lines)
-                fields, body = fields_of(lines, i + 1, end)
-                entries[int(m.group(1))] = {"number": int(m.group(1)), "title": m.group(2), "fields": fields,
-                                            "text": [l for l in lines[body:end]], "line": i + 1}
-            for i, l in unfenced(lines):
-                m = DISPOSED_RE.match(l)
-                if m:
-                    disposed[int(m.group(2))] = {"day": m.group(1), "to": m.group(3), "line": i + 1}
-            self._cache["agenda"] = (entries, disposed)
+            self._cache["agenda"] = agenda_records(self.page("agenda.md"))
         return self._cache["agenda"]
 
     # --- rulings
@@ -409,24 +395,7 @@ class Table:
         """[record] from evidence.md: entries (`## N. Title`) and events
         (`## N - occurrence - DATE`, `## N - derived - DATE`)."""
         if "evidence" not in self._cache:
-            lines = self.page("evidence.md")
-            out = []
-            heads = [i for i, l in unfenced(lines) if l.startswith("## ")]
-            for k, i in enumerate(heads):
-                end = heads[k + 1] if k + 1 < len(heads) else len(lines)
-                fields, body = fields_of(lines, i + 1, end)
-                text = [l for l in lines[body:end]]
-                m = ENTRY_HEAD_RE.match(lines[i])
-                e = EVENT_HEAD_RE.match(lines[i])
-                if m:
-                    out.append({"number": int(m.group(1)), "kind": "entry", "title": m.group(2), "fields": fields,
-                                "text": text, "line": i + 1})
-                elif e:
-                    out.append({"number": int(e.group(1)), "kind": e.group(2), "day": e.group(3), "fields": fields,
-                                "text": text, "line": i + 1})
-                else:
-                    out.append({"number": None, "kind": "unreadable", "heading": lines[i], "line": i + 1})
-            self._cache["evidence"] = out
+            self._cache["evidence"] = evidence_records(self.page("evidence.md"))
         return self._cache["evidence"]
 
     def watches(self):
@@ -541,6 +510,53 @@ class Table:
                     return "met", f"{gate} ruled", r["day"]
             return "error", f"{gate} names no ruling in rulings.md", None
         raise oh.HelperError(f"not a drafting-table gate: {gate!r}")
+
+
+def agenda_records(lines):
+    """({N: entry}, {N: disposed line}) from agenda.md's lines."""
+    entries, disposed = {}, {}
+    heads = [(i, AGENDA_HEAD_RE.match(l)) for i, l in unfenced(lines) if l.startswith("## ")]
+    for k, (i, m) in enumerate(heads):
+        if not m:
+            continue
+        end = heads[k + 1][0] if k + 1 < len(heads) else len(lines)
+        fields, body = fields_of(lines, i + 1, end)
+        entries[int(m.group(1))] = {"number": int(m.group(1)), "title": m.group(2), "fields": fields,
+                                    "text": [l for l in lines[body:end]], "line": i + 1}
+    for i, l in unfenced(lines):
+        m = DISPOSED_RE.match(l)
+        if m:
+            disposed[int(m.group(2))] = {"day": m.group(1), "to": m.group(3), "line": i + 1}
+    return entries, disposed
+
+
+def evidence_records(lines):
+    """[record] from evidence.md's lines: entries (`## N. Title`) and
+    events (`## N - occurrence - DATE`, `## N - derived - DATE`)."""
+    out = []
+    heads = [i for i, l in unfenced(lines) if l.startswith("## ")]
+    for k, i in enumerate(heads):
+        end = heads[k + 1] if k + 1 < len(heads) else len(lines)
+        fields, body = fields_of(lines, i + 1, end)
+        text = [l for l in lines[body:end]]
+        m = ENTRY_HEAD_RE.match(lines[i])
+        e = EVENT_HEAD_RE.match(lines[i])
+        if m:
+            out.append({"number": int(m.group(1)), "kind": "entry", "title": m.group(2), "fields": fields,
+                        "text": text, "line": i + 1})
+        elif e:
+            out.append({"number": int(e.group(1)), "kind": e.group(2), "day": e.group(3), "fields": fields,
+                        "text": text, "line": i + 1})
+        else:
+            out.append({"number": None, "kind": "unreadable", "heading": lines[i], "line": i + 1})
+    return out
+
+
+def rider_numbers(lines):
+    """Every rider number riders.md's lines name: its blocks and its
+    pointer lines (a rider carried into a folder leaves a pointer)."""
+    return ({r["number"] for r in rider_blocks(lines, 0, len(lines))}
+            | {int(m.group(1)) for _, l in unfenced(lines) for m in [POINTER_RE.match(l)] if m})
 
 
 def records(lines, head_re, make):
@@ -1475,7 +1491,11 @@ def decomposition_line(lines, n):
 def move_sources(root):
     """{pending line number: where it came from}: the session whose
     commit wrote the line (bale commits a session's work as `[bale SID]
-    ...`), else the commit, else `not committed`. From git blame, once."""
+    ...`, the shape share/bale-consumption.toml declares under
+    [surfaces.commits]), else the commit, else `not committed`. From git
+    blame, once."""
+    import office_bale as ob  # here, not above: office_bale imports this module
+    shapes = ob.Consumption()
     root = pathlib.Path(root)
     rel = f"{SPACE}/moves.md"
     try:
@@ -1496,8 +1516,8 @@ def move_sources(root):
         if set(sha) == {"0"}:
             src[n] = "not committed yet"
             continue
-        m = re.match(r"^\[bale (\S+)\]", summaries.get(sha, ""))
-        src[n] = f"`{m.group(1)}`" if m and oh.SID_RE.match(m.group(1)) else f"commit {sha[:7]}"
+        found = shapes.subject_sid(summaries.get(sha, ""))
+        src[n] = f"`{found[1]}`" if found and found[0] == "work" else f"commit {sha[:7]}"
     return src
 
 

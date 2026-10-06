@@ -169,6 +169,10 @@ class TestFixtures(unittest.TestCase):
         self.assertIn(cons.argv("status"), argvs)
         self.assertIn(cons.argv("stats"), argvs)
         self.assertIn(cons.argv("stats", work_class="mixed"), argvs)
+        # --since was probed later, into its own set (watches/).
+        later = [json.loads(f.read_text(encoding="utf-8"))["argv"]
+                 for f in sorted((FIXTURES / "watches" / "office-src").glob("*.json"))]
+        self.assertIn(cons.argv("stats", since="2026-10-01"), later)
         self.assertIn(cons.argv("dossier", sid=OPEN_WORKER), argvs)
         self.assertIn(cons.argv("dossier", sid=MISS_SID), argvs)
 
@@ -257,7 +261,11 @@ class TestConsumptionManifest(unittest.TestCase):
                 self.assertIn("outcome", spec["keys"], surface)
                 reads.add((surface, "outcome"))
         self.assertEqual(reads - declared, set(), "read but not declared")
-        self.assertEqual(declared - reads, set(), "declared but never read")
+        # The watch catalog's queries name their keys as data, read through
+        # Reader.reach, which holds each to the manifest the same way
+        # (tests/test_watches_digest.py runs them over the captures).
+        import office_watches as ow
+        self.assertEqual(declared - reads - ow.Catalog().keys(), set(), "declared but never read")
 
     def test_the_pack_report_key_is_the_one_declared(self):
         """office sessions FOLDER - reads the piped report's sid, the key
@@ -297,6 +305,7 @@ class TestConsumptionManifest(unittest.TestCase):
                          ["stats", "--sid", "2026-09-30-x-001", "--json"])
         self.assertEqual(self.cons.argv("stats"), ["stats", "--json"])
         self.assertEqual(self.cons.argv("stats", work_class="meta"), ["stats", "--json", "--work-class", "meta"])
+        self.assertEqual(self.cons.argv("stats", since="2026-10-01"), ["stats", "--json", "--since", "2026-10-01"])
         with self.assertRaises(ob.BaleError):
             self.cons.argv("dossier")
         with self.assertRaises(ob.BaleError):
