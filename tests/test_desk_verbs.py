@@ -278,6 +278,7 @@ class TestWizards(unittest.TestCase):
     """Doctrine section 7: on a terminal a verb asks for what it was not
     given, every question names its flag twin, ? explains, and an answer
     the field does not take is explained and asked again."""
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
 
     def setUp(self):
         self.o = Office(self)

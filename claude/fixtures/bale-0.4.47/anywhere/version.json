@@ -1,0 +1,14 @@
+{
+ "argv": [
+  "--version"
+ ],
+ "exit": 0,
+ "stdout": [
+  "bale 0.4.47"
+ ],
+ "stderr": [],
+ "stdout_sha256": [
+  "375854122ba6f195bc84febb7c877b5bf3525635e41df0b8c5f964a3f277bf7a"
+ ],
+ "captured": "probe of session 2026-10-07-third-trip-001, section bale and office installs: `bale --version` (the probe printed no hash for this line; it was computed from the pasted line)"
+}

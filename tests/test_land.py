@@ -309,6 +309,61 @@ if argv[0] == "relay" and len(argv) == 2:
     say(swap(cap["stderr"], "2026-10-03-probe-clar-001", sid, "/tmp/office-probe.waUkTl/clar", cwd), err=True)
     sys.exit(0)
 
+def bundle_forecast_of(pack_argv):
+    """--write's paths, else --include's, else the whole tree; [] for
+    --read-only: bale pack's reading of a forecast, enough for the fake."""
+    writes, includes, flag, ro = [], [], None, False
+    for w in pack_argv[1:]:
+        if w.startswith("--"):
+            flag = w
+            ro = ro or w == "--read-only"
+            continue
+        if flag == "--write":
+            writes.append(w)
+        elif flag == "--include":
+            includes.append(w)
+        flag = flag if flag in ("--write", "--include") else None
+    return [] if ro else (writes or includes or ["."])
+
+def meets(a, b):
+    a, b = a.strip("/"), b.strip("/")
+    return a in ("", ".") or b in ("", ".") or a == b or a.startswith(b + "/") or b.startswith(a + "/")
+
+if argv[:2] == ["open", "--check"]:
+    # bale open --check BUNDLE, as the third-trip probe captured it on bale
+    # 0.4.47: a name bale cannot find, a forecast path that is not there or
+    # a forecast an open session holds refuses on stderr, exit 1; else the
+    # rehearsal report on stdout, exit 0. It writes nothing, here too.
+    CHECK = FIX.parent.parent / "bale-0.4.47" / "open-check"
+    def cfx(label):
+        return json.loads((CHECK / (label + ".json")).read_text(encoding="utf-8"))
+    if len(argv) != 3:
+        say(fx("open-extra-flags")["stderr"], err=True); sys.exit(2)
+    b = resolve(argv[2], "bundle")
+    if b is None:
+        missing(argv[2], "bundle")
+    with tarfile.open(b) as t:
+        pack_argv = json.loads(t.extractfile("bundle.json").read())["pack_argv"]
+    old_b = "TMP/dl/2026-01-01-office-probe-ok.bale-bundle"
+    forecast = bundle_forecast_of(pack_argv)
+    gone = [w for w in forecast if w not in (".", "") and not (pathlib.Path(cwd) / w).exists()]
+    if gone:
+        cap = cfx("check-nopath")
+        say([l.replace(old_b.replace("ok", "nopath"), str(b)) for l in cap["stdout"]])
+        say([l.replace(": nope.", ": " + gone[0] + ".") for l in cap["stderr"]], err=True); sys.exit(1)
+    sup = pack_argv[pack_argv.index("--supersedes") + 1] if "--supersedes" in pack_argv else None
+    held = [s for s in repo["sessions"] if s != sup and repo["scopes"].get(s) != []
+            and any(meets(m, t) for m in forecast for t in (repo["scopes"].get(s) or ["."]))]
+    if held:
+        cap = cfx("check-overlap")
+        say([l.replace(old_b.replace("ok", "overlap"), str(b)) for l in cap["stdout"]])
+        say([l.replace("2026-10-07-probe-proj-001 (src ~ src)", held[0] + " (" + ", ".join(forecast) + ")")
+             for l in cap["stderr"]], err=True); sys.exit(1)
+    cap = cfx("check-ro" if forecast == [] else "check-found")
+    say([l.replace(old_b.replace("ok", "ro") if forecast == [] else old_b, str(b)).replace("TMP/proj", cwd)
+         .replace("write forecast:     notes", "write forecast:     " + ", ".join(forecast)) for l in cap["stdout"]])
+    sys.exit(0)
+
 if argv[0] == "open":
     if len(argv) != 2:
         say(fx("open-extra-flags")["stderr"], err=True); sys.exit(2)
@@ -365,11 +420,14 @@ class FakeLandBale:
         return f"{self.dir}{os.pathsep}{base}"
 
     def calls_of(self, verb):
-        """(cwd, argv, stdin was a terminal) of each call of one bale verb."""
+        """(cwd, argv, stdin was a terminal) of each call of one bale verb.
+        "open" is the opens; "open-check" is bale open --check, which
+        office start runs before it writes anything for a bundle."""
         if not self.calls.is_file():
             return []
         out = [json.loads(l) for l in self.calls.read_text().splitlines()]
-        return [c for c in out if c[1] and c[1][0] == verb]
+        kind = lambda a: "open-check" if a[:2] == ["open", "--check"] else a[0]  # noqa: E731
+        return [c for c in out if c[1] and kind(c[1]) == verb]
 
     def land_state(self):
         return json.loads(self.state.read_text())["land"]
@@ -894,6 +952,7 @@ class TestLandAnOfficeSession(LandCase):
 
 
 class TestLandOnATerminal(LandCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def test_bale_asks_and_only_the_occupant_answers(self):
         """bale's admission and its merge are asked by bale, on the
         occupant's terminal; the office asks only its own question."""
@@ -1014,12 +1073,19 @@ class TestStartABundle(LandCase):
         self.assertEqual(self.fake.calls_of("open"), [])
 
     def test_bales_refusal_reaches_the_occupant_and_nothing_is_recorded(self):
+        # Since 0.13.0 bale open --check finds out first, so the refusal
+        # comes before the survey, the tray or the session (the third trip).
+        head = self.e.git(self.root, "rev-parse", "HEAD")
         proc = self.run_office("start", "fix-login", "--on", "alpha", "--bundle", "2026-01-01-none.bale-bundle",
                                check=1)
-        self.assertIn("the bundle's open failed, so no session was opened", proc.stderr)
+        self.assertIn("bale cannot open the bundle 2026-01-01-none.bale-bundle on alpha", proc.stderr)
+        self.assertIn("start stopped before anything was written", proc.stderr)
         self.assertIn("bundle not found: 2026-01-01-none.bale-bundle", proc.stderr)
         self.assertIn(str(self.downloads), proc.stderr)
         self.assertNotIn("- status: open", (self.root / self.folder / "folder.md").read_text())
+        self.assertEqual(self.e.git(self.root, "rev-parse", "HEAD"), head, "the survey was committed")
+        self.assertEqual(self.fake.calls_of("open"), [])
+        self.assertEqual(len(self.fake.calls_of("open-check")), 1)
 
     def test_what_the_office_notices_and_does_not_add(self):
         bundle = bundle_file(self.e.tmp / "b", "2026-10-05-bare", self.argv(constraint=False))

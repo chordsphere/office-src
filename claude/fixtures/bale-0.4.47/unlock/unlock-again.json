@@ -1,0 +1,20 @@
+{
+ "argv": [
+  "unlock",
+  "SID",
+  "--json"
+ ],
+ "cwd": "TMP/ro",
+ "stdin": "closed",
+ "exit": 1,
+ "stdout": [
+  "{\"outcome\": \"unlock-refused\", \"sid\": \"SID\", \"log\": null, \"closure_reason\": null, \"session_dir_wiped\": null, \"branch_preserved\": false, \"telemetry\": null, \"debris\": null, \"sweep\": null, \"reason\": \"not-open\", \"message\": \"session SID is not open; nothing to unlock. No sessions are open.\", \"open_sessions\": []}"
+ ],
+ "stdout_sha256": [
+  "14712b745e4b2a48688da85eb34c7822db6b6af2b67a0a43c5204a3f4cb5ffdc"
+ ],
+ "stderr": [
+  "[bale] error: session SID is not open; nothing to unlock. No sessions are open."
+ ],
+ "captured": "probe of session 2026-10-07-third-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.47) on 2026-10-07, in a throwaway repo under /tmp/office-probe.XXXXXX (removed); the probe printed that directory as TMP, kept here as it printed it"
+}

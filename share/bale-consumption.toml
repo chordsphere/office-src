@@ -10,7 +10,8 @@
 # project's directory, with stdin closed: never .bale/, never a prompt.
 # It never writes what bale records. The surfaces after the reads run a
 # bale verb when the occupant asks: office start makes a session and its
-# context tarballs (pack, context, open), and office land lands one
+# context tarballs (pack, context, open), asking bale first whether a
+# bundle can open (open_check, which writes nothing), and office land lands one
 # (apply, retry), carries a clarification back (relay), and ends a
 # read-only sitting the office sent out (unlock). A datum the
 # office needs and bale does not stamp is a slip for bale-src, never a
@@ -24,6 +25,11 @@
 #            removed), so every later bale should serve these reads; an
 #            older one may not. office status reports a bale below the
 #            floor as a line, never a refusal.
+# checked    the latest bale every surface below was probed against again,
+#            and the session whose probe did it. Nothing the office reads
+#            had moved, so the floor and its captures stand; what that bale
+#            added is written up beside the floor's captures, in the
+#            development record's fixtures for that version.
 # argv       the call, {placeholders} filled when it runs
 # optional   flags added, in this order, when their value is given
 # contract   where bale keeps the surface's key contract
@@ -35,6 +41,13 @@
 [bale]
 floor = "0.4.45"
 probed_in = "2026-09-30-read-side-001"
+# bale 0.4.47 (the brief expected 0.4.46; 0.4.47 is what was installed):
+# every key below resolved in its lines, the markers stand, and what it
+# added is additive (status's clipboard object; a JSON line on unlock
+# --json's refusal, which the office does not read). open --check is new
+# to the office here, probed on 0.4.47 (it has had it since 0.4.45).
+checked = "0.4.47"
+checked_in = "2026-10-07-third-trip-001"
 
 [surfaces.version]
 argv = ["--version"]
@@ -228,6 +241,26 @@ opener = ["--8<-- session opener (copy everything between the scissor lines) --8
           "--8<-- end session opener --8<--"]
 tarball_line = "  tarball:        "
 
+# Asked before office start writes anything, for a planner bundle: bale
+# open --check where the bundle opens, stdin closed. bale resolves a bare
+# name through its own search (cwd first, then apply.search_paths),
+# verifies the bundle and runs every gate it runs before an open (forecast
+# existence and disjointness among them), and writes nothing. Exit 0 when
+# every gate passed, with a rehearsal report on stdout whose first line
+# names the path bale found; exit 1 with bale's error on stderr for a name
+# it cannot find (every directory searched listed) or a gate that refuses.
+# Outside a repo it refuses. Probed in 2026-10-07-third-trip-001 on bale
+# 0.4.47, in throwaway repos, with the repo's git status, .bale/ listing
+# and open sessions the same before and after.
+#
+# found_line  the start of the report line naming the bundle's path; the
+#             path runs to " against "
+[surfaces.open_check]
+argv = ["open", "--check", "{bundle}"]
+format = "text"
+contract = "bale open --help (--check since v0.4.45; probed on v0.4.47)"
+found_line = "[bale] bale open --check: rehearsing planner bundle "
+
 # Landing a response: run in the repo the session belongs to, with stdin
 # the occupant's own terminal, so every question bale asks (an admission,
 # the walkthrough's merge or revert, a hook) reaches him as bale asks it;
@@ -283,10 +316,13 @@ block = ["BALE EXCHANGE BEGIN {sid}", "BALE EXCHANGE END"]
 # reason, closed-read-only, from the empty scope, and its sweep commits
 # the session's telemetry record alone, as
 # `[bale sweep SID] closed-read-only`, leaving any other change in the
-# tree as it was. The human summary is on stderr.
+# tree as it was. The human summary is on stderr. Since 0.4.47 a refusal
+# also prints one JSON line on stdout (outcome unlock-refused, a reason
+# code), still exiting 1 with the error on stderr; the office reads a
+# refusal by its exit code and bale's words, as before.
 [surfaces.unlock]
 argv = ["unlock", "{sid}", "--json"]
-contract = "format_unlock_json's docstring, bin/bale_report.py; bale unlock --help (v0.4.45)"
+contract = "format_unlock_json's docstring, bin/bale_report.py; bale unlock --help (v0.4.45; checked on v0.4.47)"
 outcome = "unlocked"
 keys = [
   "outcome",

@@ -1,0 +1,19 @@
+{
+ "argv": [
+  "open",
+  "--check",
+  "2026-01-01-office-probe-nothere.bale-bundle"
+ ],
+ "cwd": "TMP/proj",
+ "stdin": "closed",
+ "exit": 1,
+ "stdout": [],
+ "stdout_sha256": [],
+ "stderr": [
+  "[bale] error: bundle not found: 2026-01-01-office-probe-nothere.bale-bundle",
+  "  searched:",
+  "    TMP/proj  (cwd)",
+  "    TMP/dl"
+ ],
+ "captured": "probe of session 2026-10-07-third-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.47) on 2026-10-07, in a throwaway repo under /tmp/office-probe.XXXXXX (removed); the probe printed that directory as TMP, kept here as it printed it"
+}

@@ -255,6 +255,7 @@ class RideCase(LandCase):
 
 
 class TestWhatRides(RideCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def test_piped_everything_declared_rides(self):
         proc = self.run_office("start", "fix-login", "--on", "alpha", "--goal", "g", check=0)
         self.assertIn(f"rides with alpha ({self.notes}: blueprints)", proc.stdout)
@@ -393,6 +394,7 @@ class TestSurveyBeforeEveryPack(LandCase):
 # --- 4. where, from the bundle ---------------------------------------------------------------
 
 class TestWhereFromTheBundle(LandCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def office_bundle(self):
         return bundle_file(self.e.tmp / "b", "2026-10-05-plan", ["Plan from a bundle", "--slug", "plan-b",
                                                                  "--include", "desk", "--include", "notepad",

@@ -672,9 +672,11 @@ def normalize_rides(rides=None, carrier=None):
         return oh.normalize_field("linked", carrier)
     if rides:
         text = " ".join(rides.split())
-        if " " in text:
-            raise oh.HelperError(f"--rides takes one path glob, as git reads one, not {rides!r}")
-        return text
+        owner, glob = rides_parts(text)
+        if " " in glob:
+            raise oh.HelperError(f"--rides takes one path glob, as git reads one (its project first, as a lane "
+                                 f"names it, if only that project's packs carry it), not {rides!r}")
+        return f"{owner}: {glob}" if owner else glob
     return None
 
 
@@ -814,24 +816,53 @@ def rider_line(r, t):
     return f"rider {r['number']}  {r['status'] or 'no status'}  {r['title']}  (rides {rides}; {where})"
 
 
-def render_riders(root, forecast=(), orphans_only=False):
+# A rides glob may name its project first, the way a lane does
+# ("office-src: bin/"): only a pack on that project carries it. A bare
+# glob rides a pack anywhere whose forecast touches it.
+RIDES_PROJECT_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*):\s*(\S.*)$")
+
+
+def rides_parts(rides):
+    """(project or None, glob) of a rider's rides line."""
+    m = RIDES_PROJECT_RE.match(rides.strip())
+    return (m.group(1), m.group(2).strip()) if m else (None, rides.strip())
+
+
+def riders_for_forecast(root, forecast, project=None):
+    """The queued riders on the page a pack with this forecast carries:
+    [{number, title, rides, touched}] in the page's order. project is
+    the project the pack is on (None for a pack in the office); a rider
+    whose glob names another project, or names one when the pack is in
+    the office, is not carried. An office with no drafting table has no
+    riders."""
+    if not (pathlib.Path(root) / SPACE).is_dir():
+        return []
+    hits = []
+    for r in Table(root).riders():
+        rides = first(r["fields"], "rides")
+        if r["home"] != "page" or not rides or rides.startswith("folder "):
+            continue
+        if r["status"] not in (None, "queued"):
+            continue
+        owner, glob = rides_parts(rides)
+        if owner is not None and owner != project:
+            continue
+        touched = [e for e in forecast if glob_touches(glob, e)]
+        if touched:
+            hits.append({"number": r["number"], "title": r["title"], "rides": rides, "touched": touched})
+    return hits
+
+
+def render_riders(root, forecast=(), orphans_only=False, project=None):
     t = Table(root)
     if not (pathlib.Path(root) / SPACE).is_dir():
         return ["no drafting table in this office yet, so no riders (office rider add starts the page)"]
     riders = t.riders()
     if forecast:
-        hits = []
-        for r in riders:
-            rides = first(r["fields"], "rides")
-            if r["home"] != "page" or not rides or rides.startswith("folder "):
-                continue
-            if r["status"] not in (None, "queued"):
-                continue
-            touched = [e for e in forecast if glob_touches(rides, e)]
-            if touched:
-                hits.append(f"  rider {r['number']}  {r['title']}  (rides {rides}; the forecast's "
-                            + ", ".join(touched) + ")")
-        head = "Riders a pack with this forecast carries (" + ", ".join(forecast) + "):"
+        hits = [f"  rider {h['number']}  {h['title']}  (rides {h['rides']}; the forecast's "
+                + ", ".join(h["touched"]) + ")" for h in riders_for_forecast(root, forecast, project)]
+        head = "Riders a pack with this forecast carries (" + ", ".join(forecast) \
+            + (f", on {project}" if project else "") + "):"
         return [head] + (hits or ["  none: no queued rider on the page rides these paths"])
     orphans = t.orphans()
     if orphans_only:
@@ -1581,6 +1612,7 @@ def main(argv=None):
     p.add_argument("sid"); p.add_argument("--day", required=True)
     p = sub.add_parser("riders"); p.add_argument("root"); p.add_argument("--forecast", nargs="+", default=[])
     p.add_argument("--orphans", action="store_true")
+    p.add_argument("--project", help="with --forecast: the project the pack is on")
     p = sub.add_parser("next-rider"); p.add_argument("root")
     p = sub.add_parser("agenda-add"); p.add_argument("root"); p.add_argument("--day", required=True)
     p.add_argument("--text-file", required=True); p.add_argument("--source", required=True)
@@ -1634,7 +1666,7 @@ def dispatch(a):
     elif a.cmd == "rider-consumed":
         emit(*rider_consumed(a.root, a.number, a.sid, a.day))
     elif a.cmd == "riders":
-        print("\n".join(render_riders(a.root, a.forecast, a.orphans)))
+        print("\n".join(render_riders(a.root, a.forecast, a.orphans, a.project)))
     elif a.cmd == "next-rider":
         print(Table(a.root).next_rider())
     elif a.cmd == "agenda-add":

@@ -379,7 +379,8 @@ registry and for each project, and says of each: fired, not fired, or
 cannot evaluate; a query bale cannot answer says so, as cannot evaluate,
 never as not fired. It prints every eye watch as needing an eye, with
 the sittings since its last record, and the standing lines, which are
-observations, not watches. With `--record` it appends a fired record
+observations, not watches. `office land` runs it after an applied
+landing, without recording, and prints only the watches that fired. With `--record` it appends a fired record
 for each watch that fired; re-arming, rewording, closing and a not-fired
 record are a sitting's. `office digest` writes digest.md, the page a
 sitting opens on: versions, what happened since the last sitting, the
@@ -474,8 +475,8 @@ Kinds:
 | close, reopen | script: move a folder to the filing cabinet, done, absorbed, split or retired, and a done one back | yes |
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes |
 | projects | script: list the projects this office scopes, add one, declare what rides with it and what runs after it lands, render what bale records about them | yes |
-| start | script: pack a session for a folder, in the office or on a project, or open a planner's bundle; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
-| land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, and what became of each action; or end a read-only sitting the office sent out | yes |
+| start | script: pack a session for a folder, in the office or on a project, or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
+| land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, the founding folder closed when the founding has landed, the watches that fired, and what became of each action; or end a read-only sitting the office sent out | yes |
 | tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes |
 | moves | script: apply the desk moves a sitting wrote, through open's, close's and the gate flags' own code, ticking each and writing a minted number onto its blueprint's decomposition line; stops at the first line it cannot apply | yes |
 | blueprint open, blueprint ratify | script: draft a blueprint from the template; write its charter's ratified line | yes |
@@ -521,7 +522,9 @@ Walking in is `office` with no verb, from inside an office or anywhere on
 the machine (the per-machine default). It shows the office's name, the
 date and time in its timezone (and, when the floor plan's zone does not
 resolve, that the office is on UTC instead), whether it is founded and
-current, the sessions in flight in its projects and in the office
+current, a line saying the install is behind its source when the office
+scopes the project the install came from and that project has moved past
+the installed commit (in the words `office status` uses), the sessions in flight in its projects and in the office
 itself, with the folder each belongs to (a read-only sitting a folder
 records says that `office land SID` ends it when the sitting is over;
 the Next line never names one, since nothing in the office knows when a
@@ -533,7 +536,11 @@ suggestion box, and the verbs to reach for. It ends with one Next line:
 the one command to type now, its arguments filled in, worked out from the
 office on every walk-in and never written down. In the order they win: an
 office out of step with the install (upgrade it, or, when the renovation
-upgrade sent out is out, land that first); a session out (land it,
+upgrade sent out is out, land that first); the install behind its source,
+when the office scopes that source (bring it level with the source's
+`./install.sh`: start and land run the install, so until it is level they
+run the old office; placed here in 0.13.0, ahead of a session out); a
+session out (land it,
 or, when bale held it, land its corrected response); desk moves a sitting
 decided that have not run (run them: until then the desk is not in the
 order the sitting decided); an unfounded office (start its founding
@@ -618,7 +625,9 @@ another machine is not read. The office reads each project's records
 only through bale's --json surfaces, run in the project's directory with
 no prompt, never by parsing .bale/, and it never writes what bale
 records. The verbs that run bale to make or land a session do so with
-the occupant at the terminal (pack and open in `office start`; apply,
+the occupant at the terminal (pack and open in `office start`, which
+first asks `bale open --check`, a rehearsal that writes nothing, whether
+a bundle can open before it writes anything of its own; apply,
 retry and relay in `office land`, and unlock when `office land` ends a
 read-only sitting the office sent out, and no other session): a question
 bale asks is his to answer, and
@@ -731,7 +740,11 @@ an office that exists and is unfounded (one built with `--no-founding`,
 or whose founding session never went out): it keeps the answers a
 founding folder already holds and asks only for the rest, and `office
 start` on the founding folder goes through it. It refuses an office that
-is founded, and one whose founding session is out. Init refuses to build
+is founded, and one whose founding session is out. On a terminal an
+answer may run to several lines, a blank line ending it. When the
+founding session lands applied with the profile complete, `office land`
+closes the founding folder, done: the folder is the office's, and a
+founding has nothing more to do. Init refuses to build
 from an install whose own catalogs have a defect; for an office already
 built, `office status` reports the defect and the office keeps working.
 

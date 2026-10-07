@@ -383,11 +383,36 @@ ask_timezone() {
   done
 }
 
+# ask_paragraph VAR PROMPT HELP: an answer that may run to several lines,
+# on a terminal. Each line is kept as typed (its trailing spaces aside),
+# and a blank line ends the answer; a blank first line skips the
+# question, and ? as the first line explains it. The flag twin with a
+# file, or the founding session's conversation, takes anything longer.
+ask_paragraph() {
+  local __var="$1" prompt="$2" help="$3" line lines=()
+  while :; do
+    IFS= read -r -p "$prompt [several lines welcome; a blank line ends the answer, and return at once skips]: " line \
+      || die "no answer given to: $prompt"
+    line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    if [ "$line" = "?" ]; then printf '%s\n' "$help" | fold -s -w 76 | sed 's/^/  /' >&2; continue; fi
+    break
+  done
+  if [ -z "$line" ]; then printf -v "$__var" '%s' ""; return 0; fi
+  lines=("$line")
+  while IFS= read -r -p "  > " line; do
+    line="$(printf '%s' "$line" | sed 's/[[:space:]]*$//')"
+    [ -n "${line//[[:space:]]/}" ] || break
+    lines+=("$line")
+  done
+  printf -v "$__var" '%s' "$(printf '%s\n' "${lines[@]}")"
+}
+
 # ask_profile ADIR: on a terminal, the profile's questions that neither a
 # flag nor a kept answer answers yet, one per section in the shape's
-# order, worded from its asks line; the timezone right after Site. A
-# plain return leaves a section to the founding session. Piped, nothing
-# is asked and what was given is what ships.
+# order, worded from its asks line; the timezone right after Site. An
+# answer may be a paragraph (ask_paragraph: a blank line ends it), and a
+# plain return at once leaves a section to the founding session. Piped,
+# nothing is asked and what was given is what ships.
 ask_profile() {
   local adir="$1" i ans said=0 tz_asked=0
   can_ask || return 0
@@ -395,10 +420,10 @@ ask_profile() {
     [ "${SEC_ASKED[$i]}" = 1 ] || continue
     if [ ! -s "$adir/${SEC_FLAG[$i]}" ]; then
       if [ "$said" = 0 ]; then
-        log "the profile's questions, one per section; your answers go to the founding session as you type them. ? explains a question, and a plain return leaves it for the founding session to ask"
+        log "the profile's questions, one per section; your answers go to the founding session as you type them. An answer may run to several lines, and a blank line ends it; ? explains a question, and a plain return at once leaves it for the founding session to ask"
         said=1
       fi
-      ask ans "${SEC_Q[$i]} (--${SEC_FLAG[$i]})" "" 0 "${SEC_HELP[$i]}"
+      ask_paragraph ans "${SEC_Q[$i]} (--${SEC_FLAG[$i]})" "${SEC_HELP[$i]}"
       [ -z "$ans" ] || take_answer "$adir" "${SEC_FLAG[$i]}" "$ans"
     fi
     if [ "${SEC_HEADING[$i]}" = Site ]; then ask_timezone "$adir"; tz_asked=1; fi
@@ -706,8 +731,9 @@ usage: office found $(section_flags_usage 20)
                     [--timezone ZONE] [--goal TEXT]
 Sends the founding session out for an unfounded office, the way office init
 does after it builds one: it asks the profile's questions, one per section
-of the profile's required shape in its order (? explains each, and a plain
-return leaves a section for the founding session to ask about), and the
+of the profile's required shape in its order (an answer may run to several
+lines, and a blank line ends it; ? explains each, and a plain return at
+once leaves a section for the founding session to ask about), and the
 timezone you live in after Site, checked against the zone database and,
 when it resolves, written to the floor plan. It keeps the answers in the
 founding folder as answers.md (the folder on the desk, or a new one, source
@@ -718,7 +744,9 @@ to ask. Answers a founding folder already keeps are kept, so only what was
 skipped is asked again; a flag given now wins. Piped, it asks nothing and
 sends what it was given. It refuses a founded office, and one whose
 founding session is out (office land SID brings that back). The Founding
-section is never asked: the founding session writes it.
+section is never asked: the founding session writes it. When the founding
+session lands applied and the profile is complete, office land closes the
+founding folder.
 Under the hood: office open, then office start's own code (bale pack --json,
 bale pack --context for each context tarball).
 Examples:
@@ -1417,7 +1445,11 @@ the desk and in the filing cabinet, status queued, the day it was queued,
 and every field it is given. --candidate opens it as a candidate; --filed
 --sid SID files it straight into the filing cabinet, done at that session.
 On a terminal it asks for the title, size, lane and source it was not
-given: a plain return skips one, and ? explains it. Piped, it never asks.
+given: a plain return skips one, and ? explains it. The title comes first
+and is checked at once: a folder of that name already on the desk or in
+the filing cabinet is said before anything else is asked (office start
+new offers the one on the desk as the folder to start). Piped, it never
+asks.
 Examples:
   office open                                  (asks for the title, size, lane, source)
   office open fix-login --title "Fix the login" --size small --lane "office-src: bin/"
@@ -1497,12 +1529,45 @@ cmd_open() {
   for i in "${!consumer[@]}"; do v="${consumer[$i]}"; check_field v consumer --consumer || ask_field v consumer --consumer "Consumer that will carry it" "" 1; consumer[$i]="$v"; done
   for i in "${!linked[@]}"; do v="${linked[$i]}"; check_field v linked --linked || ask_field v linked --linked "Linked folder" "" 1; linked[$i]="$v"; done
 
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
   if can_ask && [ "$thread" = 0 ]; then
-    # The wizard: what matters to the desk, in four answers at most.
-    if [ -z "$title" ]; then
-      ask raw_title "Title, in a few words (--title)" "$slug" 1 "$(field_help title)"; asked=1
-      title="$(helper normalize-field title -- "$raw_title")" || die "--title: the title is empty"
-    fi
+    # The wizard: what matters to the desk, in four answers at most. The
+    # title comes first and is checked at once, so a name already on the
+    # desk or in the filing cabinet is said before any other question:
+    # nobody answers questions whose outcome is a refusal. Opened for
+    # office start (new), a folder already on the desk is offered as the
+    # one to start.
+    local fixed_name=0 taken want_slug ans
+    [ -z "$title" ] || fixed_name=1
+    [ -z "$slug" ] || fixed_name=1
+    while :; do
+      if [ -z "$title" ]; then
+        ask raw_title "Title, in a few words (--title)" "$slug" 1 "$(field_help title)"; asked=1
+        title="$(helper normalize-field title -- "$raw_title")" || die "--title: the title is empty"
+      fi
+      want_slug="$slug"; [ -n "$want_slug" ] || want_slug="$(short_slug "${raw_title:-$title}")"
+      want_slug="$(slugify "$want_slug")"
+      [ -n "$want_slug" ] || die "the slug has no letters or digits (give one: office open SLUG)"
+      taken=""
+      [ ! -e "$root/desk/$day-$want_slug" ] || taken=desk
+      [ ! -e "$root/filing-cabinet/$day-$want_slug" ] || taken=filing-cabinet
+      [ -n "$taken" ] || break
+      if [ "$taken" = desk ] && [ "${OPEN_FOR_START:-0}" = 1 ] && [ "$filed" = 0 ]; then
+        ask ans "desk/$day-$want_slug is already on the desk: start it, rather than open another (office start $day-$want_slug)" "yes" 1 \
+          "A folder with this title was opened today, perhaps by a start that did not get its session out. yes starts that folder as it is; no asks for another title."
+        case "$ans" in
+          y|Y|yes|Yes|YES) log "desk/$day-$want_slug is already on the desk; start takes it as it is"
+                           printf 'desk/%s\n' "$day-$want_slug"; return 0 ;;
+        esac
+      fi
+      [ "$fixed_name" = 0 ] || { [ "$taken" = desk ] && die "already on the desk: desk/$day-$want_slug"; die "already filed: filing-cabinet/$day-$want_slug (office reopen $day-$want_slug)"; }
+      if [ "$taken" = desk ]; then
+        printf '  desk/%s is already on the desk; give another title\n' "$day-$want_slug" >&2
+      else
+        printf '  filing-cabinet/%s is already filed (office reopen %s brings it back); give another title\n' "$day-$want_slug" "$day-$want_slug" >&2
+      fi
+      title=""; raw_title=""
+    done
     if [ -z "$size" ]; then ask_field size size --size "Size: small, medium or high"; asked=1; fi
     if [ -z "$lane" ]; then ask_field lane lane --lane "Lane: the project and paths, as project: paths"; asked=1; fi
     if [ -z "$source" ]; then ask_field source source --source "Source: where the job came from"; asked=1; fi
@@ -1518,7 +1583,6 @@ cmd_open() {
   [ -n "$slug" ] || slug="$(short_slug "${raw_title:-$title}")"
   slug="$(slugify "$slug")"; [ -n "$slug" ] || die "the slug has no letters or digits (give one: office open SLUG)"
 
-  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
   name="$day-$slug"
   [ ! -e "$root/desk/$name" ] || die "already on the desk: desk/$name"
   [ ! -e "$root/filing-cabinet/$name" ] || die "already filed: filing-cabinet/$name (office reopen $name)"
@@ -2347,7 +2411,9 @@ stdin or --text, is kept as given: for a worker's Proposal, its What, Why
 and Scope hints byte for byte. A title not given is the text's first line,
 without a list marker or emphasis. --rides names the path glob whose next
 session carries it (office riders --forecast finds it when a pack touches
-it); --carrier names the folder that will. The first rider brings the
+it, and office start offers it then); a glob may name its project first,
+as a lane does (office-src: bin/), so only a pack on that project
+carries it. --carrier names the folder that will. The first rider brings the
 drafting table into the office, in the same commit. On a terminal it asks
 for the title, source and carrier it was not given; piped, it never asks.
 Examples:
@@ -2494,16 +2560,19 @@ cmd_rider_consumed() {
 
 usage_riders() {
   cat <<'USAGE'
-usage: office riders [--forecast PATH...] [--orphans]
+usage: office riders [--forecast PATH... [--project NAME]] [--orphans]
 Lists the riders: on the drafting table's riders page (with the pointer
 each carried one left), and in folders, each with its status and carrier.
 --forecast PATH... lists the queued riders on the page whose path glob a
 pack with that forecast touches, so the pack can carry them; a sitting
-runs it when it writes a pack line. --orphans lists only the riders in a
-closed folder that were never consumed. It only reads.
+runs it when it writes a pack line, and office start runs it over the
+pack it is about to make. A glob may name its project first, as a lane
+does (office-src: bin/): only a pack on that project (--project NAME)
+carries it. --orphans lists only the riders in a closed folder that were
+never consumed. It only reads.
 Examples:
   office riders
-  office riders --forecast bin/ lib/office_bale.py
+  office riders --forecast bin/ lib/office_bale.py --project office-src
   office riders --orphans
 USAGE
 }
@@ -2515,6 +2584,7 @@ cmd_riders() {
       --forecast) shift; [ $# -gt 0 ] && [ "${1#-}" = "$1" ] || die "--forecast needs one or more paths"
         args+=(--forecast); while [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; do args+=("$1"); shift; done ;;
       --orphans) args+=(--orphans); shift ;;
+      --project) [ $# -ge 2 ] || die "--project needs the project the pack is on"; args+=(--project "$2"); shift 2 ;;
       -h|--help) usage_riders; return 0 ;;
       *) usage_riders >&2; die "office riders does not know $1" ;;
     esac
@@ -2875,8 +2945,9 @@ usage_start() {
   cat <<'USAGE'
 usage: office start [FOLDER] [--in-office | --on PROJECT] [--goal TEXT] [--slug SLUG]
                     [--write PATH]... [--include PATH]... [--brief FILE] [--read-only]
-                    [--leave-out PATH]... [--no-rides]
+                    [--leave-out PATH]... [--no-rides] [--carry N... | --carry none]
        office start [FOLDER] [--in-office | --on PROJECT] --bundle FILE [--leave-out PATH]... [--no-rides]
+                    [--carry N... | --carry none]
 Packs a session for a folder on the desk and gathers everything to attach
 into one out tray: the request, the doctrine, and whatever rides with the
 work (on a project, the office's context and the project's ride-alongs;
@@ -2890,7 +2961,9 @@ whose doctrine differs gets the install's beside it, named as the
 install's).
   FOLDER         the job: its name, a unique part of it, or folder N;
                  on a terminal it is asked for, and new opens one through
-                 office open's own questions
+                 office open's own questions (a title already on the desk
+                 is offered as the folder to start, before anything else
+                 is asked)
   --in-office    the work lands in the office (packed from the office,
                  forecasting the folder and the notepad)
   --on PROJECT   the work lands in one of the office's projects (packed
@@ -2912,6 +2985,12 @@ install's).
                  a terminal, start shows what rides and asks; piped,
                  everything declared rides
   --no-rides     every ride-along stays home for this session
+  --carry N      carry rider N into the folder before the pack, so it rides
+                 in the request (repeatable); --carry none carries none.
+                 On a terminal, start offers each queued rider on the
+                 riders page whose path glob the pack's forecast touches
+                 (office riders --forecast), default carry; piped, it
+                 carries none and names each that matched
   --bundle FILE  a planner's bundle (FILE.bale-bundle, a path or the bare
                  name bale's search finds; given as a word, it needs no
                  flag): bale open replays the bundle's own pack line, so
@@ -2919,17 +2998,24 @@ install's).
                  and the office adds nothing to it. Where defaults to the
                  one place whose tree holds every path the bundle names,
                  and a bundle whose paths no one place holds is refused
-                 before bale runs
+                 before bale runs. bale open --check runs first, where
+                 the bundle opens and before start writes anything (a
+                 folder for new, the survey, the tray): a name bale's
+                 search cannot find, or a bundle bale would refuse, stops
+                 the start in bale's words with nothing written
+When start opened the folder itself (new) and its session does not go out,
+the folder stays and start's last line is the one line that retries it.
 When the response comes back, office land brings it in.
-Under the hood: bale pack --json (or bale open for a bundle) where the work
-lands, and bale pack --context for each context tarball; OFFICE_DEBUG=1
-shows each call.
+Under the hood: bale pack --json (or bale open --check, then bale open, for
+a bundle) where the work lands, and bale pack --context for each context
+tarball; OFFICE_DEBUG=1 shows each call.
 Examples:
   office start                                 (asks which job, where, and the goal)
   office start fix-login --on office-src --goal "Fix the login redirect"
   office start plan-wave --in-office --read-only --goal "Plan the next wave"
   office start fix-login --on office-src 2026-10-05-fix-login.bale-bundle
   office start fix-login --on office-src --goal "Fix it" --leave-out ~/nisaba-src/blueprints
+  office start fix-login --on office-src --goal "Fix it" --carry 3
 The out tray is ~/out-tray/SID unless this machine's
 ~/.config/office-src/machine.toml sets out_tray. On WSL the tray opens in
 Explorer and the opener goes to the clipboard; clipboard_command and
@@ -2990,11 +3076,146 @@ ask_rides() {
   done
 }
 
+# ask_where WHERE_VAR PROJECT_VAR DEFAULT WHY NAMES: where the work lands,
+# office or one of the projects (NAMES, one per line), asked on a
+# terminal; the flag twins are --in-office and --on PROJECT.
+ask_where() {
+  local __w="$1" __p="$2" def="$3" why="$4" known="$5" ans list
+  list="$(printf '%s' "$known" | paste -sd, - | sed 's/,/, /g')"
+  can_ask || die "say where the work lands: --in-office, or --on PROJECT ($list); piped input is never asked"
+  while :; do
+    ask ans "Where the work lands: office, or the project it changes ($list) (--in-office or --on PROJECT)" \
+      "$def" 1 \
+      "office: the session works in this office (the folder, the notepad) and is packed here. A project's name: the session changes that project's repo and is packed there, with this office's context riding beside it, never inside it.${why:+ The default is $def because $why.}"
+    if [ "$ans" = office ]; then printf -v "$__w" '%s' office; return 0; fi
+    if printf '%s\n' "$known" | grep -qxF -- "$ans"; then
+      printf -v "$__w" '%s' project; printf -v "$__p" '%s' "$ans"; return 0
+    fi
+    printf '  office, or one of this office'"'"'s projects: %s\n' "$list" >&2
+  done
+}
+
+# start_check_place WHERE PROJECT NAMES: a project start names a project
+# the office scopes.
+start_check_place() {
+  [ "$1" = project ] || return 0
+  printf '%s\n' "$3" | grep -qxF -- "$2" \
+    || die "--on $2: no such project in this office (it scopes: $(printf '%s' "$3" | paste -sd, - | sed 's/,/, /g'); office projects add adds one)"
+}
+
+# check_start_bundle ROOT WHERE PROJECT BUNDLE: bale open --check where
+# the bundle opens, before start writes anything (a survey, a tray, a
+# session). bale finds a bare name through its own search, verifies the
+# bundle and runs every gate it runs before an open, and writes nothing;
+# a refusal stops the start in bale's words.
+check_start_bundle() {
+  local root="$1" where="$2" project="$3" bundle="$4" out place
+  place="$([ "$where" = office ] && printf 'in the office' || printf 'on %s' "$project")"
+  log "asking bale whether it can open $(basename "$bundle") $place (bale open --check, which writes nothing)"
+  local cargs=(--where "$where")
+  [ "$where" != project ] || cargs+=(--project "$project")
+  out="$(reader bundle-check "$root" "${cargs[@]}" --bundle "$bundle")" \
+    || die "nothing else was written: no survey, no out tray, no session (the lines above are bale's own words, or the office's where it could read the bundle itself)"
+  [ -z "$out" ] || log "bale found it at $out, and every gate it runs before an open passed"
+}
+
+# offer_riders ROOT FOLDER WHERE PROJECT: the riders this start's pack
+# carries (office riders --forecast over its forecast), carried into the
+# folder before the pack so they ride in the request. On a terminal each
+# is offered (default: carry); piped, none is carried and each that
+# matched is named with its flag twin. --carry N carries rider N without
+# asking, --carry none carries none. Reads cmd_start's writes, includes,
+# read_only, bundle, carry and carry_none.
+offer_riders() {
+  local root="$1" folder="$2" where="$3" project="$4" out rows=() row n t r touched ans v
+  local rargs=(--where "$where") take=() named=0
+  [ "$where" != project ] || rargs+=(--project "$project")
+  for v in "${writes[@]}"; do [ -n "$v" ] && rargs+=(--write "${v%/}"); done
+  for v in "${includes[@]}"; do rargs+=(--include "${v%/}"); done
+  [ "$read_only" = 0 ] || rargs+=(--read-only)
+  [ -z "$bundle" ] || rargs+=(--bundle "$bundle")
+  out="$(reader start-riders "$root" "$folder" "${rargs[@]}")" || out=""
+  [ -n "$out" ] && mapfile -t rows <<< "$out"
+  if [ "$carry_none" = 1 ]; then
+    [ "${#rows[@]}" -eq 0 ] || log "${#rows[@]} rider(s) on the riders page ride this forecast; --carry none leaves them there"
+    return 0
+  fi
+  [ "${#carry[@]}" -eq 0 ] || named=1
+  for row in "${rows[@]}"; do
+    IFS=$'\t' read -r n t r touched <<< "$row"
+    [ -n "$n" ] || continue
+    if [ "$named" = 1 ]; then
+      printf '%s\n' "${carry[@]}" | grep -qxF -- "$n" \
+        || log "rider $n ($t) rides this forecast too (rides $r); --carry $n would carry it"
+    elif can_ask; then
+      ask ans "Rider $n, $t (rides $r; the forecast's $touched): carry it into the folder, so it rides with this session (--carry $n, --carry none)" \
+        "yes" 1 \
+        "A rider is small work with a named carrier. Its path glob says the next session that touches it carries it, and this one does. yes moves it from the riders page into the folder's Riders section (office rider carry), which rides in the request; no leaves it on the page for a later session."
+      case "$ans" in y|Y|yes|Yes|YES) take+=("$n") ;; esac
+    else
+      log "rider $n ($t) rides this forecast (rides $r); piped input carries none: --carry $n carries it"
+    fi
+  done
+  take+=("${carry[@]}")
+  for n in "${take[@]}"; do
+    if ( OFFICE_ROOT="$root" cmd_rider_carry "$n" --folder "${folder#desk/}" ); then
+      log "rider $n carried into $folder: it rides with this session in the folder's Riders section"
+    elif [ "$named" = 1 ]; then
+      die "--carry $n: the rider could not be carried (the lines above say why), so nothing was packed"
+    else
+      warn "rider $n was not carried (the lines above say why); it stays on the riders page, and office rider carry $n --folder ${folder#desk/} carries it later"
+    fi
+  done
+}
+
+# A word for a printed command line: bare when the shell reads it as it
+# is, single-quoted otherwise.
+qword() {
+  if [[ "$1" =~ ^[A-Za-z0-9_./:@%+=,~-]+$ ]] && [[ "$1" != "~"* ]]; then printf '%s' "$1"; else shq "$1"; fi
+}
+
+# start_retry_hint RC: the EXIT trap of a start that opened its folder
+# itself (new). When the start ends without its session out, its last
+# lines name the folder it opened, which stays (a job was asked for), and
+# the one line that retries it with the answers it was given. Reads
+# cmd_start's own variables.
+start_retry_hint() {
+  local rc="$1" line number v
+  [ "$rc" != 0 ] && [ -n "${START_OPENED:-}" ] || return 0
+  line="office start $(qword "$START_OPENED")"
+  case "${where:-}" in office) line+=" --in-office" ;; project) line+=" --on $(qword "$project")" ;; esac
+  if [ -n "${bundle_given:-}" ]; then
+    line+=" $(qword "$bundle_given")"
+  else
+    [ -z "${goal:-}" ] || line+=" --goal $(shq "$goal")"
+    [ "${slug_flag:-0}" = 0 ] || line+=" --slug $(qword "$slug")"
+    if [ "${set_w:-0}" = 1 ] || [ "${START_ASKED_WRITES:-0}" = 1 ]; then
+      for v in "${writes[@]}"; do [ -z "$v" ] || line+=" --write $(qword "$v")"; done
+    fi
+    for v in "${includes[@]}"; do line+=" --include $(qword "$v")"; done
+    [ -z "${brief:-}" ] || line+=" --brief $(qword "$brief")"
+    [ "${read_only:-0}" = 0 ] || line+=" --read-only"
+  fi
+  if [ "${no_rides:-0}" = 1 ]; then line+=" --no-rides"
+  else for v in "${leave_out[@]}"; do line+=" --leave-out $(qword "$v")"; done; fi
+  number="$(folder_fact "${root:-.}/desk/$START_OPENED/folder.md" number 2>/dev/null)"
+  if [ "${START_TOOK:-0}" = 1 ]; then
+    printf '[office] desk/%s%s, which this start took from the desk, stays there: its session did not go out.\n' \
+      "$START_OPENED" "${number:+ (folder $number)}" >&2
+  else
+    printf '[office] desk/%s%s was opened by this start and stays on the desk: the job is asked for, but its session did not go out.\n' \
+      "$START_OPENED" "${number:+ (folder $number)}" >&2
+  fi
+  printf '[office] once the cause above is fixed, this one line retries it with the answers already given:\n' >&2
+  printf '%s\n' "$line" >&2
+}
+
 cmd_start() {
   local want="" where="" project="" goal="" slug="" brief="" read_only=0 includes=() writes=() set_w=0 bundle=""
-  local leave_out=() no_rides=0
+  local leave_out=() no_rides=0 carry=() carry_none=0 bundle_given="" slug_flag=0
   local root name md status lane lane_project lane_paths names cls ans tz day out sid tray tray_root rel about="" args=() v
   local packed_flags=()
+  START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --in-office) [ -z "$where" ] || [ "$where" = office ] || die "--in-office and --on are two places; give one"; where=office; shift ;;
@@ -3002,7 +3223,7 @@ cmd_start() {
             where=project; project="$2"; shift 2 ;;
       --goal|--slug|--brief|--write|--include)
         [ $# -ge 2 ] || die "$1 needs a value (office start --help explains it)"
-        case "$1" in --goal) goal="$2" ;; --slug) slug="$2" ;; --brief) brief="$2" ;;
+        case "$1" in --goal) goal="$2" ;; --slug) slug="$2"; slug_flag=1 ;; --brief) brief="$2" ;;
                      --write) writes+=("$2"); set_w=1 ;; --include) includes+=("$2") ;; esac
         packed_flags+=("$1"); shift 2 ;;
       --bundle) [ $# -ge 2 ] || die "--bundle needs the bundle: a path, or the name bale's search finds"
@@ -3011,6 +3232,8 @@ cmd_start() {
       --leave-out) [ $# -ge 2 ] || die "--leave-out needs a path that rides with the project (office projects lists them)"
                    leave_out+=("$2"); shift 2 ;;
       --no-rides) no_rides=1; shift ;;
+      --carry) [ $# -ge 2 ] || die "--carry needs a rider's number (office riders lists them), or none"
+               if [ "$2" = none ]; then carry_none=1; else v="$(bare_number rider "$2")" || exit 1; carry+=("$v"); fi; shift 2 ;;
       -h|--help) usage_start; return 0 ;;
       -*) usage_start >&2; die "office start does not know $1; the flags above are what it takes" ;;
       *.bale-bundle) [ -z "$bundle" ] || die "office start takes one bundle"; bundle="$1"; shift ;;
@@ -3019,6 +3242,8 @@ cmd_start() {
   done
   [ "$read_only" = 0 ] || [ "$set_w" = 0 ] || die "--read-only forecasts nothing, so it takes no --write"
   [ "$no_rides" = 0 ] || [ "${#leave_out[@]}" -eq 0 ] || die "--no-rides leaves every ride-along out, so it takes no --leave-out"
+  [ "$carry_none" = 0 ] || [ "${#carry[@]}" -eq 0 ] || die "--carry none carries no rider, so it takes no --carry N"
+  bundle_given="$bundle"
   if [ -n "$bundle" ]; then
     [ "${#packed_flags[@]}" -eq 0 ] || die "a bundle carries its own pack line (goal, forecast, brief), so it takes no ${packed_flags[*]}; give the folder and where the work lands, nothing else"
     # A file here is handed to bale by its full path; a bare name is
@@ -3037,10 +3262,36 @@ cmd_start() {
     can_ask || { usage_start >&2; die "name the folder: office start FOLDER (office open makes one first); piped input is never asked"; }
     ask_start_folder want "$root"
   fi
+  names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+  local where_default="office" where_why="" found checked=0
   if [ "$want" = new ]; then
     can_ask || die "new opens a folder through office open's questions, which need a terminal; run office open first"
-    rel="$(cmd_open)" || exit 1
+    # A bundle is asked about before the folder is opened: where it lands,
+    # then bale open --check there, so a bundle bale cannot find or would
+    # refuse stops the start before anything is written. (A bundle that
+    # lands in the office is checked once the folder exists, since its
+    # forecast may name the folder.)
+    if [ -n "$bundle" ]; then
+      if [ -z "$where" ]; then
+        if [ -f "$bundle" ]; then
+          found="$(reader bundle-where "$root" --bundle "$bundle")" || exit 1
+          if [ -n "$found" ]; then where_default="${found%%$'\t'*}"; where_why="${found#*$'\t'}"; fi
+        fi
+        ask_where where project "$where_default" "$where_why" "$names"
+      fi
+      start_check_place "$where" "$project" "$names"
+      if [ "$where" = project ]; then check_start_bundle "$root" "$where" "$project" "$bundle"; checked=1; fi
+    fi
+    local desk_before
+    desk_before="$(ls -1 "$root/desk" 2>/dev/null)"
+    rel="$(OPEN_FOR_START=1 cmd_open)" || exit 1
     want="${rel#desk/}"
+    START_OPENED="$want"
+    START_TOOK=0
+    printf '%s\n' "$desk_before" | grep -qxF -- "$want" && START_TOOK=1
+    # From here a start that cannot send its session out ends by naming the
+    # folder it opened and the one line that retries it.
+    trap 'start_retry_hint $?; cleanup_tmp' EXIT
   fi
   name="$(find_folder "$root" desk "$want")" || exit 1
   md="$root/desk/$name/folder.md"
@@ -3065,38 +3316,31 @@ cmd_start() {
   lane="$(folder_fact "$md" lane)"; cls="$(folder_fact "$md" class)"
   lane_project=""; lane_paths=""
   case "$lane" in *:*) lane_project="$(printf '%s' "${lane%%:*}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; lane_paths="${lane#*:}" ;; esac
-  names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
   printf '%s\n' "$names" | grep -qxF -- "$lane_project" || lane_project=""
 
   # Where the work lands: two choices, the kind names behind the curtain.
   # For a bundle the office can read, the default is the one place whose
   # tree holds every path the bundle names, and a bundle whose paths no
   # one place holds is refused here, before bale runs.
-  local where_default="${lane_project:-office}" where_why=""
-  if [ -n "$bundle" ] && [ -f "$bundle" ]; then
-    local found
-    found="$(reader bundle-where "$root" --bundle "$bundle" ${lane_project:+--lane "$lane_project"})" || exit 1
-    if [ -n "$found" ]; then
-      where_default="${found%%$'\t'*}"; where_why="${found#*$'\t'}"
-      debug "where defaults to $where_default for this bundle: $where_why"
-    fi
-  fi
   if [ -z "$where" ]; then
+    where_default="${lane_project:-office}"; where_why=""
+    if [ -n "$bundle" ] && [ -f "$bundle" ]; then
+      found="$(reader bundle-where "$root" --bundle "$bundle" ${lane_project:+--lane "$lane_project"})" || exit 1
+      if [ -n "$found" ]; then
+        where_default="${found%%$'\t'*}"; where_why="${found#*$'\t'}"
+        debug "where defaults to $where_default for this bundle: $where_why"
+      fi
+    fi
     can_ask || die "say where the work lands: --in-office, or --on PROJECT ($(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')); piped input is never asked"
-    while :; do
-      ask ans "Where the work lands: office, or the project it changes ($(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')) (--in-office or --on PROJECT)" \
-        "$where_default" 1 \
-        "office: the session works in this office (the folder, the notepad) and is packed here. A project's name: the session changes that project's repo and is packed there, with this office's context riding beside it, never inside it.${where_why:+ The default is $where_default because $where_why.}"
-      if [ "$ans" = office ]; then where=office; break; fi
-      if printf '%s\n' "$names" | grep -qxF -- "$ans"; then where=project; project="$ans"; break; fi
-      printf '  office, or one of this office'"'"'s projects: %s\n' "$(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')" >&2
-    done
+    ask_where where project "$where_default" "$where_why" "$names"
   fi
-  if [ "$where" = project ]; then
-    printf '%s\n' "$names" | grep -qxF -- "$project" || die "--on $project: no such project in this office (it scopes: $(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g'); office projects add adds one)"
-  else
-    about="$lane_project"
-  fi
+  start_check_place "$where" "$project" "$names"
+  [ "$where" = project ] || about="$lane_project"
+  # bale open --check where the bundle opens, before the survey, the tray
+  # and the session: a name bale's search cannot find, a forecast path
+  # that is not there or a forecast another open session holds refuses
+  # here, in bale's words, with nothing written.
+  if [ -n "$bundle" ] && [ "$checked" = 0 ]; then check_start_bundle "$root" "$where" "$project" "$bundle"; checked=1; fi
 
   # The goal: the one thing the pack cannot derive (a bundle carries its own).
   if [ -n "$bundle" ]; then
@@ -3130,6 +3374,7 @@ cmd_start() {
         "Its write forecast, relative to $project's top: what bale keeps other sessions off while this one is open. A directory covers what lands under it. The whole repo keeps every other $project session waiting."
       [ -z "$ans" ] || IFS=',' read -r -a writes <<< "$ans"
       for v in "${!writes[@]}"; do writes[$v]="$(printf '%s' "${writes[$v]}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; done
+      [ "${#writes[@]}" -eq 0 ] || START_ASKED_WRITES=1
     fi
     [ "${#writes[@]}" -gt 0 ] || log "no forecast given: bale forecasts the whole of $project, so no other session there runs beside this one"
   fi
@@ -3146,7 +3391,14 @@ cmd_start() {
     leave_out=("${rides[@]}")
   elif [ "${#rides[@]}" -gt 0 ] && [ "${#leave_out[@]}" -eq 0 ] && can_ask; then
     ask_rides leave_out "$ride_project" "${rides[@]}"
+    [ "${#leave_out[@]}" -eq 0 ] || START_ASKED_LEAVE=1
   fi
+
+  # The riders this pack carries: the queued riders on the drafting
+  # table's riders page whose path glob its forecast touches (office
+  # riders --forecast), carried into the folder before the pack, so each
+  # rides in the request inside the folder's Riders section.
+  offer_riders "$root" "desk/$name" "$where" "$project"
 
   args=(--where "$where" --goal "$goal" --slug "$slug")
   [ "$where" = project ] && args+=(--project "$project")
@@ -3164,6 +3416,8 @@ cmd_start() {
 
   log "$([ -n "$bundle" ] && printf 'opening the bundle %s' "$bundle" || printf 'packing') for desk/$name ($([ "$where" = office ] && printf 'in the office' || printf 'on %s' "$project"))"
   out="$(reader start "$root" "desk/$name" "${args[@]}" --tray-root "$tray_root")" || exit 1
+  # The session is out: a failure after this is not a start to retry.
+  trap cleanup_tmp EXIT; START_OPENED=""
   sid="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sid"])')" || die "could not read what office start packed"
   tray="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tray"])')"
   printf '%s' "$out" | python3 -c 'import json,sys
@@ -3288,7 +3542,10 @@ ended. bale asks its own questions (an admission, the merge, a hook) and
 only you answer them. After an applied landing it runs the project's
 after-land actions in order, then asks whether the planner ratified the
 session's judgment calls, and ends by saying what became of each action
-(ran, failed, not run). Anything bale prints for you to carry is printed
+(ran, failed, not run). After an applied landing it also runs office
+watches check (it records nothing) and prints the watches that fired, and
+when the founding session lands with the profile complete it closes the
+founding folder, done. Anything bale prints for you to carry is printed
 whole and, on WSL, put on the clipboard. Given a read-only sitting the
 office sent out (by its id or its folder), land ends it instead: bale
 unlock in its repo and an `ended` line in the folder's History; the
@@ -3305,8 +3562,9 @@ land: a session applied by hand with bale apply runs none.
   --not-now        do not ask about ratification; office sessions FOLDER SID
                    --ratified records it later
 Under the hood: bale apply TARBALL (bale retry for a held session) in the
-session's repo, then bale stats --sid SID --json for how it ended; for a
-sitting, bale unlock SID --json in its repo.
+session's repo, then bale stats --sid SID --json for how it ended, and
+after an applied landing office watches check; for a sitting, bale unlock
+SID --json in its repo.
 Examples:
   office land                                  (the session out; asked when there are several)
   office land 2026-10-05-fix-login-001
@@ -3542,40 +3800,89 @@ for l in json.load(sys.stdin)["told"]:
   folders="$(plan_field "$plan" folders | head -n 1)"
   if [ -z "$folders" ]; then
     log "no folder records $sid, so there is nothing to ratify in"
-    after_land_summary "$repo"
-    return "$rc"
-  fi
-  [ "$behind" = 0 ] || log "the renovation has landed; next: office upgrade, which checks its declaration and stamps the office"
-  space="${folders%%/*}"; name="${folders#*/}"
-  if [ -z "$ratify" ] && can_ask; then
-    while :; do
-      ask ans "Did the planner ratify $sid's judgment calls: yes, yes except TEXT, or not now (--ratified, --except TEXT, --not-now)" \
-        "not now" 0 \
-        "yes records that the planner ratified the session's judgment calls (the flagged decisions in its notes); yes except TEXT records what was corrected and where it went; not now records nothing, and office sessions $name $sid --ratified records it later."
-      case "$ans" in
-        y|Y|yes|Yes|YES) ratify=yes; break ;;
-        "yes except "*|"Yes except "*|"except "*) ratify=yes; except="${ans#*except }"; has_except=1
-          [ -n "${except//[[:space:]]/}" ] && break
-          printf '  except what: the correction, and where it went\n' >&2; ratify="" ;;
-        n|N|no|No|"not now"|"Not now") ratify=no; break ;;
-        *) printf '  answer yes, yes except TEXT, or not now\n' >&2 ;;
-      esac
-    done
-  fi
-  if [ "$ratify" = yes ]; then
-    md="$root/$space/$name/folder.md"
-    if [ "$has_except" = 1 ]; then
-      out="$(helper ratify "$md" "$sid" --day "$day" --except "$except")" || { after_land_summary "$repo"; return 1; }
-    else
-      out="$(helper ratify "$md" "$sid" --day "$day")" || { after_land_summary "$repo"; return 1; }
-    fi
-    log "$name: $out"
-    commit_paths "$root" "office sessions: $sid ratified in $name" "$space/$name/folder.md" || true
   else
-    log "not ratified; when the planner rules: office sessions $name $sid --ratified (or --ratified --except TEXT)"
+    [ "$behind" = 0 ] || log "the renovation has landed; next: office upgrade, which checks its declaration and stamps the office"
+    space="${folders%%/*}"; name="${folders#*/}"
+    if [ -z "$ratify" ] && can_ask; then
+      while :; do
+        ask ans "Did the planner ratify $sid's judgment calls: yes, yes except TEXT, or not now (--ratified, --except TEXT, --not-now)" \
+          "not now" 0 \
+          "yes records that the planner ratified the session's judgment calls (the flagged decisions in its notes); yes except TEXT records what was corrected and where it went; not now records nothing, and office sessions $name $sid --ratified records it later."
+        case "$ans" in
+          y|Y|yes|Yes|YES) ratify=yes; break ;;
+          "yes except "*|"Yes except "*|"except "*) ratify=yes; except="${ans#*except }"; has_except=1
+            [ -n "${except//[[:space:]]/}" ] && break
+            printf '  except what: the correction, and where it went\n' >&2; ratify="" ;;
+          n|N|no|No|"not now"|"Not now") ratify=no; break ;;
+          *) printf '  answer yes, yes except TEXT, or not now\n' >&2 ;;
+        esac
+      done
+    fi
+    if [ "$ratify" = yes ]; then
+      md="$root/$space/$name/folder.md"
+      if [ "$has_except" = 1 ]; then
+        out="$(helper ratify "$md" "$sid" --day "$day" --except "$except")" || rc=1
+      else
+        out="$(helper ratify "$md" "$sid" --day "$day")" || rc=1
+      fi
+      if [ -n "$out" ]; then
+        log "$name: $out"
+        commit_paths "$root" "office sessions: $sid ratified in $name" "$space/$name/folder.md" || true
+      fi
+    else
+      log "not ratified; when the planner rules: office sessions $name $sid --ratified (or --ratified --except TEXT)"
+    fi
+    close_founding_folder "$root" "$folders" "$sid" "$day"
   fi
+  land_watches "$root" "$tz" "$day"
   after_land_summary "$repo"
   return "$rc"
+}
+
+# close_founding_folder ROOT FOLDER SID DAY: after an applied landing, the
+# founding folder closes with the founding: when the folder that records
+# the session is this office's founding folder and the profile is now
+# complete, it goes to the filing cabinet, done (office close's own code),
+# and land says so. A profile still incomplete leaves it open, and land
+# names what founds it. The folder is the office's, not the session's,
+# so the office closes it. Never fails the landing.
+close_founding_folder() {
+  local root="$1" folder="$2" sid="$3" day="$4" founding missing
+  [ "${folder%%/*}" = desk ] || return 0
+  founding="$(door door-folder "$root" founding 2>/dev/null)" || return 0
+  [ -n "$founding" ] && [ "$founding" = "$folder" ] || return 0
+  if missing="$(helper profile-check "$root/$PROFILE_REL" "$SHAPE" 2>&1)"; then
+    if ( OFFICE_ROOT="$root" MOVE_TEXT="office land: the founding landed at $sid, with the profile complete" cmd_close "${folder#desk/}" ); then
+      log "the founding landed with the profile complete, so its folder is closed: ${folder#desk/} is in the filing cabinet, done"
+      AFTER_LAND_REPORT+=("the founding folder ${folder#desk/}: closed, done (the profile is complete)")
+    else
+      warn "the founding landed with the profile complete, but its folder could not be closed (the lines above say why); office close ${folder#desk/} closes it"
+      AFTER_LAND_REPORT+=("the founding folder ${folder#desk/}: NOT closed; office close ${folder#desk/} closes it")
+    fi
+  else
+    log "the founding landed, but the profile is still incomplete, so its folder stays open (office status names the sections; office start ${folder#desk/} sends the founding session out again for what is missing)"
+    AFTER_LAND_REPORT+=("the founding folder ${folder#desk/}: stays open, the profile is incomplete")
+  fi
+  return 0
+}
+
+# land_watches ROOT TZ DAY: after an applied landing, office watches check
+# without --record, printing only the watches that fired, since a landing
+# is what changes the counts a watch reads. An office with no watches
+# register prints nothing for it (the standing lines are the digest's).
+# It records nothing and never fails the landing.
+land_watches() {
+  local root="$1" tz="$2" day="$3" out rc
+  out="$(watches_py check "$root" --day "$day" --tz "$tz" --fired-only)"; rc=$?
+  case $rc in
+    0|3) ;;
+    *) warn "office watches check could not run after the landing (exit $rc; the lines above say why); office watches check runs it"
+       return 0 ;;
+  esac
+  [ -n "$out" ] || { debug "after land: no watch fired"; return 0; }
+  printf '\nWatches that fired after this landing (office watches check; --record records them):\n'
+  printf '%s\n' "$out" | sed 's/^/  /'
+  return 0
 }
 
 # land's last lines after an applied landing: what became of each
@@ -4086,7 +4393,14 @@ walk_in() {
     *) state="version stamp unreadable" ;;
   esac
   printf 'The %s office, %s\n' "$name" "$root"
-  printf '%s, %s %s. %s; %s.\n\n' "$(TZ="$tz" date '+%A %F')" "$(office_time "$tz")" "$tz_shown" "$founded" "$state"
+  printf '%s, %s %s. %s; %s.\n' "$(TZ="$tz" date '+%A %F')" "$(office_time "$tz")" "$tz_shown" "$founded" "$state"
+  # The install behind its source, when this office scopes the project
+  # it came from: one line, in office status's words. Start and land run
+  # the install, so the Next line names the install line too.
+  local behind
+  behind="$(reader install-behind "$root" 2>/dev/null)" || behind=""
+  [ -z "$behind" ] || printf 'Install: %s\n' "$behind"
+  printf '\n'
 
   # In flight: one line per session open in the projects this office
   # scopes and in the office itself, and the folder that names it; then
@@ -4191,8 +4505,9 @@ the version stamp, a first survey and a first commit. Then, on a terminal,
 it asks which projects the office watches, one at a time through the same
 questions as office projects add, until a plain return. Then the founding:
 it asks the profile's questions, one per section of the profile's required
-shape in its order (? explains each; a plain return leaves a section for
-the founding session to ask about), and the timezone you live in after
+shape in its order (an answer may run to several lines, and a blank line
+ends it; ? explains each; a plain return at once leaves a section for the
+founding session to ask about), and the timezone you live in after
 Site, defaulting to this machine's when that resolves, checked against the
 zone database and, when it resolves, written to the floor plan. It opens
 the founding folder on the desk (founding, source office init), keeps your
