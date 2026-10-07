@@ -16,6 +16,8 @@ The TOML file:
     summary = "One plain-language line; it goes in the upgrade commit."
     script = "0.2.0.sh"        # script kind: run by bash from the office root
     goal = "..."               # renovation kind: the renovation session's goal
+    writes = ["calendar"]      # renovation kind, optional: what the session may write
+                               # (its forecast); left out, the whole office
 
     [landed]                   # renovation kind: what must be true once it has landed
     paths = ["calendar/plan.md"]          # paths that exist
@@ -32,9 +34,14 @@ A migration that needs judgment, such as a new required profile section,
 is a renovation. It declares, under [landed], what must be true once the
 renovation has landed; at least one of the two keys is required. office
 upgrade checks the declaration: when it does not hold yet, upgrade stops
-there and prints the pack line for a renovation session. The session does
-the work and leaves the version stamp alone. The next run of office
-upgrade finds the declaration holds, stamps the office and carries on.
+there, opens a folder for the renovation on the desk (upgrade-VERSION,
+source office upgrade) and sends the renovation session out through office
+start, with the goal and a brief carrying the summary, the [landed]
+declaration in full and the version. The session forecasts the paths
+`writes` names (they must exist in the office) or, without it, the whole
+office. It does the work and leaves the version stamp alone; office land
+brings it back. The next run of office upgrade finds the declaration
+holds, stamps the office and carries on.
 Only office upgrade ever writes migrated_to.
 
 A migration's version is never newer than the install's VERSION.

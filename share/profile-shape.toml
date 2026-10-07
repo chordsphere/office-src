@@ -2,37 +2,61 @@
 # tell a complete profile from a stub. A section is complete when it has
 # text outside comments and no line starting with TODO. Adding a section
 # here is a breaking release: it ships a renovation migration.
+#
+# office init (and office found) asks the occupant one question per
+# section, in this order, worded from its asks line; the answers ride in
+# the founding session's brief. flag is the question's flag twin (--flag
+# TEXT), hint is what `?` adds to the asks line, and asked = false marks
+# a section the founding session writes itself and nobody is asked. The
+# three keys only shape the questions: a section without them is asked
+# under a flag made from its heading, with no hint.
 
 shape = 1
 
 [[section]]
 heading = "Purpose"
 asks = "Why this office exists and what jobs come here."
+flag = "purpose"
+hint = "Name the kinds of job and the projects it holds. Your words go to the founding session as you type them; it writes the section from them with you."
 
 [[section]]
 heading = "Not for"
 asks = "What this office is not for, and where those things go instead."
+flag = "not-for"
+hint = "If nothing is excluded, say so (\"nothing is excluded\"): a missing boundary and an absent one read the same."
 
 [[section]]
 heading = "Audiences"
 asks = "Who may read what this office's projects hold."
+flag = "audiences"
+hint = "Each audience by name and what it may read (the public for a public repo, you alone for a private one, a client for theirs). The office itself is read by you and your sessions only."
 
 [[section]]
 heading = "Site"
 asks = "Machine, root, timezone, where the repo is pushed, and where it must never go, including anywhere an audience can read."
+flag = "site"
+hint = "The machine and the root come from the survey; say where this repo is pushed (or that it is pushed nowhere yet) and where it must never go. The timezone is the next question."
 
 [[section]]
 heading = "House rules"
 asks = "This office's own rules, on top of the rules every office keeps."
+flag = "house-rules"
+hint = "Rules on top of the four in doctrine section 9, such as data that must never ship. If there are none, say so."
 
 [[section]]
 heading = "When to open a session here"
 asks = "This office's threshold within the doctrine's shape."
+flag = "when-to-open"
+hint = "Doctrine section 8's shape is judgment in context, a message in your voice, more than a few lines of code, or drill-down into a system. Lean open (any question worth keeping) or sparing, in your words."
 
 [[section]]
 heading = "Spaces in use"
 asks = "Which spaces this office uses beyond the base, and why."
+flag = "spaces"
+hint = "The base floor plan is the profile, floor-plan, desk, filing-cabinet, notepad, suggestion-box and drawer. If only the base, say so; new spaces arrive when real work asks for them."
 
 [[section]]
 heading = "Founding"
 asks = "The date and the founding sitting's session id."
+flag = "founding"
+asked = false

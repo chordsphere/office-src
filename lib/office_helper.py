@@ -109,7 +109,8 @@ def render_manifest(spaces_catalog, name, version, built_at, timezone):
     lines = [
         "# Floor plan of this office. The office command finds an office by",
         "# this file and reads it on every run. Only office upgrade writes",
-        "# migrated_to. The founding session sets the timezone; renovation",
+        "# migrated_to. office init sets the timezone the occupant lives in,",
+        "# and the founding session confirms it; renovation",
         "# sessions change the spaces (the drafting table arrives with the",
         "# first verb that writes it); office projects add and set write",
         "# the [projects] table. Nothing else should change it.",
@@ -133,23 +134,32 @@ def render_manifest(spaces_catalog, name, version, built_at, timezone):
 def set_migrated_to(path, version):
     """Rewrite migrated_to inside [office], keeping every other byte."""
     parse_version(version)
+    set_office_key(path, "migrated_to", version, what="stamp")
+
+
+def set_office_key(path, key, value, what="change"):
+    """Rewrite one key inside the floor plan's [office] table (added at
+    the table's end when it is missing), keeping every other byte. The
+    value is a plain string: no quote or backslash, ASCII only."""
+    if not re.fullmatch(r"[A-Za-z0-9_+./:-]+", value):
+        raise HelperError(f"{key}: {value!r} is not a value the floor plan's [office] table takes")
     text = pathlib.Path(path).read_text(encoding="ascii")
     out, in_office, done = [], False, False
     for line in text.splitlines(keepends=True):
         stripped = line.strip()
         if stripped.startswith("["):
             if in_office and not done:
-                out.append(f'migrated_to = "{version}"\n')
+                out.append(f'{key} = "{value}"\n')
                 done = True
             in_office = stripped == "[office]"
-        elif in_office and re.match(r"migrated_to\s*=", stripped):
-            line, done = f'migrated_to = "{version}"\n', True
+        elif in_office and re.match(rf"{re.escape(key)}\s*=", stripped):
+            line, done = f'{key} = "{value}"\n', True
         out.append(line)
     if in_office and not done:
-        out.append(f'migrated_to = "{version}"\n')
+        out.append(f'{key} = "{value}"\n')
         done = True
     if not done:
-        raise HelperError(f"{path}: no [office] table to stamp")
+        raise HelperError(f"{path}: no [office] table to {what}")
     pathlib.Path(path).write_text("".join(out), encoding="ascii")
 
 
@@ -328,6 +338,7 @@ def load_migrations(directory, install_version):
                 raise HelperError(f"{path.name}: renovation kind needs a goal")
             entry["action"] = goal
             entry["landed"] = landed_declaration(path.name, data.get("landed"))
+            entry["writes"] = renovation_writes(path.name, data.get("writes"))
         out.append(entry)
     out.sort(key=lambda e: parse_version(e["version"]))
     return out
@@ -358,6 +369,26 @@ def landed_declaration(name, table):
         out[key] = [v.strip() for v in value]
     if not any(out.values()):
         raise HelperError(f"{name}: [landed] declares nothing to check")
+    return out
+
+
+def renovation_writes(name, value):
+    """What a renovation session may write: the paths its migration
+    declares under `writes`, or None for the whole office, which is what
+    a renovation forecast before 0.12.0 and what one that declares
+    nothing still forecasts."""
+    if value is None:
+        return None
+    if not isinstance(value, list) or not value or not all(isinstance(v, str) and v.strip() for v in value):
+        raise HelperError(f"{name}: writes must be a non-empty list of paths in the office "
+                          "(leave it out to forecast the whole office)")
+    out = []
+    for v in value:
+        v = v.strip().strip("/")
+        if v in ("", ".") or v.startswith("/") or ".." in v.split("/"):
+            raise HelperError(f"{name}: writes entry {v!r} is not a path inside the office "
+                              "(leave writes out to forecast the whole office)")
+        out.append(v)
     return out
 
 

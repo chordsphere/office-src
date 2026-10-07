@@ -26,8 +26,10 @@ house rules, when a session is worth opening there, and how it was
 founded. An office whose profile is incomplete is unfounded and says so.
 
 The office command builds and keeps offices. `office init` builds one,
-surveys the machine, asks which projects it watches, and prints the line
-that packs the founding session. `office tour` builds a throwaway office
+surveys the machine, asks which projects it watches, asks the profile's
+questions, and sends the founding session out through `office start`
+with the answers in its brief; `office found` does the same for an
+office that exists and is unfounded. `office tour` builds a throwaway office
 to try the verbs on, walks through them, and deletes it. `office` on its
 own is walking in: what is on the desk, this week, the last notes, the
 suggestion box, what you can do from here, and, last, the one command to
@@ -458,10 +460,11 @@ Kinds:
 
 | verb | kind | built |
 |---|---|---|
-| init | script; writes bale.toml, asks which projects the office watches, and prints the founding session's pack line | yes |
+| init | script; writes bale.toml, asks which projects the office watches, asks the profile's questions, opens the founding folder and sends the founding session out through start | yes |
+| found | script: the founding door for an office that exists: the profile's questions (only what the founding folder does not keep), the founding folder, the founding session out through start | yes |
 | survey | script | yes |
 | status | script, read-only | yes |
-| upgrade | script; prints a renovation pack line when a migration needs judgment | yes |
+| upgrade | script; when a migration needs judgment, opens its folder and sends the renovation session out through start | yes |
 | where, default | script: which office a command acts on | yes |
 | note | script: append a dated line to the notepad | yes |
 | slip | script: drop a friction slip in the suggestion box, saying what it is about | yes |
@@ -482,7 +485,7 @@ Kinds:
 | rulings, evidence | script, read-only: the ledgers, one record with what points at it, and every citation resolved | yes |
 | watches, watches check | script: the watches and where each stands, read from the log; run every query watch over its window and the standing lines, and with --record append a fired record for each that fired | yes |
 | digest | script: write the sitting-open page, every section computed; office start runs it before it packs a sitting | yes |
-| founding | office session: the profile, the occupant's words, the timezone | yes, via init |
+| founding | office session: the profile, the occupant's words, the timezone | yes, via init, found and start |
 | work | office session: answer, draft, probe, decide, deliver | yes, via start |
 | build | project session: change a project for a folder | yes, via start |
 | prep | office session: a briefing for a meeting | not yet |
@@ -529,10 +532,13 @@ them, how many riders are orphaned, this week and its gaps, the last notepad lin
 suggestion box, and the verbs to reach for. It ends with one Next line:
 the one command to type now, its arguments filled in, worked out from the
 office on every walk-in and never written down. In the order they win: an
-office out of step with the install (upgrade it); a session out (land it,
+office out of step with the install (upgrade it, or, when the renovation
+upgrade sent out is out, land that first); a session out (land it,
 or, when bale held it, land its corrected response); desk moves a sitting
 decided that have not run (run them: until then the desk is not in the
-order the sitting decided); an unfounded office; the first ready folder
+order the sitting decided); an unfounded office (start its founding
+folder, which goes out through the founding door with the answers it
+keeps, or, with none on the desk, found it); the first ready folder
 (start it); an open folder no session is out for;
 no projects (add one); slips enough to be a job of their own; folders
 that wait; and nothing to do. Whether a response has arrived is bale's to
@@ -700,21 +706,49 @@ section is complete when it has text outside comments and no line that
 starts with TODO. An office with an incomplete profile is unfounded and
 says so on every command. Capture still works in an unfounded office.
 
-Spawning an office is a conversation, not a form. `office init` builds
-the skeleton, writes bale.toml, surveys the machine, commits, asks which
-projects the office watches (each through the questions of `office
-projects add`, until a plain return, with `--project` as the flag twin),
-and prints the pack line for the founding session. It refuses to build from an
-install whose own catalogs have a defect; for an office already built,
-`office status` reports the defect and the office keeps working. The founding session is scoped:
-it may write profile.md, the notepad and the floor plan, so one trip
-lands everything. In it the occupant and the session write the profile
-together, section by section; the session files the occupant's words from
-the conversation as a notepad page; and it sets the office's real
-timezone in the floor plan's [office] timezone and in the profile's Site
-section. It asks the occupant for the timezone rather than trusting the
-survey, because a machine's clock can report a zone the occupant does not
-live in. The founding session never touches the version stamp.
+Spawning an office is a conversation, not a form, and the conversation
+starts before the session does, so the session has something to write
+from. `office init` builds the skeleton, writes bale.toml, surveys the
+machine, commits, and asks which projects the office watches (each
+through the questions of `office projects add`, until a plain return,
+with `--project` as the flag twin). Then it asks the profile's questions:
+one per section of the profile shape, in its order, each worded from the
+section's asks line, `?` explaining what a good answer holds, and a
+plain return leaving the section for the founding session to ask about.
+Each question has a flag twin, so a piped init asks nothing and sends
+what it was given. The Founding section is never asked: the session
+writes it. The timezone is asked with Site, as the zone the occupant
+lives in, defaulting to the machine's when that resolves; it is checked
+against the zone database, a zone that does not resolve is named with
+what fixes it, and a zone that resolves is written to the floor plan
+then, so the office's dates are the occupant's from the first folder on.
+Init then opens the founding folder (the office's first job), keeps the
+answers in it as answers.md, the occupant's words as given, and sends
+the founding session out through `office start`, like every other
+session: an out tray, the opener, the session recorded in the folder,
+and `office land` when it comes back. `office found` is the same door for
+an office that exists and is unfounded (one built with `--no-founding`,
+or whose founding session never went out): it keeps the answers a
+founding folder already holds and asks only for the rest, and `office
+start` on the founding folder goes through it. It refuses an office that
+is founded, and one whose founding session is out. Init refuses to build
+from an install whose own catalogs have a defect; for an office already
+built, `office status` reports the defect and the office keeps working.
+
+The founding session is scoped: it may write profile.md, the notepad and
+the floor plan, and its folder, so one trip lands everything. Its brief
+carries the answers verbatim under the sections they answer, which
+sections were left to ask, the timezone and whether it resolved, and the
+survey's facts about the machine. The session writes the profile from
+the answers, section by section, with the occupant; asks only for what
+was skipped (a light question block if it fits, a clarification if not);
+records in the Founding section that the profile's questions were
+answered through the office command, and when; files the occupant's
+words, the answers and the conversation, as a notepad page; and sets the
+timezone in the profile's Site section, and in the floor plan when init
+could not. It asks the occupant rather than trusting the survey, because
+a machine's clock can report a zone the occupant does not live in. The
+founding session never touches the version stamp.
 
 ## 13. The survey
 
@@ -766,8 +800,15 @@ from the release notes. A mechanical change is a script. A change that
 needs judgment (a new required profile section, say) is a renovation
 migration, and it declares what must be true once the renovation has
 landed: paths that exist, profile sections that are written. Upgrade
-checks the declaration. When it does not hold, upgrade stops there and
-prints the pack line for a renovation session, which does the work. The
+checks the declaration. When it does not hold, upgrade stops there, opens
+a folder for the renovation on the desk, and sends the renovation session
+out through `office start`, like every other session, with the
+migration's goal and a brief carrying its summary, its declaration in
+full and its version. The session forecasts what the migration declares
+under `writes`, or the whole office when it declares nothing. A
+renovation session already out is named and never sent twice; while it
+is out the office is behind, every verb that changes the office still
+refuses, and `office land` brings back that session and no other. The
 next run of office upgrade finds the declaration holds, stamps the
 office, and carries on with any migrations after it.
 

@@ -173,6 +173,11 @@ require_current() {
     current) return 0 ;;
     ahead) die "this office was migrated to $office_v, past the installed office-src $(install_version); install $office_v or later before using it" ;;
     behind)
+      # The renovation door: office upgrade opens the renovation's folder and
+      # sends its session out while the office is behind the migration that
+      # needs it (RENOVATING, set by upgrade alone), and office land brings
+      # that session back the same way.
+      if [ "${RENOVATING:-0}" = 1 ]; then debug "behind office-src $(install_version), for the renovation"; return 0; fi
       log "this office is at $office_v and office-src $(install_version) has breaking releases it has not taken:"
       printf '%s\n' "$report" | tail -n +2 | cut -f1,4 | sed 's/\t/: /; s/^/[office]   /' >&2
       die "run: office upgrade" ;;
@@ -182,10 +187,12 @@ require_current() {
 
 warn_if_unfounded() {
   local root="$1" out
+  # The founding door's own steps are the founding; they say so themselves.
+  [ "${FOUNDING_DOOR:-0}" != 1 ] || return 0
   out="$(helper profile-check "$root/$PROFILE_REL" "$SHAPE")"
   case $? in
     0) return 0 ;;
-    3) warn "this office is unfounded: its profile is incomplete (office status)" ;;
+    3) warn "this office is unfounded: its profile is incomplete (office status names the sections; the walk-in's Next line names what founds it)" ;;
     *) warn "could not check the profile against the required shape" ;;
   esac
 }
@@ -283,37 +290,271 @@ write_survey() {
   rm -f "$facts"
 }
 
-# --- pack lines --------------------------------------------------------------
+# --- the founding door and the renovation door ---------------------------------
+#
+# An office comes to exist, and is renovated, through the door every other
+# session uses (doctrine sections 12 and 14): a folder on the desk, and
+# office start sending a session out for it with a brief. office init and
+# office found ask the profile's questions and send the founding session
+# out with the answers in its brief; office upgrade sends a renovation out
+# with its migration in its brief. The doctrine rides from the out tray as
+# it does for every session, so nothing here ever writes into the install.
+
+DOOR="$OFFICE_SRC/lib/office_door.py"
+door() { python3 -B "$DOOR" "$@"; }
 
 slugify() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/--*/-/g; s/^-//; s/-$//'; }
 
-# The doctrine rides as a context tarball made in the install; include
-# groups only pull paths inside the repo being packed.
-doctrine_context_cmd() {
-  printf '(cd %s && bale pack --context)' "$(shq "$DOCTRINE_DIR")"
+# The zone this machine says it is in: TZ when it names a zone (the
+# variable the C library reads before the system's setting), else
+# /etc/timezone, else the zone /etc/localtime links to; empty when none
+# of them says.
+machine_zone() {
+  local tz="${TZ:-}"
+  tz="${tz#:}"
+  if [[ "$tz" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ ]]; then printf '%s' "$tz"; return 0; fi
+  tz="$(cat /etc/timezone 2>/dev/null || readlink /etc/localtime 2>/dev/null | sed 's#.*/zoneinfo/##')"
+  printf '%s' "$tz"
 }
 
-# The founding session is scoped, so one trip lands the profile, the
-# occupant's words from the founding conversation as a notepad page, and
-# the office's real timezone. The include group in bale.toml pulls the
-# hung items (profile.md, the survey) once floor-plan is included.
-founding_line() {
-  local root="$1" name="$2" slug
-  slug="$(slugify "$name")-founding"
-  printf '%s && cd %s && bale pack --slug %s --include floor-plan --write %s notepad floor-plan --no-readme %s\n' \
-    "$(doctrine_context_cmd)" "$(shq "$root")" "$slug" "$PROFILE_REL" \
-    "$(shq "Found the $name office: write its profile with the occupant section by section, file the occupant's words from this conversation as a notepad page, and set the office's real timezone in the floor plan and the profile's Site section, asking the occupant rather than trusting the machine clock")"
+# The profile's questions, from the install's profile shape: one per
+# section, in its order (office_door.py sections). Loaded once, before a
+# verb reads its flags, since each question's flag twin is the section's.
+SEC_FLAG=(); SEC_ASKED=(); SEC_HEADING=(); SEC_Q=(); SEC_HELP=()
+load_sections() {
+  local rows row f a h q x
+  [ "${#SEC_FLAG[@]}" -eq 0 ] || return 0
+  rows="$(door sections "$SHAPE")" || die "could not read the profile's questions from $SHAPE"
+  mapfile -t rows <<< "$rows"
+  for row in "${rows[@]}"; do
+    [ -n "$row" ] || continue
+    IFS=$'\t' read -r f a h q x <<< "$row"
+    SEC_FLAG+=("$f"); SEC_ASKED+=("$a"); SEC_HEADING+=("$h"); SEC_Q+=("$q"); SEC_HELP+=("$x")
+  done
 }
 
-# Only office upgrade writes the version stamp. The renovation session
-# does the work; a re-run of office upgrade checks the migration's
-# declaration and stamps the office when it holds.
-renovation_line() {
-  local root="$1" version="$2" goal="$3" landed="$4" slug
-  slug="upgrade-$(slugify "$version")"
-  printf '%s && cd %s && bale pack --slug %s --no-readme %s\n' \
-    "$(doctrine_context_cmd)" "$(shq "$root")" "$slug" \
-    "$(shq "Renovate this office for office-src $version: $goal Done means $landed. Leave the version stamp alone; office upgrade checks this and stamps the office.")"
+# section_flag WORD: is --WORD a profile question's flag twin? Prints the
+# section's index.
+section_flag() {
+  local i
+  for i in "${!SEC_FLAG[@]}"; do
+    if [ "${SEC_FLAG[$i]}" = "$1" ] && [ "${SEC_ASKED[$i]}" = 1 ]; then printf '%s' "$i"; return 0; fi
+  done
+  return 1
+}
+
+# The flag twins, for a usage line: [--purpose TEXT] [--not-for TEXT] ...,
+# wrapped, every line after the first indented by INDENT spaces.
+section_flags_usage() {
+  local i out="" pad
+  for i in "${!SEC_FLAG[@]}"; do [ "${SEC_ASKED[$i]}" = 1 ] && out+="[--${SEC_FLAG[$i]} TEXT] "; done
+  printf -v pad '%*s' "${1:-0}" ''
+  printf '%s\n' "${out% }" | fold -s -w $((78 - ${1:-0})) | sed 's/ *$//' | sed "2,\$s/^/$pad/"
+}
+
+# take_answer ADIR FLAG TEXT: an answer given as a flag, kept as the
+# occupant typed it; an empty one answers nothing.
+take_answer() {
+  local adir="$1" flag="$2" text="$3"
+  if [ -z "${text//[[:space:]]/}" ]; then rm -f "$adir/$flag"; return 0; fi
+  printf '%s\n' "$text" > "$adir/$flag" || die "could not keep the answer to --$flag"
+}
+
+# ask_timezone ADIR: after Site, the zone the occupant lives in, defaulting
+# to the machine's when that resolves. A zone that does not resolve is
+# named with what fixes it and asked again; the same answer twice keeps
+# it as given, and the founding session settles it with him.
+ask_timezone() {
+  local adir="$1" machine def="" ans again=""
+  [ -s "$adir/timezone.given" ] || [ -s "$adir/timezone" ] && return 0
+  machine="$(machine_zone)"
+  zone_resolves "$machine" && def="$machine"
+  while :; do
+    ask ans "The timezone you live in, a zone name such as America/Chicago (--timezone)" "${again:-$def}" 0 \
+      "The zone the office keeps its dates and times in: where you live, which a machine's clock does not always say. A name from the zone database (Continent/City), checked against $(zoneinfo_dir). ${def:+The default is the zone this machine is set to. }A plain return leaves it to the founding session."
+    [ -n "$ans" ] || return 0
+    if zone_resolves "$ans" || [ "$ans" = "$again" ]; then
+      printf '%s\n' "$ans" > "$adir/timezone.given" || die "could not keep the timezone"
+      return 0
+    fi
+    printf '  %s is not in %s: %s\n  give another zone, or the same one again to keep it as given\n' \
+      "$ans" "$(zoneinfo_dir)" "$(zone_remedy "$ans")" >&2
+    again="$ans"
+  done
+}
+
+# ask_profile ADIR: on a terminal, the profile's questions that neither a
+# flag nor a kept answer answers yet, one per section in the shape's
+# order, worded from its asks line; the timezone right after Site. A
+# plain return leaves a section to the founding session. Piped, nothing
+# is asked and what was given is what ships.
+ask_profile() {
+  local adir="$1" i ans said=0 tz_asked=0
+  can_ask || return 0
+  for i in "${!SEC_FLAG[@]}"; do
+    [ "${SEC_ASKED[$i]}" = 1 ] || continue
+    if [ ! -s "$adir/${SEC_FLAG[$i]}" ]; then
+      if [ "$said" = 0 ]; then
+        log "the profile's questions, one per section; your answers go to the founding session as you type them. ? explains a question, and a plain return leaves it for the founding session to ask"
+        said=1
+      fi
+      ask ans "${SEC_Q[$i]} (--${SEC_FLAG[$i]})" "" 0 "${SEC_HELP[$i]}"
+      [ -z "$ans" ] || take_answer "$adir" "${SEC_FLAG[$i]}" "$ans"
+    fi
+    if [ "${SEC_HEADING[$i]}" = Site ]; then ask_timezone "$adir"; tz_asked=1; fi
+  done
+  [ "$tz_asked" = 1 ] || ask_timezone "$adir"
+}
+
+founding_goal() {
+  printf 'Found the %s office: write its profile with the occupant section by section, file the occupant'"'"'s words from this conversation as a notepad page, and set the office'"'"'s real timezone in the floor plan and the profile'"'"'s Site section, asking the occupant rather than trusting the machine clock' "$1"
+}
+
+# found_office ROOT VIA GOAL ADIR: the founding door. The profile's
+# questions (asked on a terminal for what ADIR does not answer yet); the
+# timezone checked and, when it resolves, written to the floor plan, so
+# the office's dates are the occupant's from the founding folder on; the
+# founding folder (the one on the desk, or a new one: founding, size
+# small, class meta, source VIA) with the answers kept in it as
+# answers.md; then the founding session sent out through office start,
+# scoped to the profile, the notepad and the floor plan, with a brief
+# carrying the answers. Returns 1, having said why, when the session did
+# not go out; the answers stay in the folder for office found.
+found_office() {
+  local root="$1" via="$2" goal="$3" adir="$4"
+  local name folder kept zone="" floor_zone floor_ok=no wrote=no remedy tz day f i summary brief rc
+  name="$(helper get "$root/$MANIFEST_REL" office.name --default "$(basename "$root")")"
+  folder="$(door door-folder "$root" founding)" || die "could not look for a founding folder on the desk"
+  if [ -n "$folder" ]; then
+    kept="$(door load-answers "$root/$folder" --into "$adir" --shape "$SHAPE")" \
+      || die "could not read the answers kept in $folder/answers.md"
+    [ -z "$kept" ] || log "kept from $folder/answers.md, where they were given before: $(printf '%s' "$kept" | paste -sd, - | sed 's/,/, /g')"
+  fi
+  ask_profile "$adir"
+
+  # The timezone: a zone given now (a flag or the question) is checked; a
+  # kept one was checked when it was given, and is checked again here.
+  if [ -s "$adir/timezone.given" ]; then
+    zone="$(head -n 1 "$adir/timezone.given")"
+    rm -f "$adir/timezone.answered"
+  elif [ -s "$adir/timezone" ]; then
+    zone="$(head -n 1 "$adir/timezone")"
+  fi
+  floor_zone="$(office_tz_named "$root")"
+  if [ -n "$zone" ]; then
+    printf '%s\n' "$zone" > "$adir/timezone"
+    if zone_resolves "$zone"; then
+      printf 'yes\n' > "$adir/timezone.resolves"; : > "$adir/timezone.remedy"
+      if [ "$zone" != "$floor_zone" ]; then
+        if reader writers "$root" "$MANIFEST_REL" >/dev/null 2>&1; then
+          door set-timezone "$root/$MANIFEST_REL" "$zone" || die "could not write $zone to the floor plan's timezone"
+          commit_paths "$root" "$via: the timezone the occupant lives in, $zone" "$MANIFEST_REL" \
+            || warn "the floor plan's timezone was written but not committed"
+          log "the office keeps its dates in $zone, the zone you live in (the floor plan's timezone; it was $floor_zone)"
+          floor_zone="$zone"; wrote=yes
+        else
+          warn "the floor plan's timezone was left as $floor_zone: an open session holds the floor plan, or bale's registry could not be read; the founding session sets $zone"
+        fi
+      fi
+    else
+      remedy="$(zone_remedy "$zone")"
+      printf 'no\n' > "$adir/timezone.resolves"; printf '%s\n' "$remedy" > "$adir/timezone.remedy"
+      warn "the timezone $zone is not in $(zoneinfo_dir): $remedy; the floor plan keeps $floor_zone, and the founding session settles it with you"
+    fi
+  fi
+  zone_resolves "$floor_zone" && floor_ok=yes
+  tz="$(office_tz "$root" 2>/dev/null)"; day="$(office_date "$tz")"
+  for i in "${!SEC_FLAG[@]}"; do
+    f="${SEC_FLAG[$i]}"
+    [ -s "$adir/$f" ] && [ ! -s "$adir/$f.answered" ] && printf '%s through %s\n' "$day" "$via" > "$adir/$f.answered"
+  done
+
+  if [ -z "$folder" ]; then
+    folder="$(OFFICE_ROOT="$root" FOUNDING_DOOR=1 cmd_open founding --title "Found the $name office" --source "$via" --size small \
+      --class meta < /dev/null)" || die "the founding folder could not be opened (the lines above say why); office found tries again"
+  else
+    log "the founding folder is already on the desk: $folder"
+  fi
+  summary="$(door write-answers "$root/$folder" --answers "$adir" --shape "$SHAPE" --name "$name" --day "$day" \
+    --zone-label "$tz" --via "$via")" || die "could not keep the answers in $folder/answers.md"
+  commit_paths "$root" "$via: the profile's answers, in $folder" "$folder/answers.md" \
+    || warn "the answers were kept in $folder/answers.md but not committed"
+  if [ -n "${summary#*$'\t'}" ]; then
+    log "${summary%%$'\t'*} section(s) answered; left to the founding session: ${summary#*$'\t'}"
+  else
+    log "every section answered (${summary%%$'\t'*}); the founding session writes the profile from them"
+  fi
+
+  if ! command -v bale >/dev/null 2>&1; then
+    warn "bale is not on PATH, so the founding session did not go out; the answers are kept in $folder/answers.md, and office found sends it once bale is installed"
+    return 1
+  fi
+  brief="$(mktemp)" || die "cannot make a temp file for the founding brief"
+  TMP_PATHS+=("$brief")
+  door founding-brief "$root" --folder "$folder" --answers "$adir" --shape "$SHAPE" --name "$name" --day "$day" \
+    --zone-label "$tz" --install-version "$(install_version)" --floor-zone "$floor_zone" \
+    --floor-zone-resolves "$floor_ok" --zone-written "$wrote" --out "$brief" || die "could not compose the founding brief"
+  log "sending the founding session out through office start, for $folder"
+  ( OFFICE_ROOT="$root" FOUNDING_DOOR=1 cmd_start "${folder#desk/}" --in-office --goal "$goal" --slug "$(slugify "$name")-founding" \
+      --write "$PROFILE_REL" --write floor-plan --include floor-plan --brief "$brief" < /dev/null ); rc=$?
+  if [ "$rc" != 0 ]; then
+    warn "the founding session did not go out (the lines above say why); the answers are kept in $folder/answers.md, and office found sends it"
+    return 1
+  fi
+}
+
+# session_out_for LAND_OUT FOLDER: the session reader land-out lists for
+# FOLDER (its lines are SID, where, and the folders recording it).
+session_out_for() {
+  local line s w fs
+  while IFS=$'\t' read -r s w fs; do
+    [ -n "$s" ] || continue
+    case ", $fs, " in *", $2, "*) printf '%s' "$s"; return 0 ;; esac
+  done <<< "$1"
+  return 0
+}
+
+# The renovation door: office upgrade, stopped at a renovation whose
+# declaration does not hold, opens the renovation's folder (or takes the
+# one on the desk) and sends the session out through office start, with
+# the migration's goal and a brief carrying its summary, its [landed]
+# declaration in full and its version. It forecasts what the migration
+# declares under writes, or the whole office when it declares nothing
+# (what the printed pack line forecast before 0.12.0). A session already
+# out for it is named, never sent twice.
+renovate_office() {
+  local root="$1" version="$2" folder goal brief tz day writes=() w out sid rc
+  folder="$(door door-folder "$root" renovation --version "$version")" || die "could not look for the renovation's folder"
+  if [ -n "$folder" ] && command -v bale >/dev/null 2>&1; then
+    out="$(reader land-out "$root" 2>/dev/null)" || true
+    sid="$(session_out_for "$out" "$folder")"
+    if [ -n "$sid" ]; then
+      log "the renovation session $sid is out for $folder; it is not sent twice"
+      printf 'Next: office land %s  (then office upgrade again: it checks the renovation and stamps the office)\n' "$sid"
+      return 0
+    fi
+  fi
+  goal="$(door renovation goal "$root" --version "$version" --migrations "$MIGRATIONS" --install-version "$(install_version)")" \
+    || die "could not read migration $version"
+  mapfile -t writes < <(door renovation writes "$root" --version "$version" --migrations "$MIGRATIONS" --install-version "$(install_version)")
+  command -v bale >/dev/null 2>&1 || die "bale is not on PATH, so the renovation session cannot go out; office upgrade sends it once bale is installed"
+  if [ -z "$folder" ]; then
+    folder="$(OFFICE_ROOT="$root" RENOVATING=1 cmd_open "upgrade-$(slugify "$version")" --title "Renovate for office-src $version" \
+      --source "office upgrade" --size small --class meta < /dev/null)" || die "the renovation's folder could not be opened (the lines above say why)"
+  else
+    log "the renovation's folder is already on the desk: $folder"
+  fi
+  tz="$(office_tz "$root" 2>/dev/null)"; day="$(office_date "$tz")"
+  brief="$(mktemp)" || die "cannot make a temp file for the renovation brief"
+  TMP_PATHS+=("$brief")
+  door renovation brief "$root" --version "$version" --migrations "$MIGRATIONS" --install-version "$(install_version)" \
+    --folder "$folder" --day "$day" --zone-label "$tz" --out "$brief" || die "could not compose the renovation brief"
+  local args=()
+  for w in "${writes[@]}"; do [ -n "$w" ] && args+=(--write "$w"); done
+  log "sending the renovation session out through office start, for $folder"
+  ( OFFICE_ROOT="$root" RENOVATING=1 cmd_start "${folder#desk/}" --in-office --goal "$goal" --slug "upgrade-$(slugify "$version")" \
+      "${args[@]}" --brief "$brief" < /dev/null ); rc=$?
+  [ "$rc" = 0 ] || die "the renovation session did not go out (the lines above say why); office upgrade sends it again"
 }
 
 # --- verbs -------------------------------------------------------------------
@@ -334,19 +575,34 @@ require_sound_install() {
 
 cmd_init() {
   local path="" name="" set_default=1 parent root anc ask_projects=1 project_specs=() checked="" pname ppath
+  local founding=1 adir given=() i
+  # The profile's questions are the shape's, so their flag twins are too.
+  load_sections
+  adir="$(mktemp -d)" || die "cannot make temp space for the profile's answers"
+  TMP_PATHS+=("$adir")
   while [ $# -gt 0 ]; do
     case "$1" in
       --name) [ $# -ge 2 ] || die "--name needs a value"; name="$2"; shift 2 ;;
+      --timezone) [ $# -ge 2 ] || die "--timezone needs a zone name, such as America/Chicago"
+                  printf '%s\n' "$2" > "$adir/timezone.given"; given+=("$1"); shift 2 ;;
+      --no-founding) founding=0; shift ;;
       --project) [ $# -ge 2 ] || die "--project needs a project's repo: --project PATH, or --project NAME=PATH"
                  project_specs+=("$2"); shift 2 ;;
       --no-projects) ask_projects=0; shift ;;
       --path) [ $# -ge 2 ] || die "--path needs a value"; [ -z "$path" ] || die "init takes one path"; path="$2"; shift 2 ;;
       --no-default) set_default=0; shift ;;
       -h|--help) usage_init; return 0 ;;
-      -*) usage_init >&2; die "office init does not know $1; it takes a path, --name, --no-default, --project and --no-projects" ;;
+      -*) if i="$(section_flag "${1#--}")"; then
+            [ $# -ge 2 ] || die "$1 needs your answer: ${SEC_Q[$i]}"
+            take_answer "$adir" "${1#--}" "$2"; given+=("$1"); shift 2
+          else
+            usage_init >&2; die "office init does not know $1; the flags above are what it takes"
+          fi ;;
       *) [ -z "$path" ] || die "init takes one path"; path="$1"; shift ;;
     esac
   done
+  [ "$founding" = 1 ] || [ "${#given[@]}" -eq 0 ] \
+    || die "--no-founding sends no founding session, so it takes none of the profile's answers (${given[*]}); office found takes them later"
   require_tools git python3 timeout
   require_sound_install
   if [ -z "$path" ]; then
@@ -385,7 +641,7 @@ cmd_init() {
   local version built_at tz sp
   version="$(install_version)"
   built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  tz="$(cat /etc/timezone 2>/dev/null || readlink /etc/localtime 2>/dev/null | sed 's#.*/zoneinfo/##')"
+  tz="$(machine_zone)"
   tz="${tz:-UTC}"
 
   log "building office '$name' at $root from office-src $version"
@@ -423,16 +679,90 @@ cmd_init() {
   # a plain return.
   while IFS=$'\t' read -r pname ppath; do
     [ -n "$pname" ] || continue
-    # stdout stays the founding line's alone.
+    # stdout stays the founding session's report alone.
     ( OFFICE_ROOT="$root" cmd_projects_add --name "$pname" --path "$ppath" ) >&2 \
       || die "the office is built, but $pname could not be added; office projects add $pname $(shq "$ppath") tries again"
   done <<< "$checked"
   if [ "${#project_specs[@]}" -eq 0 ] && [ "$ask_projects" = 1 ] && can_ask; then
     init_ask_projects "$root"
   fi
-  log "the office is unfounded until its profile is written; the line below packs the founding session"
-  log "attach $DOCTRINE_DIR/.bale/outbox/context-doctrine.tar.gz beside the request it opens"
-  founding_line "$root" "$name"
+  if [ "$founding" = 0 ]; then
+    log "the office is unfounded until its founding session writes the profile; --no-founding sent none"
+    printf 'Next: office found  (it asks the profile'"'"'s questions and sends the founding session out)\n'
+    return 0
+  fi
+  # The founding door: the profile's questions, the founding folder, and
+  # the founding session out through office start with the answers.
+  if ! OFFICE_ROOT="$root" found_office "$root" "office init" "$(founding_goal "$name")" "$adir"; then
+    log "the office is built at $root and unfounded; office found sends the founding session out (the lines above say what stopped it)"
+    exit 1
+  fi
+}
+
+usage_found() {
+  load_sections
+  cat <<USAGE
+usage: office found $(section_flags_usage 20)
+                    [--timezone ZONE] [--goal TEXT]
+Sends the founding session out for an unfounded office, the way office init
+does after it builds one: it asks the profile's questions, one per section
+of the profile's required shape in its order (? explains each, and a plain
+return leaves a section for the founding session to ask about), and the
+timezone you live in after Site, checked against the zone database and,
+when it resolves, written to the floor plan. It keeps the answers in the
+founding folder as answers.md (the folder on the desk, or a new one, source
+office found) and sends the founding session out through office start, in
+the office, forecasting the profile, the notepad and the floor plan, with a
+brief carrying your answers verbatim and saying which sections were left
+to ask. Answers a founding folder already keeps are kept, so only what was
+skipped is asked again; a flag given now wins. Piped, it asks nothing and
+sends what it was given. It refuses a founded office, and one whose
+founding session is out (office land SID brings that back). The Founding
+section is never asked: the founding session writes it.
+Under the hood: office open, then office start's own code (bale pack --json,
+bale pack --context for each context tarball).
+Examples:
+  office found                                 (asks what is not answered yet)
+  office found --purpose "My own tools, and my life outside work" --timezone America/Chicago
+  office start 2026-10-06-founding             (the same, from the founding folder)
+USAGE
+}
+
+cmd_found() {
+  local root adir goal="" i out sid folder
+  load_sections
+  adir="$(mktemp -d)" || die "cannot make temp space for the profile's answers"
+  TMP_PATHS+=("$adir")
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --timezone) [ $# -ge 2 ] || die "--timezone needs a zone name, such as America/Chicago"
+                  printf '%s\n' "$2" > "$adir/timezone.given"; shift 2 ;;
+      --goal) [ $# -ge 2 ] || die "--goal needs a sentence"; goal="$2"; shift 2 ;;
+      -h|--help) usage_found; return 0 ;;
+      -*) if i="$(section_flag "${1#--}")"; then
+            [ $# -ge 2 ] || die "$1 needs your answer: ${SEC_Q[$i]}"
+            take_answer "$adir" "${1#--}" "$2"; shift 2
+          else
+            usage_found >&2; die "office found does not know $1; the flags above are what it takes"
+          fi ;;
+      *) usage_found >&2; die "office found takes no word ($1); the profile's answers are flags" ;;
+    esac
+  done
+  require_tools git python3 timeout
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if helper profile-check "$root/$PROFILE_REL" "$SHAPE" >/dev/null 2>&1; then
+    die "this office is founded: its profile is complete, and nothing re-founds it (a change to the profile is an office session's, from a folder)"
+  fi
+  # A founding session already out is landed, never sent twice.
+  folder="$(door door-folder "$root" founding)" || die "could not look for a founding folder on the desk"
+  if [ -n "$folder" ] && command -v bale >/dev/null 2>&1; then
+    out="$(reader land-out "$root" 2>/dev/null)" || true
+    sid="$(session_out_for "$out" "$folder")"
+    [ -z "$sid" ] || die "the founding session $sid is out for $folder; office land $sid brings it back"
+  fi
+  [ -n "$goal" ] || goal="$(founding_goal "$(helper get "$root/$MANIFEST_REL" office.name --default "$(basename "$root")")")"
+  found_office "$root" "office found" "$goal" "$adir" || exit 1
 }
 
 usage_survey() {
@@ -729,9 +1059,17 @@ usage_upgrade() {
 usage: office upgrade [--dry-run]
 Runs the migrations a breaking release of office-src ships, after a dry run
 on a scratch clone, and lands them as one commit. A migration that needs
-judgment stops at a renovation: upgrade prints its pack line, and the next
-run checks the renovation landed and stamps the office. Additive releases
-need nothing; upgrade says so.
+judgment stops at a renovation: upgrade opens a folder for it on the desk
+(upgrade-VERSION, source office upgrade) and sends the renovation session
+out through office start, in the office, with the migration's goal and a
+brief carrying its summary, its [landed] declaration and its version; the
+session forecasts what the migration declares under writes, or the whole
+office. office land SID brings it back, and the next run of office upgrade
+checks the declaration and stamps the office. A renovation session already
+out is named, never sent twice. Additive releases need nothing; upgrade
+says so.
+Under the hood, for a renovation: office open, then office start's own code
+(bale pack --json, bale pack --context for each context tarball).
 Examples:
   office upgrade --dry-run
   office upgrade
@@ -792,13 +1130,12 @@ cmd_upgrade() {
     sed 's/^/[office]   /' "$msg" >&2
   fi
   if [ "$rc" -eq 10 ]; then
-    local line version goal landed
+    local line version
     line="$(grep '^renovation' "$scratch/real.out" | head -n 1)"
-    version="$(printf '%s' "$line" | cut -f2)"; goal="$(printf '%s' "$line" | cut -f3)"; landed="$(printf '%s' "$line" | cut -f5)"
-    log "migration $version needs judgment, so it is a renovation session, not a script; the line below packs it"
+    version="$(printf '%s' "$line" | cut -f2)"
+    log "migration $version needs judgment, so it is a renovation session, not a script; it goes out through office start"
     log "when that session has landed, run office upgrade again: it checks the renovation and stamps the office"
-    log "attach $DOCTRINE_DIR/.bale/outbox/context-doctrine.tar.gz beside the request it opens"
-    renovation_line "$root" "$version" "$goal" "$landed"
+    renovate_office "$root" "$version"
   fi
 }
 
@@ -2711,6 +3048,19 @@ cmd_start() {
   status="$(folder_fact "$md" status)"
   case "$status" in done|absorbed|split|retired) die "desk/$name says status $status, which belongs in the filing cabinet; office status names what disagrees" ;; esac
 
+  # The founding folder of an unfounded office goes out through the
+  # founding door (office found's own code): the answers its folder keeps
+  # ride in the brief, and only what was skipped is asked.
+  if [ -z "$brief" ] && [ -z "$bundle" ] && [ "${FOUNDING_DOOR:-0}" != 1 ] \
+      && [ "$(door door-folder "$root" founding 2>/dev/null)" = "desk/$name" ] \
+      && ! helper profile-check "$root/$PROFILE_REL" "$SHAPE" >/dev/null 2>&1; then
+    [ "$where" != project ] && [ "$read_only" = 0 ] && [ "$set_w" = 0 ] && [ "${#includes[@]}" -eq 0 ] && [ -z "$slug" ] \
+      || die "desk/$name is this office's founding folder, which goes out through the founding door in the office: office start $name (or office found), with none of --on, --read-only, --write, --include or --slug"
+    log "desk/$name is this office's founding folder and the profile is incomplete, so it goes out through the founding door (office found)"
+    OFFICE_ROOT="$root" cmd_found ${goal:+--goal "$goal"}
+    return $?
+  fi
+
   # What the folder already says: its lane (project: paths) and class.
   lane="$(folder_fact "$md" lane)"; cls="$(folder_fact "$md" class)"
   lane_project=""; lane_paths=""
@@ -3043,7 +3393,11 @@ cmd_land() {
     fi
   fi
   root="$(resolve_office)" || exit 1
-  require_current "$root"
+  # An office behind a renovation migration lands that renovation's session
+  # (the renovation door), and nothing else, until office upgrade stamps it.
+  local skew_state behind=0
+  skew_state="$( (skew_report "$root") 2>/dev/null | head -n 1)"
+  if [ "$skew_state" = behind ]; then behind=1; else require_current "$root"; fi
   command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office land runs bale apply"
   tmp="$(mktemp -d)" || die "cannot make temp space for the landing"
   TMP_PATHS+=("$tmp")
@@ -3094,6 +3448,15 @@ cmd_land() {
   fi
   plan_field "$plan" problems | while IFS= read -r line; do [ -n "$line" ] && warn "$line"; done
   verb="$(plan_field "$plan" verb)"; repo="$(plan_field "$plan" repo)"; label="$(plan_field "$plan" label)"
+  if [ "$behind" = 1 ]; then
+    local reno
+    reno="$(door door-folder "$root" renovation --version "$(skew_report "$root" | sed -n 2p | cut -f1)" 2>/dev/null)"
+    if [ -n "$reno" ] && plan_field "$plan" folders | grep -qxF -- "$reno"; then
+      log "this office is behind office-src $(install_version) while its renovation session lands; office upgrade checks the renovation after, and stamps the office"
+    else
+      require_current "$root"
+    fi
+  fi
 
   # A read-only sitting the office sent out lands nothing; landing it
   # ends it (the ruling of sitting 2026-10-03-plan-4b-sitting-001): bale
@@ -3182,6 +3545,7 @@ for l in json.load(sys.stdin)["told"]:
     after_land_summary "$repo"
     return "$rc"
   fi
+  [ "$behind" = 0 ] || log "the renovation has landed; next: office upgrade, which checks its declaration and stamps the office"
   space="${folders%%/*}"; name="${folders#*/}"
   if [ -z "$ratify" ] && can_ask; then
     while :; do
@@ -3620,7 +3984,7 @@ STUB
 
   printf 'office tour: a throwaway office to try the verbs on.\n'
   tour_say "It lives in $TOUR_DIR and is deleted at the end, or as soon as you stop the tour. It never touches your offices, this machine's default office, the walk-in record, or bale: a stand-in bale that refuses everything is first on its PATH."
-  if ! tour_office init "$TOUR_DIR/office" --name tour --no-default --no-projects >/dev/null 2>"$TOUR_DIR/init.log"; then
+  if ! tour_office init "$TOUR_DIR/office" --name tour --no-default --no-projects --no-founding >/dev/null 2>"$TOUR_DIR/init.log"; then
     sed 's/^/  /' "$TOUR_DIR/init.log" >&2
     die "could not build the tour office; it is deleted"
   fi
@@ -3628,7 +3992,7 @@ STUB
     [ -f "$TOUR_DIR/furnish.log" ] && tail -n 15 "$TOUR_DIR/furnish.log" | sed 's/^/  /' >&2
     die "could not furnish the tour office (the lines above say why); it is deleted"
   fi
-  tour_say "Built with: office init $TOUR_DIR/office --name tour --no-default --no-projects. That made the spaces (desk, filing cabinet, notepad, suggestion box, drawer), a profile, a survey of this machine and a first commit. The tour then wrote a sample profile (a real office writes its own in its founding session), added a calendar with a gap, opened three folders, noted a line and dropped a slip."
+  tour_say "Built with: office init $TOUR_DIR/office --name tour --no-default --no-projects --no-founding. That made the spaces (desk, filing cabinet, notepad, suggestion box, drawer), a profile, a survey of this machine and a first commit. A real office init then asks the profile's questions and sends the founding session out; the tour sends none, and wrote a sample profile itself, added a calendar with a gap, opened three folders, noted a line and dropped a slip."
   tour_pause || { tour_end; return 0; }
 
   tour_step 1 "$total" "walk in"
@@ -3666,7 +4030,7 @@ STUB
   tour_step 6 "$total" "send a session out, and bring it back (shown, not run)"
   printf '\n  $ office start %s --in-office --goal %s\n' "${porch:-FOLDER}" "$(shq "Plan the porch light fix")"
   printf '    (not run: the tour never runs bale)\n'
-  tour_say "In a real office this is the command the Next line names for a ready folder. It asks what it was not given (which job, whether the work lands in the office or on one of its projects, and the goal), then packs the session with bale where the work lands, records the session id in the folder, and puts everything to attach in one out tray, ~/out-tray/SID: the request, the doctrine, the office's context and whatever rides with the project. It prints the opener: attach the tray's files to a fresh chat and paste it. You never type a session id or an include list."
+  tour_say "In a real office this is the command the Next line names for a ready folder. It asks what it was not given (which job, whether the work lands in the office or on one of its projects, and the goal), then packs the session with bale where the work lands, records the session id in the folder, and puts everything to attach in one out tray, ~/out-tray/SID: the request, the doctrine, the office's context and whatever rides with the project. It prints the opener: attach the tray's files to a fresh chat and paste it. You never type a session id or an include list. A real office's founding session went out the same way: office init asked the profile's questions, opened the founding folder and handed it to office start, with the answers in the brief."
   printf '\n  $ office land\n'
   printf '    (not run: the tour never runs bale)\n'
   tour_say "When the response comes back: it finds the session out, runs bale apply in the repo it belongs to (bale asks its own questions, and only you answer them), says how it ended, prints the relay to carry back to the planner, runs the project's after-land steps (an install, say), and records whether the planner ratified the session. You never forget a landing step."
@@ -3816,26 +4180,48 @@ cmd_version() {
 }
 
 usage_init() {
-  cat <<'EOF'
+  load_sections
+  cat <<EOF
 usage: office init [PATH | --path PATH] [--name NAME] [--no-default]
                    [--project [NAME=]PATH]... [--no-projects]
+                   $(section_flags_usage 19)
+                   [--timezone ZONE] [--no-founding]
 Builds an office at PATH (new or empty): the base spaces, a profile stub,
 the version stamp, a first survey and a first commit. Then, on a terminal,
 it asks which projects the office watches, one at a time through the same
-questions as office projects add, until a plain return. Prints the pack
-line for the founding sitting. Makes PATH this machine's default office
-when there is none yet, unless --no-default. On a terminal it asks for the
-path and the name when it was given no path; ? explains a question. Piped,
-it asks nothing. It refuses to build from an install whose catalogs have a
+questions as office projects add, until a plain return. Then the founding:
+it asks the profile's questions, one per section of the profile's required
+shape in its order (? explains each; a plain return leaves a section for
+the founding session to ask about), and the timezone you live in after
+Site, defaulting to this machine's when that resolves, checked against the
+zone database and, when it resolves, written to the floor plan. It opens
+the founding folder on the desk (founding, source office init), keeps your
+answers in it as answers.md, and sends the founding session out through
+office start: an out tray, the opener to paste, the session recorded in
+the folder, and office land SID when it comes back. Each question has a
+flag twin, so a piped init asks nothing and sends what it was given.
+Makes PATH this machine's default office when there is none yet, unless
+--no-default. On a terminal it asks for the path and the name when it was
+given no path. It refuses to build from an install whose catalogs have a
 defect.
   --project [NAME=]PATH  a project the office watches: the top of a git repo
                          bale runs in; NAME defaults to the directory's name.
                          Repeatable; each is checked before anything is built.
   --no-projects          ask no project question on a terminal
+  --PROFILE-SECTION TEXT your answer to that section's question (the flags
+                         above, one per section; the Founding section is the
+                         founding session's to write and is never asked)
+  --timezone ZONE        the zone you live in, such as America/Chicago
+  --no-founding          build only: no questions, no founding folder, no
+                         session (office found sends it later)
+Under the hood, for the founding: office open, then office start's own code
+(bale pack --json, bale pack --context for each context tarball).
 Examples:
-  office init                                  (asks where, the name, and the projects)
+  office init                                  (asks where, the name, the projects and the profile's questions)
   office init ~/offices/home
   office init ~/offices/home --project ~/office-src --project tools=~/bale-src
+  office init ~/offices/home --purpose "My own tools" --timezone America/Chicago < /dev/null
+  office init ~/offices/try --no-founding
   office tour                                  (try an office first, on a throwaway one)
 EOF
 }
@@ -3909,14 +4295,18 @@ Bring one back
                             given a read-only sitting's id, ends the sitting
 
 Look after the office
-  office init PATH          build an office; asks which projects it watches
+  office init PATH          build an office; asks which projects it watches and the
+                            profile's questions, and sends the founding session out
+  office found              send an unfounded office's founding session out: the
+                            profile's questions, the founding folder, office start
   office projects add       watch a project; set NAME says what rides with its sessions
                             and what runs after one lands
   office status             version, the install against its source, profile, survey
                             age, timezone, hung items, catalogs, folders, filed pages,
                             bale (read-only)
   office survey             rewrite floor-plan/survey.md and say what changed
-  office upgrade            take a breaking release: dry run, then one commit
+  office upgrade            take a breaking release: dry run, then one commit; a
+                            renovation goes out through office start
   office where              the office a command here acts on
   office default [PATH]     show or set this machine's default office
   office version            the installed version
@@ -3940,7 +4330,7 @@ EOF
 }
 
 # The verbs office help VERB explains, each through its own --help.
-HELP_VERBS=" init survey status upgrade where default note slip open desk week close reopen sessions projects start land tour version moves blueprint rider riders agenda rulings evidence watches digest "
+HELP_VERBS=" init found survey status upgrade where default note slip open desk week close reopen sessions projects start land tour version moves blueprint rider riders agenda rulings evidence watches digest "
 # The two-word verbs, as office help VERB WORD (or VERB-WORD, the key
 # share/verbs.toml gives them) explains them.
 HELP_PAIRS=" blueprint-open blueprint-ratify blueprint-close rider-add rider-carry rider-consumed agenda-add watches-check "
@@ -3964,6 +4354,7 @@ main() {
   local verb="$1"; shift
   case "$verb" in
     init) cmd_init "$@" ;;
+    found) cmd_found "$@" ;;
     survey) cmd_survey "$@" ;;
     status) cmd_status "$@" ;;
     upgrade) cmd_upgrade "$@" ;;
