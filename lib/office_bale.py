@@ -43,6 +43,7 @@ import tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import office_helper as oh  # noqa: E402
 import office_drafting as od  # noqa: E402
+import office_door as odoor  # noqa: E402
 
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 CONSUMPTION = INSTALL / "share" / "bale-consumption.toml"
@@ -1078,6 +1079,8 @@ def blueprint_desk(table, folders, flying, since, bid, flight):
 #
 #   1. the office ahead of or behind the install, or its stamp unreadable:
 #      most verbs refuse until that is fixed, land and start among them;
+#      behind with the renovation session office upgrade sent out, landing
+#      that session comes first (0.12.0, the renovation door);
 #   2. a session out: work already sent, waiting only on its response,
 #      and an unfounded office's founding session is one of these, so
 #      landing it comes before saying the office is unfounded;
@@ -1085,7 +1088,11 @@ def blueprint_desk(table, folders, flying, since, bid, flight):
 #      in the order the sitting decided, so the next two states could
 #      name a folder a move retires or miss one a move opens (0.11.0;
 #      0.8.0's order ratified, this step added by the plan-4b sitting);
-#   4. unfounded: the profile is the office's reason to exist;
+#   4. unfounded: the profile is the office's reason to exist. With the
+#      founding folder on the desk and no session out for it, the line
+#      names office start for that folder (which goes out through the
+#      founding door with the answers the folder keeps); with none, office
+#      found, which opens one and asks the profile's questions (0.12.0);
 #   5. a ready folder: the desk's first, in the desk's own order;
 #   6. an open folder with no session out: a job under way that nothing
 #      is carrying;
@@ -1107,11 +1114,17 @@ SLIPS_SLUG = "triage-the-suggestion-box"
 def sessions_to_land(rd, office_root):
     """(sessions, problems): the open sessions office land can bring back,
     held ones first, then oldest first. A session counts when a folder
-    records it, or when it is open in the office's own registry (the
-    office's founding or a renovation, which no folder records); a
-    read-only sitting lands nothing and never counts. Each is
-    open_anywhere's dict plus held and created."""
+    records it, or when it is open in the office's own registry (a
+    founding or a renovation packed by hand before 0.12.0, which no
+    folder records); a read-only sitting lands nothing and never counts.
+    Each is open_anywhere's dict plus held, created and door (founding or
+    renovation when a door's folder records it, else None)."""
     every, problems = open_anywhere(rd, office_root)
+    try:
+        doors = odoor.door_folders(office_root)
+    except (OSError, oh.HelperError) as exc:
+        debug(f"the door folders could not be read for the Next line: {exc}")
+        doors = {}
     out = []
     for x in every:
         if x["read_only"] or not (x["folders"] or x["label"] == OFFICE_LABEL):
@@ -1125,7 +1138,8 @@ def sessions_to_land(rd, office_root):
         except BaleError as exc:
             # Still out, still landable; only its order is unknown.
             debug(f"{x['sid']}: its dossier could not be read for the Next line's order: {exc}")
-        out.append(dict(x, held=held, created=created))
+        door = next((doors[f] for f in x["folders"] if f in doors), None)
+        out.append(dict(x, held=held, created=created, door=door))
     out.sort(key=lambda s: (not s["held"], s["created"] or "~", s["sid"]))
     return out, problems
 
@@ -1151,6 +1165,21 @@ def count_slips(office_root):
     return sum(1 for p in box.glob("*.md") if p.is_file()) if box.is_dir() else 0
 
 
+def founding_folder(groups):
+    """The founding folder among the desk's groups (one whose source is
+    office init or office found), the highest-numbered; None when the
+    desk holds none."""
+    seen = []
+    for key in ("ready", "open", "flying", "candidates", "no_status", "misplaced"):
+        seen += list(groups.get(key) or [])
+    for fs in (groups.get("parked") or {}).values():
+        seen += [f for f, _ in fs]
+    found = [f for f in seen if ((f.get("fields") or {}).get("source") or [""])[0] in odoor.FOUNDING_SOURCES]
+    if not found:
+        return None
+    return sorted(found, key=lambda f: (f.get("number") or 0, f["name"]))[-1]
+
+
 def next_move(skew, founded, out, groups, projects, slips):
     """(command, why) for the walk-in's Next line, from the office's state:
     skew (current, behind, ahead or unreadable), founded (bool), out
@@ -1161,6 +1190,12 @@ def next_move(skew, founded, out, groups, projects, slips):
         return ("office status", "this office was migrated past the installed office-src; install a newer one "
                                  "(office status names both versions)")
     if skew == "behind":
+        reno = [s for s in out if s.get("door") == "renovation"]
+        if reno:
+            s = reno[0]
+            return (f"office land {s['sid']}",
+                    f"office upgrade sent this renovation out ({', '.join(s['folders'])}); once it lands, office "
+                    "upgrade checks it and stamps the office")
         return ("office upgrade", "this office is behind a breaking release of office-src, and the verbs that "
                                   "change it refuse until it is upgraded")
     if skew != "current":
@@ -1184,8 +1219,14 @@ def next_move(skew, founded, out, groups, projects, slips):
                  "drafting-table/moves.md holds lines that do not read")
                 + "; until they run, the desk is not in the order the sitting decided" + unread)
     if not founded:
-        return ("office status", "the profile is incomplete, so this office is unfounded; office status names "
-                                 "the sections its founding session still has to write")
+        f = founding_folder(groups)
+        if f is not None:
+            return (f"office start {f['name']}",
+                    f"the profile is incomplete, so this office is unfounded; {oh.cite(f)} is its founding folder "
+                    "and no session is out for it; start sends the founding session out with the answers the "
+                    "folder keeps, and asks only for what is missing")
+        return ("office found", "the profile is incomplete, so this office is unfounded, and no founding folder is "
+                                "on the desk; found asks the profile's questions and sends the founding session out")
     names = {p["name"] for p in projects or []}
     if groups.get("ready"):
         f = groups["ready"][0]
@@ -1980,6 +2021,11 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         includes = [folder, *includes]
         if read_only:
             forecast = []
+        elif any(w.strip().strip("/") in ("", ".") for w in writes):
+            # The whole office (a renovation that declares no narrower
+            # forecast): bale's default, the whole tree shipped and
+            # forecast, as the renovation's printed pack line was.
+            writes, includes, forecast = [], [], None
         else:
             writes = [folder] + (["notepad"] if (office_root / "notepad").is_dir() else []) + list(writes)
             forecast = writes
@@ -2172,7 +2218,7 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             spec = rd.consumption.surface("pack")
             report, stderr = rd.pack(
                 "pack", pack_dir, goal=goal, slug=slug, includes=includes or None,
-                writes=None if read_only else (forecast if where == "office" else (list(writes) or None)),
+                writes=None if read_only or forecast is None else (forecast if where == "office" else (list(writes) or None)),
                 constraints=[PROJECT_CONSTRAINT] if where == "project" else None,
                 readme_file=str(pathlib.Path(brief).resolve()) if brief else None,
                 no_readme=not brief, read_only=read_only, work_class=work_class)

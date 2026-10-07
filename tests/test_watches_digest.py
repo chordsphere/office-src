@@ -873,7 +873,7 @@ class TestDoctrineAndTemplates(unittest.TestCase):
             self.assertIn(words, doctrine)
         moves = doctrine.index("desk moves a sitting decided that have not run")
         self.assertLess(doctrine.index("a session out (land it"), moves)
-        self.assertLess(moves, doctrine.index("an unfounded office; the first"))
+        self.assertLess(moves, doctrine.index("an unfounded office (start its founding folder"))
 
     def test_the_drafting_tables_front_page_says_what_the_digest_is(self):
         readme = " ".join(od.render_page("README.md").split())

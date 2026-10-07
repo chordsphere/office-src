@@ -11,8 +11,10 @@ Builds and keeps offices. `office tour` lets you try one first: a
 throwaway office in a temp directory, six steps through the verbs, then
 deleted. `office init` makes a real one: the spaces, a profile to fill
 in, bale.toml, a first survey of the machine and a first commit, then
-asks which projects it watches and prints the line that packs the
-founding session. From then on the office is on its own, and office-src
+asks which projects it watches and the profile's questions, and sends
+the founding session out through `office start` with your answers in its
+brief (`office found` does the same for an office that is still
+unfounded). From then on the office is on its own, and office-src
 reaches it only through `office upgrade`. Every day: `office` to walk in
 (it ends with a Next line naming the one command to type), `office note`
 to capture a line, `office slip` to drop a friction slip, `office start` to send a
@@ -60,6 +62,19 @@ schedules nothing, never hands a session to a model and never carries
 pastes.
 
 ## Recent changes
+
+- 0.12.0 (session 2026-10-06-founding-door-002): the founding door.
+  `office init` asks the profile's questions, one per section, each with
+  a flag twin, and the timezone you live in (checked, and written to the
+  floor plan when it resolves); keeps the answers in the founding folder;
+  and sends the founding session out through `office start` with a brief
+  carrying them, so the founding session asks only for what you skipped.
+  `office found` is the same door for an unfounded office, and `office
+  start` on the founding folder goes through it. `office upgrade` sends a
+  renovation out the same way and never twice; `office land` brings it
+  back while the office is behind. The Next line names what founds an
+  unfounded office. No line writes into the install's doctrine directory
+  any more. Additive: no migration, no office needs anything done.
 
 - 0.11.0 (session 2026-10-06-drafting-table-digest-001): the second and
   last half of blueprint session 4b. `share/watch-queries.toml` names
@@ -212,13 +227,15 @@ pastes.
 
 ## Known problems
 
-- `office start` packs the doctrine from a copy, but the lines `office
+- ~~`office start` packs the doctrine from a copy, but the lines `office
   init` and `office upgrade` print still run `bale pack --context` in the
-  install's doctrine directory, which writes an outbox there. The
-  founding door (its own session after 4b) hands both to `office start`.
-- An unfounded office's Next line says `office status`, which names the
+  install's doctrine directory, which writes an outbox there.~~ Struck in
+  0.12.0: init and upgrade send their sessions out through `office
+  start`, and nothing writes into the install.
+- ~~An unfounded office's Next line says `office status`, which names the
   missing profile sections but cannot reprint the founding line `office
-  init` printed; the founding door is where that is fixed.
+  init` printed.~~ Struck in 0.12.0: it names `office start` for the
+  founding folder, or `office found`.
 - The Next line cannot say whether a session's response is already in
   the downloads: bale's `--json` surfaces give a count of search
   directories (`bale status --json`, `config.search_paths`) but not the
@@ -307,16 +324,22 @@ pastes.
   dated lines are the record; every reader takes the last of them.
 - The calendar's two-page format is the tool's first guess; the first
   office with a calendar will tell whether it fits.
-- Offices on WSL report the machine's zone (UTC on chordsphere) until
-  the founding session sets the real one.
+- An office built with `--no-founding`, or one whose founding was
+  skipped, reports the machine's zone (UTC on chordsphere) until `office
+  found` or the founding session sets the zone you live in.
 - After-land actions run only through `office land`. A session applied
   by hand with `bale apply` runs none; for office-src that means the
   install stays where it was (0.8.0's did, until `./install.sh` was run
   by hand). `office status`'s `source:` line shows it; nothing makes the
   office notice it on the walk-in yet.
-- Founding still writes a timezone without checking it resolves (the
-  founding door's), and moving a floor plan to a zone's canonical name is
-  a hand edit of its timezone line, by design for a one-off.
+- ~~Founding still writes a timezone without checking it resolves.~~
+  Struck in 0.12.0: init and found check the zone they write, and name
+  the remedy for one that does not resolve. Moving an older floor plan
+  to a zone's canonical name is still a hand edit of its timezone line,
+  by design for a one-off.
+- The founding questions take one line each on a terminal; a longer
+  answer is a flag (`--purpose "$(cat purpose.txt)"`), or the founding
+  session's conversation.
 
 ## Questions likely to come up
 
@@ -335,6 +358,10 @@ pastes.
   is stopped.
 - *Who marks a renovation done?* `office upgrade`, by checking what the
   renovation declared. No session edits the version stamp.
+- *I skipped some of the profile's questions. Now what?* The founding
+  session asks them. If it never went out, the walk-in's Next line names
+  `office start` for the founding folder, which sends it with the
+  answers you gave and asks the rest.
 - *Why did the install not move when a release landed?* Either it was
   applied by hand with `bale apply` (no after-land action runs), or
   `./install.sh` failed, which `office land`'s last lines now say.

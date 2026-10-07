@@ -324,7 +324,7 @@ class TestWizards(unittest.TestCase):
         self.assertIn("folder 1  ", seen)
         self.assertIn("(office close FOLDER):", seen)
         self.assertTrue(list((self.o.root / "filing-cabinet").glob("*-job")))
-        code, seen = terminal(self.env, self.o.e.home, [self.bin, "init"],
+        code, seen = terminal(self.env, self.o.e.home, [self.bin, "init", "--no-founding"],
                               [("(--path):", "?"), ("(--path):", str(self.o.e.home / "second")),
                                ("[second]:", ""), ("(--project PATH) [return skips]:", "")])
         self.assertEqual(code, 0, seen)

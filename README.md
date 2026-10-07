@@ -76,10 +76,10 @@ walk-in and never written down. In the order they win:
 
 | the office | Next |
 |---|---|
-| is behind the install, or ahead of it | `office upgrade` (or `office status`, which names the versions) |
+| is behind the install, or ahead of it | `office upgrade` (or `office status`, which names the versions; or `office land SID` while the renovation upgrade sent out is out) |
 | has a session out | `office land SID` (when its response is in your downloads, land finds it) |
 | has desk moves a sitting decided, not yet run | `office moves` (until they run, the desk is not in the order the sitting decided) |
-| is unfounded | `office status` (names the profile sections still to write) |
+| is unfounded | `office start FOLDER` for its founding folder (it goes out with the answers the folder keeps), or `office found` when no founding folder is on the desk |
 | has a ready folder | `office start FOLDER` (`--on PROJECT` when its lane names one) |
 | has an open folder no session is out for | `office start FOLDER` (or `office close` it when it is done) |
 | watches no projects | `office projects add` |
@@ -153,7 +153,8 @@ details are below.
 
 ### Build an office
 
-    office init ~/offices/home   # build an office; asks which projects it watches; prints the founding session's pack line
+    office init ~/offices/home   # build an office; asks which projects it watches and the profile's questions; sends the founding session out
+    office found                 # an unfounded office: the profile's questions, then the founding session out
 
 On a terminal, after building, `office init` asks which projects the
 office watches: one at a time, through the same questions as `office
@@ -161,8 +162,37 @@ projects add` (the path, the name, what rides with it, what runs after it
 lands), until a plain return. `--project PATH` (or `--project
 NAME=PATH`, repeatable) is the flag twin, each checked before anything is
 built, and `--no-projects` skips the question; piped, it asks nothing.
-The office is unfounded until its founding session writes the profile;
-init prints the line that packs that session.
+The office is unfounded until its founding session writes the profile,
+and init sends that session out itself. It asks the profile's questions,
+one per section of the profile's required shape (`share/profile-shape.toml`)
+in its order, each worded from the section's asks line; `?` explains
+what a good answer holds, and a plain return leaves the section for the
+founding session to ask about. The timezone you live in is asked with
+Site, defaulting to the machine's when that resolves, checked against the
+zone database, and written to the floor plan when it resolves. Every
+question has a flag twin (`--purpose TEXT`, `--not-for TEXT`,
+`--audiences TEXT`, `--site TEXT`, `--house-rules TEXT`, `--when-to-open
+TEXT`, `--spaces TEXT`, `--timezone ZONE`), so a piped init asks nothing
+and sends what it was given. The Founding section is never asked: the
+founding session writes it.
+
+Then init opens the founding folder, keeps your answers in it as
+`answers.md`, and sends the founding session out through `office start`:
+the out tray, the opener, the session recorded in the folder, and `office
+land SID` when it comes back. Its brief carries your answers verbatim
+under the sections they answer, the sections left to ask, the timezone
+and whether it resolved, and the survey's facts about the machine; the
+session writes the profile from them and asks only for what was skipped.
+
+    office init ~/offices/home --purpose "My own tools" --timezone America/Chicago < /dev/null
+    office init ~/offices/try --no-founding     # build only; office found sends the founding session later
+
+`office found` is the same door for an office that exists and is
+unfounded: it keeps what a founding folder already holds and asks only
+for the rest, and `office start` on the founding folder goes through it.
+When bale is not on the PATH, init builds the office, keeps the answers in
+the founding folder, says so and exits 1; the walk-in's Next line then
+names the command that sends it.
 
 ## Install
 
@@ -192,7 +222,8 @@ rendering says bale is missing and the rest of the command works.
 
     office status              # version, skew, the install against its source, profile, survey age, timezone, hung items, catalogs, folders, filed pages, bale, projects
     office survey              # rewrite floor-plan/survey.md, report what changed
-    office upgrade             # run pending migrations: dry run, then one commit
+    office upgrade             # run pending migrations: dry run, then one commit; a renovation goes out through office start
+    office found               # an unfounded office's founding session, through the founding door
     office where               # the office a command here acts on
     office default [PATH]      # this machine's default office
     office version             # the installed version and where it came from
@@ -576,9 +607,15 @@ the two sides disagree in a way it cannot work across.
 
 Only `office upgrade` writes an office's version stamp. A breaking
 release that needs judgment ships a renovation migration declaring what
-must be true once the renovation has landed; upgrade prints the
-renovation's pack line, the session does the work, and the next run of
-`office upgrade` checks the declaration and stamps the office.
+must be true once the renovation has landed. Upgrade opens a folder for
+it (`upgrade-VERSION`, source `office upgrade`) and sends the renovation
+session out through `office start`, with the migration's goal and a brief
+carrying its summary, its `[landed]` declaration and its version; the
+session forecasts what the migration declares under `writes`, or the
+whole office. `office land SID` brings it back while the office is
+behind, and the next run of `office upgrade` checks the declaration and
+stamps the office. A renovation session already out is named, never sent
+twice.
 
 ## Tests
 

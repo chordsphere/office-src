@@ -88,10 +88,10 @@ class TestNextMove(unittest.TestCase):
         self.assertIn("bale held it in alpha", why)
         self.assertIn("land asks for the corrected response; 1 more out after it", why)
 
-    def test_unfounded(self):
+    def test_unfounded_with_no_founding_folder_names_found(self):
         cmd, why = self.move(founded=False, g=groups(ready=[folder(1, "x")]))
-        self.assertEqual(cmd, "office status")
-        self.assertIn("unfounded", why)
+        self.assertEqual(cmd, "office found")
+        self.assertIn("unfounded, and no founding folder is on the desk", why)
 
     def test_the_first_ready_folder_with_its_project(self):
         g = groups(ready=[folder(3, "2026-10-05-fix-login", "alpha: src"), folder(4, "2026-10-05-other")])
@@ -437,11 +437,12 @@ class TestInitProjects(unittest.TestCase):
     def projects(self, root):
         return tomllib.loads((root / "floor-plan/manifest.toml").read_text()).get("projects")
 
-    def test_the_flag_twin_adds_each_and_stdout_stays_the_founding_line(self):
+    def test_the_flag_twin_adds_each_and_stdout_stays_the_next_line(self):
         root = self.e.home / "home"
-        proc = self.e.run("init", str(root), "--project", str(self.alpha), "--project", f"tools={self.beta}", check=0)
-        self.assertEqual(len(proc.stdout.splitlines()), 1, proc.stdout)
-        self.assertIn("bale pack --slug home-founding", proc.stdout)
+        proc = self.e.run("init", str(root), "--project", str(self.alpha), "--project", f"tools={self.beta}",
+                          "--no-founding", check=0)
+        self.assertEqual(proc.stdout.splitlines(), ["Next: office found  (it asks the profile's questions and sends "
+                                                    "the founding session out)"])
         self.assertEqual(self.projects(root), {"alpha": {"path": str(self.alpha)}, "tools": {"path": str(self.beta)}})
         self.assertEqual(self.e.git(root, "log", "--format=%s").splitlines(),
                          ["office projects: add tools", "office projects: add alpha", "office init: home (office-src "
@@ -468,7 +469,8 @@ class TestInitProjects(unittest.TestCase):
 
     def test_on_a_terminal_it_asks_until_a_plain_return(self):
         root = self.e.home / "asked"
-        code, seen = on_a_terminal(self, [str(self.e.office_bin), "init", str(root)], self.e.home, self.e.env, [
+        code, seen = on_a_terminal(self, [str(self.e.office_bin), "init", str(root), "--no-founding"],
+                                   self.e.home, self.e.env, [
             (b"A project this office watches: the path to its repo (--project PATH) [return skips]:", "?"),
             (b"(a .bale/ directory)", str(self.alpha)),
             (b"Name for it in this office (--name) [alpha]:", ""),
@@ -483,7 +485,7 @@ class TestInitProjects(unittest.TestCase):
         self.assertNotIn("[gone]", seen)
         self.assertIn("this office watches 1 project(s)", seen)
         self.assertEqual(self.projects(root), {"alpha": {"path": str(self.alpha), "after_land": ["./install.sh"]}})
-        self.assertIn("bale pack --slug asked-founding", seen)
+        self.assertIn("Next: office found", seen)
 
     def test_projects_add_checks_the_path_before_asking_more(self):
         root = self.e.init("added")
@@ -500,7 +502,7 @@ class TestInitProjects(unittest.TestCase):
 
     def test_no_projects_skips_the_question_on_a_terminal(self):
         root = self.e.home / "quiet"
-        code, seen = on_a_terminal(self, [str(self.e.office_bin), "init", str(root), "--no-projects"],
+        code, seen = on_a_terminal(self, [str(self.e.office_bin), "init", str(root), "--no-projects", "--no-founding"],
                                    self.e.home, self.e.env, [])
         self.assertEqual(code, 0, seen)
         self.assertNotIn("A project this office watches", seen)

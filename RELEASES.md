@@ -4,6 +4,55 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.12.0
+
+Additive: no migration, nothing to do in any office. An office founded
+before keeps its profile; one still unfounded gets `office found` on its
+Next line. Every older office shape keeps working, and a migration
+without the new `writes` key forecasts what a renovation always did.
+
+The founding door: an office comes to exist, and is renovated, through
+the door every other session uses.
+
+`office init`, after the skeleton, the first commit, the default and the
+projects question, asks the profile's questions: one per section of
+`share/profile-shape.toml`, in its order, each worded from the section's
+asks line, with `?` explaining what a good answer holds and a plain
+return leaving the section for the founding session to ask about. The
+Founding section is never asked. Each question has a flag twin
+(`--purpose`, `--not-for`, `--audiences`, `--site`, `--house-rules`,
+`--when-to-open`, `--spaces`, taken from the shape's new `flag` keys), so a
+piped init asks nothing and sends what it was given. The timezone is
+asked with Site (`--timezone ZONE`), as the zone the occupant lives in,
+defaulting to the machine's when that resolves (TZ, then /etc/timezone,
+then /etc/localtime), checked against the zone database with the remedy
+named for a zone that does not resolve, and written to the floor plan,
+committed alone, when it resolves. Init then opens the founding folder
+(founding, source office init, class meta, size small), keeps the answers
+in it as `answers.md`, and sends the founding session out through `office
+start`, forecasting the folder, the notepad, profile.md and the floor
+plan, with a brief carrying the answers verbatim, the sections left to
+ask, the timezone and whether it resolved, and the survey's facts. The
+printed `bale pack` line is gone, and with it the `(cd INSTALL/doctrine &&
+bale pack --context)` that wrote an outbox into the install: the doctrine
+rides from the out tray. `--no-founding` builds only.
+
+`office found` is the same door for an office that exists and is
+unfounded: it keeps the answers a founding folder holds and asks only for
+the rest. `office start` on the founding folder of an unfounded office
+goes through it. The Next line of an unfounded office names `office start
+FOLDER` for its founding folder, or `office found` when there is none.
+
+`office upgrade`, stopped at a renovation, opens a folder for it
+(`upgrade-VERSION`, source office upgrade) and sends the renovation
+session out through `office start`, with the migration's goal and a brief
+carrying its summary, its `[landed]` declaration in full and its version.
+It forecasts the whole office, as the printed line did, unless the
+migration declares `writes` (a new optional key). A renovation session
+already out is named, never sent twice; `office land` brings it back
+while the office is behind (and nothing else), and the Next line names
+that landing before `office upgrade`.
+
 ## 0.11.0
 
 Additive: no migration, nothing to do in any office. An office that has

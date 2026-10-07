@@ -54,6 +54,20 @@ lands = ["floor-plan/manifest.toml", "profile.md"]
 attended = true
 trigger = ["manual"]
 
+# The founding door for an office that exists (office init runs the same
+# code after it builds one): the profile's questions, the timezone written
+# to the floor plan when it resolves, the founding folder with the answers
+# kept in it, and the founding session out through office start. Lands
+# the folder's answers; the floor plan changes only when the zone does,
+# and the session is office start's.
+[verbs.found]
+kind = "script"
+built = true
+writes = ["desk/{folder}", "floor-plan/manifest.toml"]
+lands = ["desk/{folder}/answers.md"]
+attended = true
+trigger = ["manual"]
+
 [verbs.survey]
 kind = "script"
 built = true
@@ -356,8 +370,8 @@ trigger = ["before-sitting", "manual"]
 [verbs.founding]
 kind = "office-session"
 built = true
-ships = ["floor-plan"]
-writes = ["profile.md", "notepad", "floor-plan"]
+ships = ["desk/{folder}", "floor-plan"]
+writes = ["desk/{folder}", "profile.md", "notepad", "floor-plan"]
 lands = ["profile.md", "notepad/{date}-{slug}.md", "floor-plan/manifest.toml"]
 attended = true
 trigger = ["manual"]

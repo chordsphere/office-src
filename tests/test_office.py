@@ -86,9 +86,12 @@ class Env:
         return subprocess.run(["git", "-C", str(root), *args], env=self.env,
                               capture_output=True, text=True, check=True).stdout
 
-    def init(self, name="sample", **kw):
+    def init(self, name="sample", *flags, **kw):
+        """An office built by office init with --no-founding, unless flags
+        are given: the suite's offices are built, never founded through
+        the founding door, save in the tests of that door."""
         root = self.home / name
-        self.run("init", str(root), check=0, **kw)
+        self.run("init", str(root), *(flags or ("--no-founding",)), check=0, **kw)
         return root
 
     def found(self, root):
@@ -338,21 +341,17 @@ class TestInit(unittest.TestCase):
     def setUp(self):
         self.e = Env(self)
 
-    def test_builds_commits_and_prints_one_founding_line(self):
+    def test_builds_commits_and_with_no_founding_names_what_founds_it(self):
         root = self.e.home / "sample"
-        proc = self.e.run("init", str(root), check=0)
-        lines = proc.stdout.splitlines()
-        self.assertEqual(len(lines), 1, proc.stdout)
-        line = lines[0]
-        self.assertIn("bale pack --context", line)
-        self.assertIn(str(REPO / "doctrine"), line)
-        self.assertIn("bale pack --slug sample-founding --include floor-plan --write profile.md notepad floor-plan", line)
-        self.assertNotIn("--read-only", line)
-        self.assertIn("real timezone", line)
+        proc = self.e.run("init", str(root), "--no-founding", check=0)
+        self.assertEqual(proc.stdout, "Next: office found  (it asks the profile's questions and sends the founding "
+                                      "session out)\n")
+        self.assertNotIn("bale pack", proc.stdout + proc.stderr)
         for sp in ("desk", "filing-cabinet", "notepad", "suggestion-box", "drawer"):
             self.assertTrue((root / sp).is_dir(), sp)
         for sp in ("handbook", "calendar", "rolodex", "clipboards", "letterhead"):
             self.assertFalse((root / sp).exists(), sp)
+        self.assertEqual(list((root / "desk").iterdir()), [root / "desk" / ".keep"])
         manifest = tomllib.loads((root / "floor-plan/manifest.toml").read_text())
         self.assertEqual(manifest["office"]["built_from"], VERSION)
         self.assertEqual(manifest["office"]["migrated_to"], VERSION)
@@ -361,6 +360,15 @@ class TestInit(unittest.TestCase):
         self.assertEqual(len(self.e.git(root, "log", "--oneline").splitlines()), 1)
         self.assertEqual(self.e.git(root, "status", "--porcelain"), "")
         self.assertEqual((self.e.home / ".config/office-src/default-office").read_text().strip(), str(root))
+        # The install is never written: no outbox in its doctrine.
+        self.assertFalse((REPO / "doctrine" / ".bale").exists())
+
+    def test_no_founding_takes_no_answers(self):
+        proc = self.e.run("init", str(self.e.home / "w"), "--no-founding", "--purpose", "x")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("--no-founding sends no founding session, so it takes none of the profile's answers (--purpose)",
+                      proc.stderr)
+        self.assertFalse((self.e.home / "w").exists())
 
     def test_never_copies_tool_files_into_the_office(self):
         root = self.e.init()
@@ -617,43 +625,9 @@ class TestUpgrade(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn("uncommitted changes", proc.stderr)
 
-    def test_judgment_stops_at_a_renovation_pack_line(self):
-        office = self.e.fake_install(AFTER, [
-            (NEXT, "script", f"{NEXT}.sh", "Adds a handbook.", MIGRATION_ADD_SPACE),
-            (AFTER, "renovation", "Write the new Budget section of the profile.", "Profiles gain a Budget section.", None,
-             '[landed]\nprofile_sections = ["Budget"]\n'),
-        ])
-        proc = self.e.run("upgrade", cwd=self.root, bin_path=office, check=0)
-        self.assertEqual(self.stamp()["migrated_to"], NEXT)
-        lines = proc.stdout.splitlines()
-        self.assertEqual(len(lines), 1, proc.stdout)
-        self.assertIn(f"bale pack --slug upgrade-{AFTER.replace('.', '-')}", lines[0])
-        self.assertIn("Write the new Budget section of the profile.", lines[0])
-        self.assertIn("the profile has these sections written: Budget", lines[0])
-        self.assertIn("Leave the version stamp alone", lines[0])
-        self.assertNotIn("set migrated_to", lines[0])
-        self.assertIn("run office upgrade again", proc.stderr)
-        self.assertIn(f"- {NEXT}: Adds a handbook.", self.e.git(self.root, "log", "-1", "--format=%B"))
-
-    def test_rerun_stamps_a_renovation_only_once_its_declaration_holds(self):
-        office = self.e.fake_install(NEXT, [
-            (NEXT, "renovation", "Add the calendar space.", "Offices gain a calendar.", None,
-             '[landed]\npaths = ["calendar/plan.md"]\n'),
-        ])
-        self.e.run("upgrade", cwd=self.root, bin_path=office, check=0)
-        self.assertEqual(self.stamp()["migrated_to"], VERSION)
-        # The renovation session lands, without touching the stamp.
-        (self.root / "calendar").mkdir()
-        (self.root / "calendar/plan.md").write_text("# Plan\n")
-        self.e.git(self.root, "add", "-A")
-        self.e.git(self.root, "commit", "-qm", "renovation lands")
-        proc = self.e.run("upgrade", cwd=self.root, bin_path=office, check=0)
-        self.assertEqual(proc.stdout, "")
-        self.assertEqual(self.stamp()["migrated_to"], NEXT)
-        msg = self.e.git(self.root, "log", "-1", "--format=%B")
-        self.assertIn(f"office upgrade: {VERSION} to {NEXT}", msg)
-        self.assertIn(f"- {NEXT}: Offices gain a calendar. (renovation, checked)", msg)
-        self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
+    # The renovation door (a renovation sent out through office start, and
+    # the re-run that stamps it) is tests/test_founding_door.py's, where a
+    # fake bale packs and applies.
 
     def test_a_renovation_must_declare_what_landing_means(self):
         office = self.e.fake_install(NEXT, [
@@ -1110,7 +1084,7 @@ class TestCatalogs(unittest.TestCase):
         lands the cabinet alone and reopen the desk alone. tour writes a
         throwaway office it deletes before it ends, so it lands nothing."""
         v = verbs_catalog()["verbs"]
-        prose = {"init", "upgrade", "default", "start", "land", "tour"}
+        prose = {"init", "found", "upgrade", "default", "start", "land", "tour"}
         moves = {"close": ["filing-cabinet/{folder}"], "reopen": ["desk/{folder}"]}
         for name, verb in v.items():
             if verb["kind"] != "script" or name in DECLARED_KINDS:
@@ -1136,6 +1110,9 @@ class TestCatalogs(unittest.TestCase):
             elif name not in prose:
                 self.assertEqual(verb["lands"], verb["writes"], name)
         self.assertEqual(v["start"]["lands"], ["desk/{folder}/folder.md"])
+        # office found lands the answers it keeps; the floor plan changes
+        # only when the zone does, and the session is office start's.
+        self.assertEqual(v["found"]["lands"], ["desk/{folder}/answers.md"])
         # A HOLD lands nothing, so land guarantees nothing.
         self.assertEqual(v["land"]["lands"], [])
         # The tour's office is gone when it ends.
@@ -1318,8 +1295,9 @@ class TestInstall(unittest.TestCase):
 
     def test_installed_command_builds_an_office_reading_the_install(self):
         self.assertEqual(self.install().returncode, 0)
-        proc = self.e.run("init", str(self.e.home / "w"), bin_path=self.bindir / "office", check=0)
-        self.assertIn(str(self.prefix / "doctrine"), proc.stdout)
+        self.e.run("init", str(self.e.home / "w"), "--no-founding", bin_path=self.bindir / "office", check=0)
+        out = self.e.run("status", cwd=self.e.home / "w", bin_path=self.bindir / "office", check=0).stdout
+        self.assertIn(f"install:    office-src {VERSION} at {self.prefix}", out)
 
     def test_reinstall_replaces_and_uncommitted_work_is_left_out(self):
         self.assertEqual(self.install().returncode, 0)
