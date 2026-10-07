@@ -20,12 +20,15 @@ reaches it only through `office upgrade`. Every day: `office` to walk in
 to capture a line, `office slip` to drop a friction slip, `office start` to send a
 session out for a folder (it packs the session with bale, or opens a
 planner's bundle, records it in the folder and puts everything to attach
-in one out tray beside the opener; it surveys the machine first, and asks
-which of the project's ride-alongs go this time), `office land` to bring
+in one out tray beside the opener; it surveys the machine first, asks
+which of the project's ride-alongs go this time, offers the riders the
+pack carries, and asks bale whether a bundle can open before it writes
+anything), `office land` to bring
 it back (bale applies it in its repo, the office says how it ended, hands
 over the relay to carry, runs the project's after-land actions, records
-the planner's ratification and ends saying how each action went; given a
-read-only sitting, it ends the sitting), `office open`, `desk`, `close` and `reopen` for folders (numbered,
+the planner's ratification, closes the founding folder once the founding
+has landed, names any watch that fired, and ends saying how each action
+went; given a read-only sitting, it ends the sitting), `office open`, `desk`, `close` and `reopen` for folders (numbered,
 with statuses, gates and a History, and a desk that orders itself),
 `office week` for the calendar, and `office sessions` to record which
 sessions worked on a job and see how each one went. `office projects` names the
@@ -62,6 +65,26 @@ schedules nothing, never hands a session to a model and never carries
 pastes.
 
 ## Recent changes
+
+- 0.13.0 (session 2026-10-07-third-trip-001): the third trip.
+  `office start` asks bale (`bale open --check`) whether a bundle can
+  open before it writes anything, so a bundle bale cannot find stops it
+  with nothing opened, surveyed or packed; with `new` it asks where the
+  work lands, then bale, then opens the folder. A start that opened a
+  folder and failed after leaves the folder and prints the one line that
+  retries it. `office open` checks the title first, and `office start
+  new` offers a folder already on the desk as the one to start. `office
+  start` offers the riders its pack carries and carries the ones taken
+  into the folder (`--carry N`, `--carry none`). `office land` runs
+  `office watches check` after an applied landing and prints what fired,
+  and closes the founding folder when the founding lands with the
+  profile complete. The walk-in says when the install is behind the
+  source it scopes, and the Next line names `./install.sh` right after
+  the version cases (an order change, to ratify). A founding answer on a
+  terminal takes a paragraph. The suite runs side by side
+  (`tests/run.sh`; `--serial` for one process). bale 0.4.47 was checked
+  against the consumption manifest: nothing the office reads moved.
+  Additive: no migration, no office needs anything done.
 
 - 0.12.0 (session 2026-10-06-founding-door-002): the founding door.
   `office init` asks the profile's questions, one per section, each with
@@ -330,16 +353,33 @@ pastes.
 - After-land actions run only through `office land`. A session applied
   by hand with `bale apply` runs none; for office-src that means the
   install stays where it was (0.8.0's did, until `./install.sh` was run
-  by hand). `office status`'s `source:` line shows it; nothing makes the
-  office notice it on the walk-in yet.
+  by hand). `office status`'s `source:` line shows it, and since 0.13.0
+  so does the walk-in, with the Next line naming `./install.sh`, when the
+  office scopes that working copy (home-office scopes office-src).
 - ~~Founding still writes a timezone without checking it resolves.~~
   Struck in 0.12.0: init and found check the zone they write, and name
   the remedy for one that does not resolve. Moving an older floor plan
   to a zone's canonical name is still a hand edit of its timezone line,
   by design for a one-off.
-- The founding questions take one line each on a terminal; a longer
+- ~~The founding questions take one line each on a terminal; a longer
   answer is a flag (`--purpose "$(cat purpose.txt)"`), or the founding
-  session's conversation.
+  session's conversation.~~ Struck in 0.13.0: a blank line ends an
+  answer, so a paragraph is typed as it is.
+- `office start` cannot list bale's search directories (no `--json`
+  surface does; the slip is in the box), so for a bare bundle name it
+  asks bale with `bale open --check`, which says where it searched when
+  it cannot find the name. Since 0.13.0 that happens before anything is
+  written.
+- A rider's glob names no project unless it is written with one
+  (`office-src: bin/`), so a bare glob such as `bin/` rides the next
+  pack on any project whose forecast touches `bin/`, and a pack
+  forecasting a whole repo touches every bare glob. On a terminal each
+  is offered, default carry; say no to one that does not belong.
+- The office reads bale 0.4.45's captures as its floor and was checked
+  against 0.4.47 (session 2026-10-07-third-trip-001). One difference the
+  office does not read: `bale stats --json --work-class meta` in
+  office-src reported no class on 0.4.47, though it holds meta
+  sessions; a question for bale-src in that session's notes.
 
 ## Questions likely to come up
 

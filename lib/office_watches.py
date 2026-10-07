@@ -534,6 +534,11 @@ def check(rd, root, tz_name, catalog=None, filings=None):
             "problems": problems, "bad": sorted(bad), "page": have_page, "eyes": eyes}
 
 
+def fired_lines(result):
+    """The watch lines of a check whose verdict is fired, as printed."""
+    return [l for l in result["watch_lines"] if ": fired: " in l]
+
+
 def fired_records(day, fired):
     """The `fired` records --record appends, one per watch, ASCII."""
     out = []
@@ -616,6 +621,9 @@ def main(argv=None):
     p.add_argument("--tz", required=True, help="the office's timezone, for the days of sittings")
     p.add_argument("--record", action="store_true", help="append a fired record per watch that fired")
     p.add_argument("--changed", help="with --record: write the paths changed here, one per line")
+    p.add_argument("--fired-only", action="store_true",
+                   help="print only the lines of the watches that fired (office land's after-build run); "
+                        "nothing for an office with no watches register")
     p = sub.add_parser("catalog-check")
     a = ap.parse_args(argv)
     try:
@@ -628,7 +636,16 @@ def main(argv=None):
             print(f"share/watch-queries.toml: {len(cat.queries)} queries, every key declared")
             return 0
         dt.date.fromisoformat(a.day)
+        if a.fired_only and a.record:
+            log("error: --fired-only prints and --record records; office land runs the one, a person the other")
+            return 2
+        if a.fired_only and not (pathlib.Path(a.root) / REGISTER).is_file():
+            return 0
         result = check(ob.Reader(), a.root, a.tz)
+        if a.fired_only:
+            for line in fired_lines(result):
+                print(line)
+            return 3 if result["bad"] or result["problems"] else 0
         print("\n".join(result["lines"]))
         if a.record:
             changed, words = record(a.root, a.day, result["fired"])

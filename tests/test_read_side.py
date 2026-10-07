@@ -478,6 +478,7 @@ class TestProjectsTable(unittest.TestCase):
 
 
 class TestProjectsVerb(unittest.TestCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def setUp(self):
         self.e = Env(self)
         self.root = self.e.init()

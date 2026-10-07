@@ -4,6 +4,64 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.13.0
+
+Additive: no migration, nothing to do in any office. The third trip:
+small pieces around sending a session out and bringing one back.
+
+`office start` asks bale first. For a planner's bundle, start runs `bale
+open --check` where the bundle opens before it writes anything (a folder
+for `new`, the survey, the out tray, the session): bale finds a bare
+name through its own search, runs every gate it runs before an open and
+writes nothing, so a name it cannot find, a forecast path that is not
+there or a forecast an open session holds stops the start in bale's
+words with nothing written. A bundle the office can read is still
+refused in the office's own words first. With `new` and a bundle, where
+the work lands is asked before the folder is opened, and a project's
+bundle is checked before it. When start opened a folder itself and its
+session then does not go out, the folder stays and start's last lines
+name it and the one line that retries it with the answers given. `office
+open` (and `new` through it) checks the title first: a folder already on
+the desk is offered to `office start new` as the one to start, and a
+plain `office open` asks for another title at once, before size, lane or
+source.
+
+`office start` offers the riders the pack carries: the queued riders on
+the riders page whose glob its forecast touches (`office riders
+--forecast`), offered one by one on a terminal (default: carry), carried
+into the folder's Riders section before the pack so they ride in the
+request; piped, none is carried and each is named with `--carry N`.
+`--carry none` carries none. A rider's glob may name its project first
+(`office-src: bin/`), and then only a pack on that project carries it;
+`office riders --forecast ... --project NAME` reads it so.
+
+`office land`, after an applied landing, runs `office watches check`
+without recording and prints the watches that fired (nothing for an
+office with no register; it never fails a landing), and closes the
+founding folder, done, when the founding session landed with the profile
+complete, saying so (a profile still incomplete leaves it open).
+
+The walk-in names an install behind its source: when the office scopes
+the project the install came from and that project's HEAD is not the
+installed commit, the header says so in `office status`'s words, and the
+Next line names `(cd SOURCE && ./install.sh)`, right after the cases of
+an office out of step with the install and before a session out, since
+start and land run the install (an order change, to ratify; the
+doctrine's Next-line paragraph says it).
+
+A profile question on a terminal takes a paragraph: each line as typed,
+a blank line ending it, a blank first line skipping it.
+
+The suite runs side by side: `tests/run.sh` (and the response's
+validation) runs each module as its own process, four at a time, the
+terminal-driven classes serial in a lane of their own, one log per job;
+`--serial` runs it as one process.
+
+bale 0.4.47 checked against the consumption manifest: nothing the office
+reads moved, so the 0.4.45 floor and its captures stand; the manifest
+says which bale was checked, declares `open --check`, and notes unlock's
+new refusal line.
+
 ## 0.12.0
 
 Additive: no migration, nothing to do in any office. An office founded

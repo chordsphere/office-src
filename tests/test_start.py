@@ -407,6 +407,7 @@ class TestForecastOverlap(unittest.TestCase):
 # --- office slip -------------------------------------------------------------------------
 
 class TestSlip(unittest.TestCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def setUp(self):
         self.e = Env(self)
         self.root = self.e.init()
@@ -524,6 +525,7 @@ class TestNoteChecksTheFiledPage(unittest.TestCase):
 # --- what rides with a project, and what runs after it lands ------------------------------------
 
 class TestDeclarations(unittest.TestCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def setUp(self):
         self.e = Env(self)
         self.root = self.e.init()
@@ -826,6 +828,7 @@ class TestStartRefusals(StartCase):
 
 
 class TestStartOnATerminal(StartCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def test_the_wizard_asks_which_job_where_and_the_goal(self):
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start"], self.root, self.e.env, [
             (b"or new to open one (office start FOLDER):", "folder 1"),

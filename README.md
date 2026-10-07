@@ -66,7 +66,10 @@ PATH, and git's global config is switched off for it.
 Walking in shows the office's name, the date and time in its timezone
 (and that it is on UTC, when the floor plan's zone does not resolve;
 `office status` names what fixes that),
-whether it is founded and current, the sessions in flight in its projects
+whether it is founded and current (and, when the office scopes the
+project the install came from and that project has moved past the
+installed commit, an `Install: BEHIND: ...` line in the words `office
+status` uses), the sessions in flight in its projects
 and in the office itself with the folder each belongs to, how many
 folders are ready, parked and candidates and the first three ready ones,
 this week and its gaps, the last notepad lines and the slips, and the
@@ -77,6 +80,7 @@ walk-in and never written down. In the order they win:
 | the office | Next |
 |---|---|
 | is behind the install, or ahead of it | `office upgrade` (or `office status`, which names the versions; or `office land SID` while the renovation upgrade sent out is out) |
+| scopes the install's source, which has moved past the install | `(cd SOURCE && ./install.sh)` (start and land run the install, so until it is level they run the old office) |
 | has a session out | `office land SID` (when its response is in your downloads, land finds it) |
 | has desk moves a sitting decided, not yet run | `office moves` (until they run, the desk is not in the order the sitting decided) |
 | is unfounded | `office start FOLDER` for its founding folder (it goes out with the answers the folder keeps), or `office found` when no founding folder is on the desk |
@@ -148,8 +152,9 @@ paste the opener. The details are below.
 
 It finds the session the response answers, runs bale apply in the repo it
 belongs to, says how it ended, hands you the relay to carry, runs the
-project's after-land actions, and records the planner's ratification. The
-details are below.
+project's after-land actions, records the planner's ratification, closes
+the founding folder when the founding has landed, and names any watch
+that fired. The details are below.
 
 ### Build an office
 
@@ -165,9 +170,10 @@ built, and `--no-projects` skips the question; piped, it asks nothing.
 The office is unfounded until its founding session writes the profile,
 and init sends that session out itself. It asks the profile's questions,
 one per section of the profile's required shape (`share/profile-shape.toml`)
-in its order, each worded from the section's asks line; `?` explains
-what a good answer holds, and a plain return leaves the section for the
-founding session to ask about. The timezone you live in is asked with
+in its order, each worded from the section's asks line. An answer may run
+to several lines: each line is kept as typed, and a blank line ends it.
+`?` explains what a good answer holds, and a plain return at once leaves
+the section for the founding session to ask about. The timezone you live in is asked with
 Site, defaulting to the machine's when that resolves, checked against the
 zone database, and written to the floor plan when it resolves. Every
 question has a flag twin (`--purpose TEXT`, `--not-for TEXT`,
@@ -190,6 +196,9 @@ session writes the profile from them and asks only for what was skipped.
 `office found` is the same door for an office that exists and is
 unfounded: it keeps what a founding folder already holds and asks only
 for the rest, and `office start` on the founding folder goes through it.
+When the founding session lands applied and the profile is complete,
+`office land` closes the founding folder (done) and says so; a profile
+still incomplete leaves it open, and land says what founds it.
 When bale is not on the PATH, init builds the office, keeps the answers in
 the founding folder, says so and exits 1; the walk-in's Next line then
 names the command that sends it.
@@ -237,8 +246,11 @@ first `office init` on a machine sets it.
 
 On a terminal, `office open` walks you through what you left out: the
 title, the size, the lane and the source, four answers, each skippable
-with a plain return but the title. Type `?` at any question to have the
-field explained. Every question has a flag, so the same folder opens in
+with a plain return but the title. The title is checked as soon as it is
+given: a folder of that name already on the desk or in the filing cabinet
+is said at once, and another title asked for, before the other three
+questions. Type `?` at any question to have the field explained. Every
+question has a flag, so the same folder opens in
 one line, and piped input is never asked anything:
 
     office open fix-login --title "Fix the login" --size small \
@@ -422,6 +434,8 @@ the agenda are checked against their committed bytes before the commit
     office start plan-wave --in-office --read-only --goal "Plan the next wave"
     office start fix-login --on office-src 2026-10-05-fix-login.bale-bundle   # a planner's bundle
     office start fix-login --on office-src --goal "Fix it" --no-rides         # nothing declared rides this time
+    office start fix-login --on office-src --goal "Fix it" --carry 3          # rider 3 rides in the folder
+    office start new --on office-src 2026-10-05-fix-login.bale-bundle         # a new folder for a planner's bundle
 
 `office start` packs a session for a folder and gathers everything to
 attach into one out tray, `~/out-tray/SID`: the request, the doctrine,
@@ -461,6 +475,15 @@ word): it asks which job and where the work lands, as for a pack, then
 hands the bundle to `bale open` there. The bundle's pack line is the
 whole session, its goal, forecast and brief; the office adds nothing to
 it and says when it leaves out something the office would have carried.
+Before it writes anything (a folder for `new`, the survey, the tray),
+start asks bale whether it can open the bundle there, with `bale open
+--check`, which finds a bare name through bale's own search, runs every
+gate bale runs before an open, and writes nothing: a name bale cannot
+find, a forecast path that is not there, or a forecast another open
+session holds stops the start in bale's words, with nothing written. For
+`new`, where the work lands is asked first and the bundle checked before
+the folder is opened (a bundle that lands in the office is checked once
+its folder exists, since its forecast may name the folder).
 Where the work lands defaults to the one place whose tree holds every
 path the bundle names, and the question's `?` says why; a bundle whose
 paths no one place holds, or one sent where its paths are not, is
@@ -468,8 +491,27 @@ refused before bale runs, naming each path and where it is.
 When the bundle is a file the office can read, a forecast that overlaps
 an open session is refused before bale runs, in the office's words and
 naming the session, its folder and the overlap, as for a pack; given as a
-bare name bale's search finds, the bundle cannot be read first, so the
-office says so and leaves that refusal to bale.
+bare name bale's search finds, the bundle cannot be read first, and
+`bale open --check` says it in bale's words before anything is written.
+
+The riders a pack carries ride with it. When the office has a drafting
+table, start runs `office riders --forecast` over the pack's forecast
+before it packs: on a terminal it offers each queued rider on the riders
+page whose path glob the forecast touches (a plain return carries it),
+and carries the ones taken into the folder's Riders section (`office
+rider carry`), so they ride in the request. Piped, it carries none and
+names each that matched; `--carry N` carries rider N without asking, and
+`--carry none` carries none. A rider's glob may name its project first,
+as a lane does (`office-src: bin/`), so only a pack on that project
+carries it.
+
+`new` opens the folder through `office open`'s questions, title first:
+a title already on the desk is offered as the folder to start, before
+anything else is asked. When start opened the folder itself and the
+session then does not go out, the folder stays (the job was asked for),
+and start's last lines name it and print the one line that retries it
+with the answers already given, for instance `office start
+2026-10-06-third-trip --on office-src 2026-10-07-third-trip.bale-bundle`.
 When the brief carries a page of the sitting's words between
 `--- NOTEPAD PAGE BEGIN notepad/DATE-SLUG.md ---` and
 `--- NOTEPAD PAGE END ---`, `office start` files that page in the
@@ -509,11 +551,17 @@ that rerun it and the rest. Then it asks whether the planner ratified the
 session's judgment calls: yes, yes except TEXT, or not now
 (`--ratified`, `--except TEXT`, `--not-now`), and records the answer in
 the folder. Its last lines say what became of each action (ran, failed,
-not run), or that the project declares none. The actions run only
+not run), or that the project declares none. Before those last lines it
+runs `office watches check` (it records nothing) and prints the watches
+that fired, since a landing is what changes the counts a watch reads; an
+office with no watches register prints nothing for it, and the check
+never fails a landing. When the session was the founding session and the
+profile is now complete, it closes the founding folder, done. The actions run only
 through `office land`: a session applied by hand with `bale apply` runs
 none, so office-src's own `./install.sh` does not run, and `office
 status`'s `source:` line then says the install is behind its working
-copy, with the line that brings it level.
+copy, with the line that brings it level; when the office scopes that
+working copy, the walk-in says it too, and its Next line is that line.
 
 A read-only sitting the office sent out lands nothing; when it is over,
 `office land SID` (or the folder) ends it: `bale unlock` in its repo,
@@ -592,7 +640,7 @@ matches the floor plan.
 | templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), each made into a page the first time a verb writes it |
 | migrations/ | one file per breaking release; format in migrations/README.md |
 | RELEASES.md | release notes |
-| tests/ | the test suite |
+| tests/ | the test suite; run.sh (with runner.py) runs it side by side |
 
 Nothing here is copied into an office except the profile stub, which is
 the office's own from the moment it is written.
@@ -619,7 +667,26 @@ twice.
 
 ## Tests
 
-    PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
+    tests/run.sh                 # the whole suite, side by side (the default)
+    tests/run.sh --serial        # the whole suite in one process, as before 0.13.0
+    tests/run.sh test_land       # one module, with its share of the serial group
+
+`tests/run.sh` runs each test module as its own process, four at a time
+(`--jobs N`, or `OFFICE_TEST_JOBS`), since the modules share nothing and
+most of a run is git and `office` subprocesses waiting on each other. The
+classes that drive a terminal (the tour, the wizards, the terminal
+starts) name themselves with `serial_group = "terminal"` and run one
+after another in one process of their own, a lane beside the modules,
+since their waits are timing-sensitive; a test keeps that list honest.
+The plan is held to `unittest discover`'s count before anything runs, so
+the whole suite still runs, each test as often as discover runs it. Each
+job writes one log (`unittest -v`'s output) and the summary names every
+job, its count, its time and its log, and for a job that failed, the
+failing tests and the log to read (`--logs DIR` keeps them somewhere
+known; by default a new directory under the temp directory). It exits 0
+when every test passed, 1 when one failed, 2 when it could not run.
+`--serial` is today's single process, `python3 -m unittest discover -s
+tests -v`, which still works as it always did.
 
 The suite builds offices, installs and synthetic migrations under
 temporary directories and never touches your home directory or offices.
@@ -629,4 +696,5 @@ the development record, and refuses anything it did not capture; office
 start's tests use a fake that packs, every line of it built from the
 packs a probe captured, and office land's a fake that also applies, holds,
 refuses and opens bundles, built from the applies and opens a probe
-captured.
+captured, and runs `bale open --check` from the checks a later probe
+captured on bale 0.4.47.

@@ -274,19 +274,22 @@ class TestInitPiped(DoorCase):
 
 
 class TestInitOnATerminal(DoorCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def test_it_asks_each_section_explains_skips_and_checks_the_zone(self):
         argv = [str(self.e.office_bin), "init", str(self.root), "--no-projects", "--audiences", "Given as a flag."]
         code, seen = on_a_terminal(self, argv, self.e.home, self.e.env, [
-            (b"Purpose: why this office exists and what jobs come here (--purpose) [return skips]:", "?"),
-            (b"Name the kinds of job", "My own tools."),
+            # Since 0.13.0 an answer may be a paragraph: a blank line ends it.
+            (b"Purpose: why this office exists and what jobs come here (--purpose) [several lines welcome; "
+             b"a blank line ends the answer, and return at once skips]:", "?"),
+            (b"Name the kinds of job", "My own tools.\n"),
             (b"Not for: what this office is not for", ""),
-            (b"Site: machine, root, timezone", "the laptop, pushed nowhere"),
+            (b"Site: machine, root, timezone", "the laptop, pushed nowhere\n"),
             (b"The timezone you live in, a zone name such as America/Chicago (--timezone) [America/Chicago]:",
              "America/Indianapolis"),
             (b"give another zone, or the same one again to keep it as given", "America/Indiana/Indianapolis"),
-            (b"House rules: this office's own rules", "None beyond the four."),
+            (b"House rules: this office's own rules", "None beyond the four.\n"),
             (b"When to open a session here: this office's threshold", ""),
-            (b"Spaces in use: which spaces this office uses", "Only the base."),
+            (b"Spaces in use: which spaces this office uses", "Only the base.\n"),
         ])
         self.assertEqual(code, 0, seen)
         self.assertNotIn("Audiences: who may read", seen, "a flag answered it")
@@ -341,11 +344,16 @@ class TestOfficeFound(DoorCase):
         sid = self.sid_from(proc.stdout)
         response_tarball(self.downloads, sid, {"profile.md": filled_profile("home"),
                                                f"notepad/{sid[:10]}-founding.md": "# His words\n"})
-        out = self.e.run("land", "--not-now", cwd=self.root, check=0).stdout
-        self.assertIn(f"Landed: {sid} is applied in this office", out)
+        folder = self.founding_folder()
+        proc = self.e.run("land", "--not-now", cwd=self.root, check=0)
+        self.assertIn(f"Landed: {sid} is applied in this office", proc.stdout)
         self.assertNotIn("UNFOUNDED", self.e.run(cwd=self.root, check=0).stdout)
-        self.assertTrue(self.walk_in().startswith(f"Next: office start {self.founding_folder().name}  (folder 1 is "
-                                                  "open and no session is out for it"))
+        # Since 0.13.0 the founding folder closes with the founding, so the
+        # Next line no longer names it (the third trip).
+        self.assertIn("so its folder is closed", proc.stderr)
+        self.assertFalse(folder.exists())
+        self.assertTrue((self.root / "filing-cabinet" / folder.name).is_dir())
+        self.assertFalse(self.walk_in().startswith(f"Next: office start {folder.name}"))
         proc = self.e.run("found", cwd=self.root)
         self.assertEqual(proc.returncode, 1)
         self.assertIn("this office is founded", proc.stderr)

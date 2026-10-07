@@ -216,6 +216,7 @@ class TestArrival(unittest.TestCase):
 # --- riders ---------------------------------------------------------------------------
 
 class TestRiders(unittest.TestCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def setUp(self):
         self.o = Office(self)
         self.o.open("one", "--size", "small")

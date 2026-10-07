@@ -1,0 +1,24 @@
+{
+ "argv": [
+  "open",
+  "--check",
+  "2026-01-01-office-probe-nopath.bale-bundle"
+ ],
+ "cwd": "TMP/proj",
+ "stdin": "closed",
+ "exit": 1,
+ "stdout": [
+  "[bale] bale open --check: rehearsing planner bundle TMP/dl/2026-01-01-office-probe-nopath.bale-bundle against the live tree — nothing will be written",
+  "[bale] member brief: explicit null (not shipped)",
+  "[bale] member checkpoint: explicit null (not shipped)"
+ ],
+ "stdout_sha256": [
+  "687df6dfc248116c67b53f2c20b9ccbaa5b2822ce110ee4d1a73a18c278db1f4",
+  "4394d5b2d7ced46f5822d086d682062149173abfc8ad13e7deac03838f918a66",
+  "db81712840ec2ee2200928f0f39f6f60149040e45a51b8ebad1355b1c0acc153"
+ ],
+ "stderr": [
+  "[bale] error: --write path does not exist: nope. Forecast entries name existing files or directories (ADR-0014's rule, held on the forecast surface); to forecast new files, name the directory they will land under."
+ ],
+ "captured": "probe of session 2026-10-07-third-trip-001, run on the machine office-src is built on (WSL2, bale 0.4.47) on 2026-10-07, in a throwaway repo under /tmp/office-probe.XXXXXX (removed); the probe printed that directory as TMP, kept here as it printed it"
+}

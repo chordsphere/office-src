@@ -1180,12 +1180,20 @@ def founding_folder(groups):
     return sorted(found, key=lambda f: (f.get("number") or 0, f["name"]))[-1]
 
 
-def next_move(skew, founded, out, groups, projects, slips):
+def next_move(skew, founded, out, groups, projects, slips, behind=None):
     """(command, why) for the walk-in's Next line, from the office's state:
     skew (current, behind, ahead or unreadable), founded (bool), out
     (sessions_to_land's list), groups (classify_desk's), projects (the
-    [projects] entries, or None for no table) and slips (a count). A pure
-    function, so every state is testable without an office."""
+    [projects] entries, or None for no table), slips (a count) and behind
+    (install_behind's dict when the install is behind a source this
+    office scopes, else None). A pure function, so every state is
+    testable without an office.
+
+    The order (doctrine section 7, the walk-in): the office out of step with the
+    install, then the install behind its source, then a session out,
+    the moves, the founding, the desk. The install comes before a
+    session out because office start and office land run the install:
+    behind its source, they would run the old office."""
     if skew == "ahead":
         return ("office status", "this office was migrated past the installed office-src; install a newer one "
                                  "(office status names both versions)")
@@ -1200,6 +1208,11 @@ def next_move(skew, founded, out, groups, projects, slips):
                                   "change it refuse until it is upgraded")
     if skew != "current":
         return ("office status", "this office's version stamp could not be read; office status says why")
+    if behind:
+        return (f"(cd {shell_quote(behind['source'])} && ./install.sh)",
+                f"the installed office-src is behind its source, which this office scopes as {behind['project']} "
+                f"(installed {behind['commit']}; the source is at {behind['head']}, office-src {behind['version']}); "
+                "office start and office land run the install, so until it is level they run the old office")
     if out:
         s = out[0]
         where = "this office" if s["label"] == OFFICE_LABEL else s["label"]
@@ -1266,8 +1279,13 @@ def next_line(rd, office_root, skew, founded, groups):
     out, problems = sessions_to_land(rd, office_root)
     for p in problems:
         debug(f"the Next line could not read every repo: {p}")
+    try:
+        behind = install_behind(office_root)
+    except (OSError, oh.HelperError) as exc:
+        debug(f"the install could not be compared with its source: {exc}")
+        behind = None
     command, why = next_move(skew, founded, out, groups, office_projects(office_root),
-                             count_slips(office_root))
+                             count_slips(office_root), behind)
     return f"Next: {command}  ({why})"
 
 
@@ -1953,6 +1971,208 @@ def digest_before_pack(office_root):
         log(f"warning: the digest before the pack exited {proc.returncode}; the sitting reads the page as it was")
 
 
+def pack_place(office_root, where, project):
+    """The directory a start packs in: the office, or the project's repo
+    (refusing, as start does, a project the office cannot pack)."""
+    office_root = pathlib.Path(office_root).resolve()
+    if where == "office":
+        return office_root
+    manifest = oh.read_toml(office_root / "floor-plan" / "manifest.toml")
+    projects = {p["name"]: p for p in oh.read_projects(manifest) or []}
+    entry = projects.get(project)
+    if entry is None:
+        raise StartError([f"no project named {project} in this office's [projects] "
+                          f"(it lists: {', '.join(sorted(projects)) or 'none'})"])
+    if entry["problem"]:
+        raise StartError([f"{project}: {entry['problem']}"])
+    ok, why = oh.check_project_dir(entry["resolved"])
+    if not ok:
+        raise StartError([f"{project} cannot be packed: {why}"])
+    return entry["resolved"]
+
+
+def overlap_lines(rd, office_root, pack_dir, where, project, forecast, bundle=None, supersedes=None):
+    """The office's own words for the predictable refusal, or []: the open
+    sessions whose forecasts overlap this one (a split's superseded
+    session aside), each with the folder that records it, and what clears
+    the way."""
+    clash = [c for c in open_overlaps(rd, pack_dir, forecast) if c[0] != supersedes]
+    if not clash:
+        return []
+    naming = folders_naming(office_root)
+    label = "this office" if where == "office" else project
+    lines = [f"the bundle {pathlib.Path(bundle).name} forecasts "
+             + (", ".join(forecast) if forecast else "the whole tree")] if bundle else []
+    for sid, theirs, hit in clash:
+        folders = ", ".join(naming.get(sid, [])) or "no folder records it"
+        lines.append(f"{sid} is open in {label} ({folders}); its forecast "
+                     f"({', '.join(theirs) if theirs else 'the whole tree'}) overlaps this one at {', '.join(hit)}")
+    first = clash[0][0]
+    landing = (f"land it first (office land {first}), or close it if it was abandoned "
+               f"(bale unlock {first}, in {pack_dir})")
+    if where == "office" and any("notepad" in h for _, _, h in clash):
+        lines.append("office sessions take turns on the notepad: " + landing
+                     + (", or ask the planner for a read-only bundle" if bundle else
+                        ", or start this one --read-only"))
+    else:
+        lines.append(landing + (", or ask the planner for a bundle whose forecast does not overlap it" if bundle
+                                else ", or narrow this one's forecast with --write"))
+    return lines
+
+
+def bundle_precheck(rd, office_root, where, project, bundle):
+    """For a bundle the office can read (a file here), the refusals office
+    start says in its own words before bale is asked anything: a path the
+    pack line names that is not in the tree it opens in, and an open
+    session whose forecast overlaps the bundle's. A bundle it cannot read
+    is bale's to judge (check_bundle runs bale open --check next)."""
+    argv = bundle_pack_argv(bundle)
+    if argv is None:
+        return
+    pack_dir = pack_place(office_root, where, project)
+    try:
+        b_inc, b_wr, _ = bundle_paths(argv)
+        forecast, supersedes = bundle_forecast(argv)
+    except ValueError:
+        return
+    named = list(dict.fromkeys(b_inc + b_wr))
+    label = "office" if where == "office" else project
+    places = bundle_places(office_root, named)
+    mine = next((m for lab, _, m in places if lab == label), None)
+    if mine is None:
+        mine = [x for x in named if not (pathlib.Path(pack_dir) / x.strip("/")).exists()]
+    if mine:
+        raise StartError([f"the bundle {pathlib.Path(bundle).name} names paths that are not in "
+                          f"{place_words(label)}'s tree, so it cannot open there; nothing ran"]
+                         + bundle_nowhere_lines(bundle, named, places, chosen=label))
+    lines = overlap_lines(rd, office_root, pack_dir, where, project, forecast, bundle, supersedes)
+    if lines:
+        raise StartError(lines)
+
+
+def check_bundle(rd, office_root, where, project, bundle):
+    """bale open --check for a bundle, where it would open, before office
+    start opens a folder, commits a survey or fills a tray: bale resolves
+    a bare name through its own search (cwd first, then its search
+    directories), verifies the bundle and runs every gate it runs before
+    an open, and writes nothing (the third-trip probe found it so on bale
+    0.4.47: a missing name, a forecast path that does not exist and a
+    forecast overlapping an open session each refuse, exit 1, with
+    nothing written). Returns the path bale found the bundle at (None when
+    its report does not say); raises StartError with bale's own words."""
+    bundle_precheck(rd, office_root, where, project, bundle)
+    pack_dir = pack_place(office_root, where, project)
+    spec = rd.consumption.surface("open_check")
+    try:
+        proc, shown, _ = rd.invoke("open_check", pack_dir, timeout=PACK_TIMEOUT, whole_why=True, bundle=bundle)
+    except BaleError as exc:
+        place = "in the office" if where == "office" else f"on {project}"
+        raise StartError([f"bale cannot open the bundle {bundle} {place} ({pack_dir}), so start stopped before "
+                          f"anything was written: {exc}"])
+    found = None
+    for line in proc.stdout.splitlines():
+        if line.startswith(spec["found_line"]):
+            found = line[len(spec["found_line"]):].split(" against ", 1)[0].strip()
+    debug(f"{shown} in {pack_dir}: passed; bale found the bundle at {found or '(its report does not say)'}")
+    return found
+
+
+def start_forecast(office_root, folder, where, writes=(), includes=(), read_only=False, bundle=None):
+    """The forecast a start's pack carries, as start() works it out: []
+    for a read-only session, ["."] for the whole tree, else its paths;
+    None when the office cannot read it (a bundle given by a bare name
+    bale's search finds, or one whose pack line does not read)."""
+    office_root = pathlib.Path(office_root).resolve()
+    if bundle:
+        argv = bundle_pack_argv(bundle)
+        if argv is None:
+            return None
+        try:
+            forecast, _ = bundle_forecast(argv)
+        except ValueError:
+            return None
+        return ["."] if forecast is None else forecast
+    if read_only:
+        return []
+    writes = [w.strip().rstrip("/") or "." for w in writes if w.strip()]
+    if where == "office":
+        if any(w in ("", ".") for w in writes):
+            return ["."]
+        return [folder] + (["notepad"] if (office_root / "notepad").is_dir() else []) + writes
+    return writes or [i.strip().rstrip("/") for i in includes if i.strip()] or ["."]
+
+
+def start_riders(office_root, folder, where, project, writes=(), includes=(), read_only=False, bundle=None):
+    """(forecast, riders): the queued riders on the drafting table's
+    riders page that a start's pack carries (office riders --forecast
+    over the pack's forecast), for office start to offer before it packs.
+    forecast is None when the office cannot read it, and then no rider
+    is offered."""
+    forecast = start_forecast(office_root, folder, where, writes, includes, read_only, bundle)
+    if not forecast:
+        return forecast, []
+    return forecast, od.riders_for_forecast(office_root, forecast, project if where == "project" else None)
+
+
+# --- the install against its source -----------------------------------------------------
+
+def shell_quote(word):
+    """The way bin/office's shq quotes a word: always single quotes."""
+    return "'" + word.replace("'", "'\\''") + "'"
+
+
+def install_behind(office_root, install=None):
+    """When this office scopes the project the running install came from
+    (INSTALLED's source:) and that repo's HEAD is not the installed
+    commit: {source, commit, head, version, words}, words being the
+    sentence office status's source line says (BEHIND: ...). None
+    otherwise: no INSTALLED stamp (a working copy), a source this office
+    does not scope, a source that is not a git work tree, or one level
+    with the install."""
+    stamp = pathlib.Path(install or INSTALL) / "INSTALLED"
+    if not stamp.is_file():
+        return None
+    fields = {}
+    for line in stamp.read_text(encoding="utf-8", errors="replace").splitlines():
+        key, sep, value = line.partition(": ")
+        if sep and key not in fields:
+            fields[key] = value.strip()
+    src, commit = fields.get("source"), fields.get("commit")
+    if not src or not commit:
+        return None
+    try:
+        src_real = pathlib.Path(src).resolve()
+    except OSError:
+        return None
+    scoped = [p for p in office_projects(office_root) or []
+              if not p["problem"] and pathlib.Path(p["resolved"]).resolve() == src_real]
+    if not scoped:
+        return None
+
+    def git_out(*args):
+        try:
+            p = subprocess.run(["git", "-C", src, *args], capture_output=True, text=True, timeout=BALE_TIMEOUT,
+                               stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            debug(f"git {' '.join(args)} in {src}: {exc}")
+            return None
+        return p.stdout.strip() if p.returncode == 0 else None
+
+    head = git_out("rev-parse", "HEAD")
+    if head is None:
+        return None
+    have = git_out("rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}")
+    if have == head:
+        return None
+    short = git_out("rev-parse", "--short", "HEAD") or head[:7]
+    version = (git_out("show", "HEAD:VERSION") or "").splitlines()
+    version = version[0] if version else "?"
+    words = (f"BEHIND: the install is {commit}, and {src} is now at {short} (office-src {version}); "
+             f"(cd {shell_quote(src)} && ./install.sh) brings the install level")
+    return {"source": src, "commit": commit, "head": short, "version": version, "words": words,
+            "project": scoped[0]["name"]}
+
+
 def open_bundle(rd, pack_dir, bundle):
     """Run bale open for a planner bundle in pack_dir, stdin closed, so
     no question is answered for the occupant; a pre-answered intent in
@@ -2070,8 +2290,9 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             forecast = None
             why = ("it is a name bale's search finds, not a file here" if not pathlib.Path(bundle).exists()
                    else "its pack line could not be read")
-            log(f"the office cannot read this bundle's forecast ({why}), so it cannot check it against the "
-                "sessions open there; if they overlap, bale's own words below say so")
+            log(f"the office cannot read this bundle's forecast ({why}); bale open --check ran its gates "
+                "against the sessions open there before anything was written, and bale's own words say so if "
+                "the open refuses")
         else:
             try:
                 forecast, bundle_supersedes = bundle_forecast(argv)
@@ -2095,30 +2316,10 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
 
     # The predictable refusal, said plainly before bale is asked: two
     # sessions whose forecasts overlap never run beside each other.
-    naming = folders_naming(office_root)
-    if bundle and argv is None:
-        clash = []
-    else:
-        clash = [c for c in open_overlaps(rd, pack_dir, forecast) if c[0] != bundle_supersedes]
-    if clash:
-        label = "this office" if where == "office" else project
-        lines = [f"the bundle {pathlib.Path(bundle).name} forecasts "
-                 + (", ".join(forecast) if forecast else "the whole tree")] if bundle else []
-        for sid, theirs, hit in clash:
-            folders = ", ".join(naming.get(sid, [])) or "no folder records it"
-            lines.append(f"{sid} is open in {label} ({folders}); its forecast "
-                         f"({', '.join(theirs) if theirs else 'the whole tree'}) overlaps this one at {', '.join(hit)}")
-        first = clash[0][0]
-        landing = (f"land it first (office land {first}), or close it if it was abandoned "
-                   f"(bale unlock {first}, in {pack_dir})")
-        if where == "office" and any("notepad" in h for _, _, h in clash):
-            lines.append("office sessions take turns on the notepad: " + landing
-                         + (", or ask the planner for a read-only bundle" if bundle else
-                            ", or start this one --read-only"))
-        else:
-            lines.append(landing + (", or ask the planner for a bundle whose forecast does not overlap it" if bundle
-                                    else ", or narrow this one's forecast with --write"))
-        raise StartError(lines)
+    if not (bundle and argv is None):
+        lines = overlap_lines(rd, office_root, pack_dir, where, project, forecast, bundle, bundle_supersedes)
+        if lines:
+            raise StartError(lines)
 
     # Every check has passed: survey the machine again before anything
     # is packed, so the hung survey this session reads is current, and a
@@ -2764,6 +2965,17 @@ def main(argv=None):
                    help="a declared ride-along that stays home for this session (repeatable)")
     p.add_argument("--install-file", action="append", default=[],
                    help="an install-relative file that rides beside the request (repeatable)")
+    p = sub.add_parser("bundle-check", help="bale open --check where the bundle would open; the path bale found")
+    p.add_argument("office"); p.add_argument("--where", choices=("office", "project"), required=True)
+    p.add_argument("--project"); p.add_argument("--bundle", required=True)
+    p = sub.add_parser("start-riders", help="the riders a start's pack carries: N<tab>TITLE<tab>RIDES<tab>TOUCHED")
+    p.add_argument("office"); p.add_argument("folder", help="desk/NAME")
+    p.add_argument("--where", choices=("office", "project"), required=True); p.add_argument("--project")
+    p.add_argument("--include", action="append", default=[]); p.add_argument("--write", action="append", default=[])
+    p.add_argument("--read-only", action="store_true"); p.add_argument("--bundle")
+    p = sub.add_parser("install-behind", help="the BEHIND sentence when this office scopes the install's source "
+                                              "and it moved past the install; nothing otherwise")
+    p.add_argument("office")
     p = sub.add_parser("bundle-where", help="where a bundle opens by default: DEFAULT<tab>WHY, or nothing")
     p.add_argument("office"); p.add_argument("--bundle", required=True); p.add_argument("--lane")
     p = sub.add_parser("land-out", help="the sessions out: sid, where, folders; one per line")
@@ -2784,6 +2996,40 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.cmd.startswith("land-"):
         return land_main(a)
+    if a.cmd == "bundle-check":
+        try:
+            found = check_bundle(Reader(), a.office, a.where, a.project, a.bundle)
+        except StartError as exc:
+            for line in exc.lines:
+                log(f"error: {line}")
+            return 1
+        except (oh.HelperError, BaleError, OSError) as exc:
+            log(f"error: {exc}")
+            return 1
+        print(found or "")
+        return 0
+    if a.cmd == "start-riders":
+        try:
+            forecast, riders = start_riders(a.office, a.folder, a.where, a.project, a.write, a.include,
+                                            a.read_only, a.bundle)
+        except (oh.HelperError, OSError, ValueError) as exc:
+            log(f"warning: the riders this pack carries could not be read ({exc}); none is offered")
+            return 0
+        if forecast is None:
+            say = log if (pathlib.Path(a.office) / od.SPACE / "riders.md").is_file() else debug
+            say("the office cannot read this bundle's forecast, so it offers no riders for it")
+        for r in riders:
+            print(f"{r['number']}\t{r['title']}\t{r['rides']}\t{', '.join(r['touched'])}")
+        return 0
+    if a.cmd == "install-behind":
+        try:
+            behind = install_behind(a.office)
+        except (OSError, oh.HelperError) as exc:
+            debug(f"the install could not be compared with its source: {exc}")
+            behind = None
+        if behind:
+            print(behind["words"])
+        return 0
     if a.cmd == "bundle-where":
         try:
             found = bundle_where(a.office, a.bundle, a.lane or None)
