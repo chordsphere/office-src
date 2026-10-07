@@ -589,16 +589,56 @@ add with `-m`; it never copies what bale records about the session.
 
 ### The projects an office scopes, and what bale records about them
 
-    office projects                          # the projects this office scopes
+    office projects                          # the projects this office scopes, and where each is
     office projects add office-src ~/office-src   # add one (asks on a terminal for what it was not given)
+    office projects add api ~/development/api --host me@workhost --prepare   # one on another host
+    office projects set api --shell "ssh me@workhost docker exec -i -u me box bash -lc"
+    office projects set api --connect "start the VPN client, then retry"
     office projects set office-src --ride ~/other-repo/docs --after-land ./install.sh
     office projects --ledger                 # trust ledger per project and work class
     office projects --landed bin/office      # the last applied session that landed a path
     office projects office-src --versions    # the version trail of one project
 
 The floor plan's [projects] table names each project and the path of its
-repo on this machine; `office projects add` writes it, and checks the
-path is the top of a git repo bale runs in. A project may declare what
+repo; `office projects add` writes it, and checks the path is the top of
+a git repo bale runs in. The repo is on this machine, or on a host the
+office reaches over ssh: `--host HOST` (user@host, or an ssh-config
+alias) puts it there, the path is then the path as that host's shell
+sees it, `--shell PREFIX` is the command prefix that runs one command
+where the repo is (default `ssh HOST bash -lc`; a repo inside a
+container is reached with something like `ssh HOST docker exec -i -u
+USER NAME bash -lc`; the office appends exactly one shell-quoted
+command), and `--connect TEXT` is printed when the host does not answer,
+in your own words for what brings it up (default `connect to HOST`). On
+a terminal, add asks where the repo is after the path, then the shell
+and the connect line with their defaults shown; `office projects set
+NAME` offers to keep them, and `--on-this-machine` takes a project off
+its host. Before any step that needs the host the office makes one
+short connection, never a prompt; a host that does not answer is one
+line naming the project, the host, the connect text and the command to
+rerun, and the command stops there, while the walk-in and `office
+status` print that line in the project's place and render the rest. The
+read side runs bale through that shell: the walk-in's In flight, `office
+sessions FOLDER`, `--ledger`, `--landed`, `--versions`, `office watches
+check` and the digest all read a hosted project, in a few connections
+per command (each round of reads travels as one batch), and
+`OFFICE_DEBUG=1` shows every shell call. `office status` says whether
+each host answers and which bale is there against the read side's
+floor, with the remedy when it is behind. Sending a session to a hosted
+project and landing it there is the next release's: `office start` and
+`office land` refuse before anything is written.
+
+A clone bale has not run in (no `.bale/`, no `bale.toml`) is refused
+unless it is prepared: `--prepare` (offered on a terminal) writes the
+four paths bale makes (`.bale/`, `bale.toml`, `.baleignore` and bale's
+record directory) into the repo's `.git/info/exclude` and an empty
+`bale.toml`, here or through the host's shell, so `git status` stays
+clean, `git ls-files` is unchanged, and the repo's own `.gitignore`,
+which belongs to its audience, is never touched; `bale config init`
+there fills the `bale.toml` in. What the office writes into a project's
+working copy is only ever outside what git tracks.
+
+A project may declare what
 rides beside every session on it (`--ride PATH`, repeatable: a directory
 inside another repo, a whole repo, or a file) and what runs in its repo
 after one of its sessions lands (`--after-land CMD`, repeatable; `office
@@ -627,6 +667,7 @@ matches the floor plan.
 | bin/office | the command (bash) |
 | lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library) |
 | lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after |
+| lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, and the check and the preparing of a clone for bale, here or there |
 | doctrine/OFFICE.md | how every office works |
 | doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |
 | share/spaces.toml | every space an office can have; the base ones are the default floor plan; a space files itself whole or as a list of paths |
@@ -690,9 +731,12 @@ tests -v`, which still works as it always did.
 
 The suite builds offices, installs and synthetic migrations under
 temporary directories and never touches your home directory or offices.
-bale need not be installed: the read side's tests put a fake bale first
+bale need not be installed, and no real ssh ever runs: the read side's tests put a fake bale first
 on the PATH that replays real bale output captured by a probe, kept in
-the development record, and refuses anything it did not capture; office
+the development record, and refuses anything it did not capture; the
+hosted-project tests put a fake ssh first on the PATH too, which asserts
+the target and the prefix it was handed and runs the one command locally
+against a throwaway repo, so the fake bale answers through it; office
 start's tests use a fake that packs, every line of it built from the
 packs a probe captured, and office land's a fake that also applies, holds,
 refuses and opens bundles, built from the applies and opens a probe

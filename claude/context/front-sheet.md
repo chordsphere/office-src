@@ -66,6 +66,26 @@ pastes.
 
 ## Recent changes
 
+- 0.14.0 (session 2026-10-07-project-on-host-003): a project on another
+  host, the first half of "a project on another machine". A [projects]
+  entry may declare `host` (an ssh target), `shell` (the prefix that
+  runs one command where the repo is, default `ssh HOST bash -lc`,
+  through a container when the repo sits inside one) and `connect` (the
+  occupant's words for what brings the host up), written by `office
+  projects add` and `set`, wizard and flags. The read side runs every
+  bale and git read of such a project through that shell, batched per
+  round, so the walk-in, `office sessions`, the ledger, landed and
+  versions renderings, watches check and the digest all read it; one
+  reach check per host and command, bounded, and a host that does not
+  answer is one line in the project's place with the connect text and
+  the command to rerun. `office status` says whether each host answers
+  and which bale is there against the floor. `office projects add
+  --prepare` (offered on a terminal) sets a clone up for bale without a
+  trace in git: the four paths bale makes go into `.git/info/exclude`,
+  an empty `bale.toml` is written, and the repo's `.gitignore` is never
+  touched. `office start` and `office land` refuse a hosted project
+  until the next release. New module lib/office_host.py; the suite's
+  fake ssh runs no network.
 - 0.13.0 (session 2026-10-07-third-trip-001): the third trip.
   `office start` asks bale (`bale open --check`) whether a bundle can
   open before it writes anything, so a bundle bale cannot find stops it
@@ -380,6 +400,21 @@ pastes.
   office does not read: `bale stats --json --work-class meta` in
   office-src reported no class on 0.4.47, though it holds meta
   sessions; a question for bale-src in that session's notes.
+- A project on another host is read, reached and prepared (0.14.0), but
+  not yet packed or landed: `office start` and `office land` refuse one
+  before anything is written, until the release that sends a session
+  through the shell and brings it back (packing there, opening a
+  bundle there, applying there, the tarballs carried, the after-land
+  actions there). An attended bale step through a shell needs a tty,
+  which the `shell` prefix does not give (`ssh -tt` and `docker exec
+  -it` do, with stdin left open); that seam is the next release's. The
+  host's bale was 0.4.40 where this was built, below the read side's
+  floor; `office status` names the remedy, and the occupant runs it.
+- Through a login shell on a host, each connection costs what the
+  user's profile costs (seconds, where this was built); the read side
+  batches each round of reads into one connection, and a walk-in makes
+  two per hosted project. ssh connection sharing (ControlMaster) would
+  cut the handshake, not the login; the office does not set it.
 
 ## Questions likely to come up
 

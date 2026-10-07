@@ -474,12 +474,15 @@ class TestInitProjects(unittest.TestCase):
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "init", str(root), "--no-founding"],
                                    self.e.home, self.e.env, [
             (b"A project this office watches: the path to its repo (--project PATH) [return skips]:", "?"),
-            (b"(a .bale/ directory)", str(self.alpha)),
+            (b".bale/ directory) or is set up", str(self.alpha)),
+            # After the path, where the repo is: a plain return, this machine.
+            (b"Where the repo is: this machine, or an ssh host (--host) [return skips]:", ""),
             (b"Name for it in this office (--name) [alpha]:", ""),
             (b"(--ride) [return ends the list]:", ""),
             (b"(--after-land) [return ends the list]:", "./install.sh"),
             (b"Another (--after-land) [return ends the list]:", ""),
             (b"Another project's path (--project PATH)", str(self.e.home / "gone")),
+            (b"Where the repo is: this machine, or an ssh host (--host) [return skips]:", ""),
             # A wrong path is said and asked again at once, before any name.
             (b"no such directory on this machine", ""),
         ])
@@ -492,8 +495,10 @@ class TestInitProjects(unittest.TestCase):
     def test_projects_add_checks_the_path_before_asking_more(self):
         root = self.e.init("added")
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "projects", "add"], root, self.e.env, [
-            (b"Path to the project's git repo on this machine (--path):", str(self.e.home / "gone")),
+            (b"Path to the project's git repo (--path):", str(self.e.home / "gone")),
+            (b"Where the repo is: this machine, or an ssh host (--host) [return skips]:", ""),
             (b"no such directory on this machine", str(self.beta)),
+            (b"Where the repo is: this machine, or an ssh host (--host) [return skips]:", ""),
             (b"Name for it in this office (--name) [beta-src]:", ""),
             (b"(--ride) [return ends the list]:", ""),
             (b"(--after-land) [return ends the list]:", ""),

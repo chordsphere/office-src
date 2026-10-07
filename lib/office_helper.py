@@ -25,6 +25,9 @@ import sys
 import tarfile
 import tomllib
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import office_host as ohost  # noqa: E402
+
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 MIGRATION_KINDS = ("script", "renovation")
 
@@ -728,11 +731,31 @@ def read_projects(manifest):
     out = []
     for name, entry in sorted(table.items()):
         item = {"name": name, "path": None, "resolved": None, "problem": None,
-                "rides": [], "after_land": [], "declaration_problems": []}
+                "rides": [], "after_land": [], "declaration_problems": [],
+                "host": None, "shell": None, "connect": None}
         if not PROJECT_NAME_RE.match(name):
             item["problem"] = "the name must be letters, digits, dash or underscore"
         elif not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
             item["problem"] = 'no path = "..." in its entry'
+        elif entry.get("host") is not None:
+            # A project on another host: its path is the path as the
+            # host's shell sees it, and the three keys are read here,
+            # never resolved on this machine.
+            item["path"] = entry["path"]
+            try:
+                values = {key: entry.get(key) for key in HOST_KEYS}
+                if any(v is not None and not isinstance(v, str) for v in values.values()):
+                    raise ohost.HostError("shell", "host, shell and connect are strings")
+                item["host"] = ohost.check_host(values["host"])
+                item["shell"] = ohost.check_shell(values["shell"] if values["shell"] is not None
+                                                  else ohost.default_shell(item["host"]))
+                item["connect"] = ohost.check_connect(values["connect"] if values["connect"] is not None
+                                                      else ohost.default_connect(item["host"]))
+                if not item["path"].startswith("/") and not item["path"].startswith("~"):
+                    raise ohost.HostError("path", f"a path on {item['host']} is absolute or starts with ~, "
+                                                  f"not {item['path']!r}")
+            except ohost.HostError as exc:
+                item["problem"] = str(exc)
         else:
             item["path"] = entry["path"]
             try:
@@ -768,6 +791,10 @@ def read_projects(manifest):
 #               has applied the session; never after a HOLD)
 
 DECLARATION_KEYS = ("rides", "after_land")
+# The three keys that put a project on another host (office_host.py says
+# what each means); set through office projects add --host / set --host,
+# cleared together by office projects set --on-this-machine.
+HOST_KEYS = ("host", "shell", "connect")
 
 
 def check_ride(path):
@@ -806,13 +833,26 @@ def table_span(lines, name):
     return start, end
 
 
-def set_declarations(manifest_path, name, rides=None, after_land=None):
+def check_host_keys(host, shell=None, connect=None):
+    """The three host keys as stored: the host checked, the shell and
+    connect given or their defaults for that host."""
+    try:
+        host = ohost.check_host(host)
+        return {"host": host,
+                "shell": ohost.check_shell(shell if shell is not None else ohost.default_shell(host)),
+                "connect": ohost.check_connect(connect if connect is not None else ohost.default_connect(host))}
+    except ohost.HostError as exc:
+        raise HelperError(str(exc))
+
+
+def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys=None):
     """Write a project's declarations, keeping every other byte of the
     floor plan. A list replaces the key's value; [] removes the key;
-    None leaves it as it is. Returns the project's entry as it reads
-    back. Refuses a project the table does not list, a key written over
-    several lines (not the shape this writes), and a value that does
-    not check."""
+    None leaves it as it is. host_keys is a dict of the three host keys
+    to write (each a string, or None to remove it), or None to leave
+    them. Returns the project's entry as it reads back. Refuses a
+    project the table does not list, a key written over several lines
+    (not the shape this writes), and a value that does not check."""
     if not PROJECT_NAME_RE.match(name):
         raise HelperError(f"a project name must be letters, digits, dash or underscore: {name!r}")
     want = {}
@@ -825,6 +865,9 @@ def set_declarations(manifest_path, name, rides=None, after_land=None):
         want["rides"] = seen
     if after_land is not None:
         want["after_land"] = [check_after_land(c) for c in after_land]
+    if host_keys is not None:
+        for key in HOST_KEYS:
+            want[key] = host_keys.get(key)
     path = pathlib.Path(manifest_path)
     text = path.read_text(encoding="ascii")
     lines = text.splitlines()
@@ -839,10 +882,13 @@ def set_declarations(manifest_path, name, rides=None, after_land=None):
     for key, value in want.items():
         at = [i for i, l in enumerate(body) if re.match(rf"^\s*{key}\s*=", l)]
         for i in at:
-            if not body[i].rstrip().endswith("]"):
+            if not body[i].rstrip().endswith('"' if key in HOST_KEYS else "]"):
                 raise HelperError(f"[projects.{name}] writes {key} over several lines, which office projects "
                                   "does not rewrite; put it on one line first")
-        new_line = f"{key} = [" + ", ".join(toml_basic_string(v) for v in value) + "]"
+        if key in HOST_KEYS:
+            new_line = f"{key} = {toml_basic_string(value)}" if value is not None else ""
+        else:
+            new_line = f"{key} = [" + ", ".join(toml_basic_string(v) for v in value) + "]"
         if at:
             body[at[0]] = new_line
             for i in reversed(at[1:]):
@@ -858,16 +904,27 @@ def set_declarations(manifest_path, name, rides=None, after_land=None):
     out = "\n".join(new) + ("\n" if text.endswith("\n") or not text else "")
     path.write_text(out, encoding="ascii")
     entry = next(p for p in read_projects(read_toml(path)) if p["name"] == name)
+    if entry["problem"]:
+        raise HelperError(f"{path}: {name} does not read back as written ({entry['problem']}); the floor plan needs a look")
     for key, value in want.items():
         if entry[key] != value:
             raise HelperError(f"{path}: {key} did not read back as written; the floor plan needs a look")
     return entry
 
 
+def describe_host(entry):
+    """Lines for office projects: where a hosted project is and how the
+    office reaches it; [] for a project on this machine."""
+    if not entry.get("host"):
+        return []
+    return [f"on {entry['host']}, through: {entry['shell']}",
+            f"when it does not answer: {entry['connect']}"]
+
+
 def describe_declarations(entry):
     """Lines for office projects: what rides and what runs after landing,
     each ride-along checked on this machine."""
-    out = []
+    out = describe_host(entry)
     for r in entry["rides"]:
         try:
             resolved = expand_project_path(r)
@@ -903,7 +960,8 @@ def check_project_dir(resolved):
     has_dir, has_toml = (p / ".bale").is_dir(), (p / "bale.toml").is_file()
     if not has_dir and not has_toml:
         return False, (f"{p} is a git repo bale has not run in: no .bale/ directory and no bale.toml "
-                       "(bale pack there once, or bale config init)")
+                       "(office projects add --prepare sets it up for bale without a trace in git; "
+                       "or bale pack there once, or bale config init)")
     found = " and ".join(x for x, y in ((".bale/", has_dir), ("bale.toml", has_toml)) if y)
     missing = " and ".join(x for x, y in ((".bale/", has_dir), ("bale.toml", has_toml)) if not y)
     return True, f"a git repo with {found}" + (f", no {missing}" if missing else "")
@@ -928,39 +986,61 @@ def toml_basic_string(text):
     return '"' + "".join(out) + '"'
 
 
-def add_project(manifest_path, name, path):
+def add_project(manifest_path, name, path, host_keys=None, checked=None):
     """Append [projects.NAME] with its path to the floor plan, keeping
-    every other byte. Returns (stored path, what the check found).
+    every other byte, and the three host keys for a project on another
+    host (host_keys from check_host_keys). Returns (stored path, what the
+    check found).
 
     A relative path is resolved against the working directory and stored
-    absolute. Refuses a bad name, a name already listed, a path another
-    entry already names, and a path that is not a repo bale runs in."""
+    absolute; a hosted project's path is stored as given, absolute or
+    ~-relative on the host. Refuses a bad name, a name already listed, a
+    path another entry already names, and a path that is not a repo bale
+    runs in: checked here for a project on this machine, and by the
+    caller through the host's shell for a hosted one (`checked` is what
+    that check found)."""
     if not PROJECT_NAME_RE.match(name):
         raise HelperError(f"a project name must be letters, digits, dash or underscore: {name!r}")
     if not path.strip():
         raise HelperError("the project path is empty")
-    stored = path if (path.startswith("/") or path.startswith("~/")) else str(pathlib.Path(os.path.abspath(path)))
+    hosted = bool(host_keys)
+    if hosted:
+        stored = path.strip()
+        if not (stored.startswith("/") or stored.startswith("~")):
+            raise HelperError(f"a path on {host_keys['host']} is absolute or starts with ~, not {stored!r}")
+        resolved = None
+    else:
+        stored = path if (path.startswith("/") or path.startswith("~/")) else str(pathlib.Path(os.path.abspath(path)))
     stored = stored.rstrip("/") or "/"
-    resolved = expand_project_path(stored)
+    if not hosted:
+        resolved = expand_project_path(stored)
     manifest = read_toml(manifest_path)
     existing = read_projects(manifest) or []
     for item in existing:
         if item["name"] == name:
             raise HelperError(f"{name} is already in this office's [projects], at {item['path']}")
-        if item["resolved"] is not None and item["resolved"].resolve() == resolved.resolve():
+        if hosted and item["host"] == host_keys["host"] and item["path"] == stored:
+            raise HelperError(f"{stored} on {item['host']} is already in this office's [projects], as {item['name']}")
+        if not hosted and item["resolved"] is not None and item["resolved"].resolve() == resolved.resolve():
             raise HelperError(f"{stored} is already in this office's [projects], as {item['name']}")
-    ok, found = check_project_dir(resolved)
-    if not ok:
-        raise HelperError(found)
+    if hosted:
+        found = checked or f"on {host_keys['host']}"
+    else:
+        ok, found = check_project_dir(resolved)
+        if not ok:
+            raise HelperError(found)
     text = pathlib.Path(manifest_path).read_text(encoding="ascii")
     block = []
     if not text.endswith("\n"):
         block.append("")
     if manifest.get("projects") is None:
-        block += ["", "# The projects this office scopes on this machine: a name and the path",
-                  "# of its repo, absolute or ~-relative, and what rides with each and runs",
-                  "# after it lands. office projects add and set write them."]
+        block += ["", "# The projects this office scopes: a name and the path of its repo,",
+                  "# absolute or ~-relative (on this machine, or as the shell of the host it",
+                  "# declares sees it), and what rides with each and runs after it lands.",
+                  "# office projects add and set write them."]
     block += ["", f"[projects.{name}]", f"path = {toml_basic_string(stored)}"]
+    if hosted:
+        block += [f"{key} = {toml_basic_string(host_keys[key])}" for key in HOST_KEYS]
     pathlib.Path(manifest_path).write_text(text + "\n".join(block) + "\n", encoding="ascii")
     return stored, found
 
@@ -2043,6 +2123,10 @@ def cmd_projects(a):
     for p in projects:
         if p["problem"]:
             ok, text = False, p["problem"]
+        elif p["host"]:
+            # Listing makes no network call: reach is checked where it
+            # matters (office status, and every read through the shell).
+            ok, text = True, f"on {p['host']}; office status checks that it answers"
         else:
             ok, text = check_project_dir(p["resolved"])
         bad += not ok
@@ -2056,21 +2140,46 @@ def cmd_projects(a):
 def cmd_project_declare(a):
     """Set one project's declarations: --ride and --after-land replace
     the key's list, --no-rides and --no-after-land clear it, and a key
-    with neither is left as it is."""
+    with neither is left as it is. --host, --shell and --connect put the
+    project on a host (the host checked; shell and connect default for
+    it, or keep what is set), --on-this-machine takes it off one."""
     rides = [] if a.no_rides else (a.ride or None)
     after = [] if a.no_after_land else (a.after_land or None)
     if a.no_rides and a.ride:
         raise HelperError("--ride and --no-rides contradict each other")
     if a.no_after_land and a.after_land:
         raise HelperError("--after-land and --no-after-land contradict each other")
-    entry = set_declarations(a.manifest, a.name, rides, after)
+    host_keys = None
+    if a.on_this_machine:
+        if a.host or a.shell or a.connect:
+            raise HelperError("--on-this-machine contradicts --host, --shell and --connect")
+        host_keys = {key: None for key in HOST_KEYS}
+    elif a.host or a.shell or a.connect:
+        current = next((p for p in read_projects(read_toml(a.manifest)) or [] if p["name"] == a.name), None)
+        host = a.host or (current or {}).get("host")
+        if not host:
+            raise HelperError(f"{a.name} is on this machine; --shell and --connect go with --host HOST")
+        keep = current if current and current.get("host") == host and not current.get("problem") else {}
+        host_keys = check_host_keys(host, a.shell if a.shell is not None else keep.get("shell"),
+                                    a.connect if a.connect is not None else keep.get("connect"))
+    entry = set_declarations(a.manifest, a.name, rides, after, host_keys)
     lines = describe_declarations(entry)
     print(f"{a.name}: " + ("; ".join(lines) if lines else "nothing rides with it and nothing runs after it lands"))
 
 
 def cmd_project_add(a):
-    stored, found = add_project(a.manifest, a.name, a.path)
+    host_keys = check_host_keys(a.host, a.shell, a.connect) if a.host else None
+    if not a.host and (a.shell or a.connect):
+        raise HelperError("--shell and --connect go with --host HOST")
+    stored, found = add_project(a.manifest, a.name, a.path, host_keys, a.checked)
     print(f"added {a.name}: {stored} ({found})")
+
+
+def cmd_check_host_keys(a):
+    """The three host keys as they would be stored, one per line, or a
+    refusal saying why, for the wizard to ask again."""
+    for key, value in check_host_keys(a.host, a.shell, a.connect).items():
+        print(f"{key}\t{value}")
 
 
 def cmd_project_spec(a):
@@ -2118,7 +2227,10 @@ def cmd_project_facts(a):
     if entry["declaration_problems"]:
         raise HelperError(f"{a.name}: " + "; ".join(entry["declaration_problems"]))
     print(f"path\t{entry['path']}")
-    print(f"resolved\t{entry['resolved']}")
+    print(f"resolved\t{entry['resolved'] if entry['resolved'] is not None else ''}")
+    for key in HOST_KEYS:
+        if entry.get(key):
+            print(f"{key}\t{entry[key]}")
     for r in entry["rides"]:
         print(f"rides\t{r}\t{expand_project_path(r)}")
     for c in entry["after_land"]:
@@ -2349,11 +2461,17 @@ def main(argv=None):
     p = sub.add_parser("pack-sid"); p.set_defaults(fn=cmd_pack_sid)
     p = sub.add_parser("projects"); p.add_argument("manifest"); p.set_defaults(fn=cmd_projects)
     p = sub.add_parser("project-add"); p.add_argument("manifest"); p.add_argument("name")
-    p.add_argument("path"); p.set_defaults(fn=cmd_project_add)
+    p.add_argument("path"); p.add_argument("--host"); p.add_argument("--shell"); p.add_argument("--connect")
+    p.add_argument("--checked", help="what the check through the host's shell found, for the report")
+    p.set_defaults(fn=cmd_project_add)
     p = sub.add_parser("project-declare"); p.add_argument("manifest"); p.add_argument("name")
     p.add_argument("--ride", action="append"); p.add_argument("--no-rides", action="store_true")
     p.add_argument("--after-land", action="append"); p.add_argument("--no-after-land", action="store_true")
+    p.add_argument("--host"); p.add_argument("--shell"); p.add_argument("--connect")
+    p.add_argument("--on-this-machine", action="store_true")
     p.set_defaults(fn=cmd_project_declare)
+    p = sub.add_parser("check-host-keys"); p.add_argument("host"); p.add_argument("--shell"); p.add_argument("--connect")
+    p.set_defaults(fn=cmd_check_host_keys)
     p = sub.add_parser("check-project-dir"); p.add_argument("path"); p.set_defaults(fn=cmd_check_project_dir)
     p = sub.add_parser("project-spec"); p.add_argument("specs", nargs="+"); p.set_defaults(fn=cmd_project_spec)
     p = sub.add_parser("check-declaration"); p.add_argument("kind", choices=("ride", "after-land"))

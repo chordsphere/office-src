@@ -203,8 +203,11 @@ office.
 ## 5. Spaces
 
 The floor plan (floor-plan/manifest.toml) lists the spaces an office
-has, and, in its [projects] table, the projects it scopes on this
-machine (section 10). `office init` builds the base spaces. The others are added by a
+has, and, in its [projects] table, the projects it scopes (section 10):
+each entry's `path` names its repo, on this machine or, when the entry
+declares a `host` (an ssh target), as that host's shell sees it, with
+the `shell` that runs one command there and the `connect` line printed
+when the host does not answer. `office init` builds the base spaces. The others are added by a
 renovation session when real work asks for them, except the drafting
 table, whose pages hold no judgment until a sitting writes them: it
 arrives with the first verb that writes it. The install's catalog of
@@ -474,7 +477,7 @@ Kinds:
 | week | script: this week's calendar and its gaps | yes |
 | close, reopen | script: move a folder to the filing cabinet, done, absorbed, split or retired, and a done one back | yes |
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes |
-| projects | script: list the projects this office scopes, add one, declare what rides with it and what runs after it lands, render what bale records about them | yes |
+| projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace), declare where it is, what rides with it and what runs after it lands, render what bale records about them | yes |
 | start | script: pack a session for a folder, in the office or on a project, or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
 | land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, the founding folder closed when the founding has landed, the watches that fired, and what became of each action; or end a read-only sitting the office sent out | yes |
 | tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes |
@@ -615,16 +618,40 @@ Where a report and the records it summarizes part, the records stand,
 and the difference is written down, never smoothed.
 
 The projects an office scopes are its floor plan's [projects] table: a
-name and the path of each project's repo on this machine, absolute or
-under the home directory, written by `office projects add` and never by
-hand; `office init` asks which projects a new office watches and adds
-each through the same questions. An office with no table scopes nothing,
-and every rendering says so rather than showing an empty screen as if it
-were true. A project on
-another machine is not read. The office reads each project's records
-only through bale's --json surfaces, run in the project's directory with
-no prompt, never by parsing .bale/, and it never writes what bale
-records. The verbs that run bale to make or land a session do so with
+name and the path of each project's repo, absolute or under a home
+directory, written by `office projects add` and never by hand; `office
+init` asks which projects a new office watches and adds each through the
+same questions. An office with no table scopes nothing, and every
+rendering says so rather than showing an empty screen as if it were
+true. A project's repo is on this machine, or on another host: a project
+declares its host and the shell that reaches it (`host`, an ssh target;
+`shell`, the command prefix that runs one command where the repo is,
+through a container when the repo sits inside one, to which the office
+appends exactly one shell-quoted command; `connect`, the occupant's own
+words for what brings the host up), its path is then the path as that
+shell sees it, and the office reads it through that shell: bale's
+--json surfaces and the commit subjects run there, in the project's
+path, with the same keys and the same consumption manifest, and
+`OFFICE_DEBUG=1` shows every shell call as it shows every bale call.
+Reach is checked where it matters: before any step that needs the host,
+one connection with a short timeout, never a prompt; a host that does
+not answer is one line naming the project, the host, the connect text
+and the command to rerun, and the command stops there, while the
+walk-in and `office status` print that line in the project's place and
+render the rest. A host checked once in a command is not checked again
+in it. The survey makes no network call (section 13); `office status`
+is where a host is reached, and it says which bale answers there against
+the read side's floor, with the remedy when it is behind. Until the
+release that packs and lands there, `office start` and `office land`
+refuse a project on a host before anything is written. The office reads
+each project's records only through bale's --json surfaces, run in the
+project's directory with no prompt, never by parsing .bale/, and it
+never writes what bale records. A clone bale has not run in is prepared
+for bale without a trace (`office projects add --prepare`, offered on a
+terminal): the paths bale makes are excluded through the repo's
+.git/info/exclude, never its .gitignore, which belongs to its audience;
+what the office writes into a project's working copy is only ever
+outside what git tracks. The verbs that run bale to make or land a session do so with
 the occupant at the terminal (pack and open in `office start`, which
 first asks `bale open --check`, a rehearsal that writes nothing, whether
 a bundle can open before it writes anything of its own; apply,
@@ -670,7 +697,8 @@ actions run only through `office land`: a session applied by hand with
 bale apply runs none, and `office status` says when the install has
 fallen behind the working copy it was installed from. Both are set by
 `office projects add` and
-`office projects set`, a wizard with flag twins, and never by hand or in
+`office projects set`, a wizard with flag twins, as the host keys are,
+and never by hand or in
 the project's own repo: what rides is office context, and a project's
 audience must not see the office's choices. A table without them is
 valid.
