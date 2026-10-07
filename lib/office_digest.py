@@ -43,7 +43,6 @@ import argparse
 import datetime as dt
 import os
 import pathlib
-import subprocess
 import sys
 import tomllib
 
@@ -73,13 +72,10 @@ def debug(msg):
 
 
 def git(root, *args):
-    """git's stdout in root, or None when git refuses (not a repo, no
-    such commit)."""
-    proc = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, timeout=120)
-    if proc.returncode != 0:
-        debug(f"git {' '.join(args)} in {root}: {proc.stderr.strip()}")
-        return None
-    return proc.stdout
+    """git's stdout in root (the office, or a project: here, or through
+    the shell of the host a project declares), or None when git refuses
+    (not a repo, no such commit)."""
+    return ob.git_lines(root, *args)
 
 
 # --- the window ------------------------------------------------------------------------
@@ -188,6 +184,7 @@ def sessions_since(rd, root, label, p, start):
             sids.add(found[1])
     ordered = sorted(sids)
     skipped = ordered[DOSSIER_CAP:]
+    rd.prefetch(cwd, [("dossier", {"sid": sid}) for sid in ordered[:DOSSIER_CAP]])
     groups = {"applied": [], "held": [], "bailed": [], "reverted": [], "closed": []}
     try:
         for sid in ordered[:DOSSIER_CAP]:

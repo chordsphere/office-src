@@ -616,6 +616,7 @@ class TestDeclarations(unittest.TestCase):
         self.e.git(self.root, "commit", "-qam", "seed")
         ride = str(self.other / "blueprints")
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "projects", "set", "alpha"], self.root, self.e.env, [
+            (b"Keep alpha on this machine? (y/n) [y]:", ""),
             (b"(--ride) [return ends the list]:", str(self.e.tmp / "gone")),
             (b"no such path on this machine", ride),
             (b"Another (--ride) [return ends the list]:", ""),

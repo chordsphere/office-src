@@ -33,8 +33,9 @@ warn()  { printf '[office] warning: %s\n' "$*" >&2; }
 die()   { printf '[office] error: %s\n' "$*" >&2; exit 1; }
 debug() { [ "${OFFICE_DEBUG:-0}" = "1" ] && printf '[office] debug: %s\n' "$*" >&2; return 0; }
 
-helper() { python3 "$HELPER" "$@"; }
-# -B: the reader imports the helper, and an install is never written to.
+# -B throughout: the helper imports office_host, the reader imports the
+# helper, and an install is never written to.
+helper() { python3 -B "$HELPER" "$@"; }
 reader() { python3 -B "$READER" "$@"; }
 
 # Single-quote a word for a printed command line.
@@ -819,21 +820,19 @@ project_dir_ok() {
 }
 
 # On a terminal, after building: which projects the office watches, one
-# at a time through office projects add's own questions (the path, the
-# name, what rides, what runs after it lands), until a plain return. A
-# path that does not check is said and asked again at once; nothing here
-# stops the office being built.
+# at a time through office projects add's own questions (the path, where
+# it is, the name, what rides, what runs after it lands), until a plain
+# return. A path that does not check is said and asked again at once, by
+# add's own wizard; nothing here stops the office being built.
 init_ask_projects() {
   local root="$1" p n=0 q
-  log "which projects does this office watch? Each is the top of a git repo bale runs in; office start packs its sessions and office land brings them back. A plain return ends the list, and office projects add adds one any time"
+  log "which projects does this office watch? Each is the top of a git repo bale runs in, on this machine or on a host the office reaches over ssh; office start packs its sessions and office land brings them back. A plain return ends the list, and office projects add adds one any time"
   while :; do
     if [ "$n" -eq 0 ]; then q="A project this office watches: the path to its repo (--project PATH)"
     else q="Another project's path (--project PATH)"; fi
     ask p "$q" "" 0 \
-      "The top of a project's git repo on this machine, absolute or ~/..., where bale has run (a .bale/ directory) or is set up (a bale.toml). The office reads what bale records there, packs that project's sessions there, and keeps what rides with it in its own floor plan, never in the repo. A plain return ends the list."
+      "The top of a project's git repo, absolute or ~/..., where bale has run (a .bale/ directory) or is set up (a bale.toml), or which the office prepares for bale; on this machine, or, when the next question names a host, as that host's shell sees it. The office reads what bale records there, packs that project's sessions there, and keeps what rides with it in its own floor plan, never in the repo. A plain return ends the list."
     [ -n "$p" ] || break
-    case "$p" in "~"|"~/"*) p="$HOME${p#\~}" ;; esac
-    project_dir_ok "$p" || continue
     if ( OFFICE_ROOT="$root" cmd_projects_add --path "$p" ) >&2; then
       n=$((n + 1))
     else
@@ -3089,6 +3088,9 @@ ask_where() {
       "office: the session works in this office (the folder, the notepad) and is packed here. A project's name: the session changes that project's repo and is packed there, with this office's context riding beside it, never inside it.${why:+ The default is $def because $why.}"
     if [ "$ans" = office ]; then printf -v "$__w" '%s' office; return 0; fi
     if printf '%s\n' "$known" | grep -qxF -- "$ans"; then
+      local on_host
+      on_host="$(project_host "$root" "$ans")"
+      if [ -n "$on_host" ]; then printf '  %s is on %s: %s\n' "$ans" "$on_host" "$NOT_BUILT_ON_HOST" >&2; continue; fi
       printf -v "$__w" '%s' project; printf -v "$__p" '%s' "$ans"; return 0
     fi
     printf '  office, or one of this office'"'"'s projects: %s\n' "$list" >&2
@@ -3101,6 +3103,18 @@ start_check_place() {
   [ "$1" = project ] || return 0
   printf '%s\n' "$3" | grep -qxF -- "$2" \
     || die "--on $2: no such project in this office (it scopes: $(printf '%s' "$3" | paste -sd, - | sed 's/,/, /g'); office projects add adds one)"
+  local on_host
+  on_host="$(project_host "$root" "$2")"
+  [ -z "$on_host" ] || die "$2 is on $on_host: $NOT_BUILT_ON_HOST"
+}
+
+# What start says for a project on a host, until the release that packs
+# and lands there: the same words as the reader's.
+NOT_BUILT_ON_HOST="sending a session to a project on a host, and bringing one back, is not built yet (office-src 0.14.0 reads such a project and checks its reach; the next release packs and lands there)"
+
+# project_host ROOT NAME: the host a project declares, or nothing.
+project_host() {
+  helper project-facts "$1/$MANIFEST_REL" "$2" 2>/dev/null | awk -F'\t' '$1 == "host" {print $2}'
 }
 
 # check_start_bundle ROOT WHERE PROJECT BUNDLE: bale open --check where
@@ -3263,6 +3277,9 @@ cmd_start() {
     ask_start_folder want "$root"
   fi
   names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+  # --on PROJECT given: a project on a host refuses here, before a folder
+  # for new, the survey, the tray or the session is written.
+  [ "$where" != project ] || start_check_place "$where" "$project" "$names"
   local where_default="office" where_why="" found checked=0
   if [ "$want" = new ]; then
     can_ask || die "new opens a folder through office open's questions, which need a terminal; run office open first"
@@ -3902,30 +3919,55 @@ after_land_summary() {
 # read bale's records through the read side and write nothing.
 usage_projects() {
   cat <<'EOF'
-usage: office projects                       list the projects this office scopes, and
-                                             what rides with each and runs after it lands
+usage: office projects                       list the projects this office scopes, where
+                                             each is, what rides with it and runs after it lands
        office projects add [NAME] [PATH]     add one (asks for what it was not given)
-                           [--name NAME] [--path PATH] [--ride PATH]... [--after-land CMD]...
-       office projects set [NAME]            declare what rides beside every session on a
-                           [--ride PATH]... [--no-rides]       project, and what runs in its
-                           [--after-land CMD]... [--no-after-land]   repo after one lands
+                           [--name NAME] [--path PATH] [--prepare]
+                           [--host HOST [--shell PREFIX] [--connect TEXT]]
+                           [--ride PATH]... [--after-land CMD]...
+       office projects set [NAME]            declare where a project is, what rides beside
+                           [--host HOST] [--shell PREFIX] [--connect TEXT] [--on-this-machine]
+                           [--ride PATH]... [--no-rides]            every session on it, and
+                           [--after-land CMD]... [--no-after-land]  what runs after one lands
        office projects [NAME] --ledger       trust ledger per work class
        office projects [NAME] --landed PATH  the last applied session that landed PATH
        office projects [NAME] --versions     the version trail
 NAME narrows a rendering to one project; without it every project is read.
 PATH for --landed is relative to the project's root, e.g. bin/office.
+A project's repo is on this machine, or on a host the office reaches over
+ssh: --host is the ssh target (user@host, or an ssh-config alias), PATH is
+then the path as that host's shell sees it, --shell is the command prefix
+that runs one command where the repo is (default: ssh HOST bash -lc; through
+a container, something like: ssh HOST docker exec -i -u USER NAME bash -lc;
+the office appends exactly one shell-quoted command), and --connect is
+printed when the host does not answer: your own words for what brings it up
+(default: connect to HOST). Before any step that needs the host the office
+makes one short connection, and a host that does not answer is one line
+and the command stops. The read side then runs bale through that shell; the
+walk-in, office status, office sessions, --ledger, --landed, --versions,
+watches check and the digest all read a hosted project. Sending a session
+to one and landing it there is the next release's.
+--prepare sets up a clone bale has not run in without a trace in git, here
+or on the host: the four paths bale writes (.bale/, bale.toml, .baleignore
+and bale's record directory) go into .git/info/exclude and an empty
+bale.toml is written, so git status stays clean and git ls-files unchanged;
+the repo's own .gitignore is never touched. On a terminal, add offers it;
+piped, add refuses and names it.
 A ride-along is a path on this machine, absolute or ~/: a directory inside
 another repo, a whole repo, or a file. Its context rides beside every
 session office start packs for the project. An after-land action is a
 command run in the project's repo after one of its sessions lands: office
-land runs them in order once bale has applied it. Both live in this
+land runs them in order once bale has applied it. All of it lives in this
 office's floor plan, never in the project's repo. --ride and --after-land
 replace the list they name; on a terminal, set asks for what it was not
 given.
 Examples:
   office projects
-  office projects add                          (asks for the path, the name, what rides)
+  office projects add                          (asks for the path, where it is, the name, what rides)
   office projects add office-src ~/office-src
+  office projects add api ~/development/api --host me@workhost --prepare
+  office projects set api --shell "ssh me@workhost docker exec -i -u me box bash -lc"
+  office projects set api --connect "start the VPN client, then retry"
   office projects set office-src --after-land ./install.sh
   office projects set office-src --ride ~/nisaba-src/blueprints
   office projects --landed bin/office
@@ -3960,6 +4002,73 @@ ask_declaration() {
   done
 }
 
+HOST_HELP="An ssh target: user@host, or an alias from ~/.ssh/config. The repo's path is then the path as that host's shell sees it. A plain return means the repo is on this machine."
+shell_help() { printf 'The command prefix that runs one command where the repo is. The office appends exactly one shell-quoted command to it, so it ends in the word that takes a command string: the default, ssh %s bash -lc, runs it in a login shell on the host; a repo inside a container is reached with something like: ssh %s docker exec -i -u USER NAME bash -lc.' "$1" "$1"; }
+connect_help() { printf 'Printed when %s does not answer, in your own words: what brings the host up (a VPN client to start, a machine to wake). One line.' "$1"; }
+
+# ask_host HOSTVAR SHELLVAR CONNECTVAR: on a terminal, whether the repo is
+# on this machine or on a host (a plain return: this machine), then the
+# shell prefix and the connect line with their defaults shown; each
+# answer is checked as it is given.
+ask_host() {
+  local __h="$1" __s="$2" __c="$3" _host _shell _connect out
+  while :; do
+    ask _host "Where the repo is: this machine, or an ssh host (--host)" "" 0 "$HOST_HELP"
+    [ -n "$_host" ] || { printf -v "$__h" ''; printf -v "$__s" ''; printf -v "$__c" ''; return 0; }
+    if out="$(helper check-host-keys "$_host" 2>&1)"; then break; fi
+    printf '  %s\n' "${out#\[office\] error: }" >&2
+  done
+  while :; do
+    ask _shell "The shell that runs one command where the repo is (--shell)" "ssh $_host bash -lc" 0 "$(shell_help "$_host")"
+    if out="$(helper check-host-keys "$_host" --shell "$_shell" 2>&1)"; then break; fi
+    printf '  %s\n' "${out#\[office\] error: }" >&2
+  done
+  ask _connect "What brings $_host up when it does not answer (--connect)" "connect to $_host" 0 "$(connect_help "$_host")"
+  printf -v "$__h" '%s' "$_host"; printf -v "$__s" '%s' "$_shell"; printf -v "$__c" '%s' "$_connect"
+}
+
+# host_args ARRAY HOST SHELL CONNECT: the reader's --host/--shell/--connect
+# flags for a hosted project, none for one on this machine.
+host_args() {
+  local -n __a="$1"
+  __a=()
+  [ -n "$2" ] || return 0
+  __a+=(--host "$2")
+  [ -z "$3" ] || __a+=(--shell "$3")
+  [ -z "$4" ] || __a+=(--connect "$4")
+}
+
+# check_project FOUNDVAR PATH HOST SHELL CONNECT PREPARE: the check office
+# projects add makes, here or through the host's shell (reach first).
+# Sets FOUNDVAR to what was found. A repo bale has not run in is prepared
+# when PREPARE is yes, offered on a terminal otherwise (default yes), and
+# refused piped with the flag named. Returns 1 when the path does not
+# check, having said why.
+check_project() {
+  local __f="$1" path="$2" host="$3" shell="$4" connect="$5" prepare="$6" out rc ans hargs=()
+  host_args hargs "$host" "$shell" "$connect"
+  out="$(reader check-project --path "$path" "${hargs[@]}" 2>&1)"; rc=$?
+  if [ "$rc" = 4 ]; then
+    printf '  %s\n' "${out#\[office\] error: }" >&2
+    if [ "$prepare" != yes ]; then
+      if can_ask; then
+        ask ans "Prepare it for bale without a trace in git? (--prepare) (y/n)" "y" 0 \
+          "Writes the four paths bale makes (.bale/, bale.toml, .baleignore and bale's record directory) into the repo's .git/info/exclude and an empty bale.toml, so bale can run there and nothing it makes shows in git status or reaches the repo's audience; the repo's own .gitignore is never touched. n leaves the repo as it is and asks for another path."
+        case "$ans" in y|Y|yes) prepare=yes ;; esac
+      else
+        printf '[office] error: office projects add --prepare sets it up; piped input is never asked\n' >&2
+        return 1
+      fi
+    fi
+    [ "$prepare" = yes ] || return 1
+    reader prepare-project --path "$path" "${hargs[@]}" | sed 's/^/[office] /' >&2
+    [ "${PIPESTATUS[0]}" = 0 ] || return 1
+    out="$(reader check-project --path "$path" "${hargs[@]}" 2>&1)"; rc=$?
+  fi
+  if [ "$rc" != 0 ]; then printf '  %s\n' "${out#\[office\] error: }" >&2; return 1; fi
+  printf -v "$__f" '%s' "$out"
+}
+
 # declaration_args ARRAY RIDES_SET RIDES... -- : the project-declare
 # flags for one key, given its list and whether it was set at all.
 declare_flags() {
@@ -3971,30 +4080,47 @@ declare_flags() {
 
 cmd_projects_add() {
   local name="" path="" root default missing=() rides=() afters=() set_r=0 set_a=0 args=()
+  local host="" shell="" connect="" set_h=0 prepare=no found="" hargs=()
   while [ $# -gt 0 ]; do
     case "$1" in
       --name) [ $# -ge 2 ] || die "--name needs a value"; name="$2"; shift 2 ;;
       --path) [ $# -ge 2 ] || die "--path needs a value"; path="$2"; shift 2 ;;
+      --host) [ $# -ge 2 ] || die "--host needs an ssh target"; host="$2"; set_h=1; shift 2 ;;
+      --shell) [ $# -ge 2 ] || die "--shell needs a command prefix"; shell="$2"; set_h=1; shift 2 ;;
+      --connect) [ $# -ge 2 ] || die "--connect needs a line of text"; connect="$2"; set_h=1; shift 2 ;;
+      --prepare) prepare=yes; shift ;;
       --ride) [ $# -ge 2 ] || die "--ride needs a path"; rides+=("$2"); set_r=1; shift 2 ;;
       --after-land) [ $# -ge 2 ] || die "--after-land needs a command"; afters+=("$2"); set_a=1; shift 2 ;;
       -h|--help) usage_projects; return 0 ;;
-      -*) usage_projects >&2; die "office projects add does not know $1; it takes a name and a path, as words or as --name and --path, and --ride and --after-land" ;;
+      -*) usage_projects >&2; die "office projects add does not know $1; it takes a name and a path, as words or as --name and --path, --host, --shell, --connect, --prepare, --ride and --after-land" ;;
       *) if [ -z "$name" ]; then name="$1"; elif [ -z "$path" ]; then path="$1"; else die "office projects add takes a name and a path, and got more: $1"; fi; shift ;;
     esac
   done
+  if [ -z "$host" ] && { [ -n "$shell" ] || [ -n "$connect" ]; }; then die "--shell and --connect go with --host HOST"; fi
+  if [ -n "$host" ]; then helper check-host-keys "$host" ${shell:+--shell "$shell"} >/dev/null || exit 1; fi
   root="$(resolve_office)" || exit 1
   require_current "$root"
   if [ -z "$name" ] || [ -z "$path" ]; then
     if [ -t 0 ]; then
       # A wizard on a terminal: ask for what was not given (doctrine
       # section 7); every question has its flag twin.
-      # The path is checked as soon as it is given, so a wrong one is
-      # asked again before the name and the declarations are.
-      while [ -z "$path" ]; do
-        ask path "Path to the project's git repo on this machine (--path)" "" 1 \
-          "The top of the project's git repo, absolute or under your home directory (~/...). bale must run there: it needs a .bale/ directory or a bale.toml."
-        case "$path" in "~"|"~/"*) path="$HOME${path#\~}" ;; esac
-        project_dir_ok "$path" || path=""
+      # The path is checked as soon as it is given (through the host's
+      # shell when the repo is on one), so a wrong one is asked again
+      # before the name and the declarations are.
+      local path_given="$path"
+      while [ -z "$found" ]; do
+        if [ -z "$path" ]; then
+          ask path "Path to the project's git repo (--path)" "" 1 \
+            "The top of the project's git repo, absolute or under a home directory (~/...): on this machine, or, when the next question names a host, as that host's shell sees it. bale must run there: it needs a .bale/ directory or a bale.toml, or the office prepares it."
+        fi
+        if [ "$set_h" = 0 ]; then ask_host host shell connect; fi
+        if [ -z "$host" ]; then case "$path" in "~"|"~/"*) path="$HOME${path#\~}" ;; esac; fi
+        if ! check_project found "$path" "$host" "$shell" "$connect" "$prepare"; then
+          # A path given as a flag or a word is not asked again: the
+          # caller (office init, say) hears it was not added.
+          [ -z "$path_given" ] || exit 1
+          path=""; [ "$set_h" = 1 ] || { host=""; shell=""; connect=""; }
+        fi
       done
       if [ -z "$name" ]; then
         default="$(slugify "$(basename "${path%/}")")"
@@ -4010,12 +4136,19 @@ cmd_projects_add() {
     fi
   fi
   [ -n "$name" ] && [ -n "$path" ] || die "a project needs a name and a path"
+  if [ -z "$found" ]; then
+    # Given everything: the same check, here or through the shell, and
+    # the same offer to prepare a repo bale has not run in.
+    if [ -z "$host" ]; then case "$path" in "~"|"~/"*) path="$HOME${path#\~}" ;; esac; fi
+    check_project found "$path" "$host" "$shell" "$connect" "$prepare" || exit 1
+  fi
   # Check the declarations before the table is touched, so a bad one
   # adds nothing.
   local v
   for v in "${rides[@]}"; do helper check-declaration ride -- "$v" >/dev/null || exit 1; done
   for v in "${afters[@]}"; do helper check-declaration after-land -- "$v" >/dev/null || exit 1; done
-  helper project-add "$root/$MANIFEST_REL" "$name" "$path" || exit 1
+  host_args hargs "$host" "$shell" "$connect"
+  helper project-add "$root/$MANIFEST_REL" "$name" "$path" "${hargs[@]}" --checked "$found" || exit 1
   if [ "${#rides[@]}" -gt 0 ] || [ "${#afters[@]}" -gt 0 ]; then
     declare_flags args ride "$([ "${#rides[@]}" -gt 0 ] && echo 1 || echo 0)" "${rides[@]}"
     declare_flags args after-land "$([ "${#afters[@]}" -gt 0 ] && echo 1 || echo 0)" "${afters[@]}"
@@ -4026,19 +4159,25 @@ cmd_projects_add() {
 
 cmd_projects_set() {
   local name="" root facts rides=() afters=() set_r=0 set_a=0 args=() current keep line
+  local host="" shell="" connect="" set_h=0 hargs=() cur_host
   while [ $# -gt 0 ]; do
     case "$1" in
+      --host) [ $# -ge 2 ] || die "--host needs an ssh target"; host="$2"; set_h=1; shift 2 ;;
+      --shell) [ $# -ge 2 ] || die "--shell needs a command prefix"; shell="$2"; set_h=1; shift 2 ;;
+      --connect) [ $# -ge 2 ] || die "--connect needs a line of text"; connect="$2"; set_h=1; shift 2 ;;
+      --on-this-machine) set_h=2; shift ;;
       --ride) [ $# -ge 2 ] || die "--ride needs a path"; rides+=("$2"); set_r=1; shift 2 ;;
       --no-rides) set_r=2; shift ;;
       --after-land) [ $# -ge 2 ] || die "--after-land needs a command"; afters+=("$2"); set_a=1; shift 2 ;;
       --no-after-land) set_a=2; shift ;;
       -h|--help) usage_projects; return 0 ;;
-      -*) usage_projects >&2; die "office projects set does not know $1; it takes a project's name, --ride, --no-rides, --after-land and --no-after-land" ;;
+      -*) usage_projects >&2; die "office projects set does not know $1; it takes a project's name, --host, --shell, --connect, --on-this-machine, --ride, --no-rides, --after-land and --no-after-land" ;;
       *) [ -z "$name" ] || die "office projects set takes one project"; name="$1"; shift ;;
     esac
   done
   [ "$set_r" != 2 ] || [ "${#rides[@]}" -eq 0 ] || die "--ride and --no-rides contradict each other"
   [ "$set_a" != 2 ] || [ "${#afters[@]}" -eq 0 ] || die "--after-land and --no-after-land contradict each other"
+  [ "$set_h" != 2 ] || { [ -z "$host" ] && [ -z "$shell" ] && [ -z "$connect" ]; } || die "--on-this-machine contradicts --host, --shell and --connect"
   root="$(resolve_office)" || exit 1
   require_current "$root"
   if [ -z "$name" ]; then
@@ -4047,8 +4186,24 @@ cmd_projects_set() {
     ask name "Which project (office projects set NAME)" "" 1 "One of the projects this office scopes, by the name office projects lists."
   fi
   facts="$(helper project-facts "$root/$MANIFEST_REL" "$name")" || exit 1
-  if [ "$set_r" = 0 ] && [ "$set_a" = 0 ] && ! can_ask; then
-    die "nothing to set for $name; give --ride PATH (repeatable) or --no-rides, and --after-land CMD (repeatable) or --no-after-land; piped input is never asked"
+  cur_host="$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "host" {print $2}')"
+  if [ "$set_r" = 0 ] && [ "$set_a" = 0 ] && [ "$set_h" = 0 ] && ! can_ask; then
+    die "nothing to set for $name; give --host HOST (with --shell PREFIX and --connect TEXT) or --on-this-machine, --ride PATH (repeatable) or --no-rides, and --after-land CMD (repeatable) or --no-after-land; piped input is never asked"
+  fi
+  if [ "$set_h" = 1 ] && [ -z "$host" ]; then
+    [ -n "$cur_host" ] || die "$name is on this machine; --shell and --connect go with --host HOST"
+    host="$cur_host"
+  fi
+  if can_ask && [ "$set_h" = 0 ]; then
+    # Where the project is: keep it, or ask the host questions again.
+    if [ -n "$cur_host" ]; then
+      ask keep "Keep $name on $cur_host, reached through: $(printf '%s\n' "$facts" | awk -F'\t' '$1 == "shell" {print $2}')? (y/n)" "y" 0 \
+        "y keeps the host, the shell and the connect line as they are; n asks the three again, and a plain return to the host question puts the project on this machine."
+    else
+      ask keep "Keep $name on this machine? (y/n)" "y" 0 "y keeps it here; n asks for the host its repo is on, the shell that reaches it and what brings the host up."
+    fi
+    case "$keep" in y|Y|yes) ;; *) ask_host host shell connect; set_h=$([ -n "$host" ] && echo 1 || echo 2) ;; esac
+    if [ "$set_h" = 2 ] && [ -z "$cur_host" ]; then set_h=0; fi
   fi
   if can_ask; then
     for line in ride after-land; do
@@ -4066,9 +4221,11 @@ cmd_projects_set() {
       if [ -z "$current" ] && [ "$line" = after-land ] && [ "$set_a" = 2 ]; then set_a=0; fi
     done
   fi
-  [ "$set_r" != 0 ] || [ "$set_a" != 0 ] || { log "nothing changed for $name"; return 0; }
+  [ "$set_r" != 0 ] || [ "$set_a" != 0 ] || [ "$set_h" != 0 ] || { log "nothing changed for $name"; return 0; }
   declare_flags args ride "$([ "$set_r" != 0 ] && echo 1 || echo 0)" "${rides[@]}"
   declare_flags args after-land "$([ "$set_a" != 0 ] && echo 1 || echo 0)" "${afters[@]}"
+  if [ "$set_h" = 2 ]; then args+=(--on-this-machine)
+  elif [ "$set_h" = 1 ]; then host_args hargs "$host" "$shell" "$connect"; args+=("${hargs[@]}"); fi
   helper project-declare "$root/$MANIFEST_REL" "$name" "${args[@]}" || exit 1
   commit_paths "$root" "office projects: set $name" "$MANIFEST_REL" || true
 }
@@ -4665,6 +4822,15 @@ cmd_help() {
 }
 
 main() {
+  # The line a host that does not answer tells the occupant to rerun:
+  # this command, as typed (the reader prints it in the reach line).
+  if [ -z "${OFFICE_RERUN:-}" ]; then
+    local w rerun="office"
+    for w in "$@"; do
+      case "$w" in *[!A-Za-z0-9_./:@=+,-]*|"") rerun="$rerun $(shq "$w")" ;; *) rerun="$rerun $w" ;; esac
+    done
+    export OFFICE_RERUN="$rerun"
+  fi
   if [ $# -eq 0 ]; then walk_in; return; fi
   local verb="$1"; shift
   case "$verb" in

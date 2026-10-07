@@ -4,6 +4,87 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.14.0
+
+Additive: no migration, nothing to do in any office. A project on
+another host: the first half of "a project on another machine". The
+office reads and reaches such a project; sending a session to it and
+bringing one back is the next release's.
+
+A project declares its host. Three keys on the floor plan's [projects]
+entry, written by `office projects add` and `office projects set`
+(wizard on a terminal, flag twins) and shown by `office projects`, never
+by hand: `host`, an ssh target (user@host, or an ssh-config alias; absent
+means the repo is on this machine, as every project was), `shell`, the
+command prefix that runs one command where the repo is (default `ssh
+HOST bash -lc`, a deviation from the brief's `ssh HOST` to ratify: the
+office appends exactly one shell-quoted command, which only lands intact
+on the far side through a word that takes a command string, and a login
+shell is what finds a bale installed under the user's home; through a
+container, something like `ssh HOST docker exec -i -u USER NAME bash
+-lc`), and `connect`, the occupant's own words for what brings the host
+up (default `connect to HOST`). A hosted project's path is the path as
+that shell sees it. The wizard asks, after the path, whether the repo is
+on this machine or on a host (a plain return: this machine), then the
+shell and the connect line with their defaults shown; `set` offers to
+keep them, and `--on-this-machine` takes a project off its host. Piped,
+`--host`, `--shell` and `--connect` are the only way.
+
+Reach. Before any step that needs the host, one connection with a short
+timeout (ssh's BatchMode and a 5-second connect timeout on every call
+the office makes; the first batch of reads a command sends through a
+prefix is that check, so an answering host costs no extra connection).
+A host that does not answer is one line naming the project, the host,
+why, the connect text and the exact command to rerun, and the command
+stops there; the walk-in and `office status` print the line in the
+project's place and render the rest, and never hang. A host checked
+once in a command is not checked again in it.
+
+The read side through the shell. Everything `lib/office_bale.py` reads
+from bale's `--json` surfaces, and the commit subjects the digest reads,
+runs for a hosted project through its shell in its path, with the same
+keys and the same consumption manifest: the walk-in's In flight, `office
+sessions FOLDER`, `office projects --ledger / --landed / --versions`,
+`office watches check` and the digest all read a hosted project. Each
+round of reads travels as one batch in one connection (a status, then
+every open session's dossier; an aggregate and a status, then every
+class and every dossier), so the walk-in makes two connections per
+hosted project and a rendering two or three; `OFFICE_DEBUG=1` shows
+every shell call as it shows every bale call. The new module
+`lib/office_host.py` holds the seam: the keys, the shell, the reach,
+the batch, and the check and the preparing of a clone.
+
+`office status` gets a line per hosted project: whether the host
+answers, and that host's bale against the read side's floor
+(share/bale-consumption.toml, 0.4.45), with the remedy when it is
+behind ("bale X on HOST is older than the read side's floor Y; bring it
+up before a session is sent there"). The office's own bale line stays
+as it was, and the survey still makes no network call.
+
+Preparing a clone for bale without a trace. `office projects add NAME
+PATH` on a git repo bale has not run in offers, on a terminal, to
+prepare it (flag twin `--prepare`; piped, it refuses as before and
+names the flag): the four paths bale makes (`.bale/`, `bale.toml`,
+`.baleignore` and bale's record directory) go into the repo's
+`.git/info/exclude`, each once, and an empty, comment-only `bale.toml`
+is written for `bale config init` to fill; afterwards the project is on
+the table, `git status` is clean, `git ls-files` unchanged, and the
+repo's own `.gitignore` untouched. Through a shell, the same outcome.
+The doctrine line: what the office writes into a project's working copy
+is only ever outside what git tracks.
+
+Until the next release lands, `office start` on a hosted project
+refuses before anything is written (at `--on`, and in the where
+question, which names the project and asks again), and `office land`
+refuses to land a session, or end a sitting, on one.
+
+`office init` hands each project path to add's wizard, which asks where
+it is; the helper runs with `-B` as the reader does, since it now
+imports office_host. The suite runs no real ssh: a fake `ssh` first on
+the PATH asserts the target and the prefix it was handed and runs the
+one command locally against a throwaway repo, so the read side's fake
+bale answers through it (tests/test_project_on_host.py).
+
 ## 0.13.0
 
 Additive: no migration, nothing to do in any office. The third trip:

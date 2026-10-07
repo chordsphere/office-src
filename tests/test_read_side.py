@@ -545,6 +545,9 @@ class TestProjectsVerb(unittest.TestCase):
 
         self.assertTrue(read_until(b"(--path):"), seen)
         os.write(fd, str(self.proj).encode() + b"\n")
+        # After the path: this machine, or a host. A plain return, this machine.
+        self.assertTrue(read_until(b"(--host) [return skips]:"), seen)
+        os.write(fd, b"\n")
         self.assertTrue(read_until(b"(--name) [office-src]:"), seen)
         os.write(fd, b"\n")
         # What rides with it and what runs after it lands: a plain
