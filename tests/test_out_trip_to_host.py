@@ -2,8 +2,9 @@
 transport through a project's shell, files and a temporary directory on a
 host, a clone moved to its host (office projects add --from), a host's
 bale brought level (office projects level-bale), office start packing and
-opening on a host, land's wording for a session out there, and the
-runner printing a failing test's traceback.
+opening on a host, and the runner printing a failing test's traceback.
+(0.15.0's wording for a land on a host gave way to the return trip:
+tests/test_return_trip.py.)
 
 The suite makes no network call and runs no real ssh, rsync or docker:
 0.14.0's fake ssh (tests/test_project_on_host.py) is first on the PATH,
@@ -737,13 +738,16 @@ class TestABundleOnAHost(HostedStartCase):
         self.assertEqual(self.e.git(self.root, "rev-parse", "HEAD"), before)
         self.assertEqual(self.ssh.left_on(HOST), [])
 
-    def test_a_bare_name_is_refused_for_a_hosted_project(self):
+    def test_a_bare_name_needs_the_downloads_and_piped_names_the_key(self):
+        """0.15.0 refused a bare name for a hosted project; since 0.16.0 it is
+        found in this machine's downloads (tests/test_return_trip.py), and
+        piped with the setting unset, start refuses naming the key."""
         b = bundle_file(self.downloads, "2026-10-07-bare", ["Fix it", "--slug", "bare", "--write", "src"])
         before = self.e.git(self.root, "rev-parse", "HEAD")
         proc = self.run_office("start", self.name, "--on", "far", b.name)
         self.assertEqual(proc.returncode, 1)
-        self.assertIn("is not a file on this machine: a bundle for a project on", proc.stderr)
-        self.assertIn("give its path", proc.stderr)
+        self.assertIn(f"{b.name}, a bundle for far on {HOST}, is found on this machine by name", proc.stderr)
+        self.assertIn("set downloads in ", proc.stderr)
         self.assertEqual(self.e.git(self.root, "rev-parse", "HEAD"), before)
         self.assertEqual(self.fake.calls_of("open"), [])
 
@@ -763,15 +767,8 @@ class TestABundleOnAHost(HostedStartCase):
         self.assertIn("gone: in nowhere the office can see", "\n".join(cm.exception.lines))
 
 
-class TestLandOnAHostWaits(HostedStartCase):
-    def test_land_says_the_return_trip_is_not_built_and_the_session_waits(self):
-        self.only_far()
-        sid = self.start(self.name, "--on", "far", "--goal", "Fix it", "--write", "src")
-        proc = self.run_office("land", sid)
-        self.assertEqual(proc.returncode, 1)
-        self.assertIn(f"{sid} is open on far, a project on {HOST}: the return trip is not built yet; the session is "
-                      "out and its response waits", proc.stderr)
-        self.assertEqual(self.fake.calls_of("apply"), [])
+# Land on a hosted project (0.15.0 said the return trip was not built):
+# tests/test_return_trip.py.
 
 
 # --- 5. the runner prints a failing test's traceback ----------------------------------------------
@@ -848,7 +845,7 @@ class TestTheHostsBale(unittest.TestCase):
 
 class TestTheRecord(unittest.TestCase):
     def test_the_version_the_releases_the_readme_and_the_doctrine(self):
-        self.assertEqual((REPO / "VERSION").read_text().strip(), "0.15.0")
+        self.assertGreaterEqual(h.compare_versions((REPO / "VERSION").read_text().strip(), "0.15.0"), 0)
         releases = (REPO / "RELEASES.md").read_text()
         self.assertLess(releases.index("## 0.15.0"), releases.index("## 0.14.0"))
         readme = " ".join((REPO / "README.md").read_text().split())

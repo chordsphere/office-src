@@ -1,7 +1,8 @@
 """Tests for a project on another host (office-src 0.14.0): the host,
 shell and connect keys, the reach check, the read side and office status
 through the shell, start and land refusing a hosted project, and
-preparing a clone for bale without a trace.
+preparing a clone for bale without a trace. (start and land on a host
+since: tests/test_out_trip_to_host.py and tests/test_return_trip.py.)
 
 The suite makes no network call and runs no real ssh. A fake `ssh`,
 first on the PATH, records the target and the words it was handed,
@@ -606,7 +607,7 @@ class TestReadSideThroughTheShell(HostedCase):
         self.assertNotIn("cannot read", proc.stdout + proc.stderr)
 
 
-# --- land, until the return trip (start on a host: tests/test_out_trip_to_host.py) ------------
+# --- start and land on a host (tests/test_out_trip_to_host.py, tests/test_return_trip.py) -----
 
 class TestStartAndLandRefuse(HostedCase):
     def test_an_office_session_about_a_hosted_project_goes_out_without_its_tree(self):
@@ -623,7 +624,11 @@ class TestStartAndLandRefuse(HostedCase):
         self.assertIn(f"far's tree is on {HOST}, so it does not ride", proc.stdout + proc.stderr)
         self.assertEqual(self.ssh.connections(), [])
 
-    def test_land_on_a_hosted_project_refuses(self):
+    def test_land_on_a_hosted_project_needs_the_downloads_and_refuses_piped_without_them(self):
+        """Since 0.16.0 land brings a hosted session back (tests/test_return_trip.py):
+        its response is found on this machine, in the downloads machine.toml
+        names. Piped, with the setting unset, land refuses before anything
+        is carried, naming the key; nothing runs on the host."""
         # Only the hosted project holds the session: the local twin goes.
         manifest = self.root / "floor-plan" / "manifest.toml"
         text = manifest.read_text()
@@ -632,16 +637,11 @@ class TestStartAndLandRefuse(HostedCase):
         self.assertEqual([p["name"] for p in h.read_projects(manifest_of(self.root))], ["far"])
         proc = self.run_office("land", OPEN_WORKER)
         self.assertEqual(proc.returncode, 1)
-        self.assertIn(f"{OPEN_WORKER} is open on far, a project on {HOST}: the return trip is not built yet; "
-                      "the session is out and its response waits", proc.stderr)
-        self.assertEqual([a for a in self.fake.argvs() if a[0] in ("apply", "retry", "unlock")], [])
-        # A sitting the folder records: ending it is land's too, and refused the same.
-        h.record_session(self.root / self.folder / "folder.md", OPEN_SITTING)
-        git(self.root, "commit", "-qam", "the sitting", env=self.e.env)
-        proc = self.run_office("land", OPEN_SITTING)
-        self.assertEqual(proc.returncode, 1)
-        self.assertIn(f"{OPEN_SITTING} is a sitting on far, a project on {HOST}: the return trip is not built yet",
+        self.assertIn(f"the response for {OPEN_WORKER} is found on this machine by name and carried to {HOST}",
                       proc.stderr)
+        self.assertIn("set downloads in ", proc.stderr)
+        self.assertIn("piped input is never asked", proc.stderr)
+        self.assertEqual([a for a in self.fake.argvs() if a[0] in ("apply", "retry", "unlock")], [])
 
 
 # --- preparing a clone --------------------------------------------------------------------------

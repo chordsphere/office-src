@@ -151,10 +151,12 @@ paste the opener. The details are below.
     office land                          # the session out: bale apply, how it ended, the relay
 
 It finds the session the response answers, runs bale apply in the repo it
-belongs to, says how it ended, hands you the relay to carry, runs the
-project's after-land actions, records the planner's ratification, closes
-the founding folder when the founding has landed, and names any watch
-that fired. The details are below.
+belongs to (on its host, for a project on another machine), says how it
+ended, hands you the relay to carry, runs the project's after-land
+actions, records the planner's ratification, offers to close a folder
+whose one session has landed and been ratified, closes the founding
+folder when the founding has landed, and names any watch that fired. The
+details are below.
 
 ### Build an office
 
@@ -536,27 +538,47 @@ in. Then bale's pack runs on the host through the project's shell, a
 back into the tray (it stays in the repo's outbox there too); the
 office's context, the doctrine and the ride-alongs are made here, as for
 any project. A bundle travels to the host too, and `bale open --check`
-and `bale open` run there on that copy: give a bundle for a hosted
-project as a file here (its path), since bale's search for a bare name
-would run on the host. Where a bundle's paths decide where it opens, a
-hosted project answers through its shell. The one temporary directory
+and `bale open` run there on that copy: a bundle for a hosted project is
+a file here, its path or a bare name found in this machine's downloads
+(the `downloads` setting below; of several browser copies of the name,
+`NAME (1).bale-bundle` and so on, the newest is taken and named), since
+bale's own search for a bare name would run on the host. Where a
+bundle's paths decide where it opens, a hosted project answers through
+its shell. The one temporary directory
 start makes on the host (under its TMPDIR, or /tmp) is removed whether
 the start succeeded or not. A step bale asks you about runs through the
 attended form of the shell (`ssh -tt`, and a container's `-it` for its
 `-i`, derived from the project's `shell`), with your terminal as its
-input; piped, nothing ever asks. Landing a hosted session is the next
-release's: `office land` says the session is out and its response waits.
+input; piped, nothing ever asks. One start reaches the host once (the
+reach is carried from one step to the next) and the reads it needs there
+share a connection: a pack makes about four connections, five with a
+brief, eight for a bundle (0.15.0 made seven, ten and eighteen in the
+suite's count).
 
 On WSL the out tray opens in Explorer and the opener goes on the
-clipboard. `~/.config/office-src/machine.toml` changes that per machine:
-`out_tray = "~/somewhere"`, `clipboard_command = "..."`,
-`open_command = "..."`, and `""` turns a step off.
+clipboard. `~/.config/office-src/machine.toml` holds this machine's own
+settings, outside every office:
+
+- `out_tray = "~/somewhere"`: where out trays go (default `~/out-tray`).
+- `clipboard_command = "..."` and `open_command = "..."`: the two desktop
+  steps; `""` turns one off.
+- `downloads = ["/mnt/c/Users/you/Downloads"]`: the directories your
+  browser saves downloads into, a list. `office land` finds a hosted
+  session's response there by name, and `office start` a bundle for a
+  hosted project; for a project here, land uses it only to pick the
+  newest of several copies of a response. The office writes it the first
+  time a verb needs it on a terminal, offering this machine's likely
+  directories (`?` explains it), and never asks again; a piped verb that
+  needs it refuses and names the key. It is the office's setting: the
+  office never reads bale's config, whose search directories it lists for
+  bale alone.
 
 ### Bringing a session back: the details
 
     office land                          # the session out: bale apply, how it ended, the relay
     office land fix-login                # the session out for a folder
     office land response-2026-10-05-fix-login-001.tar.gz --ratified
+    office land fix-login --ratified --close   # and close the finished folder
 
 `office land` finds the session a response answers (the one the office
 has out, asked for when there are several; a session id, a folder or a
@@ -564,9 +586,12 @@ response file names one) and runs `bale apply` in the repo it belongs
 to, `bale retry` when bale held it. bale reads your terminal, so its own
 questions (an admission, the merge, a hook) are asked by bale and only
 you answer them; the office passes it nothing that answers one. The
-response is found by bale, by name, in its search directories; give a
-path when the browser saved it as `response-SID (1).tar.gz`, which a
-corrected response after a HOLD usually is. How it ended is read from
+response is found by bale, by name, in its search directories. When the
+`downloads` setting is there and holds several copies of the name (a
+browser saves the second as `response-SID (1).tar.gz`, which a corrected
+response after a HOLD usually is), land passes bale the newest by its
+path and says which; bale's own search would take the plain name first.
+A path you give always wins. How it ended is read from
 bale's records and said in a line. Whatever bale prints for you to carry
 (the relay for the planner, and on a HOLD the worker's block first) is
 printed whole and, on WSL, put on the clipboard; a clarification's block
@@ -584,7 +609,12 @@ runs `office watches check` (it records nothing) and prints the watches
 that fired, since a landing is what changes the counts a watch reads; an
 office with no watches register prints nothing for it, and the check
 never fails a landing. When the session was the founding session and the
-profile is now complete, it closes the founding folder, done. The actions run only
+profile is now complete, it closes the founding folder, done. When the
+folder records that session alone and the planner ratified it with no
+exception, the job is finished, and land offers to close the folder,
+done, right after the ratification (default close; `--close` and
+`--leave-open` answer it without asking; piped with neither, the folder
+stays open and land says so). The actions run only
 through `office land`: a session applied by hand with `bale apply` runs
 none, so office-src's own `./install.sh` does not run, and `office
 status`'s `source:` line then says the install is behind its working
@@ -601,6 +631,28 @@ session's folder changed after its pack, when `office start` recorded the
 session; `office land` puts it back as it was packed while bale lands, so
 bale never refuses the response over it, and records the session again
 after.
+
+A session on a project on a host lands there, and you see what you see
+for a project here. Land first checks that the host answers (one
+connection; a host that does not stops land before anything is carried,
+with your connect line and the line that reruns it). The response is
+found on this machine: the path you give, a name you give (the current
+directory, then the downloads), or else the newest copy of
+`response-SID.tar.gz` in the downloads, named when there were several;
+after a HOLD, with one copy only, land asks for the corrected one (piped,
+it names the copy it saw). It is carried to the host into one temporary
+directory, checked by sha256, and `bale apply` (or `bale retry`) runs in
+the project's repo there through the attended form of its shell, so
+bale's questions reach you; the directory is removed by the same command
+once bale is done, or after it on a failure. How it ended is read from
+bale's records there; the relay is printed here whole and, on WSL, put on
+this machine's clipboard. A clarification's block comes from `bale relay`
+run there, and the next line is one you type here that pipes the
+planner's answer to `bale relay SID -` there. The after-land actions run
+in the repo there, one connection each, attended on a terminal, and a
+failing one names the line that reruns it from here. A read-only sitting
+there ends with `bale unlock` there. A hosted land makes about four
+connections, plus one per after-land action.
 
 ### Which sessions worked on a job
 
@@ -656,8 +708,8 @@ per command (each round of reads travels as one batch), and
 each host answers and which bale is there against the read side's
 floor, naming `office projects level-bale NAME` when it is behind the
 floor or behind this machine's. `office start` packs a session on a
-hosted project's host (Sending a session out: the details); landing it
-there is the next release's.
+hosted project's host (Sending a session out: the details), and `office
+land` lands it there (Bringing a session back: the details).
 
 `--from CLONE` brings a clone on this machine to the host as the
 project's repo, for a repo that is not there yet: PATH must not exist on
@@ -794,8 +846,17 @@ when every test passed, 1 when one failed, 2 when it could not run.
 `--serial` is today's single process, `python3 -m unittest discover -s
 tests -v`, which still works as it always did.
 
+Run the suite in the foreground. A background job started from a
+non-interactive shell (`nohup tests/run.sh &`) inherits SIGINT ignored,
+every process it starts ignores Ctrl-C, and the terminal tests that check
+what an interrupt does then fail for that reason; the runner says so at
+the start of such a run, naming them.
+
 The suite builds offices, installs and synthetic migrations under
-temporary directories and never touches your home directory or offices.
+temporary directories and never touches your home directory or offices,
+nor reads what this machine holds outside them: the downloads question's
+scan of the Windows users' homes (`/mnt/c/Users` on WSL) is pointed away
+by `OFFICE_WINDOWS_USERS`, empty for none, or a directory a test makes.
 bale need not be installed, and no real ssh ever runs: the read side's tests put a fake bale first
 on the PATH that replays real bale output captured by a probe, kept in
 the development record, and refuses anything it did not capture; the

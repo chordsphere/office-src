@@ -4,6 +4,86 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.16.0
+
+Additive: no migration, nothing to do in any office. The return trip from
+a host: a session sent to a project on a host comes back with `office
+land`, so a hosted project's whole loop runs through `office start` and
+`office land`.
+
+`office land` on a hosted project. land checks first that the host
+answers: a host that does not stops land before anything is carried,
+with the connect line and the line that reruns it (`far's host did not
+answer, so it may be out there: ...`). The response is found on this
+machine (below), carried into one temporary directory on the host made
+in the same connection, checked by sha256, and `bale apply` (or `bale
+retry` for a held session) runs in the project's repo there through
+`Reader.interact`'s attended form, so bale's questions reach the occupant
+and only he answers them; the same command removes the directory once
+bale exits, and land removes it after when bale did not finish. How it
+ended is read from bale's records there. The relay is printed whole and,
+on WSL, put on this machine's clipboard. A clarification's block comes
+from `bale relay` run there, in the same connection as the dossier, and
+its Next line is one line typed here that pipes the planner's answer to
+`bale relay SID -` there. The project's after-land actions run in its
+repo there, one connection each, attended on a terminal; a failing one
+names the line that reruns it from here. The ratification, the watches
+check and the last lines follow as for a local landing. A read-only
+sitting there ends with `bale unlock` there. `land_plan` carries the
+place (path, host, shell, connect) instead of `repo`, and a display
+`where`. Nothing land writes on the host outside the repo is left
+behind, on success or failure, and the suite proves it with a fake host
+that keeps its own HOME, PATH and TMPDIR.
+
+Where downloads land: machine.toml's `downloads`, a list of directories,
+the office's own setting (it never reads bale's config). Asked once on a
+terminal the first time a verb needs it, offering this machine's likely
+directories (each Windows user's Downloads on WSL, the XDG download
+directory, ~/Downloads; `OFFICE_WINDOWS_USERS` names another root for the
+Windows homes, or none when empty, which the suite sets so no test
+depends on the machine it runs on), `?` explaining it; piped, the verb refuses and
+names the key; never asked again. A hosted land finds the response there
+by name, the newest of a browser's copies (`response-SID (1).tar.gz`)
+winning and named; a path given overrides, and a name given is looked for
+in the current directory and then the downloads. After a HOLD with one
+copy only, land asks for the corrected one, offering that copy (piped, it
+names it). A local land behaves as before unless the downloads hold
+several copies of the response's name: then bale gets the newest by its
+path, and land says so. `office start` on a hosted project accepts a bare
+bundle name again, found the same way (0.15.0 refused it). Two copies
+saved at the same moment refuse, naming both.
+
+land offers to close a finished folder. After an applied landing, when
+the folder records that session alone and the planner ratified it with
+no exception, land offers to close the folder, done, right after the
+ratification, default close; `--close` and `--leave-open` are the flag
+twins; piped with neither, the folder stays open and land says so. Local
+and hosted alike; the founding folder keeps its own rule.
+
+Fewer connections. The reach carries across the reader processes of one
+office command (bin/office names a file in `OFFICE_REACHED_FILE`; each
+prefix that answered is appended, and the next process reads it), and
+the reads a step needs share a connection: start-check's version, status
+and repo check; the pack's status, paths and doctrine sums; a bundle's
+status and paths; a new temporary directory and the file sent into it;
+the directory's removal with the step that used it; open's status after
+the open; land's status and dossier, and the outcome's dossier and
+relay. In the suite's count a hosted start went from 7 connections to 4
+(a brief: 10 to 5; a bundle: 18 to 8), and a hosted land takes 4 plus one
+per after-land action. A host that stops answering after its reach was
+carried says so in the reach's own line (ssh's exit 255), not as a
+refused command.
+
+A home-relative hosted path (`~/x`, which `office projects add` takes for
+a host) keeps its meaning through the shell: the office's `cd` and the
+repo check expand it as `"$HOME"/x` on the far side, where a quoted `~`
+named a directory called `~`.
+
+Two riders. README's Tests section says to run the suite in the
+foreground, and `tests/runner.py` warns at the start of a run whose
+SIGINT is ignored, naming the terminal tests whose interrupt checks then
+fail.
+
 ## 0.15.0
 
 Additive: no migration, nothing to do in any office. The out trip to a

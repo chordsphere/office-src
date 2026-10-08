@@ -271,6 +271,19 @@ found_line = "[bale] bale open --check: rehearsing planner bundle "
 # apply or retry added, or, when bale exits 0 and added none, a
 # clarification round (bale relay re-emits its block).
 #
+# On a project on a host (since 0.16.0, session
+# 2026-10-08-return-trip-to-host-001) apply and retry run in the
+# project's repo there, through the attended form of its shell (ssh -tt,
+# a container's -it; piped, the plain form with stdin closed), with the
+# tarball argument the path of the copy the office carried into its one
+# temporary directory on the host; the same command removes that
+# directory once bale exits, and exits with bale's code. Nothing bale
+# prints is changed by the trip; through a pseudo-terminal its lines end
+# in CR LF, and the office rewrites the capture with LF before it reads
+# the blocks. The host's bale was 0.4.51 when this was built, the same as
+# the packing machine's; the surfaces were read from its help, not probed
+# again there.
+#
 # interactive   stdin, and stderr, stay the occupant's terminal
 # relay         the lines around each block bale prints for a person to
 #               carry, {sid} filled in; the block's addressee follows
@@ -298,7 +311,10 @@ contract = "bale retry --help (v0.4.45)"
 
 # A clarification's paste block for the planner, re-emitted from the
 # thread's latest round. With no file it records nothing; the block is
-# the whole of stdout.
+# the whole of stdout. On a host (since 0.16.0) it runs there, in the
+# same connection as the session's dossier; the planner's answer goes
+# back by `bale relay SID -` there, the answer file on the occupant's
+# machine piped to it, a line office land prints and never runs.
 #
 # block   the block's first and last lines, {sid} filled in
 [surfaces.relay]
@@ -319,7 +335,8 @@ block = ["BALE EXCHANGE BEGIN {sid}", "BALE EXCHANGE END"]
 # tree as it was. The human summary is on stderr. Since 0.4.47 a refusal
 # also prints one JSON line on stdout (outcome unlock-refused, a reason
 # code), still exiting 1 with the error on stderr; the office reads a
-# refusal by its exit code and bale's words, as before.
+# refusal by its exit code and bale's words, as before. On a host
+# (since 0.16.0) it runs there, through the project's shell.
 [surfaces.unlock]
 argv = ["unlock", "{sid}", "--json"]
 contract = "format_unlock_json's docstring, bin/bale_report.py; bale unlock --help (v0.4.45; checked on v0.4.47)"

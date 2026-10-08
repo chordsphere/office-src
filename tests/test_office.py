@@ -67,6 +67,10 @@ class Env:
             "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.com",
             "PYTHONDONTWRITEBYTECODE": "1",
             "LC_ALL": "C.UTF-8",
+            # The downloads question scans no directory outside this HOME
+            # (lib/office_helper.py, download_candidates): what the running
+            # machine holds never reaches a test.
+            "OFFICE_WINDOWS_USERS": "",
         }
         (self.home / ".gitconfig-empty").write_text("")
         self.office_bin = REPO / "bin" / "office"

@@ -111,6 +111,19 @@ def debug(msg):
         print(f"[office] debug: {msg}", file=sys.stderr)
 
 
+def shell_path(path):
+    """A path for a shell line on the far side, quoted: a home-relative
+    path (~/x, as office projects add takes one for a host) keeps its
+    tilde meaning there, "$HOME"/'x', since a quoted ~ is a directory
+    named ~."""
+    path = str(path)
+    if path == "~":
+        return '"$HOME"'
+    if path.startswith("~/"):
+        return '"$HOME"/' + shlex.quote(path[2:])
+    return shlex.quote(path)
+
+
 def default_shell(host):
     return f"ssh {host} bash -lc"
 
@@ -273,6 +286,64 @@ def rerun_line():
 # checks a host once. A prefix maps to None once it answered, or to the
 # one line a host that did not answer gets.
 _REACHED = {}
+# Since 0.16.0 the reach carries across the reader processes of one
+# office command: bin/office names a file in this variable, every prefix
+# that answered is appended to it (one line each; a shell prefix is one
+# line), and a later process of the same command reads it before its
+# first connection, so a host one step reached is not reached again by
+# the next. A host that did not answer is never written: the command
+# stops there.
+REACHED_ENV = "OFFICE_REACHED_FILE"
+_CARRIED = {"loaded": False}
+# ssh's own exit code for a connection that failed (ssh(1)): a host that
+# stopped answering after the reach was carried says so in the reach's
+# one line, not as a refused command.
+SSH_CONNECTION_FAILED = 255
+
+
+def _load_carried():
+    """The prefixes earlier processes of this command reached, once per
+    process."""
+    if _CARRIED["loaded"]:
+        return
+    _CARRIED["loaded"] = True
+    path = os.environ.get(REACHED_ENV)
+    if not path:
+        return
+    try:
+        lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        debug(f"the reach carried from earlier steps could not be read ({exc}); each host is reached again")
+        return
+    for line in lines:
+        if line.strip():
+            _REACHED.setdefault(line, None)
+            debug(f"reach carried from an earlier step of this command: {line}")
+
+
+def _answered(place):
+    """Record that a prefix answered: for this process, and for the next
+    processes of the same command."""
+    known = _REACHED.get(place.shell, "unset") is None
+    _REACHED[place.shell] = None
+    path = os.environ.get(REACHED_ENV)
+    if known or not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(place.shell + "\n")
+    except OSError as exc:
+        debug(f"the reach of {place.host} could not be carried to the next step ({exc}); it reaches again")
+
+
+def _lost(place, why):
+    """The one line for a host that stopped answering after it was
+    reached, as a HostError(unreachable)."""
+    line = unreachable_line(place, why)
+    _REACHED[place.shell] = line
+    return HostError("unreachable", line)
 
 
 def unreachable_line(place, why):
@@ -290,6 +361,7 @@ def reach(place, timeout=REACH_TIMEOUT):
     first connection as the reach) is not run again."""
     if not place.hosted:
         return True
+    _load_carried()
     key = place.shell
     if key in _REACHED:
         if _REACHED[key] is None:
@@ -306,7 +378,7 @@ def reach(place, timeout=REACH_TIMEOUT):
     except OSError as exc:
         rc, err = None, str(exc)
     if rc == 0:
-        _REACHED[key] = None
+        _answered(place)
         debug(f"reach {place.host}: answered")
         return True
     why = [l.strip() for l in err.splitlines() if l.strip()]
@@ -318,6 +390,7 @@ def reach(place, timeout=REACH_TIMEOUT):
 def forget_reach():
     """For the suite: a fresh process has checked no host."""
     _REACHED.clear()
+    _CARRIED["loaded"] = False
 
 
 def _call_block(argv):
@@ -333,7 +406,7 @@ def _call_block(argv):
 def _script(place, argvs, chdir=True):
     lines = ["exec 4>&1"]
     if chdir:
-        lines.append(f"cd {shlex.quote(place.path)} || exit {_NO_DIR}")
+        lines.append(f"cd {shell_path(place.path)} || exit {_NO_DIR}")
     lines += [_call_block(argv) for argv in argvs]
     return "\n".join(lines) + "\n"
 
@@ -381,7 +454,9 @@ def run_many(place, argvs, timeout=RUN_TIMEOUT, chdir=True):
     # The first connection a command makes through a prefix is its reach
     # check: a host that does not answer it gets the one line, and the
     # command stops there; one that answers is not checked again in this
-    # process. A batch that goes through saves the separate `true`.
+    # process (or, since 0.16.0, in an earlier process of the same office
+    # command). A batch that goes through saves the separate `true`.
+    _load_carried()
     first = place.shell not in _REACHED
     if not first:
         reach(place)
@@ -401,7 +476,7 @@ def run_many(place, argvs, timeout=RUN_TIMEOUT, chdir=True):
     except OSError as exc:
         raise HostError("shell", f"could not run {place.shell}: {exc}")
     if proc.returncode == _NO_DIR:
-        _REACHED.setdefault(place.shell, None)
+        _answered(place)
         raise HostError("path", f"no such directory on {place.host}: {place.path}")
     try:
         calls = _split_calls(proc.stdout, len(argvs))
@@ -413,9 +488,13 @@ def run_many(place, argvs, timeout=RUN_TIMEOUT, chdir=True):
             line = unreachable_line(place, words[-1] if words else f"exit {proc.returncode}")
             _REACHED[place.shell] = line
             raise HostError("unreachable", line)
+        if proc.returncode == SSH_CONNECTION_FAILED and not proc.stdout.strip():
+            # It answered earlier in this command and stopped since (the
+            # VPN dropped): the reach's one line, connect text and all.
+            raise _lost(place, words[-1] if words else f"exit {proc.returncode}")
         raise HostError("refused", f"{place.shell} (exit {proc.returncode}): {exc}"
                         + (f"; the shell said: {words[-1]}" if words else ""))
-    _REACHED.setdefault(place.shell, None)
+    _answered(place)
     if first:
         debug(f"reach {place.host}: answered")
     runs = []
@@ -451,11 +530,17 @@ def run_in(place, argv, timeout=RUN_TIMEOUT, env=None, chdir=True):
     return Run(proc.returncode, proc.stdout, proc.stderr, shown, place.path)
 
 
+# A path a script takes as its first argument (d), with a home-relative
+# path's tilde meaning restored on the far side (see shell_path).
+_EXPAND_D = 'case "$d" in "~"|"~/"*) d="$HOME${d#"~"}" ;; esac; '
+
+
 # --- what office projects add asks of a repo, here or there ---------------------
 
 # One script answers the check wherever the repo is: the same facts
 # check_project_dir reads on this machine, as key=value lines.
 _CHECK_SCRIPT = (
+    'case "$1" in "~"|"~/"*) set -- "$HOME${1#"~"}" ;; esac; '
     'if [ ! -e "$1" ]; then echo "exists=no"; exit 0; fi; '
     'if [ ! -d "$1" ]; then echo "exists=yes"; echo "dir=no"; exit 0; fi; '
     'echo "exists=yes"; echo "dir=yes"; cd "$1" || exit 0; '
@@ -473,7 +558,19 @@ def check_project(place):
     found, or what is wrong, in the words `office projects add` prints;
     a repo bale has not run in says so, and names --prepare."""
     place = as_place(place)
-    run = run_in(place, ["sh", "-c", _CHECK_SCRIPT, "office-check", place.path], chdir=False)
+    return read_check(place, run_in(place, check_argv(place), chdir=False))
+
+
+def check_argv(place):
+    """The check's one argv, for a batch that carries it beside other
+    reads (start's check of a host, since 0.16.0). It takes the path as an
+    argument, so it runs from wherever the shell lands."""
+    return ["sh", "-c", _CHECK_SCRIPT, "office-check", as_place(place).path]
+
+
+def read_check(place, run):
+    """(ok, text) from the check's Run, as check_project says it."""
+    place = as_place(place)
     if run.returncode != 0:
         raise HostError("refused", f"the check of {place} failed (exit {run.returncode}): "
                         f"{(run.stderr.strip().splitlines() or ['no message'])[-1]}")
@@ -502,7 +599,7 @@ def check_project(place):
 # outside what git tracks. The repo's own .gitignore belongs to its
 # audience and is never touched. Idempotent: a second run changes nothing.
 _PREPARE_SCRIPT = (
-    'd="$1"; shift; cd "$d" || exit 3; '
+    'd="$1"; shift; ' + _EXPAND_D + 'cd "$d" || exit 3; '
     'git rev-parse --show-toplevel >/dev/null 2>&1 || exit 4; '
     'gitdir=$(git rev-parse --git-dir) || exit 4; '
     'mkdir -p "$gitdir/info" || exit 5; ex="$gitdir/info/exclude"; '
@@ -577,7 +674,10 @@ def _raw(place, command, stdin=None, stdout=None, timeout=TRANSFER_TIMEOUT):
         raise HostError("refused", f"{shown_argv([command])} through {place.host} did not finish in {timeout}s")
     except OSError as exc:
         raise HostError("shell", f"could not run {place.shell}: {exc}")
-    return proc.returncode, proc.stdout, proc.stderr.decode("utf-8", "replace")
+    err = proc.stderr.decode("utf-8", "replace")
+    if proc.returncode == SSH_CONNECTION_FAILED and place.words()[:1] == ["ssh"]:
+        raise _lost(place, _last_words(err))
+    return proc.returncode, proc.stdout, err
 
 
 def _last_words(text):
@@ -631,6 +731,11 @@ def fetch_file(place, remote, local):
     return got
 
 
+# The paths (arguments, relative to where the shell stands) that are not
+# there, one per line.
+MISSING_SCRIPT = 'for p; do [ -e "$p" ] || printf "%s\\n" "$p"; done'
+
+
 def missing_paths(place, paths):
     """The paths (relative to the place's path) that are not there."""
     place = as_place(place)
@@ -639,8 +744,7 @@ def missing_paths(place, paths):
         return []
     if not place.hosted:
         return [p for p in paths if not (pathlib.Path(place.path) / p.strip("/")).exists()]
-    run = run_in(place, ["sh", "-c", 'for p; do [ -e "$p" ] || printf "%s\\n" "$p"; done', "office-paths",
-                         *[p.strip("/") or "." for p in paths]])
+    run = run_in(place, ["sh", "-c", MISSING_SCRIPT, "office-paths", *[p.strip("/") or "." for p in paths]])
     if run.returncode != 0:
         raise HostError("refused", f"the paths in {place} could not be checked: {_last_words(run.stderr)}")
     gone = set(run.stdout.splitlines())
@@ -652,7 +756,14 @@ class Scratch:
     a host: mktemp -d under the host's TMPDIR, or /tmp), made when first
     asked for and removed on the way out, whether the work succeeded or
     not. A directory that could not be removed is said loudly, with its
-    path, never left in silence."""
+    path, never left in silence.
+
+    Since 0.16.0 each end can ride a connection the work makes anyway:
+    send() makes the directory in the same connection that carries the
+    first file into it, and removal_argv() / removal_words() are the
+    removal for the last step's batch or command to carry, after which
+    removed_by_step() tells the scratch the explicit removal is not
+    needed (it still runs when the step did not finish normally)."""
 
     def __init__(self, place):
         self.place = as_place(place)
@@ -663,6 +774,45 @@ class Scratch:
         if self._path is None:
             self._path = make_scratch(self.place)
         return self._path
+
+    @property
+    def made(self):
+        return self._path is not None
+
+    def send(self, local, name=None):
+        """Copy a file from this machine into the scratch under name (its
+        own name by default), held to its sha256; on a host whose scratch
+        is not made yet, the directory is made in the same connection.
+        Returns the file's path there."""
+        name = name or pathlib.Path(local).name
+        if "/" in name or name in ("", ".", ".."):
+            raise HostError("refused", f"{name!r} is not a file name")
+        if self._path is not None or not self.place.hosted:
+            remote = f"{self.path}/{name}"
+            send_file(self.place, local, remote)
+            return remote
+        self._path, remote = send_into_new_scratch(self.place, local, name)
+        return remote
+
+    def removal_words(self):
+        """The shell words that remove the scratch where it is, saying so
+        loudly on stderr when they cannot: for a command the last step
+        runs anyway. Empty when the scratch was never made."""
+        if self._path is None:
+            return ""
+        q = shlex.quote(self._path)
+        warn = shlex.quote(f"[office] warning: the temporary directory {self._path} on "
+                           f"{self.place.host or 'this machine'} was left behind")
+        return f"rm -rf -- {q} || echo {warn} >&2"
+
+    def removal_argv(self):
+        """The removal as one argv, for a batch the last step sends."""
+        return ["sh", "-c", self.removal_words()] if self._path is not None else None
+
+    def removed_by_step(self):
+        """The last step's own connection removed the scratch: nothing is
+        left for __exit__ to remove."""
+        self._path = None
 
     def __enter__(self):
         return self
@@ -676,6 +826,70 @@ class Scratch:
                       f"{self.place.host or 'this machine'} was left behind: {err}", file=sys.stderr)
             self._path = None
         return False
+
+
+# One connection: a new scratch, and one file sent into it with its sum.
+_SEND_NEW = ('d=$(mktemp -d "${TMPDIR:-/tmp}/' + SCRATCH_PREFIX + 'XXXXXXXX") || exit 1; echo "scratch=$d"; '
+             'cat > "$d/$1" && sha256sum "$d/$1"')
+
+
+def send_into_new_scratch(place, local, name):
+    """Make a scratch on a host and send one file into it, in one
+    connection; (scratch path, the file's path there). The file is held to
+    its sha256, as send_file holds one; a failure after the directory was
+    made removes it before it raises."""
+    want = sha256_of(local)
+    with open(local, "rb") as fh:
+        rc, out, err = _raw(place, f"sh -c {shlex.quote(_SEND_NEW)} office-send {shlex.quote(name)}", stdin=fh)
+    text = (out or b"").decode("utf-8", "replace")
+    made = [l[len("scratch="):].strip() for l in text.splitlines() if l.startswith("scratch=")]
+    path = made[-1] if made else None
+    sums = [m.group(1) for m in map(_SHA_RE.match, text.splitlines()) if m]
+    problem = None
+    if path is None or not path.startswith("/"):
+        problem = HostError("refused", f"could not make a temporary directory on {place.host}: {_last_words(err)}")
+        path = None
+    elif rc != 0:
+        problem = HostError("refused", f"could not write {path}/{name} on {place.host} (exit {rc}): {_last_words(err)}")
+    elif (sums[-1] if sums else None) != want:
+        problem = HostError("output", f"{path}/{name} on {place.host} is not the file sent: sha256 "
+                                      f"{sums[-1] if sums else 'unreadable'} there, {want} here")
+    if problem is not None:
+        if path is not None:
+            try:
+                remove_scratch(place, path)
+            except HostError as exc:
+                print(f"[office] warning: the temporary directory {path} on {place.host} was left behind: {exc}",
+                      file=sys.stderr)
+        raise problem
+    debug(f"scratch on {place.host}: {path}, with {name} sent into it ({want[:12]})")
+    return path, f"{path}/{name}"
+
+
+def run_streamed(place, command, timeout=None):
+    """One command string where a place is, its output straight to this
+    terminal, for a step the occupant watches (an after-land action):
+    through a host's shell on a terminal, the attended form (ssh -tt, a
+    container's -it), so a question it asks reaches him; piped, the plain
+    form with stdin closed. On this machine, bash -c in the place's
+    directory with the terminal's own stdin. Returns the exit code."""
+    place = as_place(place)
+    if not place.hosted:
+        if not pathlib.Path(place.path).is_dir():
+            raise HostError("path", f"no such directory on this machine: {place.path}")
+        return subprocess.run(["bash", "-c", command], cwd=place.path, timeout=timeout).returncode
+    reach(place)
+    full = f"cd {shell_path(place.path)} && {command}"
+    attended = sys.stdin.isatty()
+    argv = place.attended_argv(full) if attended else place.argv(full)
+    debug(f"{shown_argv([command])} in {place}, " + ("attended" if attended else "piped, stdin closed"))
+    try:
+        proc = subprocess.run(argv, stdin=None if attended else subprocess.DEVNULL, timeout=timeout)
+    except OSError as exc:
+        raise HostError("shell", f"could not run {place.shell}: {exc}")
+    if proc.returncode == SSH_CONNECTION_FAILED and place.words()[:1] == ["ssh"]:
+        raise _lost(place, f"exit {proc.returncode}")
+    return proc.returncode
 
 
 def make_scratch(place):
@@ -770,7 +984,7 @@ def clone_facts(local):
 # It prints created=yes once the directory is its own, so a failure after
 # that point removes what it made, and the refs as they ended up.
 _CLONE_SCRIPT = (
-    'd="$1"; b="$2"; hk="$3"; hv="$4"; n="$5"; shift 5; '
+    'd="$1"; b="$2"; hk="$3"; hv="$4"; n="$5"; shift 5; ' + _EXPAND_D +
     '[ ! -e "$d" ] || { echo "$d already exists" >&2; exit 90; }; '
     'git -c init.defaultBranch=office-clone init -q "$d" >/dev/null || exit 91; echo "created=yes"; '
     'cd "$d" || exit 91; '
@@ -796,8 +1010,8 @@ def path_exists(place, path=None):
     path = path or place.path
     if not place.hosted:
         return pathlib.Path(os.path.expanduser(path)).exists()
-    run = run_in(place, ["sh", "-c", '[ -e "$1" ] && echo exists=yes || echo exists=no', "office-exists", path],
-                 chdir=False)
+    run = run_in(place, ["sh", "-c", 'd="$1"; ' + _EXPAND_D + '[ -e "$d" ] && echo exists=yes || echo exists=no',
+                         "office-exists", path], chdir=False)
     if run.returncode != 0 or "exists=" not in run.stdout:
         raise HostError("refused", f"could not ask {place.host} whether {path} exists: {_last_words(run.stderr)}")
     return "exists=yes" in run.stdout
@@ -860,7 +1074,8 @@ def clone_to(place, local, facts=None):
             # The directory did not exist before this clone made it, so it
             # is the office's to remove.
             if place.hosted:
-                gone = run_in(place, ["rm", "-rf", "--", place.path], chdir=False)
+                gone = run_in(place, ["sh", "-c", 'd="$1"; ' + _EXPAND_D + 'rm -rf -- "$d"', "office-remove",
+                                      place.path], chdir=False)
                 ok, why = gone.returncode == 0, _last_words(gone.stderr)
             else:
                 try:
