@@ -183,7 +183,10 @@ trigger = ["manual", "after-build"]
 # Lists the projects the office scopes and renders what bale records
 # about them, reading only; `office projects add` and `office projects
 # set` are the only writers of the floor plan's [projects] table, set
-# writing what rides with a project and what runs after it lands.
+# writing what rides with a project and what runs after it lands. Outside
+# the office, and never in it, add --from makes a clone on a project's
+# host and level-bale replaces the bale install there (both only when the
+# occupant asks); neither lands anything in the office.
 [verbs.projects]
 kind = "script"
 built = true

@@ -436,6 +436,7 @@ the agenda are checked against their committed bytes before the commit
     office start fix-login --on office-src --goal "Fix it" --no-rides         # nothing declared rides this time
     office start fix-login --on office-src --goal "Fix it" --carry 3          # rider 3 rides in the folder
     office start new --on office-src 2026-10-05-fix-login.bale-bundle         # a new folder for a planner's bundle
+    office start fix-api --on api --goal "Wire the health route" --write src  # api is on a host: packed there
 
 `office start` packs a session for a folder and gathers everything to
 attach into one out tray, `~/out-tray/SID`: the request, the doctrine,
@@ -519,6 +520,33 @@ notepad and commits it alone; a page already filed with the same words
 is left as it is, and a different one at that path is refused loudly and
 never overwritten. This works for a brief given with `--brief` too.
 
+A project on a host (`office projects add --host`) is packed on its
+host, where its bale is and where it will land, and you see the same as
+for a project here: the survey, the riders, the ride-alongs question,
+the overlap refusal in the office's words, the session recorded in the
+folder, and one out tray on this machine holding the request, the
+doctrine, the office's context and each ride-along, with the opener
+printed (and on the clipboard on WSL). Before anything is written, start
+makes one connection to the host: a host that does not answer stops the
+start there, with your connect line; a bale there below the read side's
+floor is refused, naming `office projects level-bale NAME` (start never
+upgrades a bale on its own); and the repo there must be one bale runs
+in. Then bale's pack runs on the host through the project's shell, a
+`--brief` travelling there first, and the request bale makes is carried
+back into the tray (it stays in the repo's outbox there too); the
+office's context, the doctrine and the ride-alongs are made here, as for
+any project. A bundle travels to the host too, and `bale open --check`
+and `bale open` run there on that copy: give a bundle for a hosted
+project as a file here (its path), since bale's search for a bare name
+would run on the host. Where a bundle's paths decide where it opens, a
+hosted project answers through its shell. The one temporary directory
+start makes on the host (under its TMPDIR, or /tmp) is removed whether
+the start succeeded or not. A step bale asks you about runs through the
+attended form of the shell (`ssh -tt`, and a container's `-it` for its
+`-i`, derived from the project's `shell`), with your terminal as its
+input; piped, nothing ever asks. Landing a hosted session is the next
+release's: `office land` says the session is out and its response waits.
+
 On WSL the out tray opens in Explorer and the opener goes on the
 clipboard. `~/.config/office-src/machine.toml` changes that per machine:
 `out_tray = "~/somewhere"`, `clipboard_command = "..."`,
@@ -592,6 +620,8 @@ add with `-m`; it never copies what bale records about the session.
     office projects                          # the projects this office scopes, and where each is
     office projects add office-src ~/office-src   # add one (asks on a terminal for what it was not given)
     office projects add api ~/development/api --host me@workhost --prepare   # one on another host
+    office projects add api ~/development/api --host me@workhost --from ~/work/api   # bring a clone there
+    office projects level-bale api           # the host's bale brought level with this machine's
     office projects set api --shell "ssh me@workhost docker exec -i -u me box bash -lc"
     office projects set api --connect "start the VPN client, then retry"
     office projects set office-src --ride ~/other-repo/docs --after-land ./install.sh
@@ -624,9 +654,42 @@ check` and the digest all read a hosted project, in a few connections
 per command (each round of reads travels as one batch), and
 `OFFICE_DEBUG=1` shows every shell call. `office status` says whether
 each host answers and which bale is there against the read side's
-floor, with the remedy when it is behind. Sending a session to a hosted
-project and landing it there is the next release's: `office start` and
-`office land` refuse before anything is written.
+floor, naming `office projects level-bale NAME` when it is behind the
+floor or behind this machine's. `office start` packs a session on a
+hosted project's host (Sending a session out: the details); landing it
+there is the next release's.
+
+`--from CLONE` brings a clone on this machine to the host as the
+project's repo, for a repo that is not there yet: PATH must not exist on
+the host (add refuses before anything moves), and a clone of CLONE is
+made at PATH with every local branch and tag, its remote-tracking refs,
+and its remotes and branch settings as CLONE has them, with HEAD where
+CLONE's is. It travels from this machine as a git bundle through the
+project's shell (the host need not reach CLONE's git host, and nothing
+is fetched there), is checked ref by ref against CLONE, and is then
+prepared as `--prepare` prepares one; a clone that does not come out
+level is removed again, as is the one temporary directory on the host.
+Only what is committed travels: a CLONE whose working tree has changes is
+named, with its changed paths, and add asks whether to go on without
+them (piped, it refuses unless `--from-dirty-ok`). CLONE is never changed
+or deleted; add says it can be removed once you are satisfied with the
+clone on the host. On a terminal, add asks for it after the host
+question ("is there a clone on this machine to bring?", default none;
+`?` explains). A shallow clone is refused (fetch it whole first).
+
+bale is installed per machine, like git, and a hosted project's bale
+lives on its host. `office projects level-bale NAME` installs there the
+bale this machine runs, the way bale's releases install: a release
+tarball of this machine's install (its `user/`, git and records left
+out) carried through the project's shell, and the host's own
+`upgrade.sh -y` run on it, which moves the host's `<install>/user/` (its
+global `bale.toml` and hook store) aside, replaces the rest, puts it
+back and runs `install.sh`, which runs `validate.sh`. A host with no
+bale on its login PATH gets it unpacked as `~/bale` and its `install.sh`
+run. Nothing is fetched from the network there. It says what version
+was there and what is there now, checks the version and `user/` again
+afterwards, never moves a bale back (a host newer than this machine is
+refused), and asks first on a terminal (piped, `--yes`).
 
 A clone bale has not run in (no `.bale/`, no `bale.toml`) is refused
 unless it is prepared: `--prepare` (offered on a terminal) writes the
@@ -723,8 +786,10 @@ The plan is held to `unittest discover`'s count before anything runs, so
 the whole suite still runs, each test as often as discover runs it. Each
 job writes one log (`unittest -v`'s output) and the summary names every
 job, its count, its time and its log, and for a job that failed, the
-failing tests and the log to read (`--logs DIR` keeps them somewhere
-known; by default a new directory under the temp directory). It exits 0
+failing tests, each with the last lines of its traceback, and the log to
+read (`--logs DIR` keeps them somewhere known; by default a new directory
+under the temp directory, which WSL empties on a restart, so the
+summary carries what a failure said). It exits 0
 when every test passed, 1 when one failed, 2 when it could not run.
 `--serial` is today's single process, `python3 -m unittest discover -s
 tests -v`, which still works as it always did.

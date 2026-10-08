@@ -1,0 +1,15 @@
+{
+ "argv": [
+  "--version"
+ ],
+ "cwd": "the container user's home on the work host (bash -lc through ssh and docker exec -i -u USER)",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "bale 0.4.40"
+ ],
+ "stdout_sha256": [
+  "4d0a2e009fb4ab16298b138af54faf85d2a73c6f4dc06cfeb05a988a3208ab61"
+ ],
+ "captured": "probe of session 2026-10-07-out-trip-to-host-004 (second run), section R2: `bale --version` (printed as `bale: $(bale --version)`; the prefix is the probe's)"
+}

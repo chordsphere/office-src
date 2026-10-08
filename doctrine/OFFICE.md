@@ -142,9 +142,20 @@ A session is packed where it lands.
 - Whatever a project declares rides too: each path in its `rides` (a
   directory inside another repo, a whole repo, or a file) becomes a
   context tarball beside every session on that project (section 10).
+- A project on a host is packed on its host. bale is installed per
+  machine, and the bale that packs a session is the one that will land
+  it, beside the repo: bale's pack (or its open, for a bundle) runs
+  there through the project's shell (section 10), and the request it
+  makes is carried back to the out tray on the occupant's machine. The
+  office's context tarball, the doctrine and the ride-alongs are made on
+  the occupant's machine, as for any project, and ride beside it. A
+  brief or a bundle travels to the host first; whatever the office
+  writes on a host outside the project's repo is removed again, whether
+  the start succeeded or not.
 
 `office start` does all of this for a folder in one command. It packs
-the session from the office or from the project, makes every context
+the session from the office or from the project (on the project's host,
+when it has one), makes every context
 tarball that rides beside it, and copies them with the request into one
 out tray, a directory on the machine outside every office, named by the
 session's id; the occupant attaches its files and pastes the opener it
@@ -477,8 +488,8 @@ Kinds:
 | week | script: this week's calendar and its gaps | yes |
 | close, reopen | script: move a folder to the filing cabinet, done, absorbed, split or retired, and a done one back | yes |
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes |
-| projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace), declare where it is, what rides with it and what runs after it lands, render what bale records about them | yes |
-| start | script: pack a session for a folder, in the office or on a project, or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
+| projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace, a clone here brought there with --from), declare where it is, what rides with it and what runs after it lands, bring a host's bale level with this machine's (level-bale), render what bale records about them | yes |
+| start | script: pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
 | land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, the founding folder closed when the founding has landed, the watches that fired, and what became of each action; or end a read-only sitting the office sent out | yes |
 | tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes |
 | moves | script: apply the desk moves a sitting wrote, through open's, close's and the gate flags' own code, ticking each and writing a minted number onto its blueprint's decomposition line; stops at the first line it cannot apply | yes |
@@ -641,9 +652,30 @@ walk-in and `office status` print that line in the project's place and
 render the rest. A host checked once in a command is not checked again
 in it. The survey makes no network call (section 13); `office status`
 is where a host is reached, and it says which bale answers there against
-the read side's floor, with the remedy when it is behind. Until the
-release that packs and lands there, `office start` and `office land`
-refuse a project on a host before anything is written. The office reads
+the read side's floor, naming the step that brings it level when it is
+behind. bale is installed per machine, like git, and a hosted project's
+bale lives on its host: `office projects level-bale NAME` installs there
+the bale the occupant's machine runs, the way bale's own releases
+install (a release tarball of the install, carried through the shell,
+and the host's own upgrade.sh, which keeps the host's per-install
+settings), fetching nothing from the network there, and says what
+version was there and what is there now. It runs only when the occupant
+asks: `office start` and `office land` never upgrade a bale on their
+own, and refuse a host whose bale is below the read side's floor,
+naming that step. `office start` sends a session to a project on a host
+(section 4): the host is reached first, and one that does not answer
+stops the start before anything is written, with the connect line; a
+step bale asks the occupant about runs through the attended form of the
+project's shell, a terminal asked for at each layer (`ssh -tt`, a
+container's `-it`), and piped, nothing ever asks. Until the release
+that brings a session back over the shell, `office land` refuses a
+session out on a project on a host, before bale runs: the session is
+out and its response waits. A clone on the occupant's machine is moved
+to its host as the project's repo by `office projects add --from`: every
+branch and tag and the remotes as the clone has them, carried from the
+occupant's machine, since the host may not reach the audience's git
+host; nothing of the clone's uncommitted work travels, and the clone it
+came from is never changed or deleted by the office. The office reads
 each project's records only through bale's --json surfaces, run in the
 project's directory with no prompt, never by parsing .bale/, and it
 never writes what bale records. A clone bale has not run in is prepared

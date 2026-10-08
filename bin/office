@@ -3002,6 +3002,18 @@ install's).
                  folder for new, the survey, the tray): a name bale's
                  search cannot find, or a bundle bale would refuse, stops
                  the start in bale's words with nothing written
+A project on a host (office projects add --host) is packed on its host:
+start first checks that the host answers (a host that does not stops the
+start there, with your connect line), that its bale is at the read side's
+floor (one below it is refused, naming office projects level-bale, which
+brings it level; start never upgrades it) and that the repo there is one
+bale runs in. Then bale's pack, or bale open --check and bale open for a
+bundle, runs there through the project's shell, the brief or the bundle
+travelling there first, and the request bale makes is carried back into
+the out tray here; the office's context and the doctrine are made here,
+as for any project. A bundle for a hosted project is given as a file
+here (its path), since bale's search runs on the host. The temporary
+directory start makes on the host is removed on success and on failure.
 When start opened the folder itself (new) and its session does not go out,
 the folder stays and start's last line is the one line that retries it.
 When the response comes back, office land brings it in.
@@ -3088,9 +3100,6 @@ ask_where() {
       "office: the session works in this office (the folder, the notepad) and is packed here. A project's name: the session changes that project's repo and is packed there, with this office's context riding beside it, never inside it.${why:+ The default is $def because $why.}"
     if [ "$ans" = office ]; then printf -v "$__w" '%s' office; return 0; fi
     if printf '%s\n' "$known" | grep -qxF -- "$ans"; then
-      local on_host
-      on_host="$(project_host "$root" "$ans")"
-      if [ -n "$on_host" ]; then printf '  %s is on %s: %s\n' "$ans" "$on_host" "$NOT_BUILT_ON_HOST" >&2; continue; fi
       printf -v "$__w" '%s' project; printf -v "$__p" '%s' "$ans"; return 0
     fi
     printf '  office, or one of this office'"'"'s projects: %s\n' "$list" >&2
@@ -3098,19 +3107,26 @@ ask_where() {
 }
 
 # start_check_place WHERE PROJECT NAMES: a project start names a project
-# the office scopes.
+# the office scopes. A project on a host is checked here, before anything
+# is written (a folder for new, the survey, the tray, the session): the
+# host answers (the reach check, with the connect line when it does not),
+# its bale is at the read side's floor (start never upgrades it; the
+# refusal names office projects level-bale), and the repo there is one
+# bale runs in. Once per start: START_CHECKED_HOST remembers it.
 start_check_place() {
   [ "$1" = project ] || return 0
   printf '%s\n' "$3" | grep -qxF -- "$2" \
     || die "--on $2: no such project in this office (it scopes: $(printf '%s' "$3" | paste -sd, - | sed 's/,/, /g'); office projects add adds one)"
-  local on_host
+  local on_host out
   on_host="$(project_host "$root" "$2")"
-  [ -z "$on_host" ] || die "$2 is on $on_host: $NOT_BUILT_ON_HOST"
+  [ -n "$on_host" ] || return 0
+  [ "${START_CHECKED_HOST:-}" != "$2" ] || return 0
+  log "$2 is on $on_host: asking it to answer, and checking its bale and its repo, before anything is written"
+  out="$(reader start-check "$root" --project "$2")" \
+    || die "nothing was written: no folder, no survey, no out tray, no session"
+  START_CHECKED_HOST="$2"
+  log "$on_host answers, with bale ${out#*$'\t'}: the session is packed there and its request carried back to the out tray"
 }
-
-# What start says for a project on a host, until the release that packs
-# and lands there: the same words as the reader's.
-NOT_BUILT_ON_HOST="sending a session to a project on a host, and bringing one back, is not built yet (office-src 0.14.0 reads such a project and checks its reach; the next release packs and lands there)"
 
 # project_host ROOT NAME: the host a project declares, or nothing.
 project_host() {
@@ -3229,7 +3245,7 @@ cmd_start() {
   local leave_out=() no_rides=0 carry=() carry_none=0 bundle_given="" slug_flag=0
   local root name md status lane lane_project lane_paths names cls ans tz day out sid tray tray_root rel about="" args=() v
   local packed_flags=()
-  START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0
+  START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --in-office) [ -z "$where" ] || [ "$where" = office ] || die "--in-office and --on are two places; give one"; where=office; shift ;;
@@ -3428,6 +3444,7 @@ cmd_start() {
   [ -z "$bundle" ] || args+=(--bundle "$bundle")
   for v in "${START_INSTALL_FILES[@]}"; do args+=(--install-file "$v"); done
   for r in "${leave_out[@]}"; do args+=(--leave-out "$r"); done
+  [ "$where" != project ] || [ "$START_CHECKED_HOST" != "$project" ] || args+=(--checked)
   tray_root="$(machine_setting out_tray "$HOME/out-tray")"
   case "$tray_root" in "~"|"~/"*) tray_root="$HOME${tray_root#\~}" ;; esac
 
@@ -3923,12 +3940,16 @@ usage: office projects                       list the projects this office scope
                                              each is, what rides with it and runs after it lands
        office projects add [NAME] [PATH]     add one (asks for what it was not given)
                            [--name NAME] [--path PATH] [--prepare]
-                           [--host HOST [--shell PREFIX] [--connect TEXT]]
+                           [--host HOST [--shell PREFIX] [--connect TEXT]
+                            [--from CLONE [--from-dirty-ok]]]
                            [--ride PATH]... [--after-land CMD]...
        office projects set [NAME]            declare where a project is, what rides beside
                            [--host HOST] [--shell PREFIX] [--connect TEXT] [--on-this-machine]
                            [--ride PATH]... [--no-rides]            every session on it, and
                            [--after-land CMD]... [--no-after-land]  what runs after one lands
+       office projects level-bale [NAME] [--yes]
+                                             install on a hosted project's host the
+                                             bale this machine runs, keeping its user/
        office projects [NAME] --ledger       trust ledger per work class
        office projects [NAME] --landed PATH  the last applied session that landed PATH
        office projects [NAME] --versions     the version trail
@@ -3945,8 +3966,28 @@ printed when the host does not answer: your own words for what brings it up
 makes one short connection, and a host that does not answer is one line
 and the command stops. The read side then runs bale through that shell; the
 walk-in, office status, office sessions, --ledger, --landed, --versions,
-watches check and the digest all read a hosted project. Sending a session
-to one and landing it there is the next release's.
+watches check and the digest all read a hosted project, and office start
+packs a session there (landing it there is the next release's).
+--from CLONE brings a clone on this machine to its host as the project's
+repo: PATH must not exist there yet (add refuses before anything moves),
+and a clone of CLONE is made at PATH with every local branch and tag, its
+remote-tracking refs and its remotes and branch settings as CLONE has
+them, carried from this machine as a git bundle through the shell (the
+host need not reach CLONE's git host), then prepared as --prepare does.
+Only what is committed travels: a CLONE with changes in its working tree
+is named with its changed paths and add asks whether to go on (piped, it
+refuses unless --from-dirty-ok). CLONE itself is never changed or
+deleted; once you are satisfied with the clone on the host, you can
+remove it. On a terminal, add asks after the host question.
+level-bale installs on a hosted project's host the bale this machine
+runs, the way bale's releases install: a release tarball of this
+machine's install (its user/ left out) carried through the shell, and the
+host's own upgrade.sh run on it, which keeps the host's user/ (its global
+bale.toml and hook store) and runs install.sh and validate.sh; a host with
+no bale gets it unpacked as ~/bale and its install.sh run. The host
+fetches nothing from the network. It says what version was there and what
+is there now; it never moves a bale back, and runs only when you ask
+(start and land refuse a bale below the read side's floor and name it).
 --prepare sets up a clone bale has not run in without a trace in git, here
 or on the host: the four paths bale writes (.bale/, bale.toml, .baleignore
 and bale's record directory) go into .git/info/exclude and an empty
@@ -3966,6 +4007,8 @@ Examples:
   office projects add                          (asks for the path, where it is, the name, what rides)
   office projects add office-src ~/office-src
   office projects add api ~/development/api --host me@workhost --prepare
+  office projects add api ~/development/api --host me@workhost --from ~/work/api
+  office projects level-bale api
   office projects set api --shell "ssh me@workhost docker exec -i -u me box bash -lc"
   office projects set api --connect "start the VPN client, then retry"
   office projects set office-src --after-land ./install.sh
@@ -4078,9 +4121,43 @@ declare_flags() {
   local v; for v in "$@"; do __out+=("--$key" "$v"); done
 }
 
+FROM_HELP="A git clone on this machine to bring to the host as this project's repo: a clone of it is made at the path you named (which must not exist there yet), with every local branch and tag, its remote-tracking refs and its remotes as it has them, carried from this machine as a git bundle, then prepared for bale without a trace in git. Only what is committed travels. The clone here is not changed or deleted. A plain return: the repo is already on the host."
+
+# bring_clone FROM PATH HOST SHELL CONNECT DIRTY_OK: --from's move. A
+# clone with working-tree changes is named, with its changed paths, and
+# the occupant is asked whether to go on (piped: refused unless
+# --from-dirty-ok). Returns 0 once the clone is on the host and prepared,
+# 2 when the occupant (or piped input) stopped it, 1 when it failed;
+# what it says is on stderr.
+bring_clone() {
+  local from="$1" path="$2" host="$3" shell="$4" connect="$5" dirty_ok="$6" out ans n hargs=()
+  case "$from" in "~"|"~/"*) from="$HOME${from#\~}" ;; esac
+  out="$(reader clone-dirty --path "$path" --from "$from")" || return 1
+  if [ -n "$out" ]; then
+    n="$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
+    printf '[office] %s has %s changed path(s) in its working tree, and none of them travels (only what is committed does):\n' "$from" "$n" >&2
+    printf '%s\n' "$out" | head -n 20 | sed 's/^/    /' >&2
+    [ "$n" -le 20 ] || printf '    (and %s more)\n' "$((n - 20))" >&2
+    if [ "$dirty_ok" != yes ]; then
+      if can_ask; then
+        ask ans "Bring the clone without them? (--from-dirty-ok) (y/n)" "n" 0 \
+          "y makes the clone on the host from what is committed here, every branch and tag; the changes above stay here only, in $from. n stops before anything moves: commit or stash them first."
+        case "$ans" in y|Y|yes) ;; *) printf '[office] nothing moved; commit or stash them in %s, or answer y (--from-dirty-ok)\n' "$from" >&2; return 2 ;; esac
+      else
+        printf '[office] error: nothing moved; --from-dirty-ok brings the clone without them; piped input is never asked\n' >&2
+        return 2
+      fi
+    fi
+  fi
+  host_args hargs "$host" "$shell" "$connect"
+  reader clone-to --path "$path" --from "$from" "${hargs[@]}" | sed 's/^/[office] /' >&2
+  [ "${PIPESTATUS[0]}" = 0 ] || return 1
+  log "$from was not changed; once you are satisfied with the clone on $host, you can remove it (the office never does)"
+}
+
 cmd_projects_add() {
   local name="" path="" root default missing=() rides=() afters=() set_r=0 set_a=0 args=()
-  local host="" shell="" connect="" set_h=0 prepare=no found="" hargs=()
+  local host="" shell="" connect="" set_h=0 prepare=no found="" hargs=() from="" from_set=0 dirty_ok=no rc
   while [ $# -gt 0 ]; do
     case "$1" in
       --name) [ $# -ge 2 ] || die "--name needs a value"; name="$2"; shift 2 ;;
@@ -4089,14 +4166,18 @@ cmd_projects_add() {
       --shell) [ $# -ge 2 ] || die "--shell needs a command prefix"; shell="$2"; set_h=1; shift 2 ;;
       --connect) [ $# -ge 2 ] || die "--connect needs a line of text"; connect="$2"; set_h=1; shift 2 ;;
       --prepare) prepare=yes; shift ;;
+      --from) [ $# -ge 2 ] || die "--from needs the path of a clone on this machine"; from="$2"; from_set=1; shift 2 ;;
+      --from-dirty-ok) dirty_ok=yes; shift ;;
       --ride) [ $# -ge 2 ] || die "--ride needs a path"; rides+=("$2"); set_r=1; shift 2 ;;
       --after-land) [ $# -ge 2 ] || die "--after-land needs a command"; afters+=("$2"); set_a=1; shift 2 ;;
       -h|--help) usage_projects; return 0 ;;
-      -*) usage_projects >&2; die "office projects add does not know $1; it takes a name and a path, as words or as --name and --path, --host, --shell, --connect, --prepare, --ride and --after-land" ;;
+      -*) usage_projects >&2; die "office projects add does not know $1; it takes a name and a path, as words or as --name and --path, --host, --shell, --connect, --from, --from-dirty-ok, --prepare, --ride and --after-land" ;;
       *) if [ -z "$name" ]; then name="$1"; elif [ -z "$path" ]; then path="$1"; else die "office projects add takes a name and a path, and got more: $1"; fi; shift ;;
     esac
   done
   if [ -z "$host" ] && { [ -n "$shell" ] || [ -n "$connect" ]; }; then die "--shell and --connect go with --host HOST"; fi
+  if [ "$from_set" = 1 ] && [ -z "$host" ] && { [ "$set_h" = 1 ] || ! [ -t 0 ]; }; then die "--from brings a clone to a host; it goes with --host HOST"; fi
+  [ "$dirty_ok" = no ] || [ "$from_set" = 1 ] || die "--from-dirty-ok goes with --from CLONE"
   if [ -n "$host" ]; then helper check-host-keys "$host" ${shell:+--shell "$shell"} >/dev/null || exit 1; fi
   root="$(resolve_office)" || exit 1
   require_current "$root"
@@ -4115,6 +4196,20 @@ cmd_projects_add() {
         fi
         if [ "$set_h" = 0 ]; then ask_host host shell connect; fi
         if [ -z "$host" ]; then case "$path" in "~"|"~/"*) path="$HOME${path#\~}" ;; esac; fi
+        if [ -n "$host" ] && [ "$from_set" = 0 ]; then
+          ask from "Is there a clone on this machine to bring there? Its path (--from)" "" 0 "$FROM_HELP"
+          from_set=1
+        fi
+        [ -n "$host" ] || { [ -z "$from" ] || die "--from brings a clone to a host, and the repo is on this machine"; }
+        if [ -n "$from" ]; then
+          bring_clone "$from" "$path" "$host" "$shell" "$connect" "$dirty_ok"; rc=$?
+          [ "$rc" != 2 ] || exit 1
+          if [ "$rc" != 0 ]; then
+            [ -z "$path_given" ] || exit 1
+            path=""; continue
+          fi
+          from=""
+        fi
         if ! check_project found "$path" "$host" "$shell" "$connect" "$prepare"; then
           # A path given as a flag or a word is not asked again: the
           # caller (office init, say) hears it was not added.
@@ -4137,9 +4232,14 @@ cmd_projects_add() {
   fi
   [ -n "$name" ] && [ -n "$path" ] || die "a project needs a name and a path"
   if [ -z "$found" ]; then
-    # Given everything: the same check, here or through the shell, and
-    # the same offer to prepare a repo bale has not run in.
+    # Given everything: the clone brought first (--from), then the same
+    # check, here or through the shell, and the same offer to prepare a
+    # repo bale has not run in.
     if [ -z "$host" ]; then case "$path" in "~"|"~/"*) path="$HOME${path#\~}" ;; esac; fi
+    if [ -n "$from" ]; then
+      [ -n "$host" ] || die "--from brings a clone to a host; it goes with --host HOST"
+      bring_clone "$from" "$path" "$host" "$shell" "$connect" "$dirty_ok" || exit 1
+    fi
     check_project found "$path" "$host" "$shell" "$connect" "$prepare" || exit 1
   fi
   # Check the declarations before the table is touched, so a bad one
@@ -4230,11 +4330,51 @@ cmd_projects_set() {
   commit_paths "$root" "office projects: set $name" "$MANIFEST_REL" || true
 }
 
+# office projects level-bale NAME: the host's bale brought level with this
+# machine's (lib/office_bale.py, level_bale). On a terminal it asks first,
+# naming both versions; piped, it takes --yes.
+cmd_projects_level_bale() {
+  local name="" yes=0 root plan state there here host ans
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --yes|-y) yes=1; shift ;;
+      -h|--help) usage_projects; return 0 ;;
+      -*) usage_projects >&2; die "office projects level-bale does not know $1; it takes a project's name and --yes" ;;
+      *) [ -z "$name" ] || die "office projects level-bale takes one project"; name="$1"; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ -z "$name" ]; then
+    can_ask || { usage_projects >&2; die "name the project: office projects level-bale NAME; piped input is never asked"; }
+    printf 'Projects: %s\n' "$(helper project-names "$root/$MANIFEST_REL" | paste -sd, - | sed 's/,/, /g')" >&2
+    ask name "Which project's host (office projects level-bale NAME)" "" 1 "A project on a host, by the name office projects lists: its host gets the bale this machine runs."
+  fi
+  log "reading the bale on $name's host and the one this machine runs"
+  plan="$(reader level-plan "$root" --project "$name")" || exit 1
+  IFS=$'\t' read -r state there here host <<< "$plan"
+  case "$state" in
+    level) printf '%s: bale %s on %s is level with this machine'"'"'s; nothing to do\n' "$name" "$there" "$host"; return 0 ;;
+    ahead) reader level-bale "$root" --project "$name"; return 1 ;;
+  esac
+  if [ "$yes" = 0 ]; then
+    local what
+    if [ "$state" = absent ]; then what="Install this machine's bale $here on $host, which has none on its login PATH"
+    else what="Replace bale $there on $host with this machine's $here, keeping its user/ settings"; fi
+    can_ask || die "piped input is never asked: --yes does it ($what)"
+    ask ans "$what? (--yes) (y/n)" "y" 0 \
+      "y carries a release tarball of this machine's bale install (its user/ left out) to $host through $name's shell and runs the host's own upgrade.sh on it, which keeps the host's user/ (global bale.toml, hook store) and runs install.sh and validate.sh there; a host with no bale gets ~/bale and its install.sh. Nothing is fetched from the network. n changes nothing."
+    case "$ans" in y|Y|yes) ;; *) log "nothing changed on $host"; return 0 ;; esac
+  fi
+  reader level-bale "$root" --project "$name" || exit 1
+}
+
 cmd_projects() {
   local name="" mode="" landed="" root rc
   case "${1:-}" in
     add) shift; cmd_projects_add "$@"; return ;;
     set) shift; cmd_projects_set "$@"; return ;;
+    level-bale) shift; cmd_projects_level_bale "$@"; return ;;
   esac
   while [ $# -gt 0 ]; do
     case "$1" in

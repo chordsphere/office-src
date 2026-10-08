@@ -1,0 +1,16 @@
+{
+ "argv": [
+  "help",
+  "clipboard"
+ ],
+ "cwd": "the container user's home on the work host (bash -lc through ssh and docker exec -i -u USER)",
+ "stdin": "closed",
+ "exit": null,
+ "output": [
+  "[bale] error: no such command: `clipboard` under `bale`. Available: amend-checkpoint, apply, completion, config, handoff, help, open, pack, relay, retry, revert, rollback, stats, status, unlock."
+ ],
+ "output_sha256": [
+  "418ba026c57af8650b407ef359575146c50a5f1d1cc6870c8a0464d1e5dc4819"
+ ],
+ "captured": "probe of session 2026-10-07-out-trip-to-host-004 (second run), section R3: `bale help clipboard 2>&1 | head -n 6` (the streams were merged; bale's error line)"
+}

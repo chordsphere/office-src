@@ -47,7 +47,11 @@ FAKE_SSH = r'''#!/usr/bin/env bash
 # stands for a host that is down (exit 255, as ssh does), and runs the
 # joined rest through a shell, as sshd hands a command to the login
 # shell on the far side. A target with its own bin/ under hosts/ gets
-# that bin first on the PATH: a host whose bale is another version.
+# that bin first on the PATH: a host whose bale is another version. Since
+# 0.15.0 a target may also have, under hosts/TARGET/: path (the whole
+# PATH there, one line), home/ (its HOME), tmp/ (its TMPDIR, where the
+# office's temporary directories on a host land, so a test can see them
+# gone) and chatter (bytes its login shell prints on stdout first).
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 opts=()
 while [ $# -gt 0 ]; do
@@ -61,9 +65,14 @@ import json, sys
 want = json.load(open(sys.argv[1])); target = sys.argv[2]; words = sys.argv[3:]
 if target not in want["targets"]:
     print(f"fake ssh: target {target!r} is not one the test expects ({want['targets']})", file=sys.stderr); sys.exit(1)
-n = len(want["prefix"])
-if words[:n] != want["prefix"] or len(words) != n + 1:
-    print(f"fake ssh: words {words[:n]!r} + {len(words) - n} more; the test expects prefix {want['prefix']!r} and one command", file=sys.stderr); sys.exit(1)
+# One prefix, or (since 0.15.0) any of several: the plain form and the
+# attended one, say.
+for prefix in want.get("prefixes") or [want["prefix"]]:
+    n = len(prefix)
+    if words[:n] == prefix and len(words) == n + 1:
+        break
+else:
+    print(f"fake ssh: words {words[:-1]!r} + 1 more; the test expects prefix {want['prefix']!r} and one command", file=sys.stderr); sys.exit(1)
 PY
 fi
 case "$target" in
@@ -71,6 +80,10 @@ case "$target" in
 esac
 [ $# -gt 0 ] || exit 0
 if [ -d "$here/hosts/$target/bin" ]; then export PATH="$here/hosts/$target/bin:$PATH"; fi
+if [ -f "$here/hosts/$target/path" ]; then export PATH="$(cat "$here/hosts/$target/path")"; fi
+if [ -d "$here/hosts/$target/home" ]; then export HOME="$here/hosts/$target/home"; fi
+if [ -d "$here/hosts/$target/tmp" ]; then export TMPDIR="$here/hosts/$target/tmp"; fi
+if [ -f "$here/hosts/$target/chatter" ]; then cat "$here/hosts/$target/chatter"; fi
 # The prefix was asserted above; the one command it was handed runs here,
 # unquoted once as the far side's login shell would unquote it.
 last="${@: -1}"
@@ -100,9 +113,29 @@ class FakeSsh:
         old.mkdir(parents=True)
         (old / "bale").write_text(OLD_BALE)
         (old / "bale").chmod(0o755)
+        # Every host the suite knows has a TMPDIR of its own, so what the
+        # office leaves in a host's temporary directory can be seen.
+        for t in targets:
+            self.host_tmp(t)
 
-    def expect(self, targets, prefix):
-        (self.dir / "expect.json").write_text(json.dumps({"targets": list(targets), "prefix": list(prefix)}))
+    def host_dir(self, target):
+        d = self.dir / "hosts" / target
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def host_tmp(self, target):
+        d = self.host_dir(target) / "tmp"
+        d.mkdir(exist_ok=True)
+        return d
+
+    def left_on(self, target):
+        """What the office left in the host's temporary directory (its
+        own office-* directories; a fake bale's are its own business)."""
+        return sorted(p.name for p in self.host_tmp(target).iterdir() if p.name.startswith("office-"))
+
+    def expect(self, targets, prefix, *others):
+        (self.dir / "expect.json").write_text(json.dumps({"targets": list(targets), "prefix": list(prefix),
+                                                          "prefixes": [list(prefix), *map(list, others)]}))
 
     def path(self, base):
         return f"{self.dir}{os.pathsep}{base}"
@@ -407,6 +440,8 @@ class TestProjectsWizard(HostedCase):
             (f"The shell that runs one command where the repo is (--shell) [ssh {HOST} bash -lc]:".encode(), "?"),
             (b"exactly one shell-quoted command", ""),
             (f"What brings {HOST} up when it does not answer (--connect) [connect to {HOST}]:".encode(), "start the VPN"),
+            # Since 0.15.0, after the host: a clone here to bring (none).
+            (b"Is there a clone on this machine to bring there? Its path (--from) [return skips]:", ""),
             (b"Name for it in this office (--name) [other]:", ""),
             (b"(--ride) [return ends the list]:", ""),
             (b"(--after-land) [return ends the list]:", ""),
@@ -542,8 +577,10 @@ class TestReadSideThroughTheShell(HostedCase):
         self.assertEqual(len(self.ssh.connections()), 1)
         self.set_host(OLD)
         proc = self.run_office("status", check=0)
+        # Since 0.15.0 the remedy is the step itself.
         self.assertIn(f"  far: {OLD} answers; bale 0.4.40 on {OLD} is older than the read side's floor 0.4.45; "
-                      "bring it up before a session is sent there\n", proc.stdout)
+                      "office projects level-bale far brings it level with this machine's bale (0.4.45) before a "
+                      "session is sent there\n", proc.stdout)
         # The office's own bale line stays as it was.
         self.assertIn("bale:       0.4.45 at ", proc.stdout)
 
@@ -569,20 +606,9 @@ class TestReadSideThroughTheShell(HostedCase):
         self.assertNotIn("cannot read", proc.stdout + proc.stderr)
 
 
-# --- start and land, until the next release -------------------------------------------------
+# --- land, until the return trip (start on a host: tests/test_out_trip_to_host.py) ------------
 
 class TestStartAndLandRefuse(HostedCase):
-    def test_start_on_a_hosted_project_refuses_before_anything_is_written(self):
-        before = git(self.root, "rev-parse", "HEAD", env=self.e.env)
-        proc = self.run_office("start", "1", "--on", "far", "--goal", "nothing", "--write", ".")
-        self.assertEqual(proc.returncode, 1)
-        self.assertIn(f"far is on {HOST}: sending a session to a project on a host, and bringing one back, "
-                      "is not built yet", proc.stderr)
-        self.assertEqual(git(self.root, "rev-parse", "HEAD", env=self.e.env), before)
-        self.assertEqual(git(self.root, "status", "--porcelain", env=self.e.env), "")
-        self.assertEqual([a for a in self.fake.argvs() if a[0] != "--version"], [])
-        self.assertEqual(self.ssh.connections(), [])
-
     def test_an_office_session_about_a_hosted_project_goes_out_without_its_tree(self):
         # The folder's lane names the hosted project; the session is packed
         # in the office, and the project's tree, on the host, does not ride.
@@ -606,14 +632,16 @@ class TestStartAndLandRefuse(HostedCase):
         self.assertEqual([p["name"] for p in h.read_projects(manifest_of(self.root))], ["far"])
         proc = self.run_office("land", OPEN_WORKER)
         self.assertEqual(proc.returncode, 1)
-        self.assertIn(f"{OPEN_WORKER} is open on far, a project on {HOST}: sending a session", proc.stderr)
+        self.assertIn(f"{OPEN_WORKER} is open on far, a project on {HOST}: the return trip is not built yet; "
+                      "the session is out and its response waits", proc.stderr)
         self.assertEqual([a for a in self.fake.argvs() if a[0] in ("apply", "retry", "unlock")], [])
         # A sitting the folder records: ending it is land's too, and refused the same.
         h.record_session(self.root / self.folder / "folder.md", OPEN_SITTING)
         git(self.root, "commit", "-qam", "the sitting", env=self.e.env)
         proc = self.run_office("land", OPEN_SITTING)
         self.assertEqual(proc.returncode, 1)
-        self.assertIn(f"{OPEN_SITTING} is a sitting on far, a project on {HOST}: sending a session", proc.stderr)
+        self.assertIn(f"{OPEN_SITTING} is a sitting on far, a project on {HOST}: the return trip is not built yet",
+                      proc.stderr)
 
 
 # --- preparing a clone --------------------------------------------------------------------------
@@ -710,7 +738,8 @@ class TestTheRecord(unittest.TestCase):
             self.assertIn(words, readme)
         releases = (REPO / "RELEASES.md").read_text()
         self.assertIn("## 0.14.0", releases)
-        self.assertEqual((REPO / "VERSION").read_text().strip(), "0.14.0")
+        # A later release moves VERSION on; 0.14.0 stays in the record.
+        self.assertGreaterEqual(h.compare_versions((REPO / "VERSION").read_text().strip(), "0.14.0"), 0)
         self.assertLess(releases.index("## 0.14.0"), releases.index("## 0.13.0"))
 
     def test_the_suite_runs_no_real_ssh(self):
