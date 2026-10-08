@@ -71,8 +71,7 @@ class BaleError(Exception):
     (the office asked for a key its consumption manifest does not name:
     a defect in office-src), unreachable (a hosted project's host did not
     answer: one line naming the project, the host, the connect text and
-    the command to rerun), hosted (a verb not built yet for a project on
-    a host: land, until the return trip is built)."""
+    the command to rerun)."""
 
     def __init__(self, kind, message):
         super().__init__(message)
@@ -180,6 +179,10 @@ class Reader:
         # Hosted places a start has checked in this process (reach, the
         # bale floor, the repo): checked once, however many steps ask.
         self.places_checked = set()
+        # What a hosted round read beside bale (office_bale.hosted_round):
+        # which paths are missing, the doctrine's sums, keyed by place.
+        self.facts = {}
+        self.also_runs = []
 
     # The one door every key read goes through.
     def key(self, obj, surface, path):
@@ -256,24 +259,37 @@ class Reader:
         except ohost.HostError as exc:
             raise BaleError(exc.kind if exc.kind in ("unreachable", "path") else "refused", str(exc))
 
-    def prefetch(self, cwd, requests, timeout=BALE_TIMEOUT):
+    def prefetch(self, cwd, requests, timeout=BALE_TIMEOUT, extra=(), texts=()):
         """Ask several declared reading surfaces at once where that saves
         connections: through a hosted place's shell they travel as one
         batch and land in the cache, so the reads that follow ask bale
         nothing more; on this machine each read is cheap and nothing is
         done. requests is [(surface, values dict)]. A line the batch
-        could not parse surfaces when the read for it is made."""
+        could not parse surfaces when the read for it is made.
+
+        extra (since 0.16.0) is argvs that ride the same connection after
+        bale's reads, the office's own (a check of the repo, the doctrine's
+        sums, which paths are there, a temporary directory's removal); their
+        Runs come back, in order, for the caller to read. texts is
+        [(surface, values)] of text surfaces whose every line the caller
+        reads (bale relay's block): never cached, their Runs come back keyed
+        by surface name. Returns (text runs, extra runs). The connection is
+        made even when every read is cached, if extra or texts is not
+        empty."""
         if not self.hosted(cwd):
-            return
+            return {}, []
         wanted = []
+        texts = [(surface, self.consumption.argv(surface, **values)) for surface, values in texts]
         for surface, values in requests:
             argv = self.consumption.argv(surface, **values)
             key = (str(cwd), tuple(argv))
             if key not in self._cache and key not in [k for k, _ in wanted]:
                 wanted.append((key, (surface, argv)))
-        if not wanted:
-            return
-        runs = self.through_shell(cwd, [["bale", *argv] for _, (_, argv) in wanted], timeout)
+        extra = [list(a) for a in extra]
+        if not wanted and not texts and not extra:
+            return {}, []
+        argvs = ([["bale", *argv] for _, (_, argv) in wanted] + [["bale", *argv] for _, argv in texts] + extra)
+        runs = self.through_shell(cwd, argvs, timeout)
         for (key, (surface, argv)), run in zip(wanted, runs):
             shown = "bale " + " ".join(argv)
             if run.returncode != 0:
@@ -283,18 +299,30 @@ class Reader:
                 self._cache[key] = self.parse(surface, run, shown, str(cwd))
             except BaleError as exc:
                 debug(f"{shown} in {cwd}: not cached from the batch ({exc})")
+        rest = runs[len(wanted):]
+        text_runs = {surface: run for (surface, _), run in zip(texts, rest)}
+        return text_runs, rest[len(texts):]
 
-    def invoke(self, surface, cwd=None, timeout=BALE_TIMEOUT, whole_why=False, **values):
+    def invoke(self, surface, cwd=None, timeout=BALE_TIMEOUT, whole_why=False, also=None, **values):
         """Run one declared surface with stdin closed; (proc, shown, where).
         Refuses when bale exits non-zero, carrying bale's last words, or,
         with whole_why, everything from its error line on (a refusal that
         lists what it searched, say). A hosted place runs it through the
-        project's shell, in the project's path."""
+        project's shell, in the project's path. also (a hosted place only)
+        is argvs that ride the same connection after bale, whatever bale
+        said; their Runs are kept in self.also_runs, and what any of them
+        printed with the office's prefix on stderr is passed on."""
         argv = self.consumption.argv(surface, **values)
         where = str(cwd) if cwd is not None else os.getcwd()
         shown = "bale " + " ".join(argv)
+        self.also_runs = []
         if self.hosted(cwd):
-            proc = self.through_shell(cwd, [["bale", *argv]], timeout)[0]
+            runs = self.through_shell(cwd, [["bale", *argv], *[list(a) for a in also or []]], timeout)
+            proc, self.also_runs = runs[0], runs[1:]
+            for run in self.also_runs:
+                for line in run.stderr.splitlines():
+                    if line.startswith("[office] "):
+                        print(line, file=sys.stderr)
         else:
             exe = self.bale()
             if cwd is not None and not pathlib.Path(cwd).is_dir():
@@ -344,12 +372,16 @@ class Reader:
         proc, _, _ = self.invoke(surface, cwd, timeout=PACK_TIMEOUT, whole_why=True, **values)
         return proc.stdout.splitlines()
 
-    def interact(self, surface, cwd, capture, **values):
+    def interact(self, surface, cwd, capture, cleanup=None, **values):
         """Run a surface the occupant answers: stdin and stderr stay his
         terminal, so every question bale asks reaches him as bale asks it
         and the office answers none; stdout is copied to ours as it comes
         and kept in the capture file, for the blocks bale prints to carry.
-        Returns bale's exit code."""
+        Returns bale's exit code. cleanup, a hosted place's Scratch (the
+        response carried there, since 0.16.0), is removed by the same
+        command once bale exits, whatever it said; when bale exited on its
+        own (not by a signal, not a lost connection) the scratch is told so,
+        and its own removal is not needed."""
         spec = self.consumption.surface(surface)
         if not spec.get("interactive"):
             raise BaleError("undeclared", f"bale {surface} is not declared interactive in {self.consumption.path.name}")
@@ -364,8 +396,14 @@ class Reader:
                 ohost.reach(cwd)
             except ohost.HostError as exc:
                 raise BaleError(exc.kind if exc.kind in ("unreachable", "path") else "refused", str(exc))
-            command = (f"cd {shlex.quote(cwd.path)} && PYTHONDONTWRITEBYTECODE=1 exec bale "
+            command = (f"cd {ohost.shell_path(cwd.path)} && PYTHONDONTWRITEBYTECODE=1 exec bale "
                        + " ".join(shlex.quote(w) for w in argv))
+            gone = cleanup.removal_words() if cleanup is not None else ""
+            if gone:
+                # Not exec: the shell outlives bale to remove the scratch,
+                # and exits with bale's own code.
+                command = (f"cd {ohost.shell_path(cwd.path)} && PYTHONDONTWRITEBYTECODE=1 bale "
+                           + " ".join(shlex.quote(w) for w in argv) + f"; rc=$?; {gone}; exit $rc")
             attended = sys.stdin.isatty()
             full = cwd.attended_argv(command) if attended else cwd.argv(command)
             debug(f"bale {' '.join(argv)} in {cwd}, " + ("attended through " + ohost.shown_argv(cwd.attended_words())
@@ -400,6 +438,8 @@ class Reader:
                 # bale got the same interrupt; let it finish saying so.
                 log("interrupted; waiting for bale to stop")
         code = proc.wait()
+        if hosted and cleanup is not None and 0 <= code < 128:
+            cleanup.removed_by_step()
         if hosted and attended:
             # Through a pseudo-terminal every line ends in CR LF; the
             # capture is read for the blocks bale prints, line by line.
@@ -416,11 +456,11 @@ class Reader:
         self.forget(cwd)
         return self.parse("unlock", proc, shown, where)
 
-    def pack(self, surface, cwd, **values):
+    def pack(self, surface, cwd, also=None, **values):
         """Run one of the surfaces that make something (a session, a
         context tarball): never cached, since each run makes a new one.
-        Returns (the report, bale's stderr lines)."""
-        proc, shown, where = self.invoke(surface, cwd, timeout=PACK_TIMEOUT, **values)
+        Returns (the report, bale's stderr lines). also: as invoke's."""
+        proc, shown, where = self.invoke(surface, cwd, timeout=PACK_TIMEOUT, also=also, **values)
         return self.parse(surface, proc, shown, where), proc.stderr.splitlines()
 
     def parse(self, surface, proc, shown, where):
@@ -613,11 +653,6 @@ def no_projects_line(projects):
         return ("this office scopes no projects: its floor plan has no [projects] table "
                 "(office projects add NAME PATH)")
     return "this office scopes no projects: its [projects] table lists none (office projects add NAME PATH)"
-
-
-# What land says for a session out on a project on a host, until the
-# release that brings one back over the shell: before bale runs.
-LAND_NOT_BUILT_ON_HOST = "the return trip is not built yet; the session is out and its response waits"
 
 
 def readable(project):
@@ -1994,10 +2029,11 @@ def bundle_forecast(argv):
     return (writes or includes or None), supersedes
 
 
-def bundle_places(office_root, paths):
+def bundle_places(office_root, paths, rd=None):
     """[(label, directory, missing paths)] for every place a bundle could
     open in: the office, then each project it scopes that can be read,
-    by name. A place whose missing list is empty holds every path."""
+    by name. A place whose missing list is empty holds every path. A
+    hosted place this reader's round already asked answers from it."""
     root = pathlib.Path(office_root).resolve()
     out = [("office", root, [x for x in paths if not (root / x.strip("/")).exists()])]
     for p in office_projects(root) or []:
@@ -2008,6 +2044,10 @@ def bundle_places(office_root, paths):
             # its shell (one connection each); one that does not answer
             # holds nothing, as far as the office can tell, and says so.
             place = ohost.place_of(p)
+            key = (place, "missing", tuple(x for x in dict.fromkeys(paths) if x))
+            if rd is not None and key in rd.facts:
+                out.append((p["name"], place, list(rd.facts[key])))
+                continue
             try:
                 out.append((p["name"], place, ohost.missing_paths(place, paths) if paths else []))
             except ohost.HostError as exc:
@@ -2123,15 +2163,18 @@ _DOCTRINE_SUMS = ('[ -d doctrine ] || exit 0; cd doctrine && find . -type f ! -p
                   '! -path "*/.bale/*" | LC_ALL=C sort | while IFS= read -r f; do sha256sum "$f"; done')
 
 
-def doctrine_sums(tree, includes, excludes=()):
+def doctrine_sums(tree, includes, excludes=(), rd=None):
     """{relative path: sha256} of the doctrine a packed tree ships, here
-    or on a host (read through its shell), or None: the same answer
-    doctrine_in_tree gives, as sums, so a hosted tree's doctrine is
-    compared with the install's without its bytes travelling."""
+    or on a host (read through its shell, unless this reader's hosted
+    round already read it), or None: the same answer doctrine_in_tree
+    gives, as sums, so a hosted tree's doctrine is compared with the
+    install's without its bytes travelling."""
     if tree is None:
         return None
     if isinstance(tree, ohost.Place) and tree.hosted:
-        run = ohost.run_in(tree, ["sh", "-c", _DOCTRINE_SUMS])
+        run = rd.facts.get((tree, "doctrine")) if rd is not None else None
+        if run is None:
+            run = ohost.run_in(tree, ["sh", "-c", _DOCTRINE_SUMS])
         if run.returncode != 0:
             raise BaleError("refused", f"the doctrine in {tree} could not be read: {run.stderr.strip() or run.returncode}")
         sums = {}
@@ -2198,13 +2241,21 @@ def check_hosted_place(rd, entry, checked=False):
     the connect line); its bale is held to the read side's floor (start
     never upgrades a bale, it names the step that does); and the repo
     there is checked as office projects add checks one, unless this
-    start checked it already (checked, or once per reader)."""
+    start checked it already (checked, or once per reader).
+
+    Since 0.16.0 the reach, the version, the status and the repo's check
+    travel in one connection; and checked (bin/office ran start-check
+    this command, which did all of it) makes no connection here at all:
+    the reads a step needs next ride its own batch."""
     name = entry["name"]
     place = ohost.place_of(entry)
     if place in rd.places_checked:
         return place
+    if checked:
+        rd.places_checked.add(place)
+        return place
     try:
-        rd.prefetch(place, [("version", {}), ("status", {})])
+        _, (check,) = rd.prefetch(place, [("version", {}), ("status", {})], extra=[ohost.check_argv(place)])
         v = rd.installed_version(place)
     except BaleError as exc:
         raise StartError([f"{name}: {exc}; nothing was written"])
@@ -2217,15 +2268,44 @@ def check_hosted_place(rd, entry, checked=False):
         raise StartError([f"{name}: bale {v} on {entry['host']} is older than the read side's floor {floor}, so no "
                           f"session goes out there; {level_step(name)} brings it level with this machine's bale "
                           "(start never upgrades a bale on its own); nothing was written"])
-    if not checked:
-        try:
-            ok, why = ohost.check_project(place)
-        except ohost.HostError as exc:
-            raise StartError([f"{name}: {exc}; nothing was written"])
-        if not ok:
-            raise StartError([f"{name} cannot be packed: {why}"])
+    try:
+        ok, why = ohost.read_check(place, check)
+    except ohost.HostError as exc:
+        raise StartError([f"{name}: {exc}; nothing was written"])
+    if not ok:
+        raise StartError([f"{name} cannot be packed: {why}"])
     rd.places_checked.add(place)
     return place
+
+
+def hosted_round(rd, place, paths=(), doctrine=False, extra=()):
+    """The reads a step on a hosted place needs, in one connection (since
+    0.16.0): bale status (cached in the reader), which of the paths are
+    not there, and with doctrine the sums of the doctrine its tree holds;
+    extra argvs ride after them. Kept in rd.facts for paths_missing_in and
+    doctrine_sums, so each answers from this round without connecting.
+    Returns the extra Runs."""
+    paths = [p for p in dict.fromkeys(paths) if p]
+    argvs = []
+    if paths:
+        argvs.append(["sh", "-c", ohost.MISSING_SCRIPT, "office-paths", *[p.strip("/") or "." for p in paths]])
+    if doctrine:
+        argvs.append(["sh", "-c", _DOCTRINE_SUMS])
+    try:
+        _, runs = rd.prefetch(place, [("status", {})], extra=[*argvs, *extra])
+    except BaleError as exc:
+        raise StartError([f"{place.name or place.host}: {exc}"])
+    i = 0
+    if paths:
+        run = runs[i]; i += 1
+        if run.returncode != 0:
+            raise StartError([f"the paths in {place} could not be checked: {ohost._last_words(run.stderr)}"])
+        gone = set(run.stdout.splitlines())
+        rd.facts[(place, "missing", tuple(paths))] = [p for p in paths if (p.strip("/") or ".") in gone]
+    if doctrine:
+        run = runs[i]; i += 1
+        rd.facts[(place, "doctrine")] = run
+    return runs[i:]
 
 
 def pack_place(office_root, where, project, rd=None, checked=False):
@@ -2280,7 +2360,7 @@ def overlap_lines(rd, office_root, pack_dir, where, project, forecast, bundle=No
     return lines
 
 
-def bundle_precheck(rd, office_root, where, project, bundle):
+def bundle_precheck(rd, office_root, where, project, bundle, checked=False):
     """For a bundle the office can read (a file here), the refusals office
     start says in its own words before bale is asked anything: a path the
     pack line names that is not in the tree it opens in, and an open
@@ -2289,7 +2369,7 @@ def bundle_precheck(rd, office_root, where, project, bundle):
     argv = bundle_pack_argv(bundle)
     if argv is None:
         return
-    pack_dir = pack_place(office_root, where, project, rd)
+    pack_dir = pack_place(office_root, where, project, rd, checked)
     try:
         b_inc, b_wr, _ = bundle_paths(argv)
         forecast, supersedes = bundle_forecast(argv)
@@ -2297,10 +2377,13 @@ def bundle_precheck(rd, office_root, where, project, bundle):
         return
     named = list(dict.fromkeys(b_inc + b_wr))
     label = "office" if where == "office" else project
-    places = bundle_places(office_root, named)
+    if rd.hosted(pack_dir):
+        # One connection: the open sessions and which paths are there.
+        hosted_round(rd, pack_dir, named)
+    places = bundle_places(office_root, named, rd)
     mine = next((m for lab, _, m in places if lab == label), None)
     if mine is None:
-        mine = paths_missing_in(pack_dir, named)
+        mine = paths_missing_in(pack_dir, named, rd)
     if mine:
         raise StartError([f"the bundle {pathlib.Path(bundle).name} names paths that are not in "
                           f"{place_words(label)}'s tree, so it cannot open there; nothing ran"]
@@ -2310,7 +2393,7 @@ def bundle_precheck(rd, office_root, where, project, bundle):
         raise StartError(lines)
 
 
-def check_bundle(rd, office_root, where, project, bundle):
+def check_bundle(rd, office_root, where, project, bundle, checked=False):
     """bale open --check for a bundle, where it would open, before office
     start opens a folder, commits a survey or fills a tray: bale resolves
     a bare name through its own search (cwd first, then its search
@@ -2320,8 +2403,8 @@ def check_bundle(rd, office_root, where, project, bundle):
     forecast overlapping an open session each refuse, exit 1, with
     nothing written). Returns the path bale found the bundle at (None when
     its report does not say); raises StartError with bale's own words."""
-    pack_dir = pack_place(office_root, where, project, rd)
-    bundle_precheck(rd, office_root, where, project, bundle)
+    pack_dir = pack_place(office_root, where, project, rd, checked)
+    bundle_precheck(rd, office_root, where, project, bundle, checked)
     spec = rd.consumption.surface("open_check")
     hosted = rd.hosted(pack_dir)
     if hosted:
@@ -2329,10 +2412,17 @@ def check_bundle(rd, office_root, where, project, bundle):
     try:
         with ohost.Scratch(pack_dir) as scratch:
             # On a host, the bundle travels there first, into the office's
-            # one temporary directory, and bale checks that copy; the
-            # directory is removed whatever bale says.
+            # one temporary directory (made in the same connection), and
+            # bale checks that copy; the directory is removed whatever bale
+            # says, in the check's own connection.
             asked = send_bundle(pack_dir, local, scratch) if hosted else bundle
-            proc, shown, _ = rd.invoke("open_check", pack_dir, timeout=PACK_TIMEOUT, whole_why=True, bundle=asked)
+            also = [scratch.removal_argv()] if hosted else None
+            try:
+                proc, shown, _ = rd.invoke("open_check", pack_dir, timeout=PACK_TIMEOUT, whole_why=True, also=also,
+                                           bundle=asked)
+            finally:
+                if hosted and rd.also_runs:
+                    scratch.removed_by_step()
     except (BaleError, ohost.HostError) as exc:
         place = "in the office" if where == "office" else f"on {project}"
         raise StartError([f"bale cannot open the bundle {bundle} {place} ({pack_dir}), so start stopped before "
@@ -2347,10 +2437,14 @@ def check_bundle(rd, office_root, where, project, bundle):
     return found
 
 
-def paths_missing_in(pack_dir, paths):
+def paths_missing_in(pack_dir, paths, rd=None):
     """The paths a pack names that its directory lacks, here or on a
-    host (asked through its shell)."""
+    host (asked through its shell, unless this reader's hosted round
+    already asked)."""
     if isinstance(pack_dir, ohost.Place) and pack_dir.hosted:
+        key = (pack_dir, "missing", tuple(p for p in dict.fromkeys(paths) if p))
+        if rd is not None and key in rd.facts:
+            return list(rd.facts[key])
         try:
             return ohost.missing_paths(pack_dir, paths)
         except ohost.HostError as exc:
@@ -2373,9 +2467,9 @@ def hosted_bundle_file(bundle, place):
 
 def send_bundle(place, local, scratch):
     """The bundle copied into the office's temporary directory on the
-    host, under its own name (bale reads the name); its path there."""
-    remote = f"{scratch.path}/{pathlib.Path(local).name}"
-    ohost.send_file(place, local, remote)
+    host, under its own name (bale reads the name); its path there. The
+    directory is made in the same connection when it is not made yet."""
+    remote = scratch.send(local)
     log(f"sent {pathlib.Path(local).name} to {place.host} ({remote}, removed when this start is done)")
     return remote
 
@@ -2476,18 +2570,34 @@ def install_behind(office_root, install=None):
             "project": scoped[0]["name"]}
 
 
-def open_bundle(rd, pack_dir, bundle):
+def open_bundle(rd, pack_dir, bundle, scratch=None):
     """Run bale open for a planner bundle in pack_dir, stdin closed, so
     no question is answered for the occupant; a pre-answered intent in
     the bundle is bale's to honour. Returns sid, tarball and opener. The
     sid is the session bale status lists after the open and did not
     before; the tarball is the report's tarball line, held to the
-    request that status lists for that sid."""
+    request that status lists for that sid. On a host the status after
+    the open, and the scratch's removal, ride the open's own connection."""
     spec = rd.consumption.surface("open")
     before = set(rd.key(rd.status(pack_dir), "status", "sessions") or [])
-    proc, shown, where = rd.invoke("open", pack_dir, timeout=PACK_TIMEOUT, whole_why=True, bundle=bundle)
+    hosted = rd.hosted(pack_dir)
+    status_argv = rd.consumption.argv("status")
+    also = None
+    if hosted:
+        also = [["bale", *status_argv]] + ([scratch.removal_argv()] if scratch is not None and scratch.made else [])
+    proc, shown, where = rd.invoke("open", pack_dir, timeout=PACK_TIMEOUT, whole_why=True, also=also, bundle=bundle)
     lines = proc.stdout.splitlines()
     rd.forget(pack_dir)
+    if hosted:
+        if scratch is not None and scratch.made:
+            scratch.removed_by_step()
+        run = rd.also_runs[0]
+        if run.returncode == 0:
+            try:
+                rd._cache[(str(pack_dir), tuple(status_argv))] = rd.parse("status", run, "bale status --json",
+                                                                           str(pack_dir))
+            except BaleError as exc:
+                debug(f"bale status after the open did not read from its batch ({exc}); asked on its own")
     st = rd.status(pack_dir)
     new = [x for x in (rd.key(st, "status", "sessions") or []) if x not in before]
     if len(new) != 1:
@@ -2564,6 +2674,18 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     elif hosted_project(entry):
         pack_dir = check_hosted_place(rd, entry, checked)
         forecast = [] if read_only else (list(writes) or list(includes) or None)
+        # One connection for every read the pack needs before bale runs
+        # (since 0.16.0): the status (open sessions), the paths the pack
+        # names and the doctrine the tree holds.
+        named = [*(writes if not read_only else []), *includes]
+        if bundle:
+            bargv = bundle_pack_argv(bundle) if pathlib.Path(bundle).expanduser().is_file() else None
+            try:
+                b_inc, b_wr, _ = bundle_paths(bargv) if bargv is not None else ([], [], [])
+            except ValueError:
+                b_inc, b_wr = [], []
+            named = [*b_inc, *b_wr]
+        hosted_round(rd, pack_dir, named, doctrine=True)
     else:
         pack_dir = entry["resolved"]
         ok, why = oh.check_project_dir(pack_dir)
@@ -2593,10 +2715,10 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                 b_inc, b_wr, b_exc = [], [], []
             named = list(dict.fromkeys(b_inc + b_wr))
             label = "office" if where == "office" else project
-            places = bundle_places(office_root, named)
+            places = bundle_places(office_root, named, rd)
             mine = next((m for lab, _, m in places if lab == label), None)
             if mine is None:
-                mine = paths_missing_in(pack_dir, named)
+                mine = paths_missing_in(pack_dir, named, rd)
             if mine:
                 raise StartError([f"the bundle {pathlib.Path(bundle).name} names paths that are not in "
                                   f"{place_words(label)}'s tree, so it cannot open there; nothing ran"]
@@ -2624,7 +2746,7 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                                 "its folder")
     if bundle and hosted:
         local_bundle = hosted_bundle_file(bundle, pack_dir)
-    gone = paths_missing_in(pack_dir, list(dict.fromkeys([*(writes if not read_only else []), *includes])))
+    gone = paths_missing_in(pack_dir, list(dict.fromkeys([*(writes if not read_only else []), *includes])), rd)
     for p in (writes if not read_only else []):
         if p in gone:
             raise StartError([f"--write {p}: no such path in {pack_dir}; a forecast names existing paths "
@@ -2665,7 +2787,7 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         req_tree = pack_dir if where == "project" else None
         req_inc, req_exc = (list(includes) or None), ()
     try:
-        own = doctrine_sums(req_tree, req_inc, req_exc)
+        own = doctrine_sums(req_tree, req_inc, req_exc, rd)
     except (BaleError, ohost.HostError) as exc:
         raise StartError([f"{project}: {exc}"])
     if own is None and where == "office" and entry is not None and not hosted_project(entry):
@@ -2745,23 +2867,25 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                 stage = "sending the bundle to " + pack_dir.host
                 asked = send_bundle(pack_dir, local_bundle, scratch)
                 stage = "the bundle's open"
-            opened = open_bundle(rd, pack_dir, asked if hosted else bundle)
+            opened = open_bundle(rd, pack_dir, asked if hosted else bundle, scratch if hosted else None)
         else:
             readme = str(pathlib.Path(brief).resolve()) if brief else None
             if hosted and readme:
                 # bale on the host reads the brief there: it travels into
                 # the office's temporary directory first.
                 stage = "sending the brief to " + pack_dir.host
-                remote = f"{scratch.path}/{pathlib.Path(readme).name}"
-                ohost.send_file(pack_dir, readme, remote)
-                readme = remote
+                readme = scratch.send(readme)
             stage = "the session's pack"
             spec = rd.consumption.surface("pack")
+            # The scratch's removal rides the pack's own connection.
+            gone_too = [scratch.removal_argv()] if hosted and scratch.made else None
             report, stderr = rd.pack(
-                "pack", pack_dir, goal=goal, slug=slug, includes=includes or None,
+                "pack", pack_dir, also=gone_too, goal=goal, slug=slug, includes=includes or None,
                 writes=None if read_only or forecast is None else (forecast if where == "office" else (list(writes) or None)),
                 constraints=[PROJECT_CONSTRAINT] if where == "project" else None,
                 readme_file=readme, no_readme=not brief, read_only=read_only, work_class=work_class)
+            if gone_too:
+                scratch.removed_by_step()
             opened = {"sid": rd.key(report, "pack", "sid"), "tarball": rd.key(report, "pack", "tarball"),
                       "opener": opener_lines(stderr, spec)}
     except (BaleError, ohost.HostError) as exc:
@@ -3036,23 +3160,30 @@ def repos(office_root):
     return out, bad
 
 
-def open_anywhere(rd, office_root):
+def open_anywhere(rd, office_root, sid=None, unreachable=None):
     """(sessions, problems): every session open in a repo the office
     reads, each a dict: sid, label, project, repo, read_only, folders
-    (the folders whose Sessions section names it, space/name)."""
+    (the folders whose Sessions section names it, space/name). For a
+    hosted repo the status, and with sid that session's dossier, travel
+    in one connection (since 0.16.0); a host that does not answer is a
+    problem line and, given the list unreachable, (label, line) in it."""
     naming = folders_naming(office_root)
     found, problems = repos(office_root)
     out = []
     for label, p, cwd in found:
         try:
-            for sid, ro in rd.open_sessions(cwd):
-                out.append({"sid": sid, "label": label, "project": p["name"] if p else None, "repo": str(cwd),
+            if rd.hosted(cwd):
+                rd.prefetch(cwd, [("status", {})] + ([("dossier", {"sid": sid})] if sid else []))
+            for sid_here, ro in rd.open_sessions(cwd):
+                out.append({"sid": sid_here, "label": label, "project": p["name"] if p else None, "repo": str(cwd),
                             "place": cwd, "host": p["host"] if p else None,
-                            "read_only": ro, "folders": naming.get(sid, []),
+                            "read_only": ro, "folders": naming.get(sid_here, []),
                             "after_land": list(p["after_land"]) if p and not p["declaration_problems"] else [],
                             "after_land_problem": "; ".join(p["declaration_problems"]) if p else ""})
         except BaleError as exc:
             problems.append(f"{label}: cannot read: {exc}")
+            if exc.kind == "unreachable" and unreachable is not None:
+                unreachable.append((label, str(exc)))
     return out, problems
 
 
@@ -3125,12 +3256,111 @@ def folder_record(office_root, folder, sid):
     return out
 
 
-def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None):
+# --- where downloads land (0.16.0) ------------------------------------------------
+#
+# The office's own setting, machine.toml's downloads (a list of
+# directories), asked once by bin/office and never read from bale's
+# config. land finds a session's response there by name, and start a
+# bundle for a hosted project; a browser that saves a name twice writes
+# `STEM (1).EXT`, so every copy of a name is a candidate and the newest by
+# modification time wins, named. Two copies with the same time refuse.
+
+def name_parts(name):
+    """(stem, extension) of a downloaded file's name: .tar.gz counts as
+    one extension, as a response's does."""
+    for ext in (".tar.gz", ".bale-bundle"):
+        if name.endswith(ext):
+            return name[:-len(ext)], ext
+    p = pathlib.PurePath(name)
+    return (name[:-len(p.suffix)], p.suffix) if p.suffix else (name, "")
+
+
+def browser_copies(directories, name):
+    """[(path, mtime_ns)] of every file named name, or a browser's later
+    copy of it (`STEM (N).EXT`), in the directories, newest first. A
+    directory that is not there is skipped, said under OFFICE_DEBUG."""
+    stem, ext = name_parts(pathlib.PurePath(name).name)
+    pattern = re.compile(re.escape(stem) + r"(?: \(\d+\))?" + re.escape(ext))
+    out = []
+    for d in directories:
+        d = pathlib.Path(os.path.expanduser(str(d)))
+        try:
+            entries = list(d.iterdir())
+        except OSError as exc:
+            debug(f"the downloads directory {d} cannot be read: {exc}")
+            continue
+        for f in entries:
+            if pattern.fullmatch(f.name) and f.is_file():
+                out.append((f.resolve(), f.stat().st_mtime_ns))
+    return sorted(out, key=lambda x: (-x[1], str(x[0])))
+
+
+def newest_copy(copies, name, error=None):
+    """(path, note) for the newest of browser_copies: note says which was
+    taken when there were several (None when one), and two copies with the
+    same modification time at the top refuse, naming both."""
+    error = error or LandError
+    if not copies:
+        return None, None
+    if len(copies) > 1 and copies[0][1] == copies[1][1]:
+        raise error([f"{copies[0][0]} and {copies[1][0]} were saved at the same moment, so the office cannot tell "
+                     f"which copy of {name} is the newest; name the one to take by its path"])
+    if len(copies) == 1:
+        return copies[0][0], None
+    others = ", ".join(p.name for p, _ in copies[1:])
+    return copies[0][0], (f"{len(copies)} copies of {name} are in the downloads; took the newest, {copies[0][0]} "
+                          f"(left: {others})")
+
+
+def find_in(directories, name, cwd=None):
+    """A bare name, exactly as given, in the current directory and then
+    each downloads directory in order (bale's own order for a search):
+    its path, or None."""
+    for d in ([cwd] if cwd else []) + list(directories or []):
+        p = pathlib.Path(os.path.expanduser(str(d))) / name
+        if p.is_file():
+            return p.resolve()
+    return None
+
+
+def plan_place(plan):
+    """Where a land plan's bale runs: the repo's directory, or for a
+    hosted project its Place, rebuilt from the plan's place."""
+    pl = plan.get("place")
+    if pl:
+        return ohost.Place(pl["path"], pl["host"], pl["shell"], pl["connect"], pl.get("name"))
+    return plan["repo"]
+
+
+def printed_line(place, command):
+    """A command for the occupant to type on this machine that runs
+    command where a hosted place is: the stored shell with the command
+    quoted for the far side's login shell as well (an ssh prefix hands
+    the far side one string)."""
+    words = shlex.split(place.shell)
+    inner = shlex.quote(command)
+    if words and words[0] == "ssh":
+        inner = f'"{inner}"' if not any(c in inner for c in '"$`\\') else shlex.quote(inner)
+    return " ".join(shlex.quote(w) for w in words) + " " + inner
+
+
+def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None, downloads=None):
     """The one session to land and how: a dict (sid, label, project,
-    repo, folders, verb apply or retry, tarball, needs_response,
-    attempts_before, record, after_land, problems). Raises LandError
-    with lines when there is none, or more than one."""
-    tarball = None
+    repo or place, where, folders, verb apply or retry, tarball,
+    needs_response, response_default, needs_downloads, took, attempts_before,
+    record, after_land, problems). Raises LandError with lines when there
+    is none, or more than one.
+
+    downloads is machine.toml's list, or None when it is not set. A
+    session on a hosted project (0.16.0) needs its response on this
+    machine: a path given, a bare name found here or in the downloads, or
+    the newest copy of response-SID.tar.gz there; with the setting unset
+    the plan comes back with needs_downloads, and bin/office asks once. Its
+    plan carries place (path, host, shell, connect) instead of repo. For a
+    local project bale's own search finds the response, as before, unless
+    the downloads hold several copies of its name: then the newest is
+    passed to bale by its path, and took says so."""
+    tarball, bare = None, False
     if response:
         given = pathlib.Path(response).expanduser()
         here = given if given.is_absolute() else pathlib.Path(cwd or os.getcwd()) / given
@@ -3144,49 +3374,105 @@ def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None):
             if not m or not oh.SID_RE.match(m.group(1)):
                 raise LandError([f"{response} is not a file here, and not a response tarball's name "
                                  "(response-SID.tar.gz) for bale to find in its search directories"])
-            tarball, want = response, m.group(1)
+            tarball, want, bare = response, m.group(1), True
         if sid and sid != want:
             raise LandError([f"{response} answers {want}, not {sid}"])
         sid = want
-    every, problems = open_anywhere(rd, office_root)
+    lost = []
+    every, problems = open_anywhere(rd, office_root, sid, lost)
+
+    def unanswered(lead):
+        # A host that did not answer may hold the session: it stops land
+        # here, before anything is carried, with the reach's one line.
+        if not lost:
+            return None
+        return LandError([f"{lead}; and {label}'s host did not answer, so it may be out there: {line}"
+                          for label, line in lost] + ["nothing was carried and nothing ran"]
+                         + [p for p in problems if not any(p.startswith(f"{label}: ") for label, _ in lost)])
+
     if folder:
         found = [x for x in every if folder in x["folders"]]
         if sid:
             found = [x for x in found if x["sid"] == sid]
         if not found:
-            raise LandError([f"no session {sid + ' ' if sid else ''}is out for {folder}: none it records is open "
-                             "in this office or a project it scopes (office sessions FOLDER shows how each went)"]
-                            + problems)
+            raise unanswered(f"no session {sid + ' ' if sid else ''}is out for {folder} where the office could read") \
+                or LandError([f"no session {sid + ' ' if sid else ''}is out for {folder}: none it records is open "
+                              "in this office or a project it scopes (office sessions FOLDER shows how each went)"]
+                             + problems)
     elif sid:
         found = [x for x in every if x["sid"] == sid]
         if not found:
-            raise LandError([f"{sid} is not open in this office or in any project it scopes, so there is nothing "
-                             "to land (office sessions FOLDER shows how it went)"] + problems)
+            raise unanswered(f"{sid} is not open where the office could read") \
+                or LandError([f"{sid} is not open in this office or in any project it scopes, so there is "
+                              "nothing to land (office sessions FOLDER shows how it went)"] + problems)
     else:
         found = [x for x in every if x["folders"] and not x["read_only"]]
         if not found:
-            raise LandError(["no session is out: none that a folder records is open in this office or in a "
-                             "project it scopes (office start sends one out)"] + problems)
+            raise unanswered("no session is out where the office could read") \
+                or LandError(["no session is out: none that a folder records is open in this office or in a "
+                              "project it scopes (office start sends one out)"] + problems)
     landable = [x for x in found if not x["read_only"]]
     if not landable:
-        return sitting_plan(found, tarball, problems)
+        return sitting_plan(found, None if bare else tarball, problems, response if bare else None)
     if len(landable) > 1:
         raise LandError(["more than one session is out; name one: office land SID"]
                         + [f"  {x['sid']}  ({x['label']}; {', '.join(x['folders']) or 'no folder records it'})"
                            for x in landable])
     x = landable[0]
-    if x["host"]:
-        raise LandError([f"{x['sid']} is open on {x['label']}, a project on {x['host']}: {LAND_NOT_BUILT_ON_HOST}"])
     d = rd.dossier(x["place"], x["sid"])
     view = session_view(rd, d) if d is not None else None
     held = bool(view and view["in_flight"] and view["outcome"] == "held")
     plan = dict(x)
-    plan.pop("place", None)  # the plan is written as JSON; repo names the directory
-    plan.update(verb="retry" if held else "apply", held=held,
-                tarball=tarball or f"response-{x['sid']}.tar.gz",
-                needs_response=held and tarball is None,
+    place = plan.pop("place", None)  # the plan is written as JSON: repo, or place for a hosted project
+    plan.update(verb="retry" if held else "apply", held=held, tarball=None, needs_response=False,
+                response_default=None, needs_downloads=False, took=[],
                 attempts_before=len(response_attempts(view)) if view else 0,
-                office_session=x["label"] == OFFICE_LABEL, problems=problems, record=None)
+                office_session=x["label"] == OFFICE_LABEL, problems=problems, record=None, where=str(place))
+    name = f"response-{x['sid']}.tar.gz"
+    if x["host"]:
+        plan.pop("repo", None)
+        plan["place"] = {"path": place.path, "host": place.host, "shell": place.shell, "connect": place.connect,
+                         "name": place.name}
+        if tarball is not None and not bare:
+            plan["tarball"] = tarball
+        elif bare:
+            found_at = find_in(downloads, tarball, cwd or os.getcwd())
+            if found_at is None:
+                looked = ", ".join([str(cwd or os.getcwd())] + [str(d) for d in downloads or []])
+                raise LandError([f"{tarball} is not in {looked}; a response for a project on {x['host']} is carried "
+                                 "there from this machine, so give its path, or add the directory it is in to "
+                                 "downloads in machine.toml"])
+            plan["tarball"] = str(found_at)
+        elif downloads is None:
+            plan["needs_downloads"] = True
+        else:
+            path, note = newest_copy(browser_copies(downloads, name), name)
+            if held and (path is None or note is None):
+                # After a HOLD the corrected response is asked for, the
+                # only copy offered as the answer: it may be the held one.
+                plan.update(needs_response=True, response_default=str(path) if path else None)
+            elif path is None:
+                raise LandError([f"no {name} in the downloads ({', '.join(map(str, downloads)) or 'none listed'}); "
+                                 f"a response for a project on {x['host']} is carried there from this machine: "
+                                 f"give it: office land {x['sid']} --response FILE"])
+            else:
+                plan["tarball"] = str(path)
+                if note:
+                    plan["took"].append(note)
+                plan["took"].append(f"{path.name} is the response for {x['sid']}; it travels to {x['host']}")
+    else:
+        if tarball is not None:
+            plan["tarball"] = tarball
+        elif downloads:
+            path, note = newest_copy(browser_copies(downloads, name), name)
+            if note:
+                # bale's own search takes the plain name first; after a HOLD
+                # the corrected response is usually the (1).
+                plan["tarball"] = str(path)
+                plan["took"].append(note + "; bale gets it by its path, since its own search takes the plain name first")
+        if plan["tarball"] is None:
+            plan["tarball"] = name
+            plan["needs_response"] = held
     if plan["office_session"]:
         for f in x["folders"]:
             plan["record"] = folder_record(office_root, f, x["sid"])
@@ -3195,28 +3481,31 @@ def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None):
     return plan
 
 
-def sitting_plan(found, tarball, problems):
+def sitting_plan(found, tarball, problems, bare=None):
     """The plan for ending a read-only sitting, named by its id or its
-    folder: land runs bale unlock in its repo, and nothing else. Only a
-    sitting a folder records is the office's to end (one started by hand
-    in a project is that project's business), and a sitting has no
-    response to land."""
+    folder: land runs bale unlock in its repo (through the shell, for a
+    project on a host), and nothing else. Only a sitting a folder records
+    is the office's to end (one started by hand in a project is that
+    project's business), and a sitting has no response to land."""
     if len(found) > 1:
         raise LandError(["more than one read-only sitting is open for that folder; name one: office land SID"]
                         + [f"  {x['sid']}  ({x['label']})" for x in found])
     x = found[0]
     if not x["folders"]:
         raise LandError([f"{x['sid']} is a read-only session no folder records, so it is not a sitting the office sent "
-                         f"out and office land does not end it; bale unlock {x['sid']}, in {x['repo']}, ends it by hand"])
-    if tarball is not None:
+                         f"out and office land does not end it; bale unlock {x['sid']}, in {x['place']}, ends it by hand"])
+    if tarball is not None or bare is not None:
         raise LandError([f"{x['sid']} is a read-only sitting: it lands nothing, so there is no response to land; "
                          f"office land {x['sid']}, with no response, ends it when the sitting is over"])
-    if x["host"]:
-        raise LandError([f"{x['sid']} is a sitting on {x['label']}, a project on {x['host']}: {LAND_NOT_BUILT_ON_HOST}"])
     plan = dict(x)
-    plan.pop("place", None)
-    plan.update(verb="unlock", held=False, tarball=None, needs_response=False, attempts_before=0,
-                office_session=x["label"] == OFFICE_LABEL, problems=problems, record=None)
+    place = plan.pop("place", None)
+    plan.update(verb="unlock", held=False, tarball=None, needs_response=False, response_default=None,
+                needs_downloads=False, took=[], attempts_before=0,
+                office_session=x["label"] == OFFICE_LABEL, problems=problems, record=None, where=str(place))
+    if x["host"]:
+        plan.pop("repo", None)
+        plan["place"] = {"path": place.path, "host": place.host, "shell": place.shell, "connect": place.connect,
+                         "name": place.name}
     return plan
 
 
@@ -3225,9 +3514,9 @@ def end_sitting(rd, office_root, plan, day):
     folder that records it, committed alone. The folder keeps its status:
     a planning folder may outlive one sitting, and closing it is the
     occupant's (office close). Returns (words, told lines)."""
-    sid, repo = plan["sid"], plan["repo"]
+    sid, repo = plan["sid"], plan.get("where") or plan["repo"]
     try:
-        report = rd.unlock(repo, sid)
+        report = rd.unlock(plan_place(plan), sid)
     except BaleError as exc:
         raise LandError([f"bale unlock {sid} did not end the sitting: {exc}"])
     # From here the sitting is closed in bale, and a second land would be
@@ -3389,6 +3678,12 @@ def outcome_words(plan, outcome):
         return (f"Refused: bale refused {sid} in {where}: {what}; {nothing}. bale printed the line that admits it "
                 "above; the office never runs it for you.", None)
     if outcome == "clarification":
+        if plan.get("place"):
+            # The answer is a file here; bale relay reads it on stdin there.
+            line = printed_line(plan_place(plan), f"cd {ohost.shell_path(plan['place']['path'])} && bale relay {sid} -")
+            return (f"Questions: the worker asked before building; {nothing}. The block for the planner is below.",
+                    f"{line} < ANSWER-FILE, with the planner's answer saved here as ANSWER-FILE (bale relay "
+                    f"reads it from stdin on {plan['place']['host']})")
         return (f"Questions: the worker asked before building; {nothing}. The block for the planner is below.",
                 f"(cd {plan['repo']} && bale relay {sid} ANSWER-FILE), with the planner's answer")
     if outcome == "reverted":
@@ -3406,7 +3701,15 @@ def land_outcome(rd, office_root, plan, code, capture, day):
     added, or, when bale exited 0 and added none, a clarification round.
     Puts the folder's record back, and gathers the blocks to carry."""
     spec = rd.consumption.surface("apply")
-    d = rd.dossier(plan["repo"], plan["sid"])
+    where = plan_place(plan)
+    relay_run = None
+    if rd.hosted(where):
+        # One connection: the dossier, and when bale exited 0 (the only
+        # way a clarification ends) relay's block beside it.
+        texts, _ = rd.prefetch(where, [("dossier", {"sid": plan["sid"]})],
+                               texts=[("relay", {"sid": plan["sid"]})] if code == 0 else [])
+        relay_run = texts.get("relay")
+    d = rd.dossier(where, plan["sid"])
     view = session_view(rd, d) if d is not None else None
     new = response_attempts(view)[plan["attempts_before"]:] if view else []
     if new:
@@ -3422,8 +3725,14 @@ def land_outcome(rd, office_root, plan, code, capture, day):
     blocks = relay_blocks(printed, plan["sid"], spec)
     if outcome == "clarification":
         try:
-            block = exchange_block(rd.lines("relay", plan["repo"], sid=plan["sid"]), plan["sid"],
-                                   rd.consumption.surface("relay"))
+            if relay_run is not None:
+                if relay_run.returncode != 0:
+                    raise BaleError("refused", f"bale relay {plan['sid']} refused in {where} (exit "
+                                               f"{relay_run.returncode}): {ohost._last_words(relay_run.stderr)}")
+                lines = relay_run.stdout.splitlines()
+            else:
+                lines = rd.lines("relay", where, sid=plan["sid"])
+            block = exchange_block(lines, plan["sid"], rd.consumption.surface("relay"))
         except BaleError as exc:
             block = None
             log(f"bale relay could not re-emit the questions' block: {exc}")
@@ -3437,9 +3746,58 @@ def land_outcome(rd, office_root, plan, code, capture, day):
             "known_outcome": outcome in spec["outcomes"] + ["clarification", "refused"]}
 
 
+def land_run(rd, plan, capture):
+    """bale apply or retry, through land's terminal: in the repo on this
+    machine, or on a host with the response carried there first (into the
+    office's one temporary directory, made in the same connection, held
+    to its sha256) and the directory removed by the command that runs
+    bale, whatever bale said. Returns bale's exit code, or LAND_RUN_FAILED
+    when bale could not be run."""
+    where = plan_place(plan)
+    if not rd.hosted(where):
+        try:
+            return rd.interact(plan["verb"], where, capture, tarball=plan["tarball"])
+        except BaleError as exc:
+            log(f"error: {exc}")
+            return LAND_RUN_FAILED
+    try:
+        with ohost.Scratch(where) as scratch:
+            remote = scratch.send(plan["tarball"])
+            log(f"carried {pathlib.Path(plan['tarball']).name} to {where.host} ({remote}, checked by sha256; "
+                "removed when bale is done)")
+            return rd.interact(plan["verb"], where, capture, cleanup=scratch, tarball=remote)
+    except (BaleError, ohost.HostError) as exc:
+        log(f"error: {exc}")
+        log(f"error: nothing was applied; the response is still at {plan['tarball']}")
+        return LAND_RUN_FAILED
+
+
+def land_after(plan, index):
+    """The project's after-land action number index (1-based), run in its
+    repo on its host, its output on this terminal: attended on a terminal,
+    piped with stdin closed. Returns its exit code."""
+    command = plan["after_land"][index - 1]
+    try:
+        return ohost.run_streamed(plan_place(plan), f"bash -c {shlex.quote(command)}")
+    except ohost.HostError as exc:
+        log(f"error: {exc}")
+        return LAND_RUN_FAILED
+
+
+def land_after_line(plan, index):
+    """The one line that reruns the after-land actions from number index
+    on, typed on this machine: through the project's shell for a hosted
+    one, (cd REPO && ...) otherwise."""
+    rest = " && ".join(plan["after_land"][index - 1:])
+    if plan.get("place"):
+        return printed_line(plan_place(plan), f"cd {ohost.shell_path(plan['place']['path'])} && {rest}")
+    return f"(cd {shell_quote(plan['repo'])} && {rest})"
+
+
 # --- command line --------------------------------------------------------------------
 
-# bale ran, but office land could not (no bale, no such directory).
+# bale ran, but office land could not (no bale, no such directory, a host
+# that stopped answering, a response that did not arrive intact).
 LAND_RUN_FAILED = 125
 
 
@@ -3536,7 +3894,8 @@ def land_main(a):
                 print(f"{x['sid']}\t{x['label']}\t{', '.join(x['folders'])}")
             return 0
         if a.cmd == "land-plan":
-            plan = land_plan(rd, a.office, a.sid, a.folder, a.response, a.cwd)
+            downloads = None if a.no_downloads else a.downloads
+            plan = land_plan(rd, a.office, a.sid, a.folder, a.response, a.cwd, downloads)
             pathlib.Path(a.plan).write_text(json.dumps(plan), encoding="utf-8")
             return 0
         plan = json.loads(pathlib.Path(a.plan).read_text(encoding="utf-8"))
@@ -3551,11 +3910,12 @@ def land_main(a):
                 print(line)
             return 0
         if a.cmd == "land-run":
-            try:
-                return rd.interact(plan["verb"], plan["repo"], a.capture, tarball=plan["tarball"])
-            except BaleError as exc:
-                log(f"error: {exc}")
-                return LAND_RUN_FAILED
+            return land_run(rd, plan, a.capture)
+        if a.cmd == "land-after":
+            return land_after(plan, a.index)
+        if a.cmd == "land-after-line":
+            print(land_after_line(plan, a.index))
+            return 0
         print(json.dumps(land_outcome(rd, a.office, plan, a.exit, a.capture, a.day)))
         return 0
     except StartError as exc:
@@ -3613,6 +3973,8 @@ def main(argv=None):
     p = sub.add_parser("bundle-check", help="bale open --check where the bundle would open; the path bale found")
     p.add_argument("office"); p.add_argument("--where", choices=("office", "project"), required=True)
     p.add_argument("--project"); p.add_argument("--bundle", required=True)
+    p.add_argument("--checked", action="store_true",
+                   help="bin/office has checked the project's host this start (start-check)")
     p = sub.add_parser("start-riders", help="the riders a start's pack carries: N<tab>TITLE<tab>RIDES<tab>TOUCHED")
     p.add_argument("office"); p.add_argument("folder", help="desk/NAME")
     p.add_argument("--where", choices=("office", "project"), required=True); p.add_argument("--project")
@@ -3642,18 +4004,42 @@ def main(argv=None):
     p.add_argument("office"); p.add_argument("--sid"); p.add_argument("--folder"); p.add_argument("--response")
     p.add_argument("--cwd", help="where a relative response path is read from (default: here)")
     p.add_argument("--plan", required=True)
+    p.add_argument("--downloads", action="append", default=[],
+                   help="a directory machine.toml's downloads lists (repeatable)")
+    p.add_argument("--no-downloads", action="store_true", help="machine.toml sets no downloads")
     p = sub.add_parser("land-end", help="end a read-only sitting: bale unlock, then the folder's History; one JSON line")
     p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--day", required=True)
     p = sub.add_parser("land-prepare", help="take the office's record out of an office session's folder")
     p.add_argument("office"); p.add_argument("--plan", required=True)
     p = sub.add_parser("land-run", help="bale apply or retry, the terminal's; exits with bale's code")
     p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--capture", required=True)
+    for name, text in (("land-after", "a hosted project's after-land action N, run on its host; exits with its code"),
+                       ("land-after-line", "the line that reruns the after-land actions from N on")):
+        p = sub.add_parser(name, help=text)
+        p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--index", type=int, required=True)
+    p = sub.add_parser("find-download", help="a file by name in the downloads, the newest of its browser copies: "
+                                             "its path, and on stderr which was taken")
+    p.add_argument("--name", required=True); p.add_argument("--dir", action="append", default=[])
     p = sub.add_parser("land-outcome", help="what happened, from bale's records; one JSON line")
     p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--capture", required=True)
     p.add_argument("--exit", type=int, required=True); p.add_argument("--day", required=True)
     a = ap.parse_args(argv)
     if a.cmd.startswith("land-"):
         return land_main(a)
+    if a.cmd == "find-download":
+        try:
+            path, note = newest_copy(browser_copies(a.dir, a.name), a.name, StartError)
+        except StartError as exc:
+            for line in exc.lines:
+                log(f"error: {line}")
+            return 1
+        if path is None:
+            log(f"error: no {a.name} in the downloads ({', '.join(a.dir) or 'none listed'})")
+            return 1
+        if note:
+            log(note)
+        print(path)
+        return 0
     if a.cmd in ("check-project", "prepare-project", "clone-dirty", "clone-to"):
         return project_main(a)
     if a.cmd in ("level-plan", "level-bale"):
@@ -3662,7 +4048,7 @@ def main(argv=None):
         return start_check_main(a)
     if a.cmd == "bundle-check":
         try:
-            found = check_bundle(Reader(), a.office, a.where, a.project, a.bundle)
+            found = check_bundle(Reader(), a.office, a.where, a.project, a.bundle, a.checked)
         except StartError as exc:
             for line in exc.lines:
                 log(f"error: {line}")

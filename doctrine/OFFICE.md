@@ -151,7 +151,8 @@ A session is packed where it lands.
   the occupant's machine, as for any project, and ride beside it. A
   brief or a bundle travels to the host first; whatever the office
   writes on a host outside the project's repo is removed again, whether
-  the start succeeded or not.
+  the start succeeded or not. One start reaches the host once, and the
+  reads it needs there share a connection.
 
 `office start` does all of this for a folder in one command. It packs
 the session from the office or from the project (on the project's host,
@@ -169,7 +170,10 @@ the page as it was and never stops the start. A session whose forecast overlaps 
 before bale is asked, and the open session, its folder and the overlap are
 named; a bundle is refused the same way whenever the office can read its
 pack line, and where it cannot (a bare name bale's search finds), the
-office says so and bale's own words stand. A session a
+office says so and bale's own words stand. For a project on a host a
+bundle is a file on the occupant's machine: its path, or a bare name the
+office finds in the downloads (below), since bale's own search would run
+on the host. A session a
 planning sitting authored arrives as a bundle (a .bale-bundle file):
 `office start --bundle FILE` hands it to bale's open in the place the
 occupant names, the office or the job's project, and gathers what rides
@@ -205,6 +209,44 @@ moved after the pack, because `office start` recorded the session in it;
 `office land` puts the folder back as it was packed while bale lands, so
 bale never has to refuse the response, and records the session again
 after.
+
+A session on a project on a host lands on its host, as it was packed
+there. `office land` checks first that the host answers; one that does
+not stops the landing before anything is carried, with the occupant's
+connect line and the line that reruns it. The response is found on the
+occupant's machine (a path given, or by name in the downloads), carried
+to the host into one temporary directory, held to its sha256, and `bale
+apply` or `bale retry` runs in the project's repo there through the
+project's shell, attended, so bale's questions reach the occupant
+through every layer and only he answers them. How it ended is read from
+bale's records there; whatever bale prints to carry comes back to the
+occupant's screen whole (and, on WSL, to the clipboard on his machine);
+a clarification's block comes from `bale relay` run there; the
+after-land actions run in the repo there; the ratification, the watches
+and the last lines are as for any landing; a sitting there ends with
+`bale unlock` there. Whatever the office writes on the host outside the
+project's repo is removed again, whether the landing succeeded or not.
+
+Where downloads land is the office's own setting, never bale's: the
+`downloads` key of the machine's `~/.config/office-src/machine.toml`, a
+list of directories, asked once on a terminal the first time a verb
+needs it (this machine's likely directories offered, `?` explaining it)
+and never again; a piped verb that needs it refuses and names the key.
+`office land` finds a hosted session's response there by name, and
+`office start` a bundle for a hosted project. A browser saves a second
+download of one name as `NAME (1).EXT`; of several copies of a name the
+newest by modification time wins, and the office names the file it took.
+For a project on the occupant's machine bale's own search finds a
+response, as before, unless the downloads hold several copies of its
+name; then land passes bale the newest by its path and says so, since
+bale's search takes the plain name first and a corrected response after
+a HOLD is usually the `(1)`.
+
+A folder is finished when its only recorded session landed applied and
+the planner ratified it with no exception: `office land` then offers to
+close it, done, in the same breath, default close (`--close` and
+`--leave-open` are the flag twins; piped, it leaves the folder open and
+says so). The founding folder keeps its own rule.
 
 After a project session lands, the office side (the folder, and the
 front sheet of any handbook chapter the change touched) is brought up to
@@ -650,7 +692,9 @@ not answer is one line naming the project, the host, the connect text
 and the command to rerun, and the command stops there, while the
 walk-in and `office status` print that line in the project's place and
 render the rest. A host checked once in a command is not checked again
-in it. The survey makes no network call (section 13); `office status`
+in it, by any of the command's steps: the reach is carried from one
+step to the next, and the reads a step needs there travel in one
+connection. The survey makes no network call (section 13); `office status`
 is where a host is reached, and it says which bale answers there against
 the read side's floor, naming the step that brings it level when it is
 behind. bale is installed per machine, like git, and a hosted project's
@@ -667,10 +711,14 @@ naming that step. `office start` sends a session to a project on a host
 stops the start before anything is written, with the connect line; a
 step bale asks the occupant about runs through the attended form of the
 project's shell, a terminal asked for at each layer (`ssh -tt`, a
-container's `-it`), and piped, nothing ever asks. Until the release
-that brings a session back over the shell, `office land` refuses a
-session out on a project on a host, before bale runs: the session is
-out and its response waits. A clone on the occupant's machine is moved
+container's `-it`), and piped, nothing ever asks. `office land` brings
+it back the same way (section 4): the host is reached first, the
+response is carried there from the occupant's machine, and apply,
+retry, relay and unlock run there, in the project's repo. Where the
+occupant's downloads land is the office's own setting, machine.toml's
+`downloads`; the office never reads bale's config to learn it, since
+bale's settings are bale's and its `--json` surfaces do not list its
+search directories (a slip for bale-src). A clone on the occupant's machine is moved
 to its host as the project's repo by `office projects add --from`: every
 branch and tag and the remotes as the clone has them, carried from the
 occupant's machine, since the host may not reach the audience's git

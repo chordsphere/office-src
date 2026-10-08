@@ -2324,6 +2324,162 @@ def cmd_ratify(a):
     print(ratify_session(a.folder_md, a.sid, a.day, a.except_text))
 
 
+# --- a finished folder (0.16.0) ----------------------------------------------------
+
+def finished_folder(folder_md, sid):
+    """(finished, why not): whether office land offers to close a folder
+    after sid landed applied: the folder records sid and no other
+    session, and the planner ratified sid with no exception. why names
+    what holds it open, for land to say."""
+    path = pathlib.Path(folder_md)
+    sessions = [s for s, _ in folder_session_lines(path)]
+    if sessions != [sid]:
+        others = [s for s in sessions if s != sid]
+        if sid not in sessions:
+            return False, f"it does not record {sid}"
+        return False, f"it records {len(others)} other session(s) as well ({', '.join(others)})"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start, end = section_bounds(lines, "Sessions")
+    marks = [RATIFIED_RE.match(l) for l in lines[start + 1:end]]
+    marks = [m for m in marks if m and m.group(1) == sid]
+    if not marks:
+        return False, f"{sid} is not ratified in it"
+    if marks[-1].group(3) is not None:
+        return False, f"{sid} was ratified with an exception ({marks[-1].group(3)})"
+    return True, None
+
+
+def cmd_finished_folder(a):
+    ok, why = finished_folder(a.folder_md, a.sid)
+    if ok:
+        return 0
+    print(why)
+    return 3
+
+
+# --- where downloads land: machine.toml's downloads (0.16.0) ------------------------
+#
+# A per-machine setting, outside every office, written by the office the
+# first time a verb needs it on a terminal and never asked again; the
+# office never reads bale's config to learn it.
+
+DOWNLOADS_KEY = "downloads"
+
+
+def machine_downloads(machine_file):
+    """The downloads directories machine.toml lists, ~ expanded, or None
+    when the key is not set (the file may not exist yet). A value that is
+    not a list of strings is an error naming the key."""
+    path = pathlib.Path(machine_file)
+    if not path.is_file():
+        return None
+    data = read_toml(path)
+    if DOWNLOADS_KEY not in data:
+        return None
+    value = data[DOWNLOADS_KEY]
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise HelperError(f"{path}: {DOWNLOADS_KEY} is a list of directories, like "
+                          f'{DOWNLOADS_KEY} = ["~/Downloads"], not {value!r}')
+    return [os.path.expanduser(v) for v in value]
+
+
+# The one directory the candidate scan reads outside HOME: where WSL
+# mounts the Windows users' homes. OFFICE_WINDOWS_USERS names another
+# (the suite points it into its own temporary tree, so no test depends on
+# what the running machine holds), and an empty value turns it off.
+WINDOWS_USERS_ENV = "OFFICE_WINDOWS_USERS"
+WINDOWS_USERS_ROOT = "/mnt/c/Users"
+
+
+def download_candidates(home=None, environ=None, users_root=None):
+    """This machine's likely downloads directories, those that exist, most
+    likely first: on WSL each Windows user's Downloads (where a Windows
+    browser saves), then the XDG download directory, then ~/Downloads.
+    The Windows users' root is users_root, else OFFICE_WINDOWS_USERS from
+    the environment ("" for none), else /mnt/c/Users."""
+    home = pathlib.Path(home or os.path.expanduser("~"))
+    environ = os.environ if environ is None else environ
+    if users_root is None:
+        users_root = environ.get(WINDOWS_USERS_ENV, WINDOWS_USERS_ROOT)
+    out = []
+    users = []
+    if users_root:
+        try:
+            users = sorted(p for p in pathlib.Path(users_root).iterdir()
+                           if p.name not in ("Public", "Default", "Default User", "All Users"))
+        except OSError:
+            users = []
+    for u in users:
+        out.append(u / "Downloads")
+    xdg = environ.get("XDG_DOWNLOAD_DIR")
+    dirs_file = pathlib.Path(environ.get("XDG_CONFIG_HOME") or home / ".config") / "user-dirs.dirs"
+    if not xdg and dirs_file.is_file():
+        try:
+            for line in dirs_file.read_text(encoding="utf-8").splitlines():
+                m = re.match(r'^XDG_DOWNLOAD_DIR="(.*)"$', line.strip())
+                if m:
+                    xdg = m.group(1).replace("$HOME", str(home))
+        except (OSError, UnicodeDecodeError):
+            xdg = None
+    if xdg:
+        out.append(pathlib.Path(xdg))
+    out.append(home / "Downloads")
+    seen, kept = set(), []
+    for p in out:
+        try:
+            real = p.resolve()
+        except OSError:
+            continue
+        if p.is_dir() and real not in seen:
+            seen.add(real)
+            kept.append(str(p))
+    return kept
+
+
+def set_machine_downloads(machine_file, directories):
+    """Write downloads = [...] into machine.toml (made with its directory
+    when missing), as a top-level key ahead of any table, every other
+    line left as it is. Refuses when the key is already set (it is asked
+    once) or the result would not read back as the same list."""
+    path = pathlib.Path(machine_file)
+    if not directories:
+        raise HelperError("downloads needs at least one directory")
+    if machine_downloads(path) is not None:
+        raise HelperError(f"{path} already sets {DOWNLOADS_KEY}; edit it there to change it")
+    line = f"{DOWNLOADS_KEY} = [" + ", ".join(toml_basic_string(str(d)) for d in directories) + "]"
+    comment = "# Where this machine's browser saves downloads: office land and office start look there by name."
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    lines = text.splitlines()
+    at = next((i for i, l in enumerate(lines) if re.match(r"^\s*\[", l)), len(lines))
+    new = lines[:at] + [comment, line] + ([""] if at < len(lines) else []) + lines[at:]
+    out = "\n".join(new) + "\n"
+    try:
+        back = tomllib.loads(out).get(DOWNLOADS_KEY)
+    except tomllib.TOMLDecodeError as exc:
+        raise HelperError(f"{path} would not read as TOML with {DOWNLOADS_KEY} in it ({exc}); nothing was written")
+    if back != [str(d) for d in directories]:
+        raise HelperError(f"{path}: {DOWNLOADS_KEY} would read back as {back!r}; nothing was written")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(out, encoding="utf-8")
+    return line
+
+
+def cmd_downloads(a):
+    if a.set:
+        print(set_machine_downloads(a.machine_file, a.set))
+        return 0
+    if a.candidates:
+        for d in download_candidates():
+            print(d)
+        return 0
+    dirs = machine_downloads(a.machine_file)
+    if dirs is None:
+        return 3
+    for d in dirs:
+        print(d)
+    return 0
+
+
 def cmd_folder_check(a):
     problems, counts = folder_check(a.root)
     older = (f"; {counts['no_status']} with no status line, from before the field block"
@@ -2492,6 +2648,13 @@ def main(argv=None):
     p.add_argument("--status"); p.set_defaults(fn=cmd_folder_event)
     p = sub.add_parser("folder-gate"); p.add_argument("folder_md"); p.add_argument("--key", required=True)
     p.add_argument("--value", required=True); p.add_argument("--day", required=True); p.set_defaults(fn=cmd_folder_gate)
+    p = sub.add_parser("finished-folder", help="exit 0 when land offers to close the folder after SID landed; "
+                                               "else 3 and why not")
+    p.add_argument("folder_md"); p.add_argument("sid"); p.set_defaults(fn=cmd_finished_folder)
+    p = sub.add_parser("downloads", help="machine.toml's downloads, one per line (exit 3: not set); --set writes "
+                                         "it; --candidates lists this machine's likely ones")
+    p.add_argument("machine_file"); p.add_argument("--set", nargs="+"); p.add_argument("--candidates", action="store_true")
+    p.set_defaults(fn=cmd_downloads)
     p = sub.add_parser("ratify"); p.add_argument("folder_md"); p.add_argument("sid")
     p.add_argument("--day", required=True); p.add_argument("--except", dest="except_text")
     p.set_defaults(fn=cmd_ratify)

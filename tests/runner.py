@@ -38,6 +38,7 @@ import importlib
 import json
 import os
 import pathlib
+import signal
 import subprocess
 import sys
 import tempfile
@@ -53,7 +54,29 @@ DEFAULT_JOBS = 4
 # A failing test's traceback in the summary: its last lines, the
 # exception and the frames nearest it.
 TRACEBACK_LINES = 40
+# The terminal tests that send the program an interrupt (Ctrl-C) and
+# check what it does. A run started with SIGINT ignored (a background job
+# from a non-interactive shell: `nohup tests/run.sh &`) hands that to
+# every process it starts, a shell cannot trap a signal it inherited
+# ignored, and these then fail for the run's reason, not the code's.
+INTERRUPT_TESTS = (
+    "test_front_door.TestTourOnATerminal.test_an_interrupt_deletes_the_office_and_says_so",
+)
 _print_lock = threading.Lock()
+
+
+def sigint_warning(handler=None):
+    """The lines to warn with when SIGINT is ignored in this process (and
+    so in every process the run starts): which tests will fail for it, and
+    the fix. None when SIGINT is not ignored."""
+    handler = signal.getsignal(signal.SIGINT) if handler is None else handler
+    if handler is not signal.SIG_IGN:
+        return None
+    return (["SIGINT is ignored in this run (started in the background, as `nohup ... &` does), so every "
+             "process it starts ignores Ctrl-C, and these terminal tests, which check what an interrupt "
+             "does, will fail for that reason, not the code's:"]
+            + [f"  {t}" for t in INTERRUPT_TESTS]
+            + ["run the suite in the foreground (tests/run.sh), or with SIGINT restored to its default"])
 
 
 def say(msg):
@@ -236,6 +259,9 @@ def main(argv=None):
         return run_job(a.job, names, a.result)
 
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    if not a.plan:
+        for line in sigint_warning() or []:
+            print(f"[run] warning: {line}", file=sys.stderr)
     if a.serial:
         if a.modules:
             print("[run] error: --serial runs the whole suite; drop the module names", file=sys.stderr)

@@ -2940,6 +2940,75 @@ machine_setting() {
 
 on_wsl() { grep -qi microsoft /proc/version 2>/dev/null; }
 
+# Where this machine's downloads land: machine.toml's downloads, a list
+# of directories, the office's own setting (it never reads bale's
+# config). office land finds a response there by name and office start a
+# bundle for a hosted project; of several browser copies of one name
+# (NAME (1).EXT) the newest wins and is named. Asked once, on a terminal,
+# the first time a verb needs it (this machine's likely directories
+# offered, ? explaining it), kept, and never asked again; piped, the verb
+# refuses and names the key. downloads_setting WHY sets DOWNLOADS (one
+# directory per line); WHY says what needs it.
+DOWNLOADS=""
+DOWNLOADS_HELP="Where this machine's browser saves what you download from a chat: the responses office land brings back and the bundles office start opens. The office looks there by name, and of several copies of one name (a browser saves the second as 'NAME (1).tar.gz') it takes the newest and says which. Give one directory or more: numbers from the list above, or paths, comma-separated. The answer is kept as downloads in this machine's machine.toml (the office's own settings, never bale's config) and is not asked again; edit that file to change it."
+downloads_setting() {
+  local why="$1" out rc cands=() ans parts=() picked=() w d i bad
+  out="$(helper downloads "$MACHINE_FILE")"; rc=$?
+  case "$rc" in
+    0) DOWNLOADS="$out"; return 0 ;;
+    3) ;;
+    *) die "downloads in $MACHINE_FILE does not read (the line above says why); fix it there" ;;
+  esac
+  can_ask || die "$why, so the office needs to know where this machine's downloads land: set downloads in $MACHINE_FILE, a list of directories (downloads = [\"~/Downloads\"]); piped input is never asked"
+  mapfile -t cands < <(helper downloads "$MACHINE_FILE" --candidates 2>/dev/null)
+  printf 'Where do downloads land on this machine? %s; this is asked once and kept as downloads in %s.\n' "$why" "$MACHINE_FILE" >&2
+  if [ "${#cands[@]}" -gt 0 ]; then
+    for i in "${!cands[@]}"; do printf '  %s. %s\n' "$((i + 1))" "${cands[$i]}" >&2; done
+  else
+    printf '  (no likely directory found on this machine; give a path)\n' >&2
+  fi
+  while :; do
+    ask ans "The directories, by number or path, comma-separated (downloads in machine.toml)" \
+      "$([ "${#cands[@]}" -gt 0 ] && printf 1)" 1 "$DOWNLOADS_HELP"
+    picked=(); bad=0
+    IFS=',' read -r -a parts <<< "$ans"
+    for w in "${parts[@]}"; do
+      w="$(printf '%s' "$w" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+      [ -n "$w" ] || continue
+      if [[ "$w" =~ ^[0-9]+([[:space:]]+[0-9]+)*$ ]]; then
+        for d in $w; do
+          if [ "$d" -ge 1 ] && [ "$d" -le "${#cands[@]}" ]; then picked+=("${cands[$((d - 1))]}")
+          else printf '  %s is not a number from the list\n' "$d" >&2; bad=1; fi
+        done
+        continue
+      fi
+      case "$w" in "~") w="$HOME" ;; "~/"*) w="$HOME/${w#\~/}" ;; esac
+      if [ -d "$w" ]; then picked+=("$(cd "$w" && pwd)")
+      else printf '  %s is not a directory on this machine\n' "$w" >&2; bad=1; fi
+    done
+    [ "$bad" = 0 ] && [ "${#picked[@]}" -gt 0 ] && break
+    [ "${#picked[@]}" -gt 0 ] || [ "$bad" = 1 ] || printf '  one directory at least; ? explains it\n' >&2
+  done
+  helper downloads "$MACHINE_FILE" --set "${picked[@]}" >/dev/null \
+    || die "downloads could not be written to $MACHINE_FILE (the line above says why)"
+  log "kept in $MACHINE_FILE: downloads = $(printf '%s\n' "${picked[@]}" | paste -sd, - | sed 's/,/, /g'); it is not asked again (edit the file to change it)"
+  DOWNLOADS="$(printf '%s\n' "${picked[@]}")"
+}
+
+# downloads_known: machine.toml's downloads into DOWNLOADS, without
+# asking; returns 3 when the key is not set (or does not read: said).
+downloads_known() {
+  local out rc
+  out="$(helper downloads "$MACHINE_FILE" 2>/dev/null)"; rc=$?
+  case "$rc" in
+    0) DOWNLOADS="$out"; return 0 ;;
+    3) DOWNLOADS=""; return 3 ;;
+  esac
+  warn "downloads in $MACHINE_FILE does not read (helper downloads $MACHINE_FILE says why); going on without it"
+  DOWNLOADS=""
+  return 3
+}
+
 usage_start() {
   cat <<'USAGE'
 usage: office start [FOLDER] [--in-office | --on PROJECT] [--goal TEXT] [--slug SLUG]
@@ -3011,9 +3080,13 @@ bale runs in. Then bale's pack, or bale open --check and bale open for a
 bundle, runs there through the project's shell, the brief or the bundle
 travelling there first, and the request bale makes is carried back into
 the out tray here; the office's context and the doctrine are made here,
-as for any project. A bundle for a hosted project is given as a file
-here (its path), since bale's search runs on the host. The temporary
-directory start makes on the host is removed on success and on failure.
+as for any project. A bundle for a hosted project is a file here: its
+path, or a bare name found in this machine's downloads (machine.toml's
+downloads, asked once on a terminal; of several browser copies of the
+name the newest is taken and named), since bale's own search would run
+on the host. The temporary directory start makes on the host is removed
+on success and on failure. One start reaches the host once, and the
+reads it needs there share a connection.
 When start opened the folder itself (new) and its session does not go out,
 the folder stays and start's last line is the one line that retries it.
 When the response comes back, office land brings it in.
@@ -3144,9 +3217,30 @@ check_start_bundle() {
   log "asking bale whether it can open $(basename "$bundle") $place (bale open --check, which writes nothing)"
   local cargs=(--where "$where")
   [ "$where" != project ] || cargs+=(--project "$project")
+  # The host was checked once this start (start-check): not again.
+  [ "$where" != project ] || [ "${START_CHECKED_HOST:-}" != "$project" ] || cargs+=(--checked)
   out="$(reader bundle-check "$root" "${cargs[@]}" --bundle "$bundle")" \
     || die "nothing else was written: no survey, no out tray, no session (the lines above are bale's own words, or the office's where it could read the bundle itself)"
   [ -z "$out" ] || log "bale found it at $out, and every gate it runs before an open passed"
+}
+
+# resolve_hosted_bundle ROOT WHERE PROJECT: a bundle named by a bare name
+# (not a file in the current directory) for a project on a host is found
+# in the downloads here (machine.toml's downloads, asked once), the newest
+# of its browser copies winning and named, since bale's own search would
+# run on the host, where the downloaded file is not. Sets bundle to its
+# path. A project on this machine leaves the name to bale's search.
+resolve_hosted_bundle() {
+  local root="$1" where="$2" project="$3" on_host args=() d found
+  [ -n "$bundle" ] && [ "$where" = project ] && [ ! -f "$bundle" ] || return 0
+  on_host="$(project_host "$root" "$project")"
+  [ -n "$on_host" ] || return 0
+  downloads_setting "$(basename "$bundle"), a bundle for $project on $on_host, is found on this machine by name and carried there"
+  while IFS= read -r d; do [ -n "$d" ] && args+=(--dir "$d"); done <<< "$DOWNLOADS"
+  found="$(reader find-download --name "$(basename "$bundle")" "${args[@]}")" \
+    || die "nothing was written: no folder, no survey, no out tray, no session (give the bundle's path, or add the directory it is in to downloads in $MACHINE_FILE)"
+  log "the bundle $(basename "$bundle") is $found on this machine; it travels to $on_host for bale"
+  bundle="$found"
 }
 
 # offer_riders ROOT FOLDER WHERE PROJECT: the riders this start's pack
@@ -3313,6 +3407,7 @@ cmd_start() {
         ask_where where project "$where_default" "$where_why" "$names"
       fi
       start_check_place "$where" "$project" "$names"
+      resolve_hosted_bundle "$root" "$where" "$project"
       if [ "$where" = project ]; then check_start_bundle "$root" "$where" "$project" "$bundle"; checked=1; fi
     fi
     local desk_before
@@ -3373,7 +3468,10 @@ cmd_start() {
   # and the session: a name bale's search cannot find, a forecast path
   # that is not there or a forecast another open session holds refuses
   # here, in bale's words, with nothing written.
-  if [ -n "$bundle" ] && [ "$checked" = 0 ]; then check_start_bundle "$root" "$where" "$project" "$bundle"; checked=1; fi
+  if [ -n "$bundle" ] && [ "$checked" = 0 ]; then
+    resolve_hosted_bundle "$root" "$where" "$project"
+    check_start_bundle "$root" "$where" "$project" "$bundle"; checked=1
+  fi
 
   # The goal: the one thing the pack cannot derive (a bundle carries its own).
   if [ -n "$bundle" ]; then
@@ -3568,7 +3666,7 @@ to_clipboard() {
 usage_land() {
   cat <<'USAGE'
 usage: office land [SID | FOLDER | RESPONSE] [--sid SID] [--folder FOLDER] [--response FILE]
-                   [--ratified [--except TEXT] | --not-now]
+                   [--ratified [--except TEXT] | --not-now] [--close | --leave-open]
 Brings a session back. It finds the response for a session the office has
 out, runs bale apply in the repo the session belongs to (a project, or the
 office itself; bale retry when bale held the session), and says how it
@@ -3585,26 +3683,53 @@ office sent out (by its id or its folder), land ends it instead: bale
 unlock in its repo and an `ended` line in the folder's History; the
 folder stays as it is. An after-land action runs only through office
 land: a session applied by hand with bale apply runs none.
+After an applied landing, when the folder records that session alone and
+the planner ratified it with no exception, land offers to close the
+folder, done, in the same breath (default: close); piped, it leaves the
+folder open and says so.
+A session on a project on a host (office projects add --host) lands
+there. land first checks that the host answers (one that does not stops
+land before anything is carried, with your connect line and the line
+that reruns it). The response is found on this machine: the path you
+give, or response-SID.tar.gz in this machine's downloads (machine.toml's
+downloads, asked once on a terminal; of several browser copies, such as
+'response-SID (1).tar.gz', the newest is taken and named). It is carried
+to the host, checked by sha256, and bale apply (or retry) runs in the
+project's repo there with your terminal, so bale's questions reach you.
+The relay comes back to this screen and, on WSL, the clipboard here; the
+after-land actions run in the repo there; a sitting ends with bale unlock
+there. Nothing land makes on the host outside the repo is left behind.
+For a project on this machine bale's own search finds the response, as
+before, unless the downloads hold several copies of its name: then the
+newest is passed to bale by its path, and land says so.
   (nothing)        the session the office has out; asked when there are several
   SID, --sid       a session by its id
   FOLDER, --folder the session out for a folder: its name, part of it, or folder N
   RESPONSE, --response FILE
-                   the response tarball: a path, or the name bale's search finds
-                   (default: response-SID.tar.gz, found by bale)
+                   the response tarball: a path, or a name (bale's search finds
+                   it for a project here; for a project on a host, the current
+                   directory and then the downloads)
+                   (default: response-SID.tar.gz, found by bale, or the newest
+                   copy in the downloads)
   --ratified       the planner ratified the session's judgment calls
   --except TEXT    ...except TEXT: what was corrected, and where it went
   --not-now        do not ask about ratification; office sessions FOLDER SID
                    --ratified records it later
+  --close          close a finished folder with the landing, without asking
+  --leave-open     leave it open, without asking (office close closes it later)
 Under the hood: bale apply TARBALL (bale retry for a held session) in the
 session's repo, then bale stats --sid SID --json for how it ended, and
 after an applied landing office watches check; for a sitting, bale unlock
-SID --json in its repo.
+SID --json in its repo. On a host each runs through the project's shell
+(ssh -tt and a container's -it for the step you answer), and one land
+reaches the host once.
 Examples:
   office land                                  (the session out; asked when there are several)
   office land 2026-10-05-fix-login-001
   office land fix-login --ratified
   office land 2026-10-05-plan-wave-office-001  (a read-only sitting: ends it)
   office land 2026-10-05-fix-login-001 --response "$HOME/Downloads/response-2026-10-05-fix-login-001 (1).tar.gz"
+  office land fix-login --ratified --close
 USAGE
 }
 
@@ -3642,12 +3767,91 @@ run_after_land() {
   return 0
 }
 
+# run_after_land_hosted ROOT PLAN WHERE N: a hosted project's N after-land
+# actions, in order, each run in its repo on its host through the
+# project's shell (attended on a terminal), its output on this screen.
+# The first that fails stops the rest, loudly, with the one line that
+# reruns it and each after it from this machine.
+run_after_land_hosted() {
+  local root="$1" plan="$2" where="$3" total="$4" n rc c line i
+  for ((n = 1; n <= total; n++)); do
+    c="$(plan_field "$plan" after_land | sed -n "${n}p")"
+    log "after land ($n of $total), in $where: $c"
+    reader land-after "$root" --plan "$plan" --index "$n"; rc=$?
+    if [ "$rc" -ne 0 ]; then
+      warn "AFTER-LAND ACTION FAILED (exit $rc): $c"
+      warn "nothing after it ran; rerun from there, on this machine, with:"
+      AFTER_LAND_REPORT+=("FAILED (exit $rc): $c")
+      for ((i = n + 1; i <= total; i++)); do
+        AFTER_LAND_REPORT+=("not run: $(plan_field "$plan" after_land | sed -n "${i}p")")
+      done
+      line="$(reader land-after-line "$root" --plan "$plan" --index "$n")"
+      printf '[office]   %s\n' "$line" >&2
+      AFTER_LAND_REPORT+=("rerun from the failed one: $line")
+      return 1
+    fi
+    AFTER_LAND_REPORT+=("ran (exit 0): $c")
+  done
+  [ "$total" -eq 0 ] || log "after land: $total action(s) ran, in $where"
+  return 0
+}
+
+# offer_close ROOT FOLDER SID: after an applied landing, a folder whose
+# only recorded session is the one that landed, ratified by the planner
+# with no exception, is finished: land offers to close it, done (office
+# close's own code), default close. --close and --leave-open answer
+# without asking (LAND_CLOSE); piped with neither, it stays open and land
+# says so. The founding folder has its own rule (close_founding_folder).
+# Never fails the landing.
+offer_close() {
+  local root="$1" folder="$2" sid="$3" name why ans founding
+  [ "${folder%%/*}" = desk ] || return 0
+  name="${folder#desk/}"
+  founding="$(door door-folder "$root" founding 2>/dev/null)"
+  [ "$founding" != "$folder" ] || return 0
+  if ! why="$(helper finished-folder "$root/$folder/folder.md" "$sid" 2>&1)"; then
+    if [ "${LAND_CLOSE:-}" = close ]; then
+      log "--close: $name stays open, since ${why:-it is not finished}; office close $name closes it when it is done"
+    else
+      debug "$name is not offered for closing: ${why:-it is not finished}"
+    fi
+    return 0
+  fi
+  case "${LAND_CLOSE:-}" in
+    close) ;;
+    leave) log "--leave-open: $name stays open (office close $name closes it)"; return 0 ;;
+    *)
+      if ! can_ask; then
+        log "$name recorded $sid alone, and the planner ratified it with no exception; piped, the folder stays open: office land --close closes it with the landing, office close $name closes it now"
+        return 0
+      fi
+      while :; do
+        ask ans "$name recorded $sid alone, and the planner ratified it with no exception: close the folder, done, or leave it open (--close, --leave-open)" \
+          "close" 1 \
+          "The job looks finished: its one session landed applied and was ratified with nothing corrected. close moves the folder to the filing cabinet as done, with a History line (office close's own step); leave open keeps it on the desk, for another session or a later office close."
+        case "$ans" in
+          close|Close|c|y|yes|Yes|done) break ;;
+          "leave open"|leave|open|l|n|no|No) log "$name stays open (office close $name closes it)"; return 0 ;;
+          *) printf '  close, or leave open\n' >&2 ;;
+        esac
+      done ;;
+  esac
+  if ( OFFICE_ROOT="$root" MOVE_TEXT="office land: $sid landed and was ratified, the folder's only session" cmd_close "$name" ); then
+    log "$name is closed: in the filing cabinet, done"
+    AFTER_LAND_REPORT+=("the folder $name: closed, done (its one session landed and was ratified)")
+  else
+    warn "$name could not be closed (the lines above say why); office close $name closes it"
+    AFTER_LAND_REPORT+=("the folder $name: NOT closed; office close $name closes it")
+  fi
+  return 0
+}
+
 # plan_field FILE KEY: one field of land's plan, as text (a list one per line).
 plan_field() {
   python3 -c 'import json,sys
 v = json.load(open(sys.argv[1]))
 for k in sys.argv[2].split("."):
-    v = v[k] if isinstance(v, dict) else None
+    v = v.get(k) if isinstance(v, dict) else None
 if isinstance(v, list):
     print("\n".join(str(x) for x in v))
 elif isinstance(v, bool):
@@ -3659,8 +3863,12 @@ elif v is not None:
 cmd_land() {
   local want="" sid="" folder="" response="" ratify="" except="" has_except=0 root tmp plan capture
   local out n line words verb repo label code day tz md name space rc=0 ans relays i
+  local host="" dl_args=() d default help_more
+  LAND_CLOSE=""
   while [ $# -gt 0 ]; do
     case "$1" in
+      --close) [ "$LAND_CLOSE" != leave ] || die "--close and --leave-open contradict each other"; LAND_CLOSE=close; shift ;;
+      --leave-open) [ "$LAND_CLOSE" != close ] || die "--close and --leave-open contradict each other"; LAND_CLOSE=leave; shift ;;
       --sid|--folder|--response|--except)
         [ $# -ge 2 ] || die "$1 needs a value (office land --help explains it)"
         case "$1" in --sid) sid="$2" ;; --folder) folder="$2" ;; --response) response="$2" ;;
@@ -3726,20 +3934,42 @@ cmd_land() {
     esac
   fi
 
+  # Where downloads land, when this machine says (never asked here: a
+  # session on a project here has bale's own search; land_plan asks for
+  # it, through needs_downloads, when the session is on a host).
+  if downloads_known; then
+    while IFS= read -r d; do [ -n "$d" ] && dl_args+=(--downloads "$d"); done <<< "$DOWNLOADS"
+  else
+    dl_args=(--no-downloads)
+  fi
   reader land-plan "$root" ${sid:+--sid "$sid"} ${folder:+--folder "$folder"} ${response:+--response "$response"} \
-    --cwd "$PWD" --plan "$plan" || exit 1
+    --cwd "$PWD" --plan "$plan" "${dl_args[@]}" || exit 1
   sid="$(plan_field "$plan" sid)"
+  host="$(plan_field "$plan" place.host)"
+  if [ -n "$(plan_field "$plan" needs_downloads)" ]; then
+    downloads_setting "the response for $sid is found on this machine by name and carried to $host"
+    dl_args=()
+    while IFS= read -r d; do [ -n "$d" ] && dl_args+=(--downloads "$d"); done <<< "$DOWNLOADS"
+    reader land-plan "$root" --sid "$sid" ${response:+--response "$response"} --cwd "$PWD" --plan "$plan" "${dl_args[@]}" || exit 1
+  fi
   if [ -n "$(plan_field "$plan" needs_response)" ]; then
+    default="$(plan_field "$plan" response_default)"
     if ! can_ask; then
-      die "bale held $sid, so its corrected response lands with bale retry; give it: office land $sid --response FILE (a browser saves a second download of one name as 'response-$sid (1).tar.gz'); piped input is never asked"
+      die "bale held $sid, so its corrected response lands with bale retry; give it: office land $sid --response FILE (a browser saves a second download of one name as 'response-$sid (1).tar.gz'${default:+; the downloads hold one copy, $default, which may be the held one}); piped input is never asked"
     fi
-    ask response "bale held $sid; the corrected response: a path, or a name bale's search finds (--response FILE)" \
-      "response-$sid.tar.gz" 1 \
-      "The response the worker sent after the HOLD. A browser saves a second download of the same name as 'response-$sid (1).tar.gz', so give the path of the new one; a plain return lets bale find response-$sid.tar.gz, which may be the held one."
-    reader land-plan "$root" --sid "$sid" --response "$response" --cwd "$PWD" --plan "$plan" || exit 1
+    if [ -n "$host" ]; then
+      help_more="It is carried to $host from this machine: give its path${default:+, or a plain return for $default, the one copy in the downloads, which may be the held one}."
+    else
+      help_more="A plain return lets bale find response-$sid.tar.gz, which may be the held one."
+    fi
+    ask response "bale held $sid; the corrected response: a path, or a name$([ -n "$host" ] && printf ' in the downloads' || printf " bale's search finds") (--response FILE)" \
+      "${default:-response-$sid.tar.gz}" 1 \
+      "The response the worker sent after the HOLD. A browser saves a second download of the same name as 'response-$sid (1).tar.gz', so give the path of the new one. $help_more"
+    reader land-plan "$root" --sid "$sid" --response "$response" --cwd "$PWD" --plan "$plan" "${dl_args[@]}" || exit 1
   fi
   plan_field "$plan" problems | while IFS= read -r line; do [ -n "$line" ] && warn "$line"; done
-  verb="$(plan_field "$plan" verb)"; repo="$(plan_field "$plan" repo)"; label="$(plan_field "$plan" label)"
+  plan_field "$plan" took | while IFS= read -r line; do [ -n "$line" ] && log "$line"; done
+  verb="$(plan_field "$plan" verb)"; repo="$(plan_field "$plan" where)"; label="$(plan_field "$plan" label)"
   if [ "$behind" = 1 ]; then
     local reno
     reno="$(door door-folder "$root" renovation --version "$(skew_report "$root" | sed -n 2p | cut -f1)" 2>/dev/null)"
@@ -3765,6 +3995,7 @@ for l in json.load(sys.stdin)["told"]:
     return 0
   fi
   log "landing $sid ($label; $(plan_field "$plan" folders | paste -sd, - | sed 's/,/, /g; s/^$/no folder records it/')): bale $verb $(plan_field "$plan" tarball), in $repo"
+  [ -z "$host" ] || log "$label is on $host: the response travels there, bale runs in its repo there with this terminal, and the temporary directory it travels in is removed after"
   line="$(reader land-prepare "$root" --plan "$plan")" || exit 1
   [ -z "$line" ] || log "$line"
 
@@ -3800,6 +4031,7 @@ for l in json.load(sys.stdin)["told"]:
 
   if [ -z "$(printf '%s' "$out" | python3 -c 'import json,sys; print("yes" if json.load(sys.stdin)["applied"] else "")')" ]; then
     [ -z "$ratify$except" ] || log "nothing landed, so nothing is ratified"
+    [ "$LAND_CLOSE" != close ] || log "nothing landed, so no folder is closed"
     line="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["next"] or "")')"
     [ -z "$line" ] || printf 'Next: %s\n' "$line"
     [ "$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["outcome"])')" = clarification ] && return 0
@@ -3820,6 +4052,8 @@ for l in json.load(sys.stdin)["told"]:
     warn "after-land actions not run: the project's declarations do not read ($problem; office projects set fixes them)"
     AFTER_LAND_REPORT+=("not run: $project's declarations do not read ($problem); office projects set $project fixes them")
     rc=1
+  elif [ "${#actions[@]}" -gt 0 ] && [ -n "$host" ]; then
+    run_after_land_hosted "$root" "$plan" "$repo" "${#actions[@]}" || rc=1
   elif [ "${#actions[@]}" -gt 0 ]; then
     run_after_land "$repo" "${actions[@]}" || rc=1
   elif [ -n "$project" ]; then
@@ -3867,6 +4101,7 @@ for l in json.load(sys.stdin)["told"]:
       log "not ratified; when the planner rules: office sessions $name $sid --ratified (or --ratified --except TEXT)"
     fi
     close_founding_folder "$root" "$folders" "$sid" "$day"
+    offer_close "$root" "$folders" "$sid"
   fi
   land_watches "$root" "$tz" "$day"
   after_land_summary "$repo"
@@ -3967,7 +4202,7 @@ makes one short connection, and a host that does not answer is one line
 and the command stops. The read side then runs bale through that shell; the
 walk-in, office status, office sessions, --ledger, --landed, --versions,
 watches check and the digest all read a hosted project, and office start
-packs a session there (landing it there is the next release's).
+packs a session there and office land lands it there.
 --from CLONE brings a clone on this machine to its host as the project's
 repo: PATH must not exist there yet (add refuses before anything moves),
 and a clone of CLONE is made at PATH with every local branch and tag, its
@@ -4970,6 +5205,19 @@ main() {
       case "$w" in *[!A-Za-z0-9_./:@=+,-]*|"") rerun="$rerun $(shq "$w")" ;; *) rerun="$rerun $w" ;; esac
     done
     export OFFICE_RERUN="$rerun"
+  fi
+  # One command reaches a host once: each reader process appends the
+  # shell prefixes that answered to this file, and the next reads it
+  # before its first connection (lib/office_host.py). A nested office
+  # call inherits it, being part of the same command.
+  if [ -z "${OFFICE_REACHED_FILE:-}" ]; then
+    local reached
+    if reached="$(mktemp "${TMPDIR:-/tmp}/office-reached.XXXXXXXX" 2>/dev/null)"; then
+      TMP_PATHS+=("$reached")
+      export OFFICE_REACHED_FILE="$reached"
+    else
+      debug "no temporary file for the reach: each step of this command reaches a host again"
+    fi
   fi
   if [ $# -eq 0 ]; then walk_in; return; fi
   local verb="$1"; shift

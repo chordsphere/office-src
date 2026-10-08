@@ -28,7 +28,10 @@ it back (bale applies it in its repo, the office says how it ended, hands
 over the relay to carry, runs the project's after-land actions, records
 the planner's ratification, closes the founding folder once the founding
 has landed, names any watch that fired, and ends saying how each action
-went; given a read-only sitting, it ends the sitting), `office open`, `desk`, `close` and `reopen` for folders (numbered,
+went; given a read-only sitting, it ends the sitting; for a project on
+another machine it does all of this there, the response carried over;
+and it offers to close a folder whose one session landed and was
+ratified), `office open`, `desk`, `close` and `reopen` for folders (numbered,
 with statuses, gates and a History, and a desk that orders itself),
 `office week` for the calendar, and `office sessions` to record which
 sessions worked on a job and see how each one went. `office projects` names the
@@ -66,6 +69,28 @@ pastes.
 
 ## Recent changes
 
+- 0.16.0 (session 2026-10-08-return-trip-to-host-001): the return trip
+  from a host. `office land` on a project on a host checks that the host
+  answers (the connect line and the rerun line when it does not, before
+  anything is carried), finds the response on this machine, carries it to
+  the host checked by sha256, runs `bale apply` or `retry` in the repo
+  there with your terminal, reads how it ended there, prints the relay
+  here (clipboard on WSL), runs the after-land actions there, and ends a
+  sitting with `bale unlock` there; nothing is left on the host outside
+  the repo. Where downloads land is the office's own setting,
+  `downloads` in `~/.config/office-src/machine.toml`, asked once on a
+  terminal and never again; land finds a response there by name and
+  start a bundle for a hosted project, the newest of a browser's copies
+  winning and named, and a local land uses it to pick the newest of
+  several copies. land offers to close a folder whose one session landed
+  applied and was ratified with no exception (default close; `--close`,
+  `--leave-open`; piped it stays open). One start or land reaches a host
+  once, and reads share connections: a hosted start in the suite went
+  from 7 connections to 4 (a bundle, 18 to 8); a hosted land takes 4
+  plus one per after-land action. A `~/` path on a host now works through
+  the shell. The README says to run the suite in the foreground, and the
+  runner warns when SIGINT is ignored. Additive: no migration, no office
+  needs anything done.
 - 0.15.0 (session 2026-10-07-out-trip-to-host-004): the out trip to a
   host. `office start` on a project on a host packs the session there:
   it checks first that the host answers (the connect line when it does
@@ -329,9 +354,14 @@ pastes.
 - On WSL the clipboard and Explorer steps were built without a WSL
   machine to run them on; the first `office start` there is their test,
   and the first `office land` is the relay's.
-- A response saved twice by a browser is `response-SID (1).tar.gz`;
+- ~~A response saved twice by a browser is `response-SID (1).tar.gz`;
   bale's search finds `response-SID.tar.gz` first, so after a HOLD the
-  corrected response is named by its path (`office land` asks for it).
+  corrected response is named by its path (`office land` asks for it).~~
+  Changed in 0.16.0: with machine.toml's `downloads` set, land takes the
+  newest copy of the name and says which (for a project here it passes
+  bale that path). It still asks after a HOLD when the downloads hold one
+  copy only, since that copy may be the held one; and until the setting
+  is there, a local land is as before.
 - bale does not stamp everything the read side and the watches want.
   Slips for bale-src, from the 0.4.0 probe (session
   2026-09-30-read-side-001's notes): no HOLD cause class; no marker
@@ -422,24 +452,33 @@ pastes.
   office does not read: `bale stats --json --work-class meta` in
   office-src reported no class on 0.4.47, though it holds meta
   sessions; a question for bale-src in that session's notes.
-- A session goes out to a project on another host (0.15.0), but does
-  not come back yet: `office land` refuses a hosted session before bale
-  runs, until the release that applies there over the shell (the
-  response carried there, the relay carried back, the after-land actions
-  there). The attended form it will use (`ssh -tt`, a container's `-it`)
-  is built and tested against the suite's fake ssh only; the 0.14.0 probe
-  proved the form on the work host, and the first hosted `office land`
-  is its real test. The host's bale was 0.4.40 when 0.15.0 was built,
+- ~~A session goes out to a project on another host (0.15.0), but does
+  not come back yet.~~ Struck in 0.16.0: `office land` brings it back
+  over the shell. The attended form it uses (`ssh -tt`, a container's
+  `-it`) and the whole hosted landing are tested against the suite's fake
+  ssh only; the 0.14.0 probe proved the attended form on the work host,
+  and the first hosted `office land` (a work project's first landing) is
+  the landing's real test. Built on the host's bale 0.4.51 read from the
+  packing bale's help (the same version), not probed there again. The host's bale was 0.4.40 when 0.15.0 was built,
   below the floor; `office projects level-bale` is the step, and it ran
   against the suite's fakes only: the host's own 0.4.40 `upgrade.sh` was
   not read (0.4.51's was), so its first real run is its test. If that
   `upgrade.sh` does not take `-y`, it refuses before it changes anything.
-- A bundle for a hosted project must be given by its path: bale's search
-  for a bare name would run on the host, and the office cannot list this
-  machine's search directories (the same slip as above).
-- Each step of a hosted start is its own connection (about 2.5 s on the
-  work host): the check, the bundle check, then the pack and the trip
-  back. A start there takes tens of seconds, mostly login shells.
+- ~~A bundle for a hosted project must be given by its path.~~ Changed in
+  0.16.0: a bare name is found in machine.toml's `downloads` (the office's
+  own setting, asked once), since the office still cannot list bale's
+  search directories (the same slip as above) and does not read bale's
+  config.
+- A clarification on a hosted project goes back by a line land prints,
+  `SHELL '...bale relay SID -' < ANSWER-FILE`, which you run here with the
+  planner's answer saved as a file; no office verb carries it yet.
+- ~~Each step of a hosted start is its own connection.~~ Since 0.16.0 one
+  start or land reaches a host once and its reads share connections; a
+  hosted start still makes about four (a bundle, eight, since its check
+  runs in its own process before anything is written and the bundle
+  travels twice), each a login shell (about 2.5 s on the work host). The
+  first hosted land on a machine makes one more, reading its plan again
+  after the downloads question.
 - Through a login shell on a host, each connection costs what the
   user's profile costs (seconds, where this was built); the read side
   batches each round of reads into one connection, and a walk-in makes
@@ -478,6 +517,13 @@ pastes.
   (with the VPN up), `office projects level-bale NAME` puts this
   machine's bale there, and `office start JOB --on NAME` sends sessions.
   The clone here can go once you are happy with the one there.
+- *Where does `office land` look for a response?* For a project here,
+  bale's own search finds it by name, as always; with `downloads` set in
+  `~/.config/office-src/machine.toml` and several copies of the name
+  there, land passes bale the newest and says which. For a project on a
+  host, the path you give, or the newest copy in those downloads; the
+  first time it needs them on a terminal it asks where they are and
+  keeps the answer.
 - *How does a planning sitting end?* `office land SID`, from the office,
   when the sitting is over: bale unlock, and a line in the folder. The
   folder stays open until you close it.
