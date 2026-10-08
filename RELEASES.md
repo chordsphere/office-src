@@ -4,6 +4,80 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.15.0
+
+Additive: no migration, nothing to do in any office. The out trip to a
+host: a session sent to a project on a host. Bringing one back over the
+shell is the next release's.
+
+`office start` on a hosted project. A project on a host is packed on its
+host, where its bale is and where the session will land; the occupant
+sees what a project here shows: the survey, the riders, the ride-alongs
+question, the overlap refusal in the office's words, the session
+recorded in the folder, and one out tray on this machine with the
+request, the doctrine, the office's context and each ride-along, the
+opener printed (and on the clipboard on WSL). Before anything is
+written, start checks the host once (`reader start-check`): a host that
+does not answer stops it with the connect line; a bale below the read
+side's floor is refused, naming `office projects level-bale NAME`; the
+repo there must be one bale runs in. bale's pack runs through the
+project's shell, a `--brief` sent there first, and the request bale
+makes is carried back into the tray, checked by its sha256 on both
+sides. The office's context, the doctrine and the ride-alongs are made
+here, as before. For a bundle, the file travels to the host and `bale
+open --check` runs there on that copy before anything is written, then
+`bale open`; a bundle for a hosted project is given as a file here, since
+bale's search for a bare name would run on the host. Where a bundle's
+paths decide where it opens (0.9.0), a hosted project answers through
+its shell. The doctrine a hosted tree carries is compared with the
+install's by sha256 through the shell. The one temporary directory the
+office makes on a host is removed on success and on failure, and the
+suite checks it. `office land` on a hosted project still refuses, now
+saying "the return trip is not built yet; the session is out and its
+response waits".
+
+The attended transport. A bale step the occupant answers runs through
+the attended form of the project's shell, derived from the stored
+`shell` (no new key): `ssh -tt`, and a container layer's `-i` after the
+ssh target becomes `-it` (`--interactive` gains `--tty`), with the
+terminal as stdin; `Reader.interact` goes through it, and piped it runs
+the plain form with stdin closed, so nothing ever asks. Its capture is
+read with CR LF turned to LF.
+
+A clone moved to its host. `office projects add NAME --host TARGET
+--path PATH --from CLONE` (on a terminal, asked after the host question,
+default none, `?` explains) makes a clone of CLONE at PATH on the host:
+every branch and tag, the remote-tracking refs and the symbolic remote
+HEADs, the remote and branch config as CLONE has it, HEAD as CLONE's,
+carried from this machine as a `git bundle` through the shell (the host
+need not reach the audience's git host), checked ref by ref, then
+prepared as `--prepare` prepares a clone. PATH must not exist there:
+refused before anything moves. Only what is committed travels: a CLONE
+with working-tree changes is named, with its changed paths, and add asks
+whether to go on (piped, refused unless `--from-dirty-ok`). A shallow
+clone is refused. A clone that does not come out level is removed again.
+CLONE is never changed or deleted; add says it can be removed once the
+occupant is satisfied.
+
+A host's bale brought level. `office projects level-bale NAME` installs
+on a hosted project's host the bale this machine runs, the way bale's
+releases install: a release-shaped tarball of this machine's install
+(`user/`, dot-entries such as `.git` and `.bale`, and caches left out)
+carried through the shell, and the host's own `upgrade.sh -y` run on it,
+which keeps the host's `<install>/user/` (its global `bale.toml` and
+hook store), replaces the rest and runs `install.sh` and `validate.sh`;
+a host with no bale on its login PATH gets `~/bale` and its `install.sh
+-y`. Nothing is fetched from the network there. It says what was there
+and what is there now, reads the version and the `user/` names again
+afterwards, refuses a host whose bale is newer, and asks first on a
+terminal (`--yes` piped). `office status`'s line for a host behind the
+floor now names this step, and a host within range but behind this
+machine says so too.
+
+`tests/run.sh` prints each failing test's traceback in its own summary
+(its last 40 lines), from the job's result, so a summary carries what a
+failure said even when its log under the temp directory is gone.
+
 ## 0.14.0
 
 Additive: no migration, nothing to do in any office. A project on

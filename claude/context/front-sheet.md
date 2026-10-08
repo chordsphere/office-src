@@ -66,6 +66,28 @@ pastes.
 
 ## Recent changes
 
+- 0.15.0 (session 2026-10-07-out-trip-to-host-004): the out trip to a
+  host. `office start` on a project on a host packs the session there:
+  it checks first that the host answers (the connect line when it does
+  not), that its bale is at the floor (naming `office projects
+  level-bale` when it is not) and that the repo is bale's; bale's pack,
+  or `bale open --check` and `bale open` for a bundle, runs through the
+  project's shell, the brief or the bundle sent there first, and the
+  request comes back into the out tray here, checked by sha256. The
+  temporary directory it makes on the host is removed either way. A
+  bundle for a hosted project is named by its path here. `office projects
+  add --from CLONE` brings a clone on this machine to the host as the
+  project's repo: every branch and tag, the remotes as the clone has
+  them, carried as a git bundle, then prepared; the clone here is left
+  alone, and a dirty one is named and asked about (`--from-dirty-ok`
+  piped). `office projects level-bale NAME` installs this machine's bale
+  on the host through the host's own `upgrade.sh -y`, keeping its
+  `user/`; `office status` names it when a host's bale is behind. A bale
+  step the occupant answers runs through `ssh -tt` and a container's
+  `-it`, derived from the stored shell. `office land` on a hosted
+  session says the return trip is not built yet and the response waits.
+  `tests/run.sh` prints each failing test's traceback in its summary.
+  Additive: no migration, no office needs anything done.
 - 0.14.0 (session 2026-10-07-project-on-host-003): a project on another
   host, the first half of "a project on another machine". A [projects]
   entry may declare `host` (an ssh target), `shell` (the prefix that
@@ -400,16 +422,24 @@ pastes.
   office does not read: `bale stats --json --work-class meta` in
   office-src reported no class on 0.4.47, though it holds meta
   sessions; a question for bale-src in that session's notes.
-- A project on another host is read, reached and prepared (0.14.0), but
-  not yet packed or landed: `office start` and `office land` refuse one
-  before anything is written, until the release that sends a session
-  through the shell and brings it back (packing there, opening a
-  bundle there, applying there, the tarballs carried, the after-land
-  actions there). An attended bale step through a shell needs a tty,
-  which the `shell` prefix does not give (`ssh -tt` and `docker exec
-  -it` do, with stdin left open); that seam is the next release's. The
-  host's bale was 0.4.40 where this was built, below the read side's
-  floor; `office status` names the remedy, and the occupant runs it.
+- A session goes out to a project on another host (0.15.0), but does
+  not come back yet: `office land` refuses a hosted session before bale
+  runs, until the release that applies there over the shell (the
+  response carried there, the relay carried back, the after-land actions
+  there). The attended form it will use (`ssh -tt`, a container's `-it`)
+  is built and tested against the suite's fake ssh only; the 0.14.0 probe
+  proved the form on the work host, and the first hosted `office land`
+  is its real test. The host's bale was 0.4.40 when 0.15.0 was built,
+  below the floor; `office projects level-bale` is the step, and it ran
+  against the suite's fakes only: the host's own 0.4.40 `upgrade.sh` was
+  not read (0.4.51's was), so its first real run is its test. If that
+  `upgrade.sh` does not take `-y`, it refuses before it changes anything.
+- A bundle for a hosted project must be given by its path: bale's search
+  for a bare name would run on the host, and the office cannot list this
+  machine's search directories (the same slip as above).
+- Each step of a hosted start is its own connection (about 2.5 s on the
+  work host): the check, the bundle check, then the pack and the trip
+  back. A start there takes tens of seconds, mostly login shells.
 - Through a login shell on a host, each connection costs what the
   user's profile costs (seconds, where this was built); the read side
   batches each round of reads into one connection, and a walk-in makes
@@ -441,6 +471,13 @@ pastes.
   applied by hand with `bale apply` (no after-land action runs), or
   `./install.sh` failed, which `office land`'s last lines now say.
   `office status` shows whether the install is level with its source.
+- *My project's repo is on a work host, inside a container. How do I get
+  it there and send a session to it?* `office projects add NAME --host
+  USER@HOST --shell "ssh USER@HOST docker exec -i -u USER BOX bash -lc"
+  --path ~/development/NAME --from ~/work/NAME` brings your clone there
+  (with the VPN up), `office projects level-bale NAME` puts this
+  machine's bale there, and `office start JOB --on NAME` sends sessions.
+  The clone here can go once you are happy with the one there.
 - *How does a planning sitting end?* `office land SID`, from the office,
   when the sitting is over: bale unlock, and a line in the folder. The
   folder stays open until you close it.

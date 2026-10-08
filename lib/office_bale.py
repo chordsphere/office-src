@@ -37,6 +37,7 @@ import json
 import os
 import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -71,7 +72,7 @@ class BaleError(Exception):
     a defect in office-src), unreachable (a hosted project's host did not
     answer: one line naming the project, the host, the connect text and
     the command to rerun), hosted (a verb not built yet for a project on
-    a host: start and land)."""
+    a host: land, until the return trip is built)."""
 
     def __init__(self, kind, message):
         super().__init__(message)
@@ -176,6 +177,9 @@ class Reader:
         self.touched = set()
         self._cache = {}
         self._installed = None
+        # Hosted places a start has checked in this process (reach, the
+        # bale floor, the repo): checked once, however many steps ask.
+        self.places_checked = set()
 
     # The one door every key read goes through.
     def key(self, obj, surface, path):
@@ -349,18 +353,37 @@ class Reader:
         spec = self.consumption.surface(surface)
         if not spec.get("interactive"):
             raise BaleError("undeclared", f"bale {surface} is not declared interactive in {self.consumption.path.name}")
-        if self.hosted(cwd):
-            raise BaleError("hosted", f"bale {surface} on {cwd}: {NOT_BUILT_ON_HOST}")
         argv = self.consumption.argv(surface, **values)
-        exe = self.bale()
-        if not pathlib.Path(cwd).is_dir():
-            raise BaleError("path", f"no such directory on this machine: {cwd}")
-        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
-        debug(f"bale {' '.join(argv)} in {cwd}, stdin and stderr the terminal's")
-        try:
-            proc = subprocess.Popen([exe, *argv], cwd=cwd, env=env, stdout=subprocess.PIPE)
-        except OSError as exc:
-            raise BaleError("missing", f"could not run {exe}: {exc}")
+        hosted = self.hosted(cwd)
+        if hosted:
+            # Through the project's shell: on a terminal, the attended form
+            # (ssh -tt, a container's -it), so bale's questions reach the
+            # occupant through every layer; piped, the plain form with
+            # stdin closed, and nothing ever asks.
+            try:
+                ohost.reach(cwd)
+            except ohost.HostError as exc:
+                raise BaleError(exc.kind if exc.kind in ("unreachable", "path") else "refused", str(exc))
+            command = (f"cd {shlex.quote(cwd.path)} && PYTHONDONTWRITEBYTECODE=1 exec bale "
+                       + " ".join(shlex.quote(w) for w in argv))
+            attended = sys.stdin.isatty()
+            full = cwd.attended_argv(command) if attended else cwd.argv(command)
+            debug(f"bale {' '.join(argv)} in {cwd}, " + ("attended through " + ohost.shown_argv(cwd.attended_words())
+                                                       if attended else "piped, stdin closed"))
+            try:
+                proc = subprocess.Popen(full, stdin=None if attended else subprocess.DEVNULL, stdout=subprocess.PIPE)
+            except OSError as exc:
+                raise BaleError("missing", f"could not run {full[0]}: {exc}")
+        else:
+            exe = self.bale()
+            if not pathlib.Path(cwd).is_dir():
+                raise BaleError("path", f"no such directory on this machine: {cwd}")
+            env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+            debug(f"bale {' '.join(argv)} in {cwd}, stdin and stderr the terminal's")
+            try:
+                proc = subprocess.Popen([exe, *argv], cwd=cwd, env=env, stdout=subprocess.PIPE)
+            except OSError as exc:
+                raise BaleError("missing", f"could not run {exe}: {exc}")
         screen = sys.stdout.buffer
         with open(capture, "wb") as keep:
             fd = proc.stdout.fileno()
@@ -376,7 +399,13 @@ class Reader:
             except KeyboardInterrupt:
                 # bale got the same interrupt; let it finish saying so.
                 log("interrupted; waiting for bale to stop")
-        return proc.wait()
+        code = proc.wait()
+        if hosted and attended:
+            # Through a pseudo-terminal every line ends in CR LF; the
+            # capture is read for the blocks bale prints, line by line.
+            data = pathlib.Path(capture).read_bytes()
+            pathlib.Path(capture).write_bytes(data.replace(b"\r\n", b"\n"))
+        return code
 
     def unlock(self, cwd, sid):
         """End a read-only sitting: bale unlock SID --json in its repo,
@@ -586,11 +615,9 @@ def no_projects_line(projects):
     return "this office scopes no projects: its [projects] table lists none (office projects add NAME PATH)"
 
 
-# What start and land say for a project on a host until the next session
-# lands: before anything is written.
-NOT_BUILT_ON_HOST = ("sending a session to a project on a host, and bringing one back, is not built yet "
-                     "(office-src 0.14.0 reads such a project and checks its reach; the next release packs "
-                     "and lands there)")
+# What land says for a session out on a project on a host, until the
+# release that brings one back over the shell: before bale runs.
+LAND_NOT_BUILT_ON_HOST = "the return trip is not built yet; the session is out and its response waits"
 
 
 def readable(project):
@@ -1668,16 +1695,23 @@ def status_lines(rd, office_root):
     # the read side's floor, with the remedy when it is behind. Never a
     # network call the survey makes (doctrine section 13): this is
     # status, and the line says what it found.
+    try:
+        here = rd.installed_version()
+    except (BaleError, oh.HelperError):
+        here = None
     for p in hosted:
         place = ohost.place_of(p)
         try:
             v = rd.installed_version(place)
             if oh.compare_versions(v, cons.floor) >= 0:
                 lines.append(f"  {p['name']}: {p['host']} answers; bale {v} there, within the read side's "
-                             f"range (bale {cons.floor} or later)")
+                             f"range (bale {cons.floor} or later)"
+                             + (f"; this machine runs {here}, and {level_step(p['name'])} brings it level"
+                                if here and oh.compare_versions(v, here) < 0 else ""))
             else:
                 lines.append(f"  {p['name']}: {p['host']} answers; bale {v} on {p['host']} is older than the "
-                             f"read side's floor {cons.floor}; bring it up before a session is sent there")
+                             f"read side's floor {cons.floor}; {level_step(p['name'])} brings it level with "
+                             f"this machine's bale{f' ({here})' if here else ''} before a session is sent there")
         except BaleError as exc:
             lines.append(f"  {p['name']}: {exc}" if exc.kind == "unreachable"
                          else f"  {p['name']}: {p['host']} answers, but bale there could not be read: {exc}")
@@ -1736,7 +1770,9 @@ def open_overlaps(rd, cwd, mine):
     """[(sid, their forecast, overlapping entries)] for the sessions open
     in the repo at cwd whose recorded forecast overlaps mine. A repo bale
     has never run in has no registry and nothing open."""
-    if not (pathlib.Path(cwd) / ".bale").is_dir():
+    # bale status answers in a repo it has never run in, too; on this
+    # machine the office skips the call when there is no registry.
+    if not rd.hosted(cwd) and not (pathlib.Path(cwd) / ".bale").is_dir():
         return []
     st = rd.status(cwd)
     scopes = rd.key(st, "status", "scopes") or {}
@@ -1963,13 +1999,24 @@ def bundle_places(office_root, paths):
     open in: the office, then each project it scopes that can be read,
     by name. A place whose missing list is empty holds every path."""
     root = pathlib.Path(office_root).resolve()
-    places = [("office", root)]
+    out = [("office", root, [x for x in paths if not (root / x.strip("/")).exists()])]
     for p in office_projects(root) or []:
-        # A hosted project's tree is not on this machine: a bundle
-        # cannot open there until sessions are sent there.
-        if not p["problem"] and p["resolved"] is not None and p["resolved"].is_dir():
-            places.append((p["name"], p["resolved"]))
-    return [(label, d, [x for x in paths if not (d / x.strip("/")).exists()]) for label, d in places]
+        if p["problem"]:
+            continue
+        if hosted_project(p):
+            # A hosted project's tree is on its host, and answers through
+            # its shell (one connection each); one that does not answer
+            # holds nothing, as far as the office can tell, and says so.
+            place = ohost.place_of(p)
+            try:
+                out.append((p["name"], place, ohost.missing_paths(place, paths) if paths else []))
+            except ohost.HostError as exc:
+                log(f"warning: {p['name']} could not be asked which of the bundle's paths it holds: {exc}")
+            continue
+        if p["resolved"] is not None and p["resolved"].is_dir():
+            d = p["resolved"]
+            out.append((p["name"], d, [x for x in paths if not (d / x.strip("/")).exists()]))
+    return out
 
 
 def bundle_where(office_root, bundle, lane=None):
@@ -2070,6 +2117,42 @@ def doctrine_in_tree(tree, includes, excludes=()):
     return d if all(ships(f"doctrine/{rel}", includes, excludes) for rel in doctrine_files(d)) else None
 
 
+# The doctrine a hosted tree holds, as sha256 sums: one line per file,
+# caches aside, nothing when the tree has no doctrine/.
+_DOCTRINE_SUMS = ('[ -d doctrine ] || exit 0; cd doctrine && find . -type f ! -path "*/__pycache__/*" '
+                  '! -path "*/.bale/*" | LC_ALL=C sort | while IFS= read -r f; do sha256sum "$f"; done')
+
+
+def doctrine_sums(tree, includes, excludes=()):
+    """{relative path: sha256} of the doctrine a packed tree ships, here
+    or on a host (read through its shell), or None: the same answer
+    doctrine_in_tree gives, as sums, so a hosted tree's doctrine is
+    compared with the install's without its bytes travelling."""
+    if tree is None:
+        return None
+    if isinstance(tree, ohost.Place) and tree.hosted:
+        run = ohost.run_in(tree, ["sh", "-c", _DOCTRINE_SUMS])
+        if run.returncode != 0:
+            raise BaleError("refused", f"the doctrine in {tree} could not be read: {run.stderr.strip() or run.returncode}")
+        sums = {}
+        for line in run.stdout.splitlines():
+            sha, _, rel = line.partition("  ")
+            if re.fullmatch(r"[0-9a-f]{64}", sha) and rel.startswith("./"):
+                sums[rel[2:]] = sha
+    else:
+        d = doctrine_in_tree(tree, includes, excludes)
+        return None if d is None else install_doctrine_sums(d)
+    if "OFFICE.md" not in sums:
+        return None
+    return sums if all(ships(f"doctrine/{rel}", includes, excludes) for rel in sums) else None
+
+
+def install_doctrine_sums(directory=None):
+    import hashlib
+    return {rel: hashlib.sha256(data).hexdigest()
+            for rel, data in doctrine_files(directory or INSTALL / "doctrine").items()}
+
+
 def survey_before_pack(office_root):
     """office survey --before-pack in the office: the survey page again,
     committed alone, never fatal (doctrine section 13). Its words go to
@@ -2102,9 +2185,53 @@ def digest_before_pack(office_root):
         log(f"warning: the digest before the pack exited {proc.returncode}; the sitting reads the page as it was")
 
 
-def pack_place(office_root, where, project):
+def level_step(name):
+    """The office step that brings a host's bale level with this
+    machine's, as a command line."""
+    return f"office projects level-bale {name}"
+
+
+def check_hosted_place(rd, entry, checked=False):
+    """The place a session on a hosted project is packed in, once it has
+    answered. The first connection is the reach check (a host that does
+    not answer stops the start there, before anything is written, with
+    the connect line); its bale is held to the read side's floor (start
+    never upgrades a bale, it names the step that does); and the repo
+    there is checked as office projects add checks one, unless this
+    start checked it already (checked, or once per reader)."""
+    name = entry["name"]
+    place = ohost.place_of(entry)
+    if place in rd.places_checked:
+        return place
+    try:
+        rd.prefetch(place, [("version", {}), ("status", {})])
+        v = rd.installed_version(place)
+    except BaleError as exc:
+        raise StartError([f"{name}: {exc}; nothing was written"])
+    floor = rd.consumption.floor
+    try:
+        behind = oh.compare_versions(v, floor) < 0
+    except oh.HelperError as exc:
+        raise StartError([f"{name}: bale's version on {entry['host']} could not be compared: {exc}"])
+    if behind:
+        raise StartError([f"{name}: bale {v} on {entry['host']} is older than the read side's floor {floor}, so no "
+                          f"session goes out there; {level_step(name)} brings it level with this machine's bale "
+                          "(start never upgrades a bale on its own); nothing was written"])
+    if not checked:
+        try:
+            ok, why = ohost.check_project(place)
+        except ohost.HostError as exc:
+            raise StartError([f"{name}: {exc}; nothing was written"])
+        if not ok:
+            raise StartError([f"{name} cannot be packed: {why}"])
+    rd.places_checked.add(place)
+    return place
+
+
+def pack_place(office_root, where, project, rd=None, checked=False):
     """The directory a start packs in: the office, or the project's repo
-    (refusing, as start does, a project the office cannot pack)."""
+    (refusing, as start does, a project the office cannot pack); for a
+    project on a host, its Place, once it has answered."""
     office_root = pathlib.Path(office_root).resolve()
     if where == "office":
         return office_root
@@ -2117,7 +2244,7 @@ def pack_place(office_root, where, project):
     if entry["problem"]:
         raise StartError([f"{project}: {entry['problem']}"])
     if hosted_project(entry):
-        raise StartError([f"{project} is on {entry['host']}: {NOT_BUILT_ON_HOST}"])
+        return check_hosted_place(rd or Reader(), entry, checked)
     ok, why = oh.check_project_dir(entry["resolved"])
     if not ok:
         raise StartError([f"{project} cannot be packed: {why}"])
@@ -2162,7 +2289,7 @@ def bundle_precheck(rd, office_root, where, project, bundle):
     argv = bundle_pack_argv(bundle)
     if argv is None:
         return
-    pack_dir = pack_place(office_root, where, project)
+    pack_dir = pack_place(office_root, where, project, rd)
     try:
         b_inc, b_wr, _ = bundle_paths(argv)
         forecast, supersedes = bundle_forecast(argv)
@@ -2173,7 +2300,7 @@ def bundle_precheck(rd, office_root, where, project, bundle):
     places = bundle_places(office_root, named)
     mine = next((m for lab, _, m in places if lab == label), None)
     if mine is None:
-        mine = [x for x in named if not (pathlib.Path(pack_dir) / x.strip("/")).exists()]
+        mine = paths_missing_in(pack_dir, named)
     if mine:
         raise StartError([f"the bundle {pathlib.Path(bundle).name} names paths that are not in "
                           f"{place_words(label)}'s tree, so it cannot open there; nothing ran"]
@@ -2193,12 +2320,20 @@ def check_bundle(rd, office_root, where, project, bundle):
     forecast overlapping an open session each refuse, exit 1, with
     nothing written). Returns the path bale found the bundle at (None when
     its report does not say); raises StartError with bale's own words."""
+    pack_dir = pack_place(office_root, where, project, rd)
     bundle_precheck(rd, office_root, where, project, bundle)
-    pack_dir = pack_place(office_root, where, project)
     spec = rd.consumption.surface("open_check")
+    hosted = rd.hosted(pack_dir)
+    if hosted:
+        local = hosted_bundle_file(bundle, pack_dir)
     try:
-        proc, shown, _ = rd.invoke("open_check", pack_dir, timeout=PACK_TIMEOUT, whole_why=True, bundle=bundle)
-    except BaleError as exc:
+        with ohost.Scratch(pack_dir) as scratch:
+            # On a host, the bundle travels there first, into the office's
+            # one temporary directory, and bale checks that copy; the
+            # directory is removed whatever bale says.
+            asked = send_bundle(pack_dir, local, scratch) if hosted else bundle
+            proc, shown, _ = rd.invoke("open_check", pack_dir, timeout=PACK_TIMEOUT, whole_why=True, bundle=asked)
+    except (BaleError, ohost.HostError) as exc:
         place = "in the office" if where == "office" else f"on {project}"
         raise StartError([f"bale cannot open the bundle {bundle} {place} ({pack_dir}), so start stopped before "
                           f"anything was written: {exc}"])
@@ -2206,8 +2341,43 @@ def check_bundle(rd, office_root, where, project, bundle):
     for line in proc.stdout.splitlines():
         if line.startswith(spec["found_line"]):
             found = line[len(spec["found_line"]):].split(" against ", 1)[0].strip()
+    if hosted and found is not None:
+        found = f"{local} (sent to {pack_dir.host} for the check)"
     debug(f"{shown} in {pack_dir}: passed; bale found the bundle at {found or '(its report does not say)'}")
     return found
+
+
+def paths_missing_in(pack_dir, paths):
+    """The paths a pack names that its directory lacks, here or on a
+    host (asked through its shell)."""
+    if isinstance(pack_dir, ohost.Place) and pack_dir.hosted:
+        try:
+            return ohost.missing_paths(pack_dir, paths)
+        except ohost.HostError as exc:
+            raise StartError([f"the paths in {pack_dir} could not be checked: {exc}"])
+    return [x for x in paths if not (pathlib.Path(pack_dir) / x.strip("/")).exists()]
+
+
+def hosted_bundle_file(bundle, place):
+    """The bundle file on this machine that travels to a host. bale's own
+    search for a bare name runs where bale opens the bundle, on the host,
+    where the downloaded file is not; so a bundle for a hosted project is
+    named as a file here (its path, or a name in the current directory)."""
+    p = pathlib.Path(bundle).expanduser()
+    if not p.is_file():
+        raise StartError([f"{bundle} is not a file on this machine: a bundle for a project on {place.host} travels "
+                          "there from here, so give its path (bale's search for a bare name would run on the host, "
+                          "where it is not)"])
+    return str(p.resolve())
+
+
+def send_bundle(place, local, scratch):
+    """The bundle copied into the office's temporary directory on the
+    host, under its own name (bale reads the name); its path there."""
+    remote = f"{scratch.path}/{pathlib.Path(local).name}"
+    ohost.send_file(place, local, remote)
+    log(f"sent {pathlib.Path(local).name} to {place.host} ({remote}, removed when this start is done)")
+    return remote
 
 
 def start_forecast(office_root, folder, where, writes=(), includes=(), read_only=False, bundle=None):
@@ -2336,7 +2506,7 @@ def open_bundle(rd, pack_dir, bundle):
 
 
 def start(rd, office_root, folder, where, project, goal, slug, includes, writes, read_only,
-          brief, work_class, tray_root, bundle=None, leave_out=(), install_files=()):
+          brief, work_class, tray_root, bundle=None, leave_out=(), install_files=(), checked=False):
     """Pack a session for a folder and fill its out tray. Returns a dict:
     sid, tray, files, opener (lines, or None), carried (what each file
     is), warnings. Raises StartError with lines to print when it cannot
@@ -2350,7 +2520,16 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     tree); different, the install's rides too, named as the install's.
     install_files are install-relative files (a template the session
     writes from) that ride as one more context tarball, made from a
-    scratch copy so the install is never written."""
+    scratch copy so the install is never written.
+
+    A project on a host is packed on its host (0.15.0): bale's own pack,
+    or bale open for a bundle, runs there through the project's shell,
+    and the request it makes is carried back into the tray; the brief
+    and the bundle travel there first, into one temporary directory the
+    office removes on success and on failure. The context tarballs and
+    the doctrine are made on this machine, as for any project. checked
+    says bin/office has already checked the host this start (reach, the
+    bale floor, the repo)."""
     office_root = pathlib.Path(office_root).resolve()
     manifest = oh.read_toml(office_root / "floor-plan" / "manifest.toml")
     projects = {p["name"]: p for p in oh.read_projects(manifest) or []}
@@ -2364,8 +2543,6 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         problems += entry["declaration_problems"]
         if problems:
             raise StartError([f"{project}: {p}" for p in problems])
-        if where == "project" and hosted_project(entry):
-            raise StartError([f"{project} is on {entry['host']}: {NOT_BUILT_ON_HOST}"])
     rides, left = ride_choice(entry, project, leave_out)
     rd.bale()
 
@@ -2384,12 +2561,16 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         else:
             writes = [folder] + (["notepad"] if (office_root / "notepad").is_dir() else []) + list(writes)
             forecast = writes
+    elif hosted_project(entry):
+        pack_dir = check_hosted_place(rd, entry, checked)
+        forecast = [] if read_only else (list(writes) or list(includes) or None)
     else:
         pack_dir = entry["resolved"]
         ok, why = oh.check_project_dir(pack_dir)
         if not ok:
             raise StartError([f"{project} cannot be packed: {why}"])
         forecast = [] if read_only else (list(writes) or list(includes) or None)
+    hosted = rd.hosted(pack_dir)
     bundle_supersedes, argv = None, None
     if bundle:
         # The bundle's pack line is the whole session, and the office adds
@@ -2415,7 +2596,7 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             places = bundle_places(office_root, named)
             mine = next((m for lab, _, m in places if lab == label), None)
             if mine is None:
-                mine = [x for x in named if not (pathlib.Path(pack_dir) / x.strip("/")).exists()]
+                mine = paths_missing_in(pack_dir, named)
             if mine:
                 raise StartError([f"the bundle {pathlib.Path(bundle).name} names paths that are not in "
                                   f"{place_words(label)}'s tree, so it cannot open there; nothing ran"]
@@ -2441,12 +2622,15 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                     and not any(forecast_holds(e, folder) for e in forecast):
                 warnings.append(f"this bundle's forecast does not name {folder}, so the session cannot land in "
                                 "its folder")
+    if bundle and hosted:
+        local_bundle = hosted_bundle_file(bundle, pack_dir)
+    gone = paths_missing_in(pack_dir, list(dict.fromkeys([*(writes if not read_only else []), *includes])))
     for p in (writes if not read_only else []):
-        if not (pathlib.Path(pack_dir) / p).exists():
+        if p in gone:
             raise StartError([f"--write {p}: no such path in {pack_dir}; a forecast names existing paths "
                               "(a directory covers new files under it)"])
     for p in includes:
-        if not (pathlib.Path(pack_dir) / p).exists():
+        if p in gone:
             raise StartError([f"--include {p}: no such path in {pack_dir}"])
 
     # The predictable refusal, said plainly before bale is asked: two
@@ -2480,16 +2664,20 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     else:
         req_tree = pack_dir if where == "project" else None
         req_inc, req_exc = (list(includes) or None), ()
-    own = doctrine_in_tree(req_tree, req_inc, req_exc)
+    try:
+        own = doctrine_sums(req_tree, req_inc, req_exc)
+    except (BaleError, ohost.HostError) as exc:
+        raise StartError([f"{project}: {exc}"])
     if own is None and where == "office" and entry is not None and not hosted_project(entry):
-        own = doctrine_in_tree(entry["resolved"], None)
+        own = doctrine_sums(entry["resolved"], None)
     if own is not None:
-        same = doctrine_files(own) == doctrine_files(INSTALL / "doctrine")
+        same = own == install_doctrine_sums()
         tree_label = project if where == "project" or entry is not None else "the request"
 
     tray = Tray(tray_root)
     carried = []
     stage = "a context pack"
+    scratch = ohost.Scratch(pack_dir)
     try:
         # The doctrine, from a scratch copy: the install is never written.
         # Once is enough: a packed tree that ships the same doctrine
@@ -2553,19 +2741,30 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         # The session itself, last.
         if bundle:
             stage = "the bundle's open"
-            opened = open_bundle(rd, pack_dir, bundle)
+            if hosted:
+                stage = "sending the bundle to " + pack_dir.host
+                asked = send_bundle(pack_dir, local_bundle, scratch)
+                stage = "the bundle's open"
+            opened = open_bundle(rd, pack_dir, asked if hosted else bundle)
         else:
+            readme = str(pathlib.Path(brief).resolve()) if brief else None
+            if hosted and readme:
+                # bale on the host reads the brief there: it travels into
+                # the office's temporary directory first.
+                stage = "sending the brief to " + pack_dir.host
+                remote = f"{scratch.path}/{pathlib.Path(readme).name}"
+                ohost.send_file(pack_dir, readme, remote)
+                readme = remote
             stage = "the session's pack"
             spec = rd.consumption.surface("pack")
             report, stderr = rd.pack(
                 "pack", pack_dir, goal=goal, slug=slug, includes=includes or None,
                 writes=None if read_only or forecast is None else (forecast if where == "office" else (list(writes) or None)),
                 constraints=[PROJECT_CONSTRAINT] if where == "project" else None,
-                readme_file=str(pathlib.Path(brief).resolve()) if brief else None,
-                no_readme=not brief, read_only=read_only, work_class=work_class)
+                readme_file=readme, no_readme=not brief, read_only=read_only, work_class=work_class)
             opened = {"sid": rd.key(report, "pack", "sid"), "tarball": rd.key(report, "pack", "tarball"),
                       "opener": opener_lines(stderr, spec)}
-    except BaleError as exc:
+    except (BaleError, ohost.HostError) as exc:
         tray.discard()
         raise StartError([f"{stage} failed, so no session was opened and no out tray was made: {exc}"])
     except StartError:
@@ -2574,22 +2773,230 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     except (OSError, shutil.Error) as exc:
         tray.discard()
         raise StartError([f"{stage} could not be put in the out tray, so no session was opened: {exc}"])
+    finally:
+        # The office's temporary directory on the host (the brief, the
+        # bundle), removed whether the session opened or not.
+        scratch.__exit__(None, None, None)
     sid = opened["sid"]
     if not isinstance(sid, str) or not oh.SID_RE.match(sid):
         raise StartError([f"bale packed, but its report's sid is not a session id: {sid!r}; "
                           f"what was gathered is in {tray.dir}"])
     try:
-        name = tray.take(opened["tarball"])
+        if hosted:
+            # The request bale made on the host, carried back: it rides in
+            # the tray like any other, and stays in the repo's outbox there.
+            with tempfile.TemporaryDirectory(prefix="office-request-") as tmp:
+                here = pathlib.Path(tmp) / pathlib.PurePosixPath(opened["tarball"]).name
+                ohost.fetch_file(pack_dir, opened["tarball"], str(here))
+                name = tray.take(here)
+        else:
+            name = tray.take(opened["tarball"])
         final = tray.finish(sid)
-    except (OSError, shutil.Error) as exc:
+    except (OSError, shutil.Error, ohost.HostError) as exc:
         raise StartError([f"session {sid} is open, but its out tray could not be finished: {exc}",
-                          f"what was gathered is in {tray.dir}; the request is {opened['tarball']}",
+                          f"what was gathered is in {tray.dir}; the request is {opened['tarball']}"
+                          + (f" on {pack_dir.host}" if hosted else ""),
                           f"record the session in its folder with: office sessions {pathlib.Path(folder).name} {sid}"])
     kind = "an office session" if where == "office" else project + " session"
+    if hosted:
+        kind += f", packed on {pack_dir.host} and carried back"
     carried.insert(0, f"{name}: the request ({kind}" + (f", from the bundle {pathlib.Path(bundle).name})" if bundle else ")"))
     return {"sid": sid, "tray": str(final), "files": sorted(tray.files), "carried": carried,
             "opener": opened["opener"], "pack_dir": str(pack_dir), "request": str(final / name),
             "warnings": warnings, "sitting": forecast == []}
+
+
+# --- a host's bale brought level: office projects level-bale ---------------------------
+#
+# bale is installed per machine, like git, and a hosted project's bale
+# lives on its host. The step copies the bale this machine runs to the
+# host the way bale's own releases install: a release tarball (the
+# install's files, never its user/ directory, its git or its records)
+# carried through the project's shell, and the host's own upgrade.sh run
+# on it there (it moves <install>/user/ aside, replaces the rest, puts
+# user/ back and runs install.sh, which runs validate.sh). A host with no
+# bale gets the tarball unpacked as ~/bale and its install.sh run. The
+# host fetches nothing from the network. Only when the occupant asks:
+# start and land never upgrade a bale.
+
+# The install's layout on the host, read through its shell: where the
+# bale on its login PATH lives, whether its upgrade.sh is there, and the
+# names (never the contents) under its user/ directory.
+_INSTALL_FACTS = (
+    'echo "home=$HOME"; [ -e "$HOME/bale" ] && echo "home_bale=yes" || echo "home_bale=no"; '
+    'b=$(command -v bale) || { echo "bale=none"; exit 0; }; r=$(readlink -f "$b"); '
+    'root=$(dirname "$(dirname "$r")"); echo "bale=$r"; echo "root=$root"; '
+    '[ -f "$root/upgrade.sh" ] && echo "upgrade=yes" || echo "upgrade=no"; '
+    'if [ -d "$root/user" ]; then (cd "$root/user" && find . -mindepth 1 -maxdepth 2 | LC_ALL=C sort '
+    '| sed "s|^\\./|user=|"); fi'
+)
+# What a release tarball leaves out of an install: the occupant's own
+# subtree, and anything that is not bale's (a git work tree, bale's
+# records, caches).
+_NOT_RELEASE = ("user",)
+
+
+def local_bale_install():
+    """(install root, version) of the bale this machine runs: the
+    directory above the bin/ the bale on PATH resolves into, which must
+    hold bale's install scripts. Raises BaleError when it is not a
+    release install the office can copy."""
+    exe = shutil.which("bale")
+    if exe is None:
+        raise BaleError("missing", "bale is not on PATH on this machine, so there is no bale to bring a host level with")
+    root = pathlib.Path(exe).resolve().parent.parent
+    for f in ("bin/bale", "install.sh", "upgrade.sh"):
+        if not (root / f).is_file():
+            raise BaleError("missing", f"this machine's bale ({pathlib.Path(exe).resolve()}) is not in a release "
+                                       f"install: {root} has no {f}, so the office has no install to copy")
+    return root, Reader().installed_version()
+
+
+def release_tarball(root, dest):
+    """A release-shaped tarball of the install at root, as bale's builds
+    shape one (one top-level bale/ directory), holding every file of the
+    install except user/, dot-entries at its top (.git, .bale) and
+    caches. Returns the number of files."""
+    root = pathlib.Path(root)
+    n = 0
+    with tarfile.open(dest, "w:gz") as t:
+        for path in sorted(root.rglob("*")):
+            rel = path.relative_to(root)
+            top = rel.parts[0]
+            if top in _NOT_RELEASE or top.startswith(".") or "__pycache__" in rel.parts or path.suffix == ".pyc":
+                continue
+            if path.is_dir() and not path.is_symlink():
+                continue
+            t.add(path, arcname=str(pathlib.PurePosixPath("bale", *rel.parts)), recursive=False)
+            n += 1
+    return n
+
+
+def host_install(place):
+    """The host's install facts (_INSTALL_FACTS) as a dict, user/ names
+    as a list under "user"."""
+    try:
+        run = ohost.run_in(place, ["sh", "-c", _INSTALL_FACTS], chdir=False)
+    except ohost.HostError as exc:
+        raise BaleError(exc.kind if exc.kind in ("unreachable", "path") else "refused", str(exc))
+    if run.returncode != 0:
+        raise BaleError("refused", f"the bale install on {place.host} could not be read: {run.stderr.strip()}")
+    facts = {"user": []}
+    for line in run.stdout.splitlines():
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        if key == "user":
+            facts["user"].append(value)
+        else:
+            facts[key] = value
+    return facts
+
+
+def level_plan(rd, office_root, name):
+    """What level-bale would do for a project: a dict with the place,
+    this machine's install and version, the host's version (None when it
+    has no bale) and facts, and state: level, behind (the host is older:
+    the step replaces it), ahead (the host is newer: refused, never a
+    downgrade), absent (no bale there: a first install)."""
+    projects = {p["name"]: p for p in office_projects(office_root) or []}
+    entry = projects.get(name)
+    if entry is None:
+        raise StartError([f"no project named {name} in this office's [projects] "
+                          f"(it lists: {', '.join(sorted(projects)) or 'none'})"])
+    if entry["problem"]:
+        raise StartError([f"{name}: {entry['problem']}"])
+    if not hosted_project(entry):
+        raise StartError([f"{name} is on this machine, where bale is the one installed here; {level_step(name)} "
+                          "brings a host's bale level with it, for a project on a host"])
+    place = ohost.place_of(entry)
+    root, here = local_bale_install()
+    facts = host_install(place)
+    there = None
+    if facts.get("bale") not in (None, "none"):
+        try:
+            there = rd.installed_version(place)
+        except BaleError as exc:
+            if exc.kind == "unreachable":
+                raise
+            raise StartError([f"{name}: bale on {place.host} ({facts['bale']}) did not say its version: {exc}"])
+    if there is None:
+        state = "absent"
+    else:
+        c = oh.compare_versions(there, here)
+        state = "level" if c == 0 else ("behind" if c < 0 else "ahead")
+    return {"name": name, "place": place, "root": root, "here": here, "there": there, "facts": facts,
+            "state": state}
+
+
+def level_bale(rd, office_root, name):
+    """Install on a project's host the bale this machine runs, keeping
+    the host's user/ (its global bale.toml and hook store), and say what
+    was there and what is there now. Returns the lines to print; raises
+    StartError when it cannot, having changed nothing it can avoid."""
+    plan = level_plan(rd, office_root, name)
+    place, here, there, facts = plan["place"], plan["here"], plan["there"], plan["facts"]
+    if plan["state"] == "level":
+        return [f"{name}: bale {there} on {place.host} is level with this machine's; nothing to do"]
+    if plan["state"] == "ahead":
+        raise StartError([f"{name}: bale {there} on {place.host} is newer than this machine's {here}; the office "
+                          "never moves a bale back. Bring this machine's bale up first, then run this again"])
+    if plan["state"] == "behind" and facts.get("upgrade") != "yes":
+        raise StartError([f"{name}: bale {there} on {place.host} ({facts.get('root')}) has no upgrade.sh beside it, "
+                          "so it is not a release install the office can replace; upgrade it there by hand"])
+    if plan["state"] == "absent" and facts.get("home_bale") == "yes":
+        raise StartError([f"{name}: there is no bale on the login PATH on {place.host}, but {facts.get('home')}/bale "
+                          "exists; the office installs only where nothing is, so look at it there first"])
+    lines = []
+    with tempfile.TemporaryDirectory(prefix="office-level-") as tmp:
+        tarball = pathlib.Path(tmp) / f"bale-v{here}.tar.gz"
+        count = release_tarball(plan["root"], tarball)
+        log(f"made a release tarball of this machine's bale {here} ({plan['root']}, {count} files, user/ left out)")
+        try:
+            with ohost.Scratch(place) as scratch:
+                remote = f"{scratch.path}/{tarball.name}"
+                ohost.send_file(place, str(tarball), remote)
+                log(f"sent it to {place.host}; running "
+                    + ("the host's own upgrade.sh, which keeps user/ and runs install.sh and validate.sh"
+                       if plan["state"] == "behind" else "a first install: unpacked as ~/bale, then its install.sh"))
+                spec = rd.consumption.surface("upgrade")
+                if plan["state"] == "behind":
+                    argv = [f"{facts['root']}/{spec['script']}", *spec["flags"], remote]
+                else:
+                    first, *flags = spec["first_install"]
+                    argv = ["sh", "-c", 't="$1"; s="$2"; shift 2; cd "$HOME" && [ ! -e bale ] && tar -xzf "$t" '
+                                        '&& exec "$HOME/bale/$s" "$@"', "office-install", remote, first, *flags]
+                run = ohost.run_in(place, argv, timeout=ohost.TRANSFER_TIMEOUT, chdir=False)
+        except ohost.HostError as exc:
+            raise StartError([f"{name}: bale on {place.host} was not brought level: {exc}"])
+    said = [l for l in (run.stdout + "\n" + run.stderr).splitlines() if l.strip()]
+    if run.returncode != 0:
+        raise StartError([f"{name}: the install on {place.host} exited {run.returncode}; its last words:"]
+                         + [f"  {l}" for l in said[-15:]])
+    for l in said[-12:]:
+        log(f"{place.host}: {l}")
+    rd.forget(place)
+    try:
+        now = rd.installed_version(place)
+        after = host_install(place)
+    except BaleError as exc:
+        raise StartError([f"{name}: the install on {place.host} finished, but bale there could not be read "
+                          f"afterwards: {exc}"])
+    if now != here:
+        raise StartError([f"{name}: the install on {place.host} exited 0, but bale there says {now}, not {here}; "
+                          "its words above say why"])
+    kept = facts["user"]
+    if kept and after["user"] != kept:
+        lost = sorted(set(kept) - set(after["user"]))
+        raise StartError([f"{name}: bale {now} is on {place.host}, but its user/ is not as it was"
+                          + (f": missing {', '.join(lost)}" if lost else "") + f" (look in {facts.get('root')}.user-backup-*)"])
+    lines.append(f"{name}: bale on {place.host} was {there or 'not installed'}, and is now {now}, this machine's "
+                 f"(from {plan['root']})")
+    if kept:
+        lines.append(f"  its user/ was kept: {', '.join(n for n in kept if '/' not in n)}")
+    else:
+        lines.append("  it had no user/ (no global bale.toml); bale config init --global there sets one")
+    return lines
 
 
 # --- bringing a session back: office land -------------------------------------------
@@ -2769,7 +3176,7 @@ def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None):
                            for x in landable])
     x = landable[0]
     if x["host"]:
-        raise LandError([f"{x['sid']} is open on {x['label']}, a project on {x['host']}: {NOT_BUILT_ON_HOST}"])
+        raise LandError([f"{x['sid']} is open on {x['label']}, a project on {x['host']}: {LAND_NOT_BUILT_ON_HOST}"])
     d = rd.dossier(x["place"], x["sid"])
     view = session_view(rd, d) if d is not None else None
     held = bool(view and view["in_flight"] and view["outcome"] == "held")
@@ -2805,7 +3212,7 @@ def sitting_plan(found, tarball, problems):
         raise LandError([f"{x['sid']} is a read-only sitting: it lands nothing, so there is no response to land; "
                          f"office land {x['sid']}, with no response, ends it when the sitting is over"])
     if x["host"]:
-        raise LandError([f"{x['sid']} is a sitting on {x['label']}, a project on {x['host']}: {NOT_BUILT_ON_HOST}"])
+        raise LandError([f"{x['sid']} is a sitting on {x['label']}, a project on {x['host']}: {LAND_NOT_BUILT_ON_HOST}"])
     plan = dict(x)
     plan.pop("place", None)
     plan.update(verb="unlock", held=False, tarball=None, needs_response=False, attempts_before=0,
@@ -3046,6 +3453,16 @@ def project_main(a):
     again. Exit 4 names the one refusal --prepare answers."""
     try:
         place = ohost.Place(a.path, a.host, a.shell, a.connect, a.name or a.path)
+        if a.cmd == "clone-dirty":
+            # The paths a clone's working tree changes, one per line; none
+            # when it is clean. They never travel with --from.
+            for line in ohost.clone_facts(a.source)["dirty"]:
+                print(line)
+            return 0
+        if a.cmd == "clone-to":
+            for line in ohost.clone_to(place, a.source):
+                print(line)
+            return 0
         if a.cmd == "check-project":
             ok, text = ohost.check_project(place)
             if ok:
@@ -3057,6 +3474,51 @@ def project_main(a):
             print(line)
         return 0
     except ohost.HostError as exc:
+        log(f"error: {exc}")
+        return 1
+
+
+def level_main(a):
+    """level-plan and level-bale: what the step would do (one line,
+    STATE<tab>THERE<tab>HERE<tab>HOST), and the step itself."""
+    rd = Reader()
+    try:
+        if a.cmd == "level-plan":
+            plan = level_plan(rd, a.office, a.project)
+            print(f"{plan['state']}\t{plan['there'] or ''}\t{plan['here']}\t{plan['place'].host}")
+            return 0
+        for line in level_bale(rd, a.office, a.project):
+            print(line)
+        return 0
+    except StartError as exc:
+        for line in exc.lines:
+            log(f"error: {line}")
+        return 1
+    except (oh.HelperError, BaleError, ohost.HostError, OSError) as exc:
+        log(f"error: {exc}")
+        return 1
+
+
+def start_check_main(a):
+    """start-check: a project on a host answers, its bale is at the floor
+    and its repo is one bale runs in, before start writes anything; one
+    line naming the host on stdout. A project on this machine passes."""
+    rd = Reader()
+    try:
+        projects = {p["name"]: p for p in office_projects(a.office) or []}
+        entry = projects.get(a.project)
+        if entry is None or not hosted_project(entry):
+            return 0
+        if entry["problem"]:
+            raise StartError([f"{a.project}: {entry['problem']}"])
+        place = check_hosted_place(rd, entry)
+        print(f"{place.host}\t{rd.installed_version(place)}")
+        return 0
+    except StartError as exc:
+        for line in exc.lines:
+            log(f"error: {line}")
+        return 1
+    except (oh.HelperError, BaleError, OSError) as exc:
         log(f"error: {exc}")
         return 1
 
@@ -3137,6 +3599,17 @@ def main(argv=None):
                    help="a declared ride-along that stays home for this session (repeatable)")
     p.add_argument("--install-file", action="append", default=[],
                    help="an install-relative file that rides beside the request (repeatable)")
+    p.add_argument("--checked", action="store_true",
+                   help="bin/office has checked the project's host this start (start-check)")
+    p = sub.add_parser("start-check", help="a project on a host answers, its bale is at the floor and its repo is "
+                                           "bale's, before start writes anything: HOST<tab>VERSION, or nothing for a "
+                                           "project on this machine")
+    p.add_argument("office"); p.add_argument("--project", required=True)
+    for name, text in (("level-plan", "what office projects level-bale would do: STATE<tab>THERE<tab>HERE<tab>HOST, "
+                                      "STATE one of level, behind, ahead, absent"),
+                       ("level-bale", "install on the project's host the bale this machine runs, keeping its user/")):
+        p = sub.add_parser(name, help=text)
+        p.add_argument("office"); p.add_argument("--project", required=True)
     p = sub.add_parser("bundle-check", help="bale open --check where the bundle would open; the path bale found")
     p.add_argument("office"); p.add_argument("--where", choices=("office", "project"), required=True)
     p.add_argument("--project"); p.add_argument("--bundle", required=True)
@@ -3154,10 +3627,15 @@ def main(argv=None):
                                          "host's shell; what was found on stdout, else the reason on stderr "
                                          "(exit 4: a repo bale has not run in, which --prepare sets up)"),
                        ("prepare-project", "prepare a clone for bale without a trace in git, here or through "
-                                           "a host's shell: the exclude lines and an empty bale.toml")):
+                                           "a host's shell: the exclude lines and an empty bale.toml"),
+                       ("clone-dirty", "the paths the working tree of the clone --from names changes, one per line"),
+                       ("clone-to", "put a clone of --from at --path on the host, every branch and tag, then "
+                                    "prepare it; the clone here is not changed")):
         p = sub.add_parser(name, help=text)
         p.add_argument("--path", required=True); p.add_argument("--host"); p.add_argument("--shell")
         p.add_argument("--connect"); p.add_argument("--name")
+        if name.startswith("clone-"):
+            p.add_argument("--from", dest="source", required=True)
     p = sub.add_parser("land-out", help="the sessions out: sid, where, folders; one per line")
     p.add_argument("office")
     p = sub.add_parser("land-plan", help="the one session to land and how, as JSON into --plan")
@@ -3176,8 +3654,12 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.cmd.startswith("land-"):
         return land_main(a)
-    if a.cmd in ("check-project", "prepare-project"):
+    if a.cmd in ("check-project", "prepare-project", "clone-dirty", "clone-to"):
         return project_main(a)
+    if a.cmd in ("level-plan", "level-bale"):
+        return level_main(a)
+    if a.cmd == "start-check":
+        return start_check_main(a)
     if a.cmd == "bundle-check":
         try:
             found = check_bundle(Reader(), a.office, a.where, a.project, a.bundle)
@@ -3185,7 +3667,7 @@ def main(argv=None):
             for line in exc.lines:
                 log(f"error: {line}")
             return 1
-        except (oh.HelperError, BaleError, OSError) as exc:
+        except (oh.HelperError, BaleError, ohost.HostError, OSError) as exc:
             log(f"error: {exc}")
             return 1
         print(found or "")
@@ -3229,12 +3711,12 @@ def main(argv=None):
         try:
             result = start(Reader(), a.office, a.folder, a.where, a.project, a.goal, a.slug, a.include,
                            a.write, a.read_only, a.brief, a.work_class, a.tray_root, a.bundle, a.leave_out,
-                           a.install_file)
+                           a.install_file, a.checked)
         except StartError as exc:
             for line in exc.lines:
                 log(f"error: {line}")
             return 1
-        except (oh.HelperError, BaleError, OSError) as exc:
+        except (oh.HelperError, BaleError, ohost.HostError, OSError) as exc:
             log(f"error: {exc}")
             return 1
         print(json.dumps(result))

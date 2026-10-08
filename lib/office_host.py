@@ -30,16 +30,30 @@ side (office_bale.py) routes every bale and git read through run_in and
 run_many; check_project and prepare answer `office projects add` for a
 repo here or there alike.
 
+Since 0.15.0 the shell also carries what a session going out needs. The
+attended form (Place.attended_argv) is the prefix with a terminal asked
+for at each layer, `ssh -tt` and a container's `-it`, derived from the
+stored shell, for a bale step the occupant answers. Files travel as
+bytes through the same prefix (send_file, fetch_file), each checked by
+its sha256 on both sides; a Scratch is the one temporary directory the
+office makes on a host, removed on success and on failure. clone_to
+moves a clone from this machine to its host as a git bundle, with every
+branch and tag, the remote-tracking refs and the remote and branch
+config, and never touches the clone it came from.
+
 Standard library only. Logs to stderr with an [office] prefix; every
 shell call shows under OFFICE_DEBUG=1, as every bale call does.
 """
 
+import hashlib
 import os
 import pathlib
 import re
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 
 # The one connection before any step that needs the host: a short
 # timeout, never a prompt (BatchMode), and the command stops at a host
@@ -47,6 +61,15 @@ import sys
 REACH_TIMEOUT = 5
 # One read through the shell; a bale read on this machine gets the same.
 RUN_TIMEOUT = 60
+# A file or a clone travelling through the shell, or an install running
+# there: bounded, but long enough for a release's validate.sh.
+TRANSFER_TIMEOUT = 900
+# The ssh options that take a value (ssh(1)), so the target is found past
+# them; a container layer's -i is only ever after the target.
+SSH_VALUE_OPTIONS = frozenset("-B -b -c -D -E -e -F -I -i -J -L -l -m -O -o -p -Q -R -S -W -w".split())
+# What a Scratch on a host is called: mktemp's template, and the one name
+# remove_scratch agrees to remove.
+SCRATCH_PREFIX = "office-"
 # The ssh options the office adds to a prefix that starts with ssh: no
 # prompt ever (stdin is closed anyway), and a bounded connect.
 SSH_OPTIONS = ("-o", "BatchMode=yes", "-o", f"ConnectTimeout={REACH_TIMEOUT}")
@@ -166,6 +189,40 @@ class Place:
         side parses the line again; a prefix that runs on this machine
         (docker exec ... bash -lc) gets it as one word."""
         words = self.words()
+        return [*words, shlex.quote(command) if words and words[0] == "ssh" else command]
+
+    def attended_words(self):
+        """The prefix for a step the occupant answers, derived from the
+        stored shell: a terminal asked for at each layer. ssh gets -tt (a
+        pseudo-terminal even though ssh's own stdin is one already: the
+        far side's login shell needs it to pass questions on), and a
+        container layer after the ssh target gets -it for its -i
+        (--interactive gains --tty). A prefix with no container layer
+        gets the -tt alone. 0.14.0's probe proved this form on the
+        occupant's host: `ssh -tt HOST docker exec -it ...` answers with
+        the terminal as stdin."""
+        words = self.words()
+        out = list(words)
+        start = 0
+        if out and out[0] == "ssh":
+            out.insert(1, "-tt")
+            i = 2
+            while i < len(out) and out[i].startswith("-"):
+                i += 2 if out[i] in SSH_VALUE_OPTIONS else 1
+            start = i + 1  # past the target
+        for i in range(start, len(out)):
+            if out[i] == "-i":
+                out[i] = "-it"
+                break
+            if out[i] == "--interactive":
+                out.insert(i + 1, "--tty")
+                break
+        return out
+
+    def attended_argv(self, command):
+        """The attended prefix with one command string appended, quoted
+        as argv() quotes it."""
+        words = self.attended_words()
         return [*words, shlex.quote(command) if words and words[0] == "ssh" else command]
 
     def __str__(self):
@@ -482,4 +539,348 @@ def prepare(place):
     lines = [f"prepared {place} for bale: {n} line(s) added to .git/info/exclude "
              f"({', '.join(EXCLUDE_LINES)}), bale.toml {facts.get('bale_toml', '?')} (empty: bale config init fills it)",
              "nothing git tracks changed; the repo's .gitignore is its audience's and was not touched"]
+    return lines
+
+
+# --- files through the shell (0.15.0) ------------------------------------------------------
+#
+# Bytes travel through the same prefix every read uses, never another
+# channel (no scp, no rsync: a container behind ssh has neither door).
+# The login shell may print around a command, so nothing here trusts the
+# byte count alone: each file is hashed on both sides and a mismatch is
+# an error naming both sums.
+
+_SHA_RE = re.compile(r"^([0-9a-f]{64})\s")
+
+
+def sha256_of(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _raw(place, command, stdin=None, stdout=None, timeout=TRANSFER_TIMEOUT):
+    """One command string through a hosted place's shell, from where the
+    shell lands, with bytes on stdin (a file object, or closed) and on
+    stdout (a file object, or kept): (exit code, stdout bytes or None,
+    stderr text). The host is reached first, once per process."""
+    reach(place)
+    argv = place.argv(command)
+    debug(f"through {place.host}: {shown_argv(place.words())} {shown_argv([command])}")
+    try:
+        proc = subprocess.run(argv, stdin=stdin if stdin is not None else subprocess.DEVNULL,
+                              stdout=stdout if stdout is not None else subprocess.PIPE,
+                              stderr=subprocess.PIPE, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise HostError("refused", f"{shown_argv([command])} through {place.host} did not finish in {timeout}s")
+    except OSError as exc:
+        raise HostError("shell", f"could not run {place.shell}: {exc}")
+    return proc.returncode, proc.stdout, proc.stderr.decode("utf-8", "replace")
+
+
+def _last_words(text):
+    words = [l.strip() for l in (text or "").splitlines() if l.strip()]
+    return words[-1] if words else "no message"
+
+
+def send_file(place, local, remote):
+    """Copy a file from this machine to a path where the place is (on
+    this machine, a copy), and hold the copy to the original's sha256."""
+    place = as_place(place)
+    want = sha256_of(local)
+    if not place.hosted:
+        shutil.copyfile(local, remote)
+        got = sha256_of(remote)
+    else:
+        q = shlex.quote(remote)
+        with open(local, "rb") as fh:
+            rc, out, err = _raw(place, f"cat > {q} && sha256sum {q}", stdin=fh)
+        if rc != 0:
+            raise HostError("refused", f"could not write {remote} on {place.host} (exit {rc}): {_last_words(err)}")
+        sums = [m.group(1) for m in map(_SHA_RE.match, (out or b"").decode("utf-8", "replace").splitlines()) if m]
+        got = sums[-1] if sums else None
+    if got != want:
+        raise HostError("output", f"{remote} on {place.host or 'this machine'} is not the file sent: sha256 "
+                                  f"{got or 'unreadable'} there, {want} here")
+    debug(f"sent {local} to {remote} on {place.host or 'this machine'} ({want[:12]})")
+    return want
+
+
+def fetch_file(place, remote, local):
+    """Copy a file from where the place is to this machine, and hold the
+    copy to the sha256 the far side reports for it. The sum travels on
+    stderr, so stdout is the file's bytes and nothing else."""
+    place = as_place(place)
+    if not place.hosted:
+        shutil.copyfile(remote, local)
+        return sha256_of(local)
+    q = shlex.quote(remote)
+    with open(local, "wb") as fh:
+        rc, _, err = _raw(place, f"sha256sum {q} >&2 && cat -- {q}", stdout=fh)
+    if rc != 0:
+        raise HostError("refused", f"could not read {remote} on {place.host} (exit {rc}): {_last_words(err)}")
+    sums = [m.group(1) for m in map(_SHA_RE.match, err.splitlines()) if m]
+    got = sha256_of(local)
+    if not sums or sums[-1] != got:
+        raise HostError("output", f"{remote} from {place.host} did not arrive intact: sha256 "
+                                  f"{sums[-1] if sums else 'not reported'} there, {got} here (does the login "
+                                  "shell print on stdout?)")
+    debug(f"fetched {remote} from {place.host} to {local} ({got[:12]})")
+    return got
+
+
+def missing_paths(place, paths):
+    """The paths (relative to the place's path) that are not there."""
+    place = as_place(place)
+    paths = [p for p in paths if p]
+    if not paths:
+        return []
+    if not place.hosted:
+        return [p for p in paths if not (pathlib.Path(place.path) / p.strip("/")).exists()]
+    run = run_in(place, ["sh", "-c", 'for p; do [ -e "$p" ] || printf "%s\\n" "$p"; done', "office-paths",
+                         *[p.strip("/") or "." for p in paths]])
+    if run.returncode != 0:
+        raise HostError("refused", f"the paths in {place} could not be checked: {_last_words(run.stderr)}")
+    gone = set(run.stdout.splitlines())
+    return [p for p in paths if (p.strip("/") or ".") in gone]
+
+
+class Scratch:
+    """The one temporary directory the office makes where a place is (on
+    a host: mktemp -d under the host's TMPDIR, or /tmp), made when first
+    asked for and removed on the way out, whether the work succeeded or
+    not. A directory that could not be removed is said loudly, with its
+    path, never left in silence."""
+
+    def __init__(self, place):
+        self.place = as_place(place)
+        self._path = None
+
+    @property
+    def path(self):
+        if self._path is None:
+            self._path = make_scratch(self.place)
+        return self._path
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        if self._path is not None:
+            try:
+                remove_scratch(self.place, self._path)
+            except HostError as err:
+                print(f"[office] warning: the temporary directory {self._path} on "
+                      f"{self.place.host or 'this machine'} was left behind: {err}", file=sys.stderr)
+            self._path = None
+        return False
+
+
+def make_scratch(place):
+    place = as_place(place)
+    if not place.hosted:
+        return tempfile.mkdtemp(prefix=SCRATCH_PREFIX)
+    run = run_in(place, ["sh", "-c", f'mktemp -d "${{TMPDIR:-/tmp}}/{SCRATCH_PREFIX}XXXXXXXX"'], chdir=False)
+    path = (run.stdout.strip().splitlines() or [""])[-1].strip()
+    if run.returncode != 0 or not path.startswith("/"):
+        raise HostError("refused", f"could not make a temporary directory on {place.host}: "
+                                   f"{_last_words(run.stderr) if run.returncode else repr(path)}")
+    debug(f"scratch on {place.host}: {path}")
+    return path
+
+
+def remove_scratch(place, path):
+    """Remove a Scratch, and nothing else: the name must be one
+    make_scratch gives."""
+    place = as_place(place)
+    if not pathlib.PurePosixPath(path).name.startswith(SCRATCH_PREFIX) or not path.startswith("/"):
+        raise HostError("refused", f"{path} is not a directory the office made, so it is not removed")
+    if not place.hosted:
+        shutil.rmtree(path, ignore_errors=False)
+        return
+    run = run_in(place, ["rm", "-rf", "--", path], chdir=False)
+    if run.returncode != 0:
+        raise HostError("refused", f"rm -rf {path} on {place.host} exited {run.returncode}: {_last_words(run.stderr)}")
+    debug(f"scratch on {place.host} removed: {path}")
+
+
+# --- a clone moved to its host (office projects add --from) ---------------------------------
+
+def _git(repo, *args, binary=False):
+    env = dict(os.environ, GIT_OPTIONAL_LOCKS="0")
+    try:
+        proc = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=not binary,
+                              timeout=TRANSFER_TIMEOUT, env=env, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise HostError("refused", f"git {' '.join(args)} in {repo}: {exc}")
+    return proc
+
+
+def clone_facts(local):
+    """What --from reads of a clone on this machine before anything
+    moves, writing nothing to it (git status runs without the optional
+    index refresh): its top, HEAD (a branch, or a detached commit), every
+    branch, tag and remote-tracking ref with its commit, the symbolic
+    remote HEADs, the remote and branch config, the paths its working
+    tree changes, and whether it is shallow."""
+    p = pathlib.Path(os.path.expanduser(str(local)))
+    if not p.is_dir():
+        raise HostError("path", f"no such directory on this machine: {local}")
+    top = _git(p, "rev-parse", "--show-toplevel")
+    if top.returncode != 0:
+        raise HostError("refused", f"not a git repo: {local}")
+    if pathlib.Path(top.stdout.strip()).resolve() != p.resolve():
+        raise HostError("refused", f"{local} is inside the git repo at {top.stdout.strip()}; name the repo's top instead")
+    if _git(p, "rev-parse", "--is-shallow-repository").stdout.strip() == "true":
+        raise HostError("refused", f"{local} is a shallow clone: a bundle of it would be missing history; "
+                                   "git fetch --unshallow there first")
+    refs, symrefs = [], []
+    out = _git(p, "for-each-ref", "--format=%(objectname) %(refname) %(symref)", "refs/heads", "refs/tags",
+               "refs/remotes").stdout
+    for line in out.splitlines():
+        sha, _, rest = line.partition(" ")
+        name, _, target = rest.partition(" ")
+        if target:
+            symrefs.append((name, target))
+        else:
+            refs.append((name, sha))
+    head = _git(p, "symbolic-ref", "-q", "HEAD")
+    head_ref = head.stdout.strip() if head.returncode == 0 else None
+    head_sha = _git(p, "rev-parse", "-q", "--verify", "HEAD").stdout.strip() or None
+    cfg = _git(p, "config", "-z", "--local", "--get-regexp", r"^(remote|branch)\.", binary=True)
+    config = []
+    for item in (cfg.stdout or b"").split(b"\0"):
+        if not item:
+            continue
+        key, _, value = item.decode("utf-8", "replace").partition("\n")
+        config.append((key, value))
+    status = _git(p, "status", "--porcelain=v1", "--untracked-files=all")
+    dirty = [l[3:] for l in status.stdout.splitlines() if l.strip()]
+    files = len(_git(p, "ls-files").stdout.splitlines())
+    return {"top": str(p.resolve()), "head_ref": head_ref, "head_sha": head_sha, "refs": refs,
+            "symrefs": symrefs, "config": config, "dirty": dirty, "files": files}
+
+
+# The far side of --from, in one connection: a new repo at the path (it
+# must not exist), every ref the bundle holds fetched into the same name,
+# the remote and branch config and the symbolic remote HEADs as the clone
+# here has them, HEAD as it is here, and the working tree checked out.
+# It prints created=yes once the directory is its own, so a failure after
+# that point removes what it made, and the refs as they ended up.
+_CLONE_SCRIPT = (
+    'd="$1"; b="$2"; hk="$3"; hv="$4"; n="$5"; shift 5; '
+    '[ ! -e "$d" ] || { echo "$d already exists" >&2; exit 90; }; '
+    'git -c init.defaultBranch=office-clone init -q "$d" >/dev/null || exit 91; echo "created=yes"; '
+    'cd "$d" || exit 91; '
+    'git fetch -q --update-head-ok "$b" "refs/heads/*:refs/heads/*" "refs/tags/*:refs/tags/*" '
+    '"refs/remotes/*:refs/remotes/*" || exit 92; '
+    'i=0; while [ "$i" -lt "$n" ]; do git config --add "$1" "$2" || exit 93; shift 2; i=$((i + 1)); done; '
+    'while [ $# -ge 2 ]; do git symbolic-ref "$1" "$2" || exit 94; shift 2; done; '
+    'if [ "$hk" = ref ]; then git symbolic-ref HEAD "$hv" || exit 95; '
+    'else git update-ref --no-deref HEAD "$hv" || exit 95; fi; '
+    'git reset -q --hard || exit 97; '
+    'git for-each-ref --format="ref=%(objectname) %(refname)" refs/heads refs/tags refs/remotes'
+)
+_CLONE_FAILED = {90: "the path appeared there in the meantime", 91: "git init failed",
+                 92: "fetching from the bundle failed", 93: "the config could not be set",
+                 94: "a symbolic remote HEAD could not be set", 95: "HEAD could not be set",
+                 97: "the working tree could not be checked out"}
+
+
+def path_exists(place, path=None):
+    """Whether a path (the place's own, by default) exists where the
+    place is, asked from where the shell lands."""
+    place = as_place(place)
+    path = path or place.path
+    if not place.hosted:
+        return pathlib.Path(os.path.expanduser(path)).exists()
+    run = run_in(place, ["sh", "-c", '[ -e "$1" ] && echo exists=yes || echo exists=no', "office-exists", path],
+                 chdir=False)
+    if run.returncode != 0 or "exists=" not in run.stdout:
+        raise HostError("refused", f"could not ask {place.host} whether {path} exists: {_last_words(run.stderr)}")
+    return "exists=yes" in run.stdout
+
+
+def clone_to(place, local, facts=None):
+    """Put a clone of the repo at local (this machine) at the place's
+    path (on its host, or here), with every branch and tag, the
+    remote-tracking refs, the remote and branch config and HEAD as the
+    clone here has them; then prepare it for bale (prepare's outcome:
+    git status clean, git ls-files unchanged, bale's files excluded).
+    The path must not exist there: refused before anything moves. The
+    clone here is never changed. Nothing of its working-tree changes
+    travels (the caller has asked about them). A failure after the new
+    repo was made removes it, and the temporary bundle on the host is
+    removed either way. Returns the lines to print."""
+    place = as_place(place)
+    facts = facts or clone_facts(local)
+    where = f"on {place.host}" if place.hosted else "on this machine"
+    if not facts["refs"]:
+        raise HostError("refused", f"{local} has no branch or tag to bring: nothing to clone")
+    if path_exists(place):
+        raise HostError("refused", f"{place.path} already exists {where}: --from makes a new clone there and "
+                                   "never writes into what is there; name a path that does not exist yet")
+    names = [n for n, _ in facts["refs"]]
+    with tempfile.TemporaryDirectory(prefix="office-from-") as tmp:
+        bundle = pathlib.Path(tmp) / "clone.bundle"
+        made = _git(facts["top"], "bundle", "create", "-q", str(bundle), *names)
+        if made.returncode != 0 or not bundle.is_file():
+            raise HostError("refused", f"git bundle create in {local} failed: {_last_words(made.stderr)}")
+        size = bundle.stat().st_size
+        print(f"[office] bundled {local}: {len(names)} ref(s), {size} bytes; sending it to {place.host or 'here'}",
+              file=sys.stderr)
+        head = ("ref", facts["head_ref"]) if facts["head_ref"] else ("sha", facts["head_sha"] or "")
+        with Scratch(place) as sc:
+            remote_bundle = f"{sc.path}/clone.bundle"
+            send_file(place, str(bundle), remote_bundle)
+            pairs = [w for kv in facts["config"] for w in kv]
+            syms = [w for kv in facts["symrefs"] for w in kv]
+            run = run_in(place, ["sh", "-c", _CLONE_SCRIPT, "office-clone", place.path, remote_bundle, *head,
+                                 str(len(facts["config"])), *pairs, *syms],
+                         timeout=TRANSFER_TIMEOUT, chdir=False)
+    created = "created=yes" in run.stdout.splitlines()
+    got = dict(reversed(l[len("ref="):].split(" ", 1)) for l in run.stdout.splitlines() if l.startswith("ref="))
+    problem = None
+    if run.returncode != 0:
+        problem = (f"the clone {where} failed: {_CLONE_FAILED.get(run.returncode, f'exit {run.returncode}')}"
+                   f" ({_last_words(run.stderr)})")
+    else:
+        # The symbolic remote HEADs are set there by name, not carried as
+        # refs: they are held to the clone here by what they name.
+        syms = dict(facts["symrefs"])
+        got = {n: v for n, v in got.items() if n not in syms}
+        want = dict(facts["refs"])
+        off = sorted(n for n in set(want) | set(got) if want.get(n) != got.get(n))
+        if off:
+            problem = f"the clone {where} does not hold the refs the clone here does: {', '.join(off[:8])}"
+    if problem:
+        if created:
+            # The directory did not exist before this clone made it, so it
+            # is the office's to remove.
+            if place.hosted:
+                gone = run_in(place, ["rm", "-rf", "--", place.path], chdir=False)
+                ok, why = gone.returncode == 0, _last_words(gone.stderr)
+            else:
+                try:
+                    shutil.rmtree(place.path)
+                    ok, why = True, ""
+                except OSError as exc:
+                    ok, why = False, str(exc)
+            problem += (f"; {place.path}, which it made, was removed" if ok
+                        else f"; and {place.path}, which it made, could not be removed: {why}")
+        raise HostError("refused", problem)
+    heads = sum(1 for n in got if n.startswith("refs/heads/"))
+    tags = sum(1 for n in got if n.startswith("refs/tags/"))
+    lines = [f"cloned {local} to {place.path} {where}: {heads} branch(es), {tags} tag(s) and the remote-tracking "
+             f"refs, level with the clone here; {len(facts['config'])} remote and branch setting(s) as the clone "
+             f"here has them; HEAD on {facts['head_ref'] or facts['head_sha']}"]
+    lines += prepare(place)
+    status = run_in(place, ["git", "status", "--porcelain"])
+    files = run_in(place, ["git", "ls-files"])
+    if status.stdout.strip() or len(files.stdout.splitlines()) != facts["files"]:
+        raise HostError("refused", f"the clone at {place.path} {where} is not clean after prepare: "
+                                   f"{_last_words(status.stdout) if status.stdout.strip() else 'its file count differs'}")
+    lines.append(f"git status is clean there and git ls-files lists the same {facts['files']} file(s) as here")
     return lines

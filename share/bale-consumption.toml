@@ -331,3 +331,32 @@ keys = [
   "sweep.status",     # committed when bale committed the record
   "sweep.detail",     # bale's words for what its sweep did
 ]
+
+# Not a bale verb: the install scripts every bale release ships, which
+# office projects level-bale runs on a hosted project's host (only when
+# the occupant asks) to put there the bale this machine runs. A release
+# install sits at <install>, bin/bale on the login PATH through a link;
+# the office sends a release-shaped tarball of this machine's install
+# (one top-level bale/ directory; user/, dot-entries and caches left out)
+# and runs the host's own <install>/upgrade.sh with these flags on it:
+# upgrade.sh moves <install>/user/ aside, replaces the rest, puts user/
+# back and runs install.sh -y, which runs validate.sh. A host with no bale
+# on its login PATH gets the tarball unpacked in its home and the
+# first-install script run. Read on 0.4.51 in the probe of session
+# 2026-10-07-out-trip-to-host-004 (upgrade.sh and install.sh in full);
+# the host's 0.4.40 copy was not read: its flags are the header's, and an
+# upgrade.sh that does not take -y refuses before it changes anything,
+# which the office reports in its words. The development record's
+# fixtures for bale-0.4.40 keep what that probe captured from the host's bale.
+#
+# script        the upgrade script, relative to the install
+# flags         given before the tarball
+# first_install the install script of a first install, relative to the
+#               unpacked install, and its flags
+[surfaces.upgrade]
+calls = false
+format = "text"
+contract = "upgrade.sh's header (read on 0.4.51); a release tarball holds one directory with bin/bale"
+script = "upgrade.sh"
+flags = ["-y"]
+first_install = ["install.sh", "-y"]

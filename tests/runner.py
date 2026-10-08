@@ -19,8 +19,11 @@ The plan's count is held to discover's before anything runs.
 
 Each job writes one log, <logs>/<job>.log (unittest -v's own output), and
 one result, <logs>/<job>.json. The summary names every job, its counts,
-its time and its log, and for a failing job the failing tests and the
-log to read. --serial is today's run: one process, unittest discover -v,
+its time and its log, and for a failing job the failing tests, each with
+its traceback (its last TRACEBACK_LINES lines, where the exception is),
+and the log to read: a log under the temp directory can be gone by the
+time anyone reads it (WSL empties /tmp on a restart), and the summary is
+what a relay carries. --serial is today's run: one process, unittest discover -v,
 on the terminal.
 
 Exit: 0 every test passed, 1 a test failed or errored, 2 the runner could
@@ -47,6 +50,9 @@ TESTS = pathlib.Path(__file__).resolve().parent
 SERIAL_ATTR = "serial_group"
 SERIAL_JOB = "serial-terminal"
 DEFAULT_JOBS = 4
+# A failing test's traceback in the summary: its last lines, the
+# exception and the frames nearest it.
+TRACEBACK_LINES = 40
 _print_lock = threading.Lock()
 
 
@@ -118,6 +124,7 @@ def run_job(job, names, result_path):
     out = {"job": job, "run": res.testsRun,
            "failures": [t.id() for t, _ in res.failures],
            "errors": [t.id() for t, _ in res.errors],
+           "tracebacks": {t.id(): tb for t, tb in [*res.failures, *res.errors]},
            "unexpected_successes": [t.id() for t in res.unexpectedSuccesses],
            "skipped": len(res.skipped), "seconds": round(time.monotonic() - started, 1)}
     pathlib.Path(result_path).write_text(json.dumps(out) + "\n", encoding="utf-8")
@@ -178,8 +185,23 @@ def summary(results, total, took, logs):
         for kind in ("failures", "errors", "unexpected_successes"):
             for t in r[kind]:
                 lines.append(f"    {kind[:-1] if kind != 'unexpected_successes' else 'unexpected success'}: {t}")
+                lines += traceback_lines((r.get("tracebacks") or {}).get(t), r["log"])
     lines.append("[run] " + ("FAILED" if failing else "OK") + f" ({sum(r['run'] for r in results)} tests run)")
     return lines, bool(failing)
+
+
+def traceback_lines(tb, log):
+    """A failing test's traceback for the summary, indented, capped at
+    its last TRACEBACK_LINES lines with a line saying where the rest is;
+    nothing when the job's result carries none."""
+    if not tb:
+        return []
+    body = tb.rstrip("\n").splitlines()
+    out = []
+    if len(body) > TRACEBACK_LINES:
+        out.append(f"      [{len(body) - TRACEBACK_LINES} lines above cut; the whole of it is in {log}]")
+        body = body[-TRACEBACK_LINES:]
+    return out + [f"      {l}" for l in body]
 
 
 def run_serial(env):
