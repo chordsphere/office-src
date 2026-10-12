@@ -4,6 +4,108 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.17.0
+
+Additive: no migration, nothing to do in any office. The audience line:
+a folder's landed work crosses from the project's workbench clone to the
+audience's git host as curated commits, and the letterhead becomes a
+check rather than a rule on paper.
+
+Three declarations on the projects table, set by `office projects add`
+and `set` (the wizard asks them after the host, defaults read from the
+clone; `--audience REMOTE`, `--author "Name <email>"`, `--base BRANCH`,
+and `--no-audience`, `--no-author`, `--no-base`), shown by `office
+projects`: `audience`, the remote in the workbench clone that points at
+the audience's git host (checked against the clone's remotes; a project
+with none leaves it unset, and deliver refuses it by name); `author`,
+the identity the audience expects on the commits (unset, the clone's own
+identity, read where the clone is at each delivery); `base`, the audience
+branch deliveries branch from (unset, the audience remote's HEAD branch,
+read from the clone).
+
+The push guard. Declaring an audience writes a pre-push hook into the
+clone's `.git/hooks`, outside what git tracks; `office deliver` installs
+it when it is missing. It refuses any push to the audience from the
+clone, by the remote's name or its URL, naming `office deliver`; a push
+deliver makes names its branch in `OFFICE_DELIVERY`, and the guard lets
+that branch alone through. A clone with `core.hooksPath` set or another
+pre-push hook is said and left alone.
+
+`office letterhead check [PATH | --on PROJECT] [--all] [--range A..B]
+[--words FILE]...`: every line that holds what the letterhead refuses,
+as `file:line: what`, exit 1 with a hit, 0 clean; `OFFICE_DEBUG=1` names
+every file read. The list is one file in the install,
+share/letterhead.toml: model, vendor and product names (each written
+with one letter bracketed, so the list never spells what it refuses);
+tell-tale phrasing an assistant writes (the suite's four fingerprints
+and a dozen more); bale's marks (`[bale `, `Merge bale `, `applied/`,
+`bale sweep`, `bale/` as a ref, a session id); and, when the office has
+`letterhead/forbidden.txt`, each non-blank, non-comment line of it as a
+fixed string (read if it exists, never written). The suite's text rules
+read the names and the phrasing from the same file; the brief's names
+stay the suite's own. Scope: a range's changed files at B and its commit
+messages; else the files a dirty tree changed; else the whole tree with
+`--all` or outside a git repo, said so; `--words FILE` as text. Binary
+files are skipped by name and by a NUL byte. On a hosted project the
+check travels through the shell as python3's program on stdin, writing
+nothing there (lib/office_letterhead.py imports nothing of the office).
+
+`office deliver FOLDER [--on PROJECT] [--branch NAME] [--others-too]
+[--yes]`, the crossing, each step logged: the project is the folder's
+lane's and declares an audience, the folder records an applied session,
+a hosted project is reached first; the audience's base is fetched (and
+the delivery branch, when an earlier delivery made it: a second delivery
+for the same folder adds to it); the landed work since the last delivery
+(else since the branch and the base parted) is read and every applied
+session in it named by id and folder, sessions of other folders said and
+named, with a question on a terminal and `--others-too` piped; the words
+come from `desk/FOLDER/delivery.md` (missing, deliver stops and says what
+to write where); in a temporary worktree at the audience's tip the work
+is squashed on, bale's names taken out of the index, and the diff and the
+words go through the letterhead check (one hit refuses, nothing pushed);
+the diff's stat, the sessions, the author, the branch (the folder's slug,
+or `--branch`) and the words are shown and deliver asks once (`--yes`;
+piped, it refuses without it); the words become one commit (several when
+delivery.md marks them with `paths:` lines) as the author, and that
+commit alone is pushed as the delivery branch, never the workbench
+branch; the folder's History gains a dated `delivered` line (branch,
+audience, sessions, workbench commit, delivery commit), and the review's
+URL is printed where the git host's compare-URL shape is known (GitHub,
+github.* and GitLab hosts, the review's title and body in it; on WSL, on
+the clipboard), the branch's name otherwise, and whom to send it to when
+the words name a reviewer. The push path, pinned by the probe: the
+delivery is built and pushed from this machine, where the audience
+answers with the occupant's credentials; for a project on a host the
+landed commits come here as a thin git bundle through the project's
+shell into a temporary bare repo removed after (three connections), and
+nothing is left on the host outside the repo. A push from the host is
+the known gap. The suite proves it against a bare repo standing in for
+the audience: no bale commit, merge, tag, branch, mark or excluded file
+on what a delivery pushes.
+
+The folder's two pages. templates/folder.md gains a Walkthrough and a
+Delivery section pointing at walkthrough.md and delivery.md in the
+folder, from two new templates that ride beside every build session's
+request; a build session writes both as the Walkthrough and Delivery
+sections at the end of its notes.md, and `office land` files them in the
+folder after an applied landing of a project session, when it found the
+response on this machine (naming `office sessions FOLDER SID --pages
+RESPONSE`, new, when only bale's search knew where it was). The build
+verb in share/verbs.toml lands the two pages and ships the templates.
+OFFICE.md's principle 6 names both pages; a `delivered` History verb is
+added. Existing folders are not rewritten.
+
+`office relay SID [ANSWER-FILE]`, 0.16.0's proposal: carries a planner's
+answer to a clarification back to the session's repo as `bale relay SID
+-` there, the answer on its stdin through the project's shell for a
+hosted project, and finds a bare name here and then in the downloads;
+the block bale prints for the worker is printed whole and, on WSL, put
+on the clipboard. share/bale-consumption.toml declares the stdin form.
+
+Also: `tests/test_audience_line.py`; the suite's `response_tarball`
+takes a notes.md; `office start`'s bundle test expects the templates'
+tarball in the tray.
+
 ## 0.16.0
 
 Additive: no migration, nothing to do in any office. The return trip from

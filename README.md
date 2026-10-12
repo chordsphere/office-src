@@ -23,6 +23,7 @@ which ships with every office session.
 | apply the desk moves a sitting decided | `office moves` |
 | send a session out for it | `office start` |
 | bring the session back | `office land` |
+| deliver a folder's landed work to the project's audience | `office deliver FOLDER` |
 | build an office | `office init` |
 | see every verb, grouped by what you want to do | `office help` |
 
@@ -149,14 +150,31 @@ paste the opener. The details are below.
 ### Bring it back
 
     office land                          # the session out: bale apply, how it ended, the relay
+    office relay SID answer.md           # the planner's answer to a clarification, to bale relay there
 
 It finds the session the response answers, runs bale apply in the repo it
 belongs to (on its host, for a project on another machine), says how it
 ended, hands you the relay to carry, runs the project's after-land
-actions, records the planner's ratification, offers to close a folder
-whose one session has landed and been ratified, closes the founding
-folder when the founding has landed, and names any watch that fired. The
+actions, records the planner's ratification, files the folder's
+walkthrough and delivery pages from the response, offers to close a
+folder whose one session has landed and been ratified, closes the
+founding folder when the founding has landed, and names any watch that
+fired. `office relay` carries a planner's answer to a clarification back
+to the session's repo, through the project's shell for a hosted one. The
 details are below.
+
+### Deliver it to the audience
+
+    office deliver health-route          # the folder's landed work to its project's audience, as curated commits
+    office letterhead check              # what the letterhead refuses, in the tree here
+
+A project's workbench clone is where bale lands, and nobody reviews it.
+`office deliver` carries a folder's landed work to the audience's git
+host as a branch of curated commits in your words, the folder's
+`delivery.md`, made from the audience's base, holding none of bale's
+commits, merges, tags, branches or files; it shows what leaves and asks
+once. `office letterhead check` is the guard it runs first, on its own
+for any tree. The details are below.
 
 ### Build an office
 
@@ -654,6 +672,111 @@ failing one names the line that reruns it from here. A read-only sitting
 there ends with `bale unlock` there. A hosted land makes about four
 connections, plus one per after-land action.
 
+### Delivering to the audience: the details
+
+The audience line (doctrine section 2): a project holds what its
+audience may read, and the office what only you may. bale lands a
+session in the project's workbench clone with its own marks, `[bale SID]`
+commits, `Merge bale SID` merges tagged `applied/SID`, `bale/SID`
+branches, `[bale sweep SID]` records, and that branch is never the one a
+coworker reviews. `office deliver FOLDER` is the crossing:
+
+    office deliver health-route                  # shows what leaves, asks once, pushes the branch
+    office deliver 14 --yes                      # without asking
+    office deliver health-route --branch api-health --others-too
+
+The project is the folder's lane's (`--on PROJECT` when the lane names
+none), and it must declare an `audience`: the name of the remote in its
+clone that points at the audience's git host, set with `office projects
+add` or `set --audience origin`; a project with none (the home office's
+own, say) is refused by name. The folder must record at least one
+session applied in that project. In order, each step logged:
+
+- The audience's base branch is fetched (the project's `base`, or the
+  audience remote's HEAD branch read from the clone), and the delivery
+  branch when an earlier delivery made it: a second delivery for the
+  same folder adds to the same branch.
+- The landed work since the last delivery, or since the workbench branch
+  and the base parted, is read: every applied session in it is named by
+  its id and the folder it belongs to. Sessions of other folders ride in
+  the same delivery (the office does not split one branch's history by
+  folder); deliver says so, names them, and on a terminal asks whether
+  to go on (`--others-too`; piped, it refuses without it).
+- The words come from `desk/FOLDER/delivery.md`: the commit subject and
+  body, the review request's title and body, and `- to: NAME` for the
+  reviewer (the install's templates/delivery.md says the shape; a build
+  session writes it and `office land` files it). Missing, deliver stops
+  and says what to write where.
+- In a temporary worktree at the audience's tip the landed work is
+  squashed on (`git merge --squash`), the names bale makes are taken out
+  of the index whatever the clone tracks, and the diff and the words go
+  through the letterhead check; one hit refuses the delivery, with
+  nothing pushed.
+- The diff's stat, the sessions covered, the author, the branch (named
+  from the folder's slug, or `--branch NAME`) and the words are shown,
+  and deliver asks once (`--yes`; piped, it refuses without it).
+- The words become one commit (several when `delivery.md` has several
+  Commit sections, each but the last naming on a `paths:` line what it
+  takes), authored and committed as the project's `author` (`Name
+  <email>`, or the clone's own identity), and that commit alone is
+  pushed as the delivery branch, with its name in `OFFICE_DELIVERY` for
+  the push guard; never the workbench branch.
+- The folder's History gains a dated `delivered` line: the branch, the
+  audience, the sessions covered, the workbench commit and the delivery
+  commit. Then what you do next: open the review (a URL when the git
+  host's compare-URL shape is known, GitHub, an enterprise instance
+  named github.*, or GitLab, with the review's title and body in it and,
+  on WSL, on the clipboard; the branch's name otherwise) and whom to
+  send it to, when the words name a reviewer.
+
+The delivery is built on this machine, where the audience answers with
+your credentials: for a project on this machine in the clone itself, in
+refs the office owns (`refs/office/...`, gone after); for a project on a
+host the landed commits come here as a thin git bundle made in the clone
+there and carried through the project's shell, into a temporary bare
+repo removed after, and the push goes from here. Nothing the office
+writes on a host outside the project's repo is left. A hosted delivery
+makes three connections (the clone's facts, the bundle, its read). A
+conflict with the audience's base refuses with the remedy: bring the
+base into the workbench branch first, land that, and deliver again.
+
+The push guard. Declaring an audience (`office projects add --audience`,
+`set --audience`) writes a pre-push hook into the clone's `.git/hooks`,
+outside what git tracks, as `--prepare` keeps everything the office
+writes; `office deliver` installs it when it is missing. It refuses any
+push to the audience from the clone, by name or by URL, naming `office
+deliver`; deliver's own push names its branch in `OFFICE_DELIVERY`, and
+the guard lets that branch through and nothing else. A clone with
+`core.hooksPath` set, or another pre-push hook, is said and left alone.
+Known gap: a push from the host itself is not built (the probe found the
+work host's credential cache empty, so nothing reaches the audience from
+there without a prompt); the delivery crosses from this machine.
+
+The letterhead check:
+
+    office letterhead check                      # the files the tree here changed, as they are
+    office letterhead check --all ~/work/api     # the whole tree
+    office letterhead check --on api --range origin/main..HEAD   # in a project's repo, on its host
+    office letterhead check --words desk/14-health-route/delivery.md
+
+It names every line that holds what the letterhead refuses, as
+`file:line: what`, and exits 1 with a hit. What it refuses is one list in
+the install, share/letterhead.toml: the names of models, vendors and
+products; tell-tale phrasing an assistant writes and a person does not;
+and bale's marks (its commit subjects, `applied/` tags, `bale/` branches
+and session ids); plus, when the office has `letterhead/forbidden.txt`
+(a later space; the check reads the file when it exists and never
+creates it), each non-blank, non-comment line of it as a fixed string.
+The suite's own text rules read the same list, so office-src's text is
+held to it too. Scope: the files a range changed and its commit messages
+(`--range A..B`, which is how deliver checks a delivery's diff); else the
+files a dirty tree changed, as they are; else the whole tree (`--all`,
+or a directory that is not a git repo, said so). `--words FILE` checks a
+text as it is. Binary files are skipped by name and by a NUL byte;
+`OFFICE_DEBUG=1` names every file read. `--on PROJECT` runs it in the
+project's repo, through its shell on a host, where the check travels as
+the program python3 reads from stdin and writes nothing.
+
 ### Which sessions worked on a job
 
 `office start` records the session it packs. When you pack one for a
@@ -667,6 +790,27 @@ what bale records about the session: its outcome, dates, claims beside
 verdicts and exchange rounds. The folder keeps the id and any words you
 add with `-m`; it never copies what bale records about the session.
 
+The folder's two pages. Nearly every job produces two deliverables
+(doctrine section 3, principle 6): the thing, in the project, and the
+message about it. A build session writes the message as two sections at
+the end of its notes.md, Walkthrough (what changed, why, how to explain
+each piece, the questions a reviewer will ask, a hand test for what only
+eyes can check) and Delivery (the commit subject and body, the review
+request's title and body, `- to: NAME` for the reviewer), each heading
+one level down from the page's; the install's templates/walkthrough.md
+and templates/delivery.md ride beside every build session's request to
+say the shape, and the folder's own Walkthrough and Delivery sections
+point at the pages. `office land` files them in the folder as
+`walkthrough.md` and `delivery.md` after an applied landing, when it
+found the response on this machine (a path, or by name in the
+downloads); when only bale's own search knew where the response was,
+land names the line that files them:
+
+    office sessions fix-login 2026-10-05-fix-login-001 --pages ~/Downloads/response-2026-10-05-fix-login-001.tar.gz
+
+Folders from before 0.17.0 are not rewritten; the pages file into them
+all the same.
+
 ### The projects an office scopes, and what bale records about them
 
     office projects                          # the projects this office scopes, and where each is
@@ -677,6 +821,7 @@ add with `-m`; it never copies what bale records about the session.
     office projects set api --shell "ssh me@workhost docker exec -i -u me box bash -lc"
     office projects set api --connect "start the VPN client, then retry"
     office projects set office-src --ride ~/other-repo/docs --after-land ./install.sh
+    office projects set api --audience origin --author "Pat Example <pat@example.org>" --base main
     office projects --ledger                 # trust ledger per project and work class
     office projects --landed bin/office      # the last applied session that landed a path
     office projects office-src --versions    # the version trail of one project
@@ -759,7 +904,20 @@ inside another repo, a whole repo, or a file) and what runs in its repo
 after one of its sessions lands (`--after-land CMD`, repeatable; `office
 land` runs them). `office
 projects set NAME` asks for both on a terminal, and `office projects`
-shows them. They live in the office, never in the project's repo. Walking in shows the sessions
+shows them. They live in the office, never in the project's repo.
+A project with an audience declares three more, the audience line's
+(`office deliver` reads them): `--audience REMOTE`, the name of the
+remote in the workbench clone that points at the audience's git host
+(origin, usually; checked against the clone's remotes; a project with
+none is never delivered); `--author "Name <email>"`, the identity the
+audience expects on the delivery commits (unset, deliver authors as the
+clone's own identity, read where the clone is); and `--base BRANCH`, the
+audience branch deliveries branch from (unset, the audience remote's
+HEAD branch, read from the clone). On a terminal `add` and `set` ask the
+three after the host question, defaults read from the clone;
+`--no-audience` takes a project off the audience line, `--no-author` and
+`--no-base` clear one. Declaring an audience installs the push guard in
+the clone (above). Walking in shows the sessions
 open in those projects and the folder whose Sessions section names each.
 Everything here is read from bale's `--json` surfaces in each project and
 rendered on every run, never copied into the office; the bale verbs,
@@ -782,7 +940,10 @@ matches the floor plan.
 | bin/office | the command (bash) |
 | lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library) |
 | lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after |
-| lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, and the check and the preparing of a clone for bale, here or there |
+| lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard and a bundle carried back |
+| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check), its run (the commits, the push, the record) and what it abandons; office letterhead check --on PROJECT |
+| lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin) |
+| share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks, one list for office letterhead check and the suite's text rules |
 | doctrine/OFFICE.md | how every office works |
 | doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |
 | share/spaces.toml | every space an office can have; the base ones are the default floor plan; a space files itself whole or as a list of paths |
@@ -793,7 +954,7 @@ matches the floor plan.
 | lib/office_watches.py | the watches: the query catalog, the register and its log, the check and its fired records |
 | lib/office_digest.py | the digest: the sitting-open page, every section computed |
 | share/watch-queries.toml | every query a watch can evaluate: the bale surface it reads, the value, how it compares, or the datum bale does not stamp yet |
-| templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), each made into a page the first time a verb writes it |
+| templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), each made into a page the first time a verb writes it; the folder's two pages, walkthrough.md and delivery.md, which ride with every build session |
 | migrations/ | one file per breaking release; format in migrations/README.md |
 | RELEASES.md | release notes |
 | tests/ | the test suite; run.sh (with runner.py) runs it side by side |
@@ -867,4 +1028,6 @@ start's tests use a fake that packs, every line of it built from the
 packs a probe captured, and office land's a fake that also applies, holds,
 refuses and opens bundles, built from the applies and opens a probe
 captured, and runs `bale open --check` from the checks a later probe
-captured on bale 0.4.47.
+captured on bale 0.4.47. The audience line's tests use a bare repo on
+this machine as the audience's git host, the clone's `origin` a local
+path, so a delivery pushes for real and the tests read what arrived.

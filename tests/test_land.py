@@ -436,11 +436,14 @@ class FakeLandBale:
         return sid in json.loads(self.state.read_text())["repos"][os.path.realpath(repo)]["sessions"]
 
 
-def response_tarball(directory, sid, files=None, kind="normal", validation="pass", name=None):
+def response_tarball(directory, sid, files=None, kind="normal", validation="pass", name=None, notes=None):
     """A response tarball the way a worker ships one: files ({path: text})
-    modified or created, a validation.sh that passes or fails."""
+    modified or created, a validation.sh that passes or fails, and, since
+    0.17.0, a notes.md when given (the folder's pages ride in it)."""
     nnn = sid[-3:]
     members, changes = {}, []
+    if notes is not None:
+        members["notes.md"] = notes.encode()
     for path, text in (files or {}).items():
         data = text.encode()
         members[f"files/{path}"] = data
@@ -1016,8 +1019,11 @@ class TestStartABundle(LandCase):
         (cwd, argv, tty), = self.fake.calls_of("open")
         self.assertEqual((cwd, argv, tty), (os.path.realpath(self.proj), ["open", str(bundle)], False))
         tray = pathlib.Path(re.search(r"^Out tray: (.*)$", proc.stdout, re.M).group(1))
+        # Since 0.17.0 a build session also gets the install's two page
+        # templates (context-office-src-install.tar.gz).
         self.assertEqual(sorted(p.name for p in tray.iterdir()),
-                         sorted([f"request-{sid}.tar.gz", "context-doctrine.tar.gz", "context-home.tar.gz"]))
+                         sorted([f"request-{sid}.tar.gz", "context-doctrine.tar.gz", "context-home.tar.gz",
+                                 "context-office-src-install.tar.gz"]))
         self.assertIn("from the bundle 2026-10-05-fix-from-bundle.bale-bundle", proc.stdout)
         self.assertIn(f"\n- {sid}\n", (self.root / self.folder / "folder.md").read_text())
         opener = opener_from(proc.stdout)

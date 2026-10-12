@@ -1088,7 +1088,7 @@ class TestCatalogs(unittest.TestCase):
         lands the cabinet alone and reopen the desk alone. tour writes a
         throwaway office it deletes before it ends, so it lands nothing."""
         v = verbs_catalog()["verbs"]
-        prose = {"init", "found", "upgrade", "default", "start", "land", "tour"}
+        prose = {"init", "found", "upgrade", "default", "start", "land", "tour", "deliver", "relay"}
         moves = {"close": ["filing-cabinet/{folder}"], "reopen": ["desk/{folder}"]}
         for name, verb in v.items():
             if verb["kind"] != "script" or name in DECLARED_KINDS:
@@ -1124,7 +1124,14 @@ class TestCatalogs(unittest.TestCase):
         self.assertTrue(v["tour"]["built"])
         for name in ("founding", "work", "prep", "meeting", "renovate", "build"):
             self.assertTrue(v[name]["attended"], name)
-        self.assertEqual(v["build"]["lands"], [])
+        # Since 0.17.0 a build session lands the folder's two pages (the
+        # two deliverables of principle 6), filed by office land.
+        self.assertEqual(v["build"]["lands"], ["desk/{folder}/walkthrough.md", "desk/{folder}/delivery.md"])
+        # deliver and relay write outside the office and guarantee nothing
+        # (a letterhead hit pushes nothing); letterhead check only reads.
+        self.assertEqual(v["deliver"]["lands"], [])
+        self.assertEqual(v["relay"]["lands"], [])
+        self.assertEqual(v["letterhead-check"]["writes"], [])
 
     def test_the_declared_kinds_are_registered_and_not_built(self):
         v = verbs_catalog()["verbs"]
@@ -1324,11 +1331,20 @@ class TestInstall(unittest.TestCase):
 
 # --- text rules ------------------------------------------------------------------
 
-# Split so this file does not trip its own checks.
-MODEL_NAMES = ["cla" + "ude", "anth" + "ropic", "open" + "ai", "chat" + "gpt", "gem" + "ini", "g" + "pt-", "copi" + "lot", "ll" + "ama"]
+# The names and the phrasing come from the letterhead's one list,
+# share/letterhead.toml (since 0.17.0): what the letterhead refuses in
+# work that leaves for an audience is what office-src's own text is held
+# to as well. Each name there is a pattern with one letter bracketed, so
+# the list never spells the name it refuses and this check never trips on
+# the list itself. The office-specific words are this suite's alone: the
+# brief's hosts, people and projects, which office-src stays agnostic of
+# (a different purpose, so they stay apart from the letterhead), split so
+# this file does not trip its own check.
+LETTERHEAD = tomllib.loads((REPO / "share/letterhead.toml").read_text())
+MODEL_NAMES = LETTERHEAD["names"]["patterns"]
+FINGERPRINTS = LETTERHEAD["phrasing"]["patterns"]
 OFFICE_SPECIFIC = ["med" + "gen", "zago" + "odma", "mm" + "ge", "iu" + "pui", "github." + "iu", "i" + "u health",
                    "sh" + "iny", "chord" + "sphere", "m10" + "_"]
-FINGERPRINTS = [r"^\s*note:", r"^\s*important:", r"in summary", r"why this file exists"]
 
 
 def office_bound_text():
@@ -1368,10 +1384,25 @@ class TestText(unittest.TestCase):
 
     def test_names_no_model_and_no_office(self):
         self.assertGreaterEqual(len(own_text()), 20)
+        self.assertGreaterEqual(len(MODEL_NAMES), 8)
         for p in own_text():
             text = p.read_text(encoding="utf-8", errors="replace").lower()
-            for word in MODEL_NAMES + OFFICE_SPECIFIC:
+            for pat in MODEL_NAMES:
+                self.assertIsNone(re.search(pat, text, re.I), f"{p.relative_to(REPO)} names a model ({pat})")
+            for word in OFFICE_SPECIFIC:
                 self.assertNotIn(word, text, f"{p.relative_to(REPO)} names {word!r}")
+
+    def test_the_letterhead_list_never_spells_what_it_refuses(self):
+        """A name in share/letterhead.toml is a pattern that matches the
+        name and not its own spelling, so the list can live in office-src
+        under its own rule."""
+        text = (REPO / "share/letterhead.toml").read_text()
+        for pat in MODEL_NAMES:
+            self.assertIsNone(re.search(pat, pat, re.I), pat)
+            self.assertIsNone(re.search(pat, text, re.I), pat)
+        for section in ("names", "phrasing", "marks"):
+            for pat in LETTERHEAD[section]["patterns"]:
+                re.compile(pat)
 
     def test_profile_template_matches_the_shape(self):
         shape = tomllib.loads((REPO / "share/profile-shape.toml").read_text())

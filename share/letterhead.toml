@@ -1,0 +1,81 @@
+# What the letterhead refuses: the one list office letterhead-check reads
+# (lib/office_letterhead.py), and the suite's text rules with it
+# (tests/test_office.py reads names and phrasing from here, so the tool's
+# own text is held to the same list). The check runs on what leaves the
+# office for an audience: the files a delivery changes, its commit
+# messages and the delivery's words (office deliver runs it before
+# anything is pushed), or any tree or range by hand.
+#
+# Every pattern is a Python regular expression matched case-insensitively
+# against one line; a fixed string is a pattern with nothing special in
+# it. A name is written with one letter bracketed (cla[u]de) so that this
+# file, and the tool that carries it, never hold the name itself: the
+# pattern matches the name, and nothing matches the pattern's own
+# spelling. Add a line to a list to refuse one more thing; the office's
+# letterhead/forbidden.txt (a later space) adds fixed strings of its own,
+# one per line, read when it exists and never written by the check.
+#
+# names      models, vendors and products, which have no place in work
+#            that leaves as the occupant's own
+# phrasing   tell-tale lines an assistant writes and a person does not
+# marks      bale's own marks: its commit subjects, its tag and branch
+#            names, and a session id of the form YYYY-MM-DD-slug-NNN
+
+[names]
+patterns = [
+  "cla[u]de",
+  "anth[r]opic",
+  "open[a]i",
+  "chat[g]pt",
+  "gem[i]ni",
+  "g[p]t-",
+  "copi[l]ot",
+  "ll[a]ma",
+  "deep[s]eek",
+  "\\bll[m]s?\\b",
+  "large lang[u]age model",
+  "\\ba\\.?i\\.?[- ](assistant|model|generated|written)",
+]
+
+[phrasing]
+patterns = [
+  "^\\s*note:",
+  "^\\s*important:",
+  "in summary",
+  "why this file exists",
+  "^\\s*(certainly|absolutely|great question|sure thing)[,!]",
+  "^\\s*here(?:'s| is) (?:the|an?) (?:updated|revised|complete|full|final) ",
+  "\\bas an ai\\b",
+  "i hope this helps",
+  "let me know if you (?:need|want|have|would)",
+  "feel free to (?:ask|reach|adjust|modify)",
+  "i(?:'ve| have) (?:successfully |now )?(?:implemented|completed|updated|added|created) (?:the|your|all)",
+  "i apologize for (?:the|any) confusion",
+  "\\bdelve\\b",
+  "it(?:'s| is) worth noting",
+  "\\btl;?dr\\b",
+  "^\\s*(?:key )?(?:takeaways|changes made|summary of changes):\\s*$",
+  "this (?:change|commit|pr|pull request) (?:introduces|implements|adds) (?:comprehensive|robust|seamless)",
+]
+
+[marks]
+patterns = [
+  "\\[bale ",
+  "Merge bale ",
+  "applied/",
+  "bale sweep",
+  "\\bbale/[0-9]{4}-[0-9]{2}-[0-9]{2}-",
+  "\\b[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{3}\\b",
+]
+
+# File names whose contents are never read: binary by name. The check
+# reads text; a file it cannot decode is skipped and named under
+# OFFICE_DEBUG=1.
+[binary]
+suffixes = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp", ".tif", ".tiff", ".svgz",
+            ".pdf", ".zip", ".gz", ".tgz", ".bz2", ".xz", ".zst", ".7z", ".rar", ".tar",
+            ".jar", ".war", ".class", ".so", ".dll", ".dylib", ".exe", ".bin", ".o", ".a", ".pyc",
+            ".woff", ".woff2", ".ttf", ".otf", ".eot",
+            ".mp3", ".mp4", ".wav", ".ogg", ".flac", ".mov", ".avi", ".mkv", ".webm",
+            ".rds", ".rdata", ".rda", ".parquet", ".feather", ".sqlite", ".db", ".pickle", ".pkl", ".npy", ".npz",
+            ".xlsx", ".xls", ".docx", ".pptx", ".ds_store"]

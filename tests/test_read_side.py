@@ -550,6 +550,9 @@ class TestProjectsVerb(unittest.TestCase):
         os.write(fd, b"\n")
         self.assertTrue(read_until(b"(--name) [office-src]:"), seen)
         os.write(fd, b"\n")
+        # Since 0.17.0, after the name: the audience line (none here).
+        self.assertTrue(read_until(b"or none (--audience) [none]:"), seen)
+        os.write(fd, b"\n")
         # What rides with it and what runs after it lands: a plain
         # return ends each list, empty.
         self.assertTrue(read_until(b"(--ride) [return ends the list]:"), seen)

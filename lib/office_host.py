@@ -920,6 +920,168 @@ def remove_scratch(place, path):
     debug(f"scratch on {place.host} removed: {path}")
 
 
+# --- the audience line (0.17.0): a clone's git facts, the push guard, a bundle back ------
+#
+# office deliver carries a folder's landed work from the workbench clone
+# to the audience's git host as curated commits. What it needs of the
+# clone where the clone is: its remotes and identity (the defaults for
+# the audience, author and base declarations), the push guard in its
+# .git/hooks, and a bundle of the landed commits carried to the
+# occupant's machine, where the audience answers with his credentials.
+
+GUARD_MARK = "office push guard"
+# The variable office deliver sets on the one push it makes, naming the
+# delivery branch: the guard lets that branch through and nothing else.
+DELIVERY_ENV = "OFFICE_DELIVERY"
+PUSH_GUARD = """#!/bin/sh
+# {mark} (office-src): a push to this project's audience goes through
+# office deliver, which pushes one delivery branch and nothing else.
+# Written by office projects add and set, and by office deliver; the
+# office owns this file (.git/hooks is outside what git tracks).
+audience='{audience}'
+audience_url='{url}'
+remote="$1"; url="$2"
+if [ "$remote" != "$audience" ] && [ "$url" != "$audience_url" ]; then exit 0; fi
+if [ -n "${{{env}:-}}" ]; then
+  while read -r local_ref local_sha remote_ref remote_sha; do
+    [ "$remote_ref" = "refs/heads/${env}" ] && continue
+    echo "[office] refused: office deliver pushes refs/heads/${env} alone, not $remote_ref" >&2
+    exit 1
+  done
+  exit 0
+fi
+echo "[office] refused: $remote is this project's audience, and nothing goes there by hand: office deliver FOLDER carries a folder's landed work as a delivery branch, and nothing else." >&2
+exit 1
+"""
+
+_GIT_FACTS_SCRIPT = (
+    'd="$1"; ' + _EXPAND_D + 'cd "$d" || exit 3; git rev-parse --git-dir >/dev/null 2>&1 || exit 4; '
+    'echo "branch=$(git symbolic-ref -q --short HEAD 2>/dev/null)"; echo "head=$(git rev-parse -q --verify HEAD 2>/dev/null)"; '
+    'echo "name=$(git config user.name 2>/dev/null)"; echo "email=$(git config user.email 2>/dev/null)"; '
+    'for r in $(git remote); do echo "remote=$r $(git remote get-url "$r" 2>/dev/null)"; '
+    'h=$(git symbolic-ref -q --short "refs/remotes/$r/HEAD" 2>/dev/null); [ -z "$h" ] || echo "remote_head=$r ${h#"$r"/}"; done; '
+    'echo "hooks_path=$(git config core.hooksPath 2>/dev/null)"; '
+    'hook="$(git rev-parse --git-path hooks)/pre-push"; '
+    'if [ -f "$hook" ]; then if grep -q "' + GUARD_MARK + '" "$hook"; then '
+    "echo \"guard=office $(sed -n \"s/^audience='\\(.*\\)'\\$/\\1/p\" \"$hook\")\"; "
+    'else echo "guard=other"; fi; else echo "guard=none"; fi; '
+    'echo "dirty=$(git status --porcelain 2>/dev/null | wc -l | tr -d " ")"'
+)
+
+
+def git_facts(place):
+    """What office projects and office deliver read of a clone where it
+    is: branch, head, name, email, remotes {name: url}, remote_heads
+    {remote: branch}, hooks_path, guard (none, other, or the audience the
+    office's guard names) and dirty (changed paths, a count)."""
+    place = as_place(place)
+    run = run_in(place, ["sh", "-c", _GIT_FACTS_SCRIPT, "office-git-facts", place.path], chdir=False)
+    if run.returncode != 0:
+        why = {3: "no such directory", 4: "not a git repo"}.get(run.returncode, _last_words(run.stderr))
+        raise HostError("refused", f"could not read the clone at {place}: {why}")
+    facts = {"remotes": {}, "remote_heads": {}, "guard": "none", "guard_audience": None}
+    for line in run.stdout.splitlines():
+        key, _, value = line.partition("=")
+        if key == "remote":
+            name, _, url = value.partition(" ")
+            facts["remotes"][name] = url
+        elif key == "remote_head":
+            name, _, branch = value.partition(" ")
+            facts["remote_heads"][name] = branch
+        elif key == "guard":
+            kind, _, audience = value.partition(" ")
+            facts["guard"] = kind
+            facts["guard_audience"] = audience or None
+        elif key in ("branch", "head", "name", "email", "hooks_path", "dirty"):
+            facts[key] = value
+    facts["dirty"] = int(facts.get("dirty") or 0)
+    return facts
+
+
+_GUARD_SCRIPT = (
+    'd="$1"; ' + _EXPAND_D + 'cd "$d" || exit 3; git rev-parse --git-dir >/dev/null 2>&1 || exit 4; '
+    '[ -z "$(git config core.hooksPath 2>/dev/null)" ] || exit 6; '
+    'hooks="$(git rev-parse --git-path hooks)"; mkdir -p "$hooks" || exit 5; hook="$hooks/pre-push"; '
+    'if [ -f "$hook" ] && ! grep -q "' + GUARD_MARK + '" "$hook"; then exit 7; fi; '
+    'printf %s "$HOOK" > "$hook" && chmod +x "$hook" && echo "guard=written $hook"'
+)
+_GUARD_FAILED = {3: "no such directory", 4: "not a git repo", 5: "could not make the hooks directory",
+                 6: "core.hooksPath is set, so this clone's .git/hooks are not the hooks git runs; the guard "
+                    "would go unread there (unset it, or guard that directory by hand)",
+                 7: "another pre-push hook is already there, and the office does not replace a hook it "
+                    "did not write; move it aside, or add the guard's refusal to it by hand"}
+
+
+def push_guard_text(audience, url):
+    return PUSH_GUARD.format(mark=GUARD_MARK, audience=audience, url=url or "", env=DELIVERY_ENV)
+
+
+def install_push_guard(place, audience, url):
+    """Write the push guard into the clone's .git/hooks/pre-push, where it
+    is (through the shell for a hosted place): the clone can no longer be
+    pushed to the audience by hand. Returns the line to print. Writes
+    only outside what git tracks, as prepare does."""
+    place = as_place(place)
+    env = {"HOOK": push_guard_text(audience, url)}
+    argv = ["sh", "-c", _GUARD_SCRIPT, "office-guard", place.path]
+    if place.hosted:
+        argv = ["env", f"HOOK={env['HOOK']}", *argv]
+    run = run_in(place, argv, env=env, chdir=False)
+    if run.returncode != 0:
+        raise HostError("refused", f"could not install the push guard in {place}: "
+                        f"{_GUARD_FAILED.get(run.returncode, run.stderr.strip() or f'exit {run.returncode}')}")
+    return (f"push guard installed in {place} (.git/hooks/pre-push): a push to {audience} by hand is refused there; "
+            "office deliver pushes a delivery branch alone")
+
+
+def bundle_to_here(place, local, prerequisites, refs):
+    """A git bundle of the refs, thin against the prerequisites, made in
+    the clone where it is and carried to local on this machine (through
+    the shell, into the office's one temporary directory, removed after).
+    Returns local's sha256."""
+    place = as_place(place)
+    argv = ["git", "bundle", "create", "-q", None, *[f"^{p}" for p in prerequisites], *refs]
+    if not place.hosted:
+        argv[4] = str(local)
+        run = run_in(place, argv, timeout=TRANSFER_TIMEOUT)
+        if run.returncode != 0:
+            raise HostError("refused", f"git bundle create in {place.path} failed: {_last_words(run.stderr)}")
+        return sha256_of(local)
+    with Scratch(place) as sc:
+        remote = f"{sc.path}/landed.bundle"
+        argv[4] = remote
+        run = run_in(place, argv, timeout=TRANSFER_TIMEOUT)
+        if run.returncode != 0:
+            raise HostError("refused", f"git bundle create in {place} failed: {_last_words(run.stderr)}")
+        return fetch_file(place, remote, str(local))
+
+
+def run_feeding(place, argv, local_file, timeout=TRANSFER_TIMEOUT):
+    """Run one argv in the place's directory with a file from this
+    machine on its stdin (bale relay SID - on a host reads the planner's
+    answer that way): a Run. On this machine the file is the process's
+    stdin; through the shell its bytes travel on the connection."""
+    place = as_place(place)
+    if not place.hosted:
+        if not pathlib.Path(place.path).is_dir():
+            raise HostError("path", f"no such directory on this machine: {place.path}")
+        with open(local_file, "rb") as fh:
+            try:
+                proc = subprocess.run(argv, cwd=place.path, stdin=fh, capture_output=True, text=True, timeout=timeout,
+                                      env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+            except subprocess.TimeoutExpired:
+                raise HostError("refused", f"{shown_argv(argv)} in {place.path} did not finish in {timeout}s")
+            except OSError as exc:
+                raise HostError("shell", f"could not run {argv[0]}: {exc}")
+        debug(f"{shown_argv(argv)} in {place.path}, fed {local_file}: exit {proc.returncode}")
+        return Run(proc.returncode, proc.stdout, proc.stderr, shown_argv(argv), place.path)
+    command = f"cd {shell_path(place.path)} && PYTHONDONTWRITEBYTECODE=1 {shlex.join(argv)}"
+    with open(local_file, "rb") as fh:
+        rc, out, err = _raw(place, command, stdin=fh, timeout=timeout)
+    debug(f"{shown_argv(argv)} in {place}, fed {local_file}: exit {rc}")
+    return Run(rc, (out or b"").decode("utf-8", "replace"), err, shown_argv(argv), str(place))
+
+
 # --- a clone moved to its host (office projects add --from) ---------------------------------
 
 def _git(repo, *args, binary=False):

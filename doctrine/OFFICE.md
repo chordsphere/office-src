@@ -94,12 +94,23 @@ Three boundaries hold that line, each with a guard.
    Some offices sit next to data that must never be shipped; their
    profile says which, and a session honors it before anything else.
 2. What leaves the office, into a project or to a person. Guards: the
-   letterhead, where an office has one, for anything that goes out; and
-   the rule that office context informs a session but never lands in a
-   project. Every project session an office packs carries that rule as a
-   constraint: "Office context informs this session but never lands in
-   this project." Deliberation, candid notes and private versions stay in
-   the office even when a session read them to do the work.
+   letterhead, where an office has one, for anything that goes out, and
+   its check, `office letterhead check`, which names every line that
+   holds what the letterhead refuses (the names of models, vendors and
+   products; tell-tale phrasing an assistant writes; bale's own marks;
+   and the office's forbidden words, letterhead/forbidden.txt, when it
+   has them); `office deliver`, the one way a project's landed work
+   reaches its audience's git host: a branch of curated commits in the
+   occupant's words, made from the audience's base, holding no bale
+   commit, merge, tag or branch and no file bale's exclude list names,
+   checked by the letterhead before anything is pushed, and never the
+   workbench branch itself, which the push guard in the clone keeps from
+   being pushed to the audience by hand; and the rule that office context
+   informs a session but never lands in a project. Every project session
+   an office packs carries that rule as a constraint: "Office context
+   informs this session but never lands in this project." Deliberation,
+   candid notes and private versions stay in the office even when a
+   session read them to do the work.
 3. Where each repo is pushed. Guard: the profile's site section. An
    office repo is never pushed where a project's audience can read it.
 
@@ -121,7 +132,13 @@ Three boundaries hold that line, each with a guard.
    them.
 6. Nearly every job produces two deliverables: the thing, which lives in
    a project, and the message about the thing, which leaves through the
-   letterhead with a copy in the folder.
+   letterhead with a copy in the folder. The folder holds the message as
+   two pages a build session writes, at the end of its notes.md, and
+   `office land` files: walkthrough.md, what changed, why, how to explain
+   each piece, the questions a reviewer will ask and a hand test for what
+   only eyes can check, which stays in the office; and delivery.md, the
+   words the work leaves with, the commit and the review request in the
+   occupant's voice and whom to send it to, which `office deliver` reads.
 
 ## 4. How a session is packed
 
@@ -251,7 +268,26 @@ says so). The founding folder keeps its own rule.
 After a project session lands, the office side (the folder, and the
 front sheet of any handbook chapter the change touched) is brought up to
 date by an office step, not by the project session writing into the
-office.
+office: `office land` files the folder's walkthrough.md and delivery.md
+from the Walkthrough and Delivery sections of the response's notes.md
+(principle 6), when it found the response on the occupant's machine;
+`office sessions FOLDER SID --pages RESPONSE` files them from a response
+bale found on its own.
+
+Delivering to the audience is a further step, the occupant's, and one
+command: `office deliver FOLDER`. It reads the folder's delivery.md,
+fetches the audience's base, carries the clone's landed work to the
+occupant's machine (as a git bundle through the project's shell, for a
+project on a host: the audience answers with the occupant's credentials
+here, not on the host), squashes it onto the audience's base in a
+temporary worktree, names the applied sessions it covers and whose
+folders they belong to (sessions of other folders ride in the same
+delivery, said, and the occupant may stop there), runs the letterhead
+check on the diff and the words, shows the diff's stat, the sessions, the
+author, the branch and the words, asks once, and pushes that branch and
+nothing else; the folder's History gains a dated `delivered` line, and
+the review's URL is printed where the git host's shape is known. A second
+delivery for the same folder adds to the same branch.
 
 ## 5. Spaces
 
@@ -532,7 +568,10 @@ Kinds:
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes |
 | projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace, a clone here brought there with --from), declare where it is, what rides with it and what runs after it lands, bring a host's bale level with this machine's (level-bale), render what bale records about them | yes |
 | start | script: pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
-| land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, the founding folder closed when the founding has landed, the watches that fired, and what became of each action; or end a read-only sitting the office sent out | yes |
+| land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, the folder's walkthrough and delivery pages filed from the response, the founding folder closed when the founding has landed, the watches that fired, and what became of each action; or end a read-only sitting the office sent out | yes |
+| relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes |
+| deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, checked by the letterhead, asked once, recorded in the folder | yes |
+| letterhead check | script, read-only: name every line in a tree, a range or a file that holds what the letterhead refuses | yes |
 | tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes |
 | moves | script: apply the desk moves a sitting wrote, through open's, close's and the gate flags' own code, ticking each and writing a minted number onto its blueprint's decomposition line; stops at the first line it cannot apply | yes |
 | blueprint open, blueprint ratify | script: draft a blueprint from the template; write its charter's ratified line | yes |
@@ -544,7 +583,7 @@ Kinds:
 | digest | script: write the sitting-open page, every section computed; office start runs it before it packs a sitting | yes |
 | founding | office session: the profile, the occupant's words, the timezone | yes, via init, found and start |
 | work | office session: answer, draft, probe, decide, deliver | yes, via start |
-| build | project session: change a project for a folder | yes, via start |
+| build | project session: change a project for a folder, and write the folder's walkthrough and delivery pages at the end of its notes.md | yes, via start |
 | prep | office session: a briefing for a meeting | not yet |
 | meeting | office session held open during a meeting | not yet |
 | cleanup | office session: keep the office as designed | not yet |
@@ -782,6 +821,31 @@ and never by hand or in
 the project's own repo: what rides is office context, and a project's
 audience must not see the office's choices. A table without them is
 valid.
+
+A project with an audience declares three more things, the audience
+line's (`office projects add` and `set`, the same wizard with flag
+twins): `audience`, the name of the remote in the workbench clone that
+points at the audience's git host (a project with none, home-office's
+say, leaves it unset, and `office deliver` refuses it by name);
+`author`, the identity the audience expects on the delivery commits,
+`Name <email>` (unset, deliver authors as the clone's own identity, read
+where the clone is); and `base`, the audience branch deliveries branch
+from (unset, the audience remote's HEAD branch, read from the clone).
+Declaring an audience installs the push guard in the clone's .git/hooks,
+outside what git tracks: a pre-push hook that refuses any push to the
+audience from the clone that `office deliver` did not make, naming
+deliver, which pushes one delivery branch and nothing else, with the
+branch named in OFFICE_DELIVERY for the guard to read. The delivery is
+built on the occupant's machine, where the audience answers with his
+credentials: for a project on a host the landed commits come here as a
+git bundle through the project's shell, into a temporary repo removed
+after; what the office leaves on a host is, as always, nothing outside
+the project's repo. `office relay SID ANSWER-FILE` carries a planner's
+answer to a clarification back the same way bale's other verbs run: bale
+relay in the repo the session is open in, through the project's shell
+for a hosted one, the answer file on this machine piped to it, and the
+block bale prints for the worker printed whole and, on WSL, put on the
+clipboard, as `office land` hands over a relay.
 
 The office scales with whatever carries sessions by staying on its side
 of that line. It supplies what a carrier lacks (which job, what context,
