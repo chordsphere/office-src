@@ -98,12 +98,15 @@ class TestTheRunner(unittest.TestCase):
         ids = [t for v in jobs.values() for t in v]
         self.assertEqual(len(ids), runner.discover_count())
         self.assertIn(runner.SERIAL_JOB, jobs)
+        # Read once: parsing every test file again for each of the suite's
+        # tests made this one test take minutes.
+        marked = classes_marked_serial()
         for t in jobs[runner.SERIAL_JOB]:
             module, cls = t.split(".")[:2]
-            self.assertIn(cls, classes_marked_serial().get(module, set()), t)
+            self.assertIn(cls, marked.get(module, set()), t)
         for job, tests in jobs.items():
             if job != runner.SERIAL_JOB:
-                self.assertTrue(all(t.split(".")[1] not in classes_marked_serial().get(t.split(".")[0], set())
+                self.assertTrue(all(t.split(".")[1] not in marked.get(t.split(".")[0], set())
                                     for t in tests), job)
 
     def test_the_serial_lane_starts_first(self):

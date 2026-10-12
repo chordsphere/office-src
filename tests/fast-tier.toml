@@ -1,0 +1,147 @@
+# The fast tier: what tests/run.sh --fast runs, and so what every
+# office-src validation.sh runs, under bale's two minutes (TARBALL.md 7.6).
+# The whole suite stays behind validation's --slow, and runs detached after
+# every landing (tests/run.sh --detach).
+#
+# Defined here once, and held to the suite by tests/runner.py before
+# anything runs: every name must be a test, a class or a module that
+# unittest discover finds, and every verb bin/office's main() dispatches,
+# and the walk-in, must have an entry point below. A session adds what it
+# touched on its own command line (tests/run.sh --fast test_x.TestY), never
+# here; it changes this file when it adds a verb, or when the tier's time
+# needs it (times.tsv beside every run's logs says where the time goes).
+#
+# Chosen from the times of a whole run on 2026-10-12: for each verb, the
+# cheapest test that types it and does its main work (a happy path where
+# one costs seconds, not minutes); then every test that took under half a
+# second (the units, the catalogs, the text rules: nearly free, and they
+# guard most of what a careless change breaks), by class where the whole
+# class is that cheap; then the suite's own rules (test_suite_clock) and
+# the runner's tests, and the development record's pins (cheap; they read
+# the sittings' pages).
+
+budget_seconds = 120
+
+# One test per verb, by its full id: it runs `office VERB` (the walk-in is
+# `office` alone). tests/test_suite_clock.py checks that each one types it.
+[entry_points]
+"walk-in" = ["test_read_side.TestInFlight.test_walking_in_shows_it"]
+init = ["test_office.TestInit.test_builds_commits_and_with_no_founding_names_what_founds_it"]
+found = ["test_founding_door.TestOfficeFound.test_found_takes_only_its_own_flags"]
+survey = ["test_office.TestStatusAndSurvey.test_office_survey_steps"]
+status = ["test_read_side.TestStatus.test_bale_within_the_range_and_the_projects"]
+upgrade = ["test_office.TestUpgrade.test_nothing_to_do_when_current"]
+where = ["test_office.TestFindingTheOffice.test_walks_up_from_a_subdirectory"]
+default = ["test_office.TestFindingTheOffice.test_default_refuses_a_non_office"]
+version = ["test_office.TestInstall.test_installs_links_and_knows_its_version"]
+help = ["test_office.TestText.test_help_lists_every_built_script_verb"]
+tour = ["test_front_door.TestTourPiped.test_piped_it_never_plays_and_refuses_to_be_told_to"]
+note = ["test_office.TestCapture.test_note_appends_dated_lines_and_commits_only_the_page"]
+slip = ["test_drafting_table.TestSlipTitle.test_a_slip_from_a_numbered_list_is_titled_by_its_words"]
+open = ["test_office.TestFolders.test_open_refuses_a_duplicate"]
+desk = ["test_office.TestFolders.test_desk_lists_next_moves"]
+week = ["test_office.TestWeek.test_week_reads_the_office_calendar"]
+close = ["test_office.TestFolders.test_close_and_reopen_move_without_rewriting"]
+reopen = ["test_office.TestFolders.test_close_and_reopen_move_without_rewriting"]
+sessions = ["test_read_side.TestFolderSessions.test_the_folder_keeps_only_ids_and_words"]
+projects = ["test_read_side.TestLedgerLandedVersions.test_the_trust_ledger"]
+start = ["test_start.TestStartOnAProject.test_one_command_packs_records_and_fills_the_tray"]
+land = ["test_land.TestLandAProjectSession.test_one_command_lands_it_and_runs_the_after_land_actions"]
+moves = ["test_drafting_table.TestMoves.test_a_line_that_does_not_read_refuses_before_anything_is_applied"]
+blueprint = ["test_watches_digest.TestDigest.test_watches_standing_desk_agenda_blueprints"]
+rider = ["test_watches_digest.TestNextLineMoves.test_the_walk_in_names_it"]
+riders = ["test_third_trip.TestRidersAtStart.test_the_forecast_picks_the_riders_and_a_project_glob_holds_to_its_project"]
+agenda = ["test_watches_digest.TestDigest.test_watches_standing_desk_agenda_blueprints"]
+rulings = ["test_drafting_table.TestLedgers.test_rulings_list_render_and_check"]
+evidence = ["test_drafting_table.TestLedgers.test_evidence_list_render_and_problems"]
+watches = ["test_project_on_host.TestReadSideThroughTheShell.test_watches_check_and_the_digest_read_a_hosted_project"]
+digest = ["test_watches_digest.TestDigest.test_watches_standing_desk_agenda_blueprints"]
+deliver = ["test_audience_line.TestDeliver.test_the_crossing_pushes_one_curated_commit_and_nothing_of_bales"]
+letterhead = ["test_audience_line.TestTheLetterheadCheck.test_the_command_reads_the_offices_forbidden_file_and_never_writes_it"]
+relay = ["test_audience_line.TestRelay.test_it_runs_bale_relay_in_the_sessions_repo_with_the_answer_on_stdin"]
+
+[also]
+tests = [
+  "test_suite_clock",
+  "test_third_trip.TestTheRunner",
+  "test_office.TestDevelopmentRecord",
+  "test_audience_line.TestTheLetterheadCheck.test_the_four_kinds_of_hit_and_a_clean_tree",
+  "test_audience_line.TestTheLetterheadCheck.test_the_offices_forbidden_words_and_the_whole_tree",
+  "test_audience_line.TestTheLetterheadCheck.test_the_rules_travel_as_json_and_the_module_imports_nothing_of_the_office",
+  "test_audience_line.TestTheLetterheadCheck.test_the_suite_and_the_check_read_one_list",
+  "test_audience_line.TestTheLetterheadCheck.test_words_are_checked_as_they_are_and_a_plain_directory_is_the_whole_tree",
+  "test_audience_line.TestTheRecord",
+  "test_desk_verbs.TestCatalogAndDoctrine",
+  "test_desk_verbs.TestFields",
+  "test_desk_verbs.TestTemplate",
+  "test_drafting_table.TestArrivalInAFloorPlan",
+  "test_drafting_table.TestCatalogAndDoctrine",
+  "test_drafting_table.TestUnits",
+  "test_filed_append_only.TestFiledAppendOnly",
+  "test_founding_door.TestTheInstallsOutboxIsNeverWritten",
+  "test_founding_door.TestTheQuestions",
+  "test_founding_door.TestTheUnfoundedNextLine",
+  "test_front_door.TestBundleForecast",
+  "test_front_door.TestHelpByTask.test_help_for_no_such_verb_refuses",
+  "test_front_door.TestHelpByTask.test_help_groups_the_verbs_by_what_you_want_to_do",
+  "test_front_door.TestHelpByTask.test_start_and_land_name_the_bale_commands_they_run",
+  "test_front_door.TestNextMove",
+  "test_land.TestLandFixtures",
+  "test_land.TestSittingPages",
+  "test_office.TestCatalogs.test_a_filed_or_hung_entry_must_be_a_page_or_glob_inside_the_space",
+  "test_office.TestCatalogs.test_a_hung_filed_page_is_refused",
+  "test_office.TestCatalogs.test_every_verb_declares_the_three_keys",
+  "test_office.TestCatalogs.test_placeholders_and_prefixes",
+  "test_office.TestCatalogs.test_the_check_refuses_bad_keys_and_a_landing_outside_writes",
+  "test_office.TestCatalogs.test_the_declared_kinds_are_registered_and_not_built",
+  "test_office.TestCatalogs.test_the_existing_verbs_took_the_keys_as_ruled",
+  "test_office.TestCatalogs.test_the_rule_refuses_an_unattended_kind_with_no_landing",
+  "test_office.TestCatalogs.test_the_shipped_spaces_catalog_holds",
+  "test_office.TestCatalogs.test_the_shipped_verbs_catalog_holds",
+  "test_office.TestFloorPlan",
+  "test_office.TestInit.test_no_founding_takes_no_answers",
+  "test_office.TestInit.test_refuses_without_a_git_identity_before_building",
+  "test_office.TestMigrationPlanning",
+  "test_office.TestPackReport",
+  "test_office.TestProfile",
+  "test_office.TestSurveyRender",
+  "test_office.TestText",
+  "test_office.TestVersions",
+  "test_out_trip_to_host.TestFilesThroughTheShell.test_missing_paths_through_the_shell",
+  "test_out_trip_to_host.TestFilesThroughTheShell.test_remove_scratch_removes_only_what_the_office_made",
+  "test_out_trip_to_host.TestFilesThroughTheShell.test_the_scratch_is_removed_when_the_work_fails",
+  "test_out_trip_to_host.TestInteractOnATerminal",
+  "test_out_trip_to_host.TestTheAttendedForm",
+  "test_out_trip_to_host.TestTheHostsBale",
+  "test_out_trip_to_host.TestTheRecord",
+  "test_out_trip_to_host.TestTheRunnerSaysWhy",
+  "test_project_on_host.TestPlaceAndShell.test_a_host_that_does_not_answer_is_one_line_and_is_not_asked_again",
+  "test_project_on_host.TestPlaceAndShell.test_a_path_that_is_not_on_the_host",
+  "test_project_on_host.TestPlaceAndShell.test_a_wrong_prefix_is_refused_by_the_fake_and_read_as_unreachable",
+  "test_project_on_host.TestPlaceAndShell.test_several_commands_travel_in_one_connection_each_with_its_streams_and_code",
+  "test_project_on_host.TestPlaceAndShell.test_the_prefix_gets_batch_mode_and_a_connect_timeout_and_one_quoted_command",
+  "test_project_on_host.TestTheRecord",
+  "test_read_side.TestConsumptionManifest",
+  "test_read_side.TestFakeBale",
+  "test_read_side.TestFixtures",
+  "test_read_side.TestInFlight.test_each_open_session_and_its_folder",
+  "test_read_side.TestLedgerLandedVersions.test_an_unknown_project_name",
+  "test_read_side.TestReader",
+  "test_read_side.TestStatus.test_bale_below_the_floor_is_a_line_not_a_refusal",
+  "test_return_trip.TestTheDownloadsKey",
+  "test_return_trip.TestTheRecord",
+  "test_return_trip.TestTheRunnerWarnsOfAnIgnoredInterrupt",
+  "test_second_trip.TestUnlockFixtures",
+  "test_start.TestForecastOverlap",
+  "test_start.TestPackFixtures",
+  "test_third_trip.TestBaleChecked.test_an_unlock_refusal_is_still_a_refusal",
+  "test_third_trip.TestBaleChecked.test_every_line_is_the_one_the_probe_captured",
+  "test_third_trip.TestBaleChecked.test_open_check_is_declared_as_the_probe_ran_it",
+  "test_third_trip.TestBaleChecked.test_the_checked_bale_is_the_probed_one_and_the_floor_stands",
+  "test_watches_digest.TestCaptures",
+  "test_watches_digest.TestCatalog",
+  "test_watches_digest.TestConsumption",
+  "test_watches_digest.TestDoctrineAndTemplates",
+  "test_watches_digest.TestNextLineMoves",
+  "test_watches_digest.TestRegisterAndLog",
+]

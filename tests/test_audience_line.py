@@ -551,7 +551,7 @@ class TestDeliver(AudienceCase):
                           if r.startswith("refs/office/")], [])
         self.assertEqual(git(self.clone, "status", "--porcelain", env=self.e.env), "")
         self.assertTrue((self.clone / ".git" / "hooks" / "pre-push").is_file())
-        self.assertEqual([d for d in pathlib.Path("/tmp").glob("office-deliver*")], [])
+        self.assertEqual([d for d in self.e.tmpdir.glob("office-deliver*")], [])
 
     def rules_marks(self):
         return olh.load_rules_toml(RULES)["marks"]
@@ -765,7 +765,7 @@ Look.
         self.assertTrue(odl.review_url("https://gitlab.example.org/g/p.git", "br", "main").startswith(
             "https://gitlab.example.org/g/p/-/merge_requests/new?merge_request%5Bsource_branch%5D=br"))
         self.assertIsNone(odl.review_url("https://forge.example.org/o/r.git", "br", "main"))
-        self.assertIsNone(odl.review_url("/tmp/audience.git", "br", "main"))
+        self.assertIsNone(odl.review_url(str(self.e.tmp / "audience.git"), "br", "main"))
         self.assertEqual(odl.parse_remote_url("ssh://git@host.example:2222/a/b/c.git"), ("host.example", "a/b", "c"))
         self.assertEqual(odl.branch_from_folder("2026-10-08-audience-line"), "audience-line")
         proc = self.e.run("deliver", "--help", cwd=self.root, check=0)
@@ -836,7 +836,7 @@ class TestDeliverOnAHost(AudienceCase):
         self.assertFalse(any("git push" in c[-1] for c in calls))
         self.assertEqual(self.ssh.left_on(HOST), [])
         self.assertTrue((self.clone / ".git" / "hooks" / "pre-push").is_file())
-        self.assertEqual([d for d in pathlib.Path("/tmp").glob("office-deliver*")], [])
+        self.assertEqual([d for d in self.e.tmpdir.glob("office-deliver*")], [])
         self.assertRegex(self.folder_md(), r"delivered: health-route on origin of proj")
         # The second delivery: three connections (facts, the bundle, its read).
         self.land_session(SID2, {"docs.md": "d\n"}, "d")

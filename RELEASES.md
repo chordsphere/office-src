@@ -4,6 +4,58 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.17.1
+
+Additive: no migration, nothing to do in any office, and no verb
+changed. The suite's clock: validation fits bale's two minutes, the whole
+suite runs where nobody waits for it, and no test reads the machine it
+runs on.
+
+`tests/run.sh --fast [NAME]...` runs the fast tier, defined once in
+`tests/fast-tier.toml`: for every verb `bin/office`'s dispatcher knows,
+and the walk-in, one test that runs it, then every test that costs under
+half a second, the suite's own rules and the runner's tests; 280 of the
+suite's 679 tests. A module, class or test named after `--fast` is added
+(a session adds what it touched). The runner holds the tier to the suite
+before anything runs, as it holds the whole plan to `unittest discover`:
+a name the suite does not have, or a verb with no entry point, stops it
+with exit 2. It prints the tier's wall time and exits 1 past its budget,
+`budget_seconds = 120`.
+
+`tests/run.sh --detach` copies the tree, starts the whole suite in a
+session of its own at a lower priority, with SIGINT restored for the
+interrupt tests, and returns at once with one line naming the run's
+verdict file under `$XDG_STATE_HOME/office-src/suite/` (by default
+`~/.local/state/office-src/suite/`), outside the repo. The verdict is one
+line, `RUNNING since ...` until the run ends, then `OK`, `FAILED` or
+`BROKEN` with the count, the seconds, the commit tested and, when it
+failed, the log to read; `latest` names the newest run and the ten newest
+are kept. Meant as office-src's after-land action:
+`office projects set office-src --after-land ./install.sh --after-land
+"tests/run.sh --detach"` (the flag replaces the list, so name every
+action).
+
+Every job of a run, and `--serial`, gets a HOME, TMPDIR and XDG
+directories of its own under a scratch directory the runner removes, an
+empty git config, no Windows users' homes to scan and none of the
+caller's `OFFICE_` settings. Each job's result carries each test's time,
+and the run writes them, slowest first, to `times.tsv` beside its logs.
+
+Env, the suite's scratch HOME, gives each test its own TMPDIR
+(`self.e.tmpdir`) and downloads (`self.e.downloads`) besides HOME and
+XDG_CONFIG_HOME, and `this_process()` lends its environment to a helper
+called in-process. The tests that globbed the machine's temporary
+directory for what deliver leaves, expanded `~` against the machine's
+HOME, named the machine's temporary directory as a path, or committed
+under the machine's git identity, now use their Env's, asserting what
+they asserted. `tests/test_suite_clock.py` fails the suite on a test file
+that names the machine's temporary directory, `expanduser`, `Path.home(`
+or `$HOME` outside Env, save the few lines its ALLOWED list names with
+their reasons.
+
+The runner's plan test parsed every test file once per test in the
+suite; it reads them once, and went from about two minutes to a second.
+
 ## 0.17.0
 
 Additive: no migration, nothing to do in any office. The audience line:

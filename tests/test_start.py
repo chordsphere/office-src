@@ -561,7 +561,7 @@ class TestDeclarations(unittest.TestCase):
                 h.set_declarations(self.manifest, name, rides, after)
             self.assertIn(words, str(cm.exception), name)
         self.manifest.write_text(self.manifest.read_text().replace(
-            "[projects.alpha]\n", "[projects.alpha]\nrides = [\n  \"/tmp\",\n]\n"))
+            "[projects.alpha]\n", f"[projects.alpha]\nrides = [\n  \"{self.e.tmp}\",\n]\n"))
         with self.assertRaises(h.HelperError) as cm:
             h.set_declarations(self.manifest, "alpha", [str(self.proj)], None)
         self.assertIn("several lines", str(cm.exception))
@@ -605,7 +605,7 @@ class TestDeclarations(unittest.TestCase):
     def test_piped_set_names_the_flags_it_needed(self):
         for args, words in ((("set",), "office projects set NAME"),
                             (("set", "alpha"), "--ride PATH"),
-                            (("set", "alpha", "--ride", "/tmp", "--no-rides"), "contradict"),
+                            (("set", "alpha", "--ride", str(self.e.tmp), "--no-rides"), "contradict"),
                             (("set", "gamma", "--no-rides"), "no project named gamma")):
             proc = self.e.run("projects", *args, cwd=self.root)
             self.assertEqual(proc.returncode, 1, args)
