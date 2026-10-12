@@ -8,6 +8,7 @@ home directory, config or offices. Run with:
     PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 """
 
+import contextlib
 import datetime as dt
 import os
 import pathlib
@@ -19,8 +20,9 @@ import tempfile
 import textwrap
 import tomllib
 import unittest
+from unittest import mock
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO =pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "lib"))
 import office_helper as h  # noqa: E402
 
@@ -50,16 +52,32 @@ def filled_profile(name="test"):
 
 
 class Env:
-    """A scratch HOME with a git identity and no global git config."""
+    """A scratch HOME with a git identity and no global git config: the
+    one place the suite says where a test's home, temporary directory,
+    config and downloads are. Every test gets its own: HOME (self.home),
+    TMPDIR (self.tmpdir, inside self.tmp), XDG_CONFIG_HOME (machine.toml,
+    the downloads setting, lives there) and downloads (self.downloads,
+    inside HOME; the scan of the Windows users' homes is off). Nothing of
+    the running machine's reaches a test through them, and
+    tests/test_suite_clock.py fails the suite on a test file that names
+    the machine's own (its temporary directory, its HOME) anywhere but
+    here. For a helper called in this process rather than through the
+    command, this_process() lends it the same."""
 
     def __init__(self, test):
         self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="office-test-"))
         test.addCleanup(shutil.rmtree, self.tmp, True)
         self.home = self.tmp / "home"
         self.home.mkdir()
+        self.tmpdir = self.tmp / "tmpdir"
+        self.tmpdir.mkdir()
+        # Where a browser on this test's machine would save: inside HOME,
+        # made by the test that wants it there.
+        self.downloads = self.home / "Downloads"
         self.env = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "HOME": str(self.home),
+            "TMPDIR": str(self.tmpdir),
             "XDG_CONFIG_HOME": str(self.home / ".config"),
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_CONFIG_GLOBAL": str(self.home / ".gitconfig-empty"),
@@ -74,6 +92,20 @@ class Env:
         }
         (self.home / ".gitconfig-empty").write_text("")
         self.office_bin = REPO / "bin" / "office"
+
+    @contextlib.contextmanager
+    def this_process(self):
+        """For the block, this process runs under this Env's environment
+        (its HOME, TMPDIR, XDG_CONFIG_HOME, git identity and empty git
+        config, as self.env stands) and makes its temporary files under
+        self.tmpdir: for a helper the test calls in-process, which reads
+        os.environ (a ~ expanded, the downloads default, a git commit's
+        author) rather than the env a command is run with. Everything is
+        given back when the block ends."""
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.dict(os.environ, self.env))
+            stack.enter_context(mock.patch.object(tempfile, "tempdir", str(self.tmpdir)))
+            yield self
 
     def run(self, *args, cwd=None, extra=None, bin_path=None, check=None, input=None):
         env = dict(self.env)

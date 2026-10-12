@@ -879,38 +879,41 @@ class TestLandAnOfficeSession(LandCase):
         lines, so the day the folder opened stays the day it opened; where
         the worker touched the same lines, it goes back as a new append."""
         sid = "2026-10-01-job-office-001"
-        for name, worker, merged in (("clean", ("Nothing yet.", "The worker's move."), True),
-                                     ("overlap", ("- status: queued", "- status: candidate"), False)):
-            root = git_repo(self.e.tmp / name, {"desk/job/folder.md": self.packed_folder_text()})
-            md = root / "desk/job/folder.md"
-            md.write_text(self.packed_folder_text().replace("- status: queued", "- status: open").replace(
-                "The ids of the sessions.\n", f"The ids of the sessions.\n\n- {sid}\n")
-                + f"- 2026-10-01 opened: {sid}\n")
-            self.e.git(root, "commit", "-qam", f"office sessions: {sid} in job")
-            plan = {"sid": sid, "office_session": True, "folders": ["desk/job"]}
-            plan["record"] = dict(ob.folder_record(root, "desk/job", sid), folder="desk/job")
-            self.assertTrue(plan["record"]["restorable"], name)
-            ob.take_record_out(root, plan)
-            self.assertEqual(md.read_text(), self.packed_folder_text(), name)
-            md.write_text(self.packed_folder_text().replace(*worker))
-            self.e.git(root, "commit", "-qam", f"[bale {sid}] landed")
-            told = ob.put_record_back(root, plan, True, "2026-10-09")
-            text = md.read_text()
-            self.assertIn(f"\n- {sid}\n", text, name)
-            self.assertIn("- status: open", text, name)
-            if merged:
-                self.assertIn("merged back as they were", told[0])
-                self.assertIn(worker[1], text)
-                self.assertIn(f"- 2026-10-01 opened: {sid}\n", text)
-                self.assertNotIn("2026-10-09", text)
-            else:
-                # The worker's candidate became open with the record's
-                # opened line: one state line, one History line.
-                self.assertNotIn("merged back", told[0])
-                self.assertIn(f"- 2026-10-09 opened: {sid}\n", text)
-                self.assertEqual(text.count("- status:"), 1)
-            self.assertEqual(self.e.git(root, "log", "-1", "--format=%s").strip(),
-                             f"office land: {sid} recorded again in job", name)
+        # The record's commits are made in this process, by the office's own
+        # git calls: under the Env's identity and config, not the machine's.
+        with self.e.this_process():
+            for name, worker, merged in (("clean", ("Nothing yet.", "The worker's move."), True),
+                                         ("overlap", ("- status: queued", "- status: candidate"), False)):
+                root = git_repo(self.e.tmp / name, {"desk/job/folder.md": self.packed_folder_text()})
+                md = root / "desk/job/folder.md"
+                md.write_text(self.packed_folder_text().replace("- status: queued", "- status: open").replace(
+                    "The ids of the sessions.\n", f"The ids of the sessions.\n\n- {sid}\n")
+                    + f"- 2026-10-01 opened: {sid}\n")
+                self.e.git(root, "commit", "-qam", f"office sessions: {sid} in job")
+                plan = {"sid": sid, "office_session": True, "folders": ["desk/job"]}
+                plan["record"] = dict(ob.folder_record(root, "desk/job", sid), folder="desk/job")
+                self.assertTrue(plan["record"]["restorable"], name)
+                ob.take_record_out(root, plan)
+                self.assertEqual(md.read_text(), self.packed_folder_text(), name)
+                md.write_text(self.packed_folder_text().replace(*worker))
+                self.e.git(root, "commit", "-qam", f"[bale {sid}] landed")
+                told = ob.put_record_back(root, plan, True, "2026-10-09")
+                text = md.read_text()
+                self.assertIn(f"\n- {sid}\n", text, name)
+                self.assertIn("- status: open", text, name)
+                if merged:
+                    self.assertIn("merged back as they were", told[0])
+                    self.assertIn(worker[1], text)
+                    self.assertIn(f"- 2026-10-01 opened: {sid}\n", text)
+                    self.assertNotIn("2026-10-09", text)
+                else:
+                    # The worker's candidate became open with the record's
+                    # opened line: one state line, one History line.
+                    self.assertNotIn("merged back", told[0])
+                    self.assertIn(f"- 2026-10-09 opened: {sid}\n", text)
+                    self.assertEqual(text.count("- status:"), 1)
+                self.assertEqual(self.e.git(root, "log", "-1", "--format=%s").strip(),
+                                 f"office land: {sid} recorded again in job", name)
 
     @staticmethod
     def packed_folder_text():

@@ -461,7 +461,8 @@ class TestProjectsTable(unittest.TestCase):
             self.assertIn(words, str(cm.exception), name)
 
     def test_paths_are_absolute_or_home_relative(self):
-        self.assertEqual(h.expand_project_path("~/x"), pathlib.Path(os.path.expanduser("~/x")))
+        with self.e.this_process():
+            self.assertEqual(h.expand_project_path("~/x"), self.e.home / "x")
         with self.assertRaises(h.HelperError):
             h.expand_project_path("x/y")
         self.manifest.write_text(self.manifest.read_text() + '\n[projects.rel]\npath = "x/y"\n'

@@ -22,7 +22,6 @@ import re
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 import tomllib
 import unittest
@@ -214,8 +213,8 @@ class TestLandOnAHost(ReturnTripCase):
 
 class TestTheDownloadsKey(unittest.TestCase):
     def setUp(self):
-        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="office-downloads-"))
-        self.addCleanup(__import__("shutil").rmtree, self.tmp, True)
+        self.e = Env(self)
+        self.tmp = self.e.tmp
 
     def test_it_is_written_once_ahead_of_any_table_and_reads_back(self):
         m = self.tmp / "cfg" / "machine.toml"
@@ -230,7 +229,8 @@ class TestTheDownloadsKey(unittest.TestCase):
         self.assertEqual(data["out_tray"], "~/trays")
         self.assertEqual(data["later"], {"key": 1})
         self.assertLess(m.read_text().index("downloads ="), m.read_text().index("[later]"))
-        self.assertEqual(h.machine_downloads(m), [str(odd), os.path.expanduser("~/Downloads")])
+        with self.e.this_process():
+            self.assertEqual(h.machine_downloads(m), [str(odd), str(self.e.downloads)])
         # Asked once: it is never written over.
         with self.assertRaises(h.HelperError):
             h.set_machine_downloads(m, ["/elsewhere"])

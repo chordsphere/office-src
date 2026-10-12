@@ -17,33 +17,63 @@ module's tests are loaded with unittest's own loadTestsFromModule, the
 way discover loads them, and split into the serial group and the rest.
 The plan's count is held to discover's before anything runs.
 
-Each job writes one log, <logs>/<job>.log (unittest -v's own output), and
-one result, <logs>/<job>.json. The summary names every job, its counts,
-its time and its log, and for a failing job the failing tests, each with
-its traceback (its last TRACEBACK_LINES lines, where the exception is),
-and the log to read: a log under the temp directory can be gone by the
-time anyone reads it (WSL empties /tmp on a restart), and the summary is
-what a relay carries. --serial is today's run: one process, unittest discover -v,
-on the terminal.
+The suite's clock (0.17.1). Four ways to run it:
 
-Exit: 0 every test passed, 1 a test failed or errored, 2 the runner could
-not run or read a job (said on stderr).
+- the whole suite (no flag), side by side, as above;
+- --fast, the fast tier: the tests tests/fast-tier.toml names, held to
+  the same plan and to discover the same way, plus any module, class or
+  test named after it (a session adds what it touched). Every verb the
+  command's dispatcher knows (bin/office, main) has a test there that runs
+  its entry point, and a verb with none stops the run before anything
+  starts. The tier prints its wall time and fails past its budget
+  (budget_seconds in the file, 120: bale's two minutes for validation);
+- --detach, the whole suite in the background for after a landing: a copy
+  of the tree is taken, the run starts in a session of its own at a lower
+  priority and the command returns at once, printing one line that names
+  the run's directory, outside the repo, under the state directory
+  (XDG_STATE_HOME, else ~/.local/state, then office-src/suite/), where its
+  log and its one-line verdict file are written; latest names the newest;
+- --serial, one process, unittest discover -v, on the terminal.
+
+Nothing a test runs reads the running machine's home or temporary
+directory: every job, and the --serial run, is given a HOME, a TMPDIR and
+XDG directories of its own under one scratch directory the runner makes
+and removes, an empty global git config, no Windows users' homes to scan
+for downloads, and none of the caller's OFFICE_ settings (isolated_env).
+tests/test_suite_clock.py holds the test files to the same rule.
+
+Each job writes one log, <logs>/<job>.log (unittest -v's own output), and
+one result, <logs>/<job>.json, which carries each test's time; the run
+writes every test's time, slowest first, to <logs>/times.tsv. The summary
+names every job, its counts, its time and its log, and for a failing job
+the failing tests, each with its traceback (its last TRACEBACK_LINES
+lines, where the exception is), and the log to read: a log under the temp
+directory can be gone by the time anyone reads it (WSL empties /tmp on a
+restart), and the summary is what a relay carries.
+
+Exit: 0 every test passed (and the fast tier within its budget), 1 a test
+failed or errored (or the fast tier ran over its budget), 2 the runner
+could not run or read a job (said on stderr).
 
 Standard library only.
 """
 
 import argparse
 import concurrent.futures
+import datetime
 import importlib
 import json
 import os
 import pathlib
+import re
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import tomllib
 import traceback
 import unittest
 
@@ -62,6 +92,19 @@ TRACEBACK_LINES = 40
 INTERRUPT_TESTS = (
     "test_front_door.TestTourOnATerminal.test_an_interrupt_deletes_the_office_and_says_so",
 )
+# The fast tier: one file, beside the tests it names.
+TIER_FILE = "fast-tier.toml"
+# The no-argument call of the command, the walk-in, named in the tier's
+# entry points beside the verbs.
+WALK_IN = "walk-in"
+# What a detached run keeps, newest first; older run directories go.
+DETACHED_KEEP = 10
+# A detached run's priority, below the occupant's own work.
+DETACHED_NICE = 10
+# The caller's settings a job keeps: the job count. Every other OFFICE_
+# variable (OFFICE_ROOT, OFFICE_DEBUG, ...) would point a test at the
+# running machine's office or change what the command prints.
+KEEP_OFFICE_VARS = ("OFFICE_TEST_JOBS",)
 _print_lock = threading.Lock()
 
 
@@ -76,7 +119,8 @@ def sigint_warning(handler=None):
              "process it starts ignores Ctrl-C, and these terminal tests, which check what an interrupt "
              "does, will fail for that reason, not the code's:"]
             + [f"  {t}" for t in INTERRUPT_TESTS]
-            + ["run the suite in the foreground (tests/run.sh), or with SIGINT restored to its default"])
+            + ["run the suite in the foreground (tests/run.sh), or with SIGINT restored to its default "
+               "(tests/run.sh --detach does that for a run in the background)"])
 
 
 def say(msg):
@@ -84,8 +128,9 @@ def say(msg):
         print(f"[run] {msg}", flush=True)
 
 
-def module_names(tests_dir=TESTS):
+def module_names(tests_dir=None):
     """Every test module discover would load: test*.py at the top of tests/."""
+    tests_dir = TESTS if tests_dir is None else tests_dir
     return sorted(p.stem for p in tests_dir.glob("test*.py") if p.is_file())
 
 
@@ -110,46 +155,183 @@ def load_module_tests(name):
     return [t for t in tests if is_serial(t)], [t for t in tests if not is_serial(t)]
 
 
-def plan(names):
+def plan(names, keep=None):
     """{job: [test ids]}: one job per module with tests outside the serial
-    group, and the serial group, in module order, as one job."""
+    group, and the serial group, in module order, as one job. keep, when
+    given, is the set of test ids to run (the fast tier); a module none of
+    whose tests it holds gets no job."""
     jobs, serial = {}, []
     for name in names:
         s, rest = load_module_tests(name)
-        serial += [t.id() for t in s]
+        serial += [t.id() for t in s if keep is None or t.id() in keep]
+        rest = [t.id() for t in rest if keep is None or t.id() in keep]
         if rest:
-            jobs[name] = [t.id() for t in rest]
+            jobs[name] = rest
     if serial:
         jobs[SERIAL_JOB] = serial
     return jobs
 
 
+def discover_ids():
+    """The id of every test unittest discover -s tests finds, as often as
+    it finds it."""
+    loader = unittest.TestLoader()
+    return [t.id() for t in flatten(loader.discover(str(TESTS), top_level_dir=str(TESTS)))]
+
+
 def discover_count():
     """How many tests unittest discover -s tests finds: the plan must match."""
-    loader = unittest.TestLoader()
-    return loader.discover(str(TESTS), top_level_dir=str(TESTS)).countTestCases()
+    return len(discover_ids())
+
+
+# --- the fast tier ---------------------------------------------------------------------
+
+def load_tier(path=None):
+    """The fast tier as tests/fast-tier.toml declares it: {"budget_seconds":
+    int, "entry_points": {verb: [name, ...]}, "also": [name, ...]}, where a
+    name is a module, a class (module.Class) or a test's id. A file that
+    does not read, or does not have that shape, is a ValueError naming
+    what is wrong."""
+    path = pathlib.Path(path) if path else TESTS / TIER_FILE
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise ValueError(f"{path}: {exc}") from exc
+    budget = data.get("budget_seconds")
+    if not isinstance(budget, int) or budget <= 0:
+        raise ValueError(f"{path}: budget_seconds is a whole number of seconds above 0, not {budget!r}")
+    entry = data.get("entry_points")
+    if not isinstance(entry, dict) or not entry:
+        raise ValueError(f"{path}: [entry_points] maps each verb to the tests that run it")
+    for verb, names in entry.items():
+        if not isinstance(names, list) or not names or not all(isinstance(n, str) and n for n in names):
+            raise ValueError(f"{path}: entry_points.{verb} is a list of one or more test names, not {names!r}")
+    also = data.get("also", {}).get("tests", [])
+    if not isinstance(also, list) or not all(isinstance(n, str) and n for n in also):
+        raise ValueError(f"{path}: also.tests is a list of test names, not {also!r}")
+    return {"budget_seconds": budget, "entry_points": entry, "also": also}
+
+
+def dispatcher_verbs(office=None):
+    """Every verb bin/office's main() dispatches, by its first spelling
+    (version|--version|-V is version), and the walk-in: the entry points
+    the fast tier must exercise. A dispatcher this cannot find is a
+    ValueError, so a change to main()'s shape stops the tier rather than
+    emptying it."""
+    office = pathlib.Path(office) if office else TESTS.parent / "bin" / "office"
+    text = office.read_text(encoding="utf-8")
+    try:
+        body = re.split(r"(?m)^main\(\) \{", text, maxsplit=1)[1]
+        cases = body.split('case "$verb" in', 1)[1].split("\n  esac", 1)[0]
+    except IndexError:
+        raise ValueError(f"{office}: no main() with a case \"$verb\" in it, so the verbs cannot be read") from None
+    verbs = {m.group(1).split("|")[0] for m in re.finditer(r"^\s+([A-Za-z][\w|-]*)\)\s*cmd_\w+", cases, re.M)}
+    if not verbs:
+        raise ValueError(f"{office}: main()'s case \"$verb\" names no verb")
+    return {WALK_IN} | verbs
+
+
+def matching(name, ids):
+    """The ids a name stands for: the test of that id, or every test of
+    that module or class (the ids under name + '.')."""
+    return {i for i in ids if i == name or i.startswith(name + ".")}
+
+
+def tier_problems(tier, ids, verbs):
+    """What is wrong with the tier against the suite's ids and the
+    dispatcher's verbs, one line each; [] when it is sound."""
+    out = []
+    for verb in sorted(verbs - set(tier["entry_points"])):
+        out.append(f"the verb {verb} has no entry point in the fast tier (add a test that runs it)")
+    for verb in sorted(set(tier["entry_points"]) - verbs):
+        out.append(f"the fast tier names an entry point for {verb}, which bin/office does not dispatch")
+    for where, names in [*((f"entry_points.{v}", n) for v, n in tier["entry_points"].items()),
+                         ("also.tests", tier["also"])]:
+        for name in names:
+            if not matching(name, ids):
+                out.append(f"{where}: {name} is no test, class or module of the suite")
+    return out
+
+
+def tier_ids(tier, ids):
+    """Every test id the tier holds."""
+    names = [n for v in tier["entry_points"].values() for n in v] + tier["also"]
+    return set().union(*(matching(n, ids) for n in names)) if names else set()
+
+
+# --- what every job is given in place of the machine ----------------------------------
+
+def isolated_env(base, root):
+    """The environment a job (or the --serial run) runs under, made under
+    root: its own HOME (with an empty global git config), TMPDIR and XDG
+    config, data, state and cache directories; no Windows users' homes to
+    scan for downloads (OFFICE_WINDOWS_USERS empty) and no XDG variable of
+    the caller's (XDG_DOWNLOAD_DIR among them); none of the caller's OFFICE_
+    settings but the job count. PATH and the locale stay: the suite needs
+    git, python3 and a shell, and reads nothing through them."""
+    root = pathlib.Path(root)
+    home, tmp = root / "home", root / "tmp"
+    dirs = {"XDG_CONFIG_HOME": home / ".config", "XDG_DATA_HOME": home / ".local" / "share",
+            "XDG_STATE_HOME": home / ".local" / "state", "XDG_CACHE_HOME": home / ".cache"}
+    for d in (home, tmp, *dirs.values()):
+        d.mkdir(parents=True, exist_ok=True)
+    gitconfig = home / ".gitconfig-empty"
+    gitconfig.write_text("", encoding="utf-8")
+    env = {k: v for k, v in base.items()
+           if not k.startswith("XDG_") and not (k.startswith("OFFICE_") and k not in KEEP_OFFICE_VARS)}
+    env.update({k: str(v) for k, v in dirs.items()})
+    env.update({"HOME": str(home), "TMPDIR": str(tmp), "OFFICE_WINDOWS_USERS": "",
+                "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": str(gitconfig),
+                "PYTHONDONTWRITEBYTECODE": "1", "OFFICE_TESTS_UNDER_RUNNER": "1"})
+    return env
 
 
 # --- one job, in its own process -------------------------------------------------
 
-def run_job(job, names, result_path):
-    """Run one job's tests (the module's, or the serial group's) with
-    unittest -v on this process's stdout, and write the result file."""
+class TimedResult(unittest.TextTestResult):
+    """unittest -v's result, keeping each test's wall time by its id (in
+    test_seconds: unittest's own `durations` is the runner's flag for its
+    slowest-tests report, a different thing)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.test_seconds = {}
+        self._started = {}
+
+    def startTest(self, test):
+        self._started[id(test)] = time.monotonic()
+        super().startTest(test)
+
+    def stopTest(self, test):
+        began = self._started.pop(id(test), None)
+        if began is not None:
+            # An id run twice (an imported class) keeps the sum of its runs.
+            self.test_seconds[test.id()] = round(self.test_seconds.get(test.id(), 0) + time.monotonic() - began, 3)
+        super().stopTest(test)
+
+
+def run_job(job, names, result_path, keep=None):
+    """Run one job's tests (the module's, or the serial group's; only
+    those in keep when it is given) with unittest -v on this process's
+    stdout, and write the result file."""
     serial = job == SERIAL_JOB
     tests = []
     for name in (names if serial else [job]):
         s, rest = load_module_tests(name)
         tests += s if serial else rest
+    if keep is not None:
+        tests = [t for t in tests if t.id() in keep]
     suite = unittest.TestSuite(tests)
     started = time.monotonic()
-    runner = unittest.TextTestRunner(stream=sys.stdout, verbosity=2)
+    runner = unittest.TextTestRunner(stream=sys.stdout, verbosity=2, resultclass=TimedResult)
     res = runner.run(suite)
     out = {"job": job, "run": res.testsRun,
            "failures": [t.id() for t, _ in res.failures],
            "errors": [t.id() for t, _ in res.errors],
            "tracebacks": {t.id(): tb for t, tb in [*res.failures, *res.errors]},
            "unexpected_successes": [t.id() for t in res.unexpectedSuccesses],
-           "skipped": len(res.skipped), "seconds": round(time.monotonic() - started, 1)}
+           "skipped": len(res.skipped), "seconds": round(time.monotonic() - started, 1),
+           "durations": getattr(res, "test_seconds", {})}
     pathlib.Path(result_path).write_text(json.dumps(out) + "\n", encoding="utf-8")
     return 0 if res.wasSuccessful() else 1
 
@@ -168,11 +350,12 @@ def order(jobs, sizes=None):
     return sorted(jobs, key=weight, reverse=True)
 
 
-def launch(job, names, logs, env):
+def launch(job, names, logs, env, keep_file=None):
     log = logs / f"{job}.log"
     result = logs / f"{job}.json"
     argv = [sys.executable, "-B", str(pathlib.Path(__file__).resolve()), "--job", job, "--result", str(result),
-            *(["--modules", *names] if job == SERIAL_JOB else [])]
+            *(["--modules", *names] if job == SERIAL_JOB else []),
+            *(["--keep", str(keep_file)] if keep_file else [])]
     say(f"started {job}")
     started = time.monotonic()
     with log.open("w", encoding="utf-8") as fh:
@@ -227,6 +410,19 @@ def traceback_lines(tb, log):
     return out + [f"      {l}" for l in body]
 
 
+def write_times(results, path):
+    """Every test's time, slowest first, as test<TAB>seconds<TAB>job: where
+    a run's minutes went. Returns the path, or None when no job carried
+    times (said by the caller)."""
+    rows = [(t, s, r["job"]) for r in results for t, s in (r.get("durations") or {}).items()]
+    if not rows:
+        return None
+    rows.sort(key=lambda row: -row[1])
+    path = pathlib.Path(path)
+    path.write_text("".join(f"{t}\t{s:.2f}\t{j}\n" for t, s, j in rows), encoding="utf-8")
+    return path
+
+
 def run_serial(env):
     """Today's run: one process, unittest discover, on the terminal."""
     say("one process, as before the side-by-side runner (--serial)")
@@ -237,28 +433,265 @@ def run_serial(env):
     return 0 if proc.returncode == 0 else 1
 
 
+def run_jobs(jobs, names, n, logs, env, scratch, keep_file=None):
+    """Run the plan, each job under its own isolated environment in
+    scratch, and print the summary. Returns (exit, outcome): outcome has
+    the tests run, the number of tests that failed or errored and the
+    seconds the run took."""
+    started = time.monotonic()
+
+    def one(i, job):
+        # A neutral name, not the job's: a test's paths live under it, and
+        # a test may assert a word (a module's subject) is absent from what
+        # a command printed, paths included.
+        return launch(job, names, logs, isolated_env(env, scratch / f"j{i}"), keep_file)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n) as pool:
+        futures = [pool.submit(one, i, job) for i, job in enumerate(order(jobs), 1)]
+        results = [f.result() for f in futures]
+    took = time.monotonic() - started
+    total = sum(len(v) for v in jobs.values())
+    lines, failed = summary(results, total, took, logs)
+    times = write_times(results, logs / "times.tsv")
+    lines.insert(-1, f"[run] each test's time, slowest first: {times}" if times
+                 else "[run] no job recorded its tests' times")
+    print("\n".join(lines), flush=True)
+    ran = sum(r["run"] for r in results)
+    bad = sum(len(r["failures"]) + len(r["errors"]) + len(r["unexpected_successes"]) for r in results)
+    broken = [r["job"] for r in results if r.get("broken")]
+    outcome = {"run": ran, "planned": total, "bad": bad, "broken": broken, "seconds": round(took)}
+    if not failed and ran != total:
+        print(f"[run] error: {ran} tests ran, the plan held {total}", file=sys.stderr)
+        return 2, outcome
+    return (1 if failed else 0), outcome
+
+
+def remove_scratch(scratch):
+    """Remove the run's scratch directory, saying so when it cannot."""
+    try:
+        shutil.rmtree(scratch)
+    except OSError as exc:
+        print(f"[run] warning: the scratch directory {scratch} was not removed ({exc}); remove it by hand",
+              file=sys.stderr)
+
+
+# --- the detached run --------------------------------------------------------------
+
+def state_dir(environ=None):
+    """Where detached runs keep their logs and verdicts: office-src/suite
+    under XDG_STATE_HOME, else under ~/.local/state. Outside every repo."""
+    environ = os.environ if environ is None else environ
+    base = environ.get("XDG_STATE_HOME") or os.path.join(environ.get("HOME") or os.path.expanduser("~"),
+                                                         ".local", "state")
+    return pathlib.Path(base) / "office-src" / "suite"
+
+
+def source_line(repo):
+    """What the run tests, in a few words: the commit the tree is at, and
+    whether it had changes not committed; 'not a git checkout' else."""
+    try:
+        head = subprocess.run(["git", "-C", str(repo), "rev-parse", "--short=12", "HEAD"], capture_output=True,
+                              text=True, timeout=30)
+        dirty = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True,
+                               timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"source not read ({exc})"
+    if head.returncode != 0:
+        return "not a git checkout"
+    return f"at {head.stdout.strip()}" + (", with uncommitted changes" if dirty.stdout.strip() else "")
+
+
+def write_verdict(run_dir, line):
+    """The run's verdict file, one line, replaced whole (never half-written)."""
+    tmp = run_dir / ".verdict.tmp"
+    tmp.write_text(line.rstrip("\n") + "\n", encoding="utf-8")
+    os.replace(tmp, run_dir / "verdict")
+
+
+def point_latest(state, run_dir):
+    """state/latest names the newest run, replaced whole."""
+    tmp = state / ".latest.tmp"
+    if tmp.is_symlink() or tmp.exists():
+        tmp.unlink()
+    tmp.symlink_to(run_dir.name)
+    os.replace(tmp, state / "latest")
+
+
+def prune(state, keep=DETACHED_KEEP):
+    """Remove all but the newest keep run directories; the names removed."""
+    runs = sorted((p for p in state.iterdir() if p.is_dir() and not p.is_symlink()
+                   and re.fullmatch(r"\d{8}T\d{6}Z-\d+", p.name)), reverse=True)
+    gone = []
+    for old in runs[keep:]:
+        shutil.rmtree(old, ignore_errors=True)
+        gone.append(old.name)
+    return gone
+
+
+def utc_now():
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def detach(jobs_flag, environ=None):
+    """Start the whole suite in the background and return at once: a
+    copy of the tree (the run tests what was there now, whatever happens
+    to the checkout after), a run directory under the state directory with
+    the verdict RUNNING in it, and the copy's runner started in a session
+    of its own with no terminal, stdin, or output of the caller's. Prints
+    one line. 0 once started, 2 when it could not start."""
+    environ = dict(os.environ if environ is None else environ)
+    repo = TESTS.parent
+    state = state_dir(environ)
+    run_dir = state / f"{utc_now():%Y%m%dT%H%M%SZ}-{os.getpid()}"
+    try:
+        run_dir.mkdir(parents=True)
+        source = source_line(repo)
+        (run_dir / "source").write_text(f"{repo} {source}\n", encoding="utf-8")
+        shutil.copytree(repo, run_dir / "tree", symlinks=True,
+                        ignore=shutil.ignore_patterns(".git", ".bale", "__pycache__"))
+        write_verdict(run_dir, f"RUNNING since {utc_now():%Y-%m-%dT%H:%M:%SZ}: the whole suite, {source}")
+        argv = [sys.executable, "-B", str(run_dir / "tree" / "tests" / "runner.py"), "--detached-child",
+                str(run_dir), *(["--jobs", str(jobs_flag)] if jobs_flag else [])]
+        with (run_dir / "run.log").open("w", encoding="utf-8") as log:
+            proc = subprocess.Popen(argv, cwd=str(run_dir), env=environ, stdin=subprocess.DEVNULL, stdout=log,
+                                    stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
+        point_latest(state, run_dir)
+    except OSError as exc:
+        print(f"[run] error: the detached run could not start in {run_dir}: {exc}", file=sys.stderr)
+        return 2
+    print(f"[run] the whole suite is running detached (pid {proc.pid}); its verdict will be in "
+          f"{run_dir / 'verdict'}, its log in {run_dir / 'run.log'}", flush=True)
+    return 0
+
+
+def detached_child(run_dir, jobs_flag):
+    """The detached run itself, in the copy: SIGINT back to its default (a
+    run started from a background job inherits it ignored, and the
+    interrupt tests would fail for that), a lower priority, the whole suite
+    with its logs in the run directory, then the verdict, the copy
+    removed and old runs pruned."""
+    run_dir = pathlib.Path(run_dir)
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    try:
+        os.nice(DETACHED_NICE)
+    except OSError as exc:
+        say(f"running at the caller's priority ({exc})")
+    source = (run_dir / "source").read_text(encoding="utf-8").split(" ", 1)[-1].strip() \
+        if (run_dir / "source").is_file() else "source not recorded"
+    say(f"detached run in {run_dir}, {source}")
+    started = time.monotonic()
+    try:
+        code, outcome = whole_suite(run_dir / "logs", jobs_flag)
+    except Exception:
+        traceback.print_exc()
+        code, outcome = 2, None
+    took = round(time.monotonic() - started)
+    stamp = f"{utc_now():%Y-%m-%dT%H:%M:%SZ}"
+    log = run_dir / "run.log"
+    if code == 0:
+        verdict = f"OK {stamp}: {outcome['run']} tests passed in {took}s, {source}"
+    elif code == 1 and outcome:
+        verdict = (f"FAILED {stamp}: {outcome['bad']} of {outcome['run']} tests failed"
+                   + (f", job(s) {', '.join(outcome['broken'])} broken" if outcome["broken"] else "")
+                   + f", in {took}s, {source}; read {log}")
+    else:
+        verdict = f"BROKEN {stamp}: the runner could not run the suite (exit {code}) after {took}s, {source}; read {log}"
+    write_verdict(run_dir, verdict)
+    say(f"verdict: {verdict}")
+    shutil.rmtree(run_dir / "tree", ignore_errors=True)
+    if (run_dir / "tree").exists():
+        say(f"warning: the copy {run_dir / 'tree'} was not removed; remove it by hand")
+    for name in prune(run_dir.parent):
+        say(f"removed an older run: {run_dir.parent / name}")
+    return code
+
+
+# --- the entry -------------------------------------------------------------------------
+
+def whole_suite(logs, jobs_flag, env=None):
+    """The whole suite, side by side, its plan held to discover's count."""
+    env = dict(os.environ if env is None else env, PYTHONDONTWRITEBYTECODE="1")
+    names = module_names()
+    try:
+        jobs = plan(names)
+    except Exception:
+        print("[run] error: the suite could not be loaded to plan the run:", file=sys.stderr)
+        traceback.print_exc()
+        return 2, None
+    total = sum(len(v) for v in jobs.values())
+    found = discover_count()
+    if found != total:
+        print(f"[run] error: the plan holds {total} tests and unittest discover finds {found}; "
+              "run --serial and report this", file=sys.stderr)
+        return 2, None
+    return start_jobs(jobs, names, jobs_flag, logs, env)
+
+
+def start_jobs(jobs, names, jobs_flag, logs, env, keep_file_ids=None, what="the suite"):
+    n = jobs_flag or int(os.environ.get("OFFICE_TEST_JOBS", DEFAULT_JOBS) or DEFAULT_JOBS)
+    if n < 1:
+        print("[run] error: --jobs takes 1 or more", file=sys.stderr)
+        return 2, None
+    total = sum(len(v) for v in jobs.values())
+    # Absolute: each job runs with tests/ as its directory, so a relative
+    # path would name a different place there than here.
+    logs = (pathlib.Path(logs) if logs else pathlib.Path(tempfile.mkdtemp(prefix="office-tests."))).resolve()
+    logs.mkdir(parents=True, exist_ok=True)
+    keep_file = None
+    if keep_file_ids is not None:
+        keep_file = logs / "keep.txt"
+        keep_file.write_text("".join(f"{i}\n" for i in sorted(keep_file_ids)), encoding="utf-8")
+    scratch = pathlib.Path(tempfile.mkdtemp(prefix="office-tests-scratch."))
+    say(f"{what}: {total} tests in {len(jobs)} jobs, {n} at a time"
+        + (f"; the serial group ({len(jobs.get(SERIAL_JOB, []))} tests) runs in a lane of its own"
+           if SERIAL_JOB in jobs else "") + f"; logs in {logs}; each job's HOME and TMPDIR under {scratch}")
+    try:
+        return run_jobs(jobs, names, n, logs, env, scratch, keep_file)
+    finally:
+        remove_scratch(scratch)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="tests/run.sh", description=(
         "Run office-src's test suite, each module as its own process, a few at a time, with the classes that "
-        "drive a terminal (serial_group) one after another in a lane of their own. --serial runs it as one "
-        "process instead."))
-    ap.add_argument("--serial", action="store_true", help="one process: unittest discover -s tests -v")
+        "drive a terminal (serial_group) one after another in a lane of their own. --fast runs the fast tier "
+        "(tests/fast-tier.toml) within its budget, --detach the whole suite in the background, --serial the "
+        "whole suite as one process."))
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--serial", action="store_true", help="one process: unittest discover -s tests -v")
+    mode.add_argument("--fast", action="store_true",
+                      help="the fast tier, plus the modules, classes or tests named after it; fails past the "
+                           "tier's budget")
+    mode.add_argument("--detach", action="store_true",
+                      help="the whole suite in the background: prints one line naming its verdict file and "
+                           "returns at once")
     ap.add_argument("--jobs", type=int, default=None,
                     help=f"processes at a time (default {DEFAULT_JOBS}, or OFFICE_TEST_JOBS)")
     ap.add_argument("--logs", default=None, help="directory for the logs (default: a new one under the temp dir)")
     ap.add_argument("--plan", action="store_true", help="print the jobs and their test counts; run nothing")
     ap.add_argument("modules", nargs="*", help="run only these modules (test_x), the serial group's share of them "
-                                               "included")
+                                               "included; with --fast, modules, classes or tests added to the tier")
     ap.add_argument("--job", help=argparse.SUPPRESS)
     ap.add_argument("--result", help=argparse.SUPPRESS)
     ap.add_argument("--modules", dest="job_modules", nargs="*", default=None, help=argparse.SUPPRESS)
+    ap.add_argument("--keep", help=argparse.SUPPRESS)
+    ap.add_argument("--detached-child", help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
 
     if a.job:
         names = a.job_modules if a.job_modules is not None else module_names()
-        return run_job(a.job, names, a.result)
+        keep = set(pathlib.Path(a.keep).read_text(encoding="utf-8").split()) if a.keep else None
+        return run_job(a.job, names, a.result, keep)
+    if a.detached_child:
+        return detached_child(a.detached_child, a.jobs)
 
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    if a.detach:
+        if a.modules or a.plan or a.logs:
+            print("[run] error: --detach runs the whole suite and keeps its logs under the state directory; "
+                  "drop the module names, --plan and --logs", file=sys.stderr)
+            return 2
+        return detach(a.jobs)
     if not a.plan:
         for line in sigint_warning() or []:
             print(f"[run] warning: {line}", file=sys.stderr)
@@ -266,7 +699,16 @@ def main(argv=None):
         if a.modules:
             print("[run] error: --serial runs the whole suite; drop the module names", file=sys.stderr)
             return 2
-        return run_serial(env)
+        scratch = pathlib.Path(tempfile.mkdtemp(prefix="office-tests-scratch."))
+        try:
+            return run_serial(isolated_env(env, scratch / "j1"))
+        finally:
+            remove_scratch(scratch)
+    if a.fast:
+        return fast(a, env)
+    if not a.modules and not a.plan:
+        code, _ = whole_suite(a.logs, a.jobs, env)
+        return code
 
     names = module_names()
     if a.modules:
@@ -293,28 +735,62 @@ def main(argv=None):
         for job in order(jobs):
             print(f"{job}\t{len(jobs[job])}")
         return 0
-    n = a.jobs or int(os.environ.get("OFFICE_TEST_JOBS", DEFAULT_JOBS) or DEFAULT_JOBS)
-    if n < 1:
-        print("[run] error: --jobs takes 1 or more", file=sys.stderr)
-        return 2
-    # Absolute: each job runs with tests/ as its directory, so a relative
-    # path would name a different place there than here.
-    logs = (pathlib.Path(a.logs) if a.logs else pathlib.Path(tempfile.mkdtemp(prefix="office-tests."))).resolve()
-    logs.mkdir(parents=True, exist_ok=True)
-    say(f"{total} tests in {len(jobs)} jobs, {n} at a time"
-        + (f"; the serial group ({len(jobs.get(SERIAL_JOB, []))} tests) runs in a lane of its own"
-           if SERIAL_JOB in jobs else "") + f"; logs in {logs}")
+    code, _ = start_jobs(jobs, names, a.jobs, a.logs, env)
+    return code
+
+
+def fast(a, env):
+    """--fast: the tier, held to the dispatcher, the plan and discover,
+    plus what was named after it; its wall time printed and held to its
+    budget."""
     started = time.monotonic()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=n) as pool:
-        futures = [pool.submit(launch, job, names, logs, env) for job in order(jobs)]
-        results = [f.result() for f in futures]
-    lines, failed = summary(results, total, time.monotonic() - started, logs)
-    print("\n".join(lines), flush=True)
-    ran = sum(r["run"] for r in results)
-    if not failed and ran != total:
-        print(f"[run] error: {ran} tests ran, the plan held {total}", file=sys.stderr)
+    names = module_names()
+    try:
+        tier = load_tier()
+        verbs = dispatcher_verbs()
+        everything = plan(names)
+    except ValueError as exc:
+        print(f"[run] error: the fast tier cannot be read: {exc}", file=sys.stderr)
         return 2
-    return 1 if failed else 0
+    except Exception:
+        print("[run] error: the suite could not be loaded to plan the run:", file=sys.stderr)
+        traceback.print_exc()
+        return 2
+    ids = {i for v in everything.values() for i in v}
+    problems = tier_problems(tier, ids, verbs)
+    unknown = [m for m in a.modules if not matching(m, ids)]
+    problems += [f"{m}, named after --fast, is no test, class or module of the suite" for m in unknown]
+    if problems:
+        print("[run] error: the fast tier does not hold together:", file=sys.stderr)
+        for p in problems:
+            print(f"[run]   {p}", file=sys.stderr)
+        return 2
+    keep = tier_ids(tier, ids).union(*(matching(m, ids) for m in a.modules))
+    jobs = plan(names, keep)
+    total = sum(len(v) for v in jobs.values())
+    found = sum(1 for i in discover_ids() if i in keep)
+    if found != total:
+        print(f"[run] error: the fast tier's plan holds {total} tests and unittest discover finds {found} of "
+              "them; run --serial and report this", file=sys.stderr)
+        return 2
+    if a.plan:
+        for job in order(jobs):
+            print(f"{job}\t{len(jobs[job])}")
+        return 0
+    if a.modules:
+        say(f"added to the fast tier: {' '.join(a.modules)}")
+    code, outcome = start_jobs(jobs, names, a.jobs, a.logs, env, keep, what="the fast tier")
+    took = time.monotonic() - started
+    budget = tier["budget_seconds"]
+    if outcome is None:
+        return code
+    say(f"the fast tier took {took:.1f}s of wall clock, {outcome['run']} of the suite's "
+        f"{sum(len(v) for v in everything.values())} tests; its budget is {budget}s")
+    if took > budget:
+        print(f"[run] FAILED: the fast tier ran over its budget: {took:.1f}s > {budget}s "
+              f"(tests/{TIER_FILE}; the slowest tests are in its logs' times.tsv)", file=sys.stderr)
+        return 1 if code == 0 else code
+    return code
 
 
 if __name__ == "__main__":

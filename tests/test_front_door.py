@@ -314,9 +314,9 @@ class TourCase(unittest.TestCase):
         self.e = Env(self)
         self.fake = FakePackBale(self.e.tmp)
         self.e.env["PATH"] = self.fake.path(self.e.env["PATH"])
-        self.tmpdir = self.e.tmp / "tmpdir"
-        self.tmpdir.mkdir()
-        self.e.env["TMPDIR"] = str(self.tmpdir)
+        # The tour makes its office under TMPDIR, and Env gives every test
+        # one of its own, which must be empty again when the tour ends.
+        self.tmpdir = self.e.tmpdir
         self.real = self.e.init("real")
         self.e.run(cwd=self.real, check=0)        # a walk-in, so there is a record to keep
         self.fake.calls.unlink(missing_ok=True)   # init's survey asked bale its version; the tour must not

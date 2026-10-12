@@ -74,8 +74,58 @@ hands at the terminal, and leaves every question bale asks to him; it
 schedules nothing, never hands a session to a model and never carries
 pastes.
 
+## The suite's clock
+
+For the worker first. bale gives a session's validation two minutes
+(TARBALL.md 7.6), and the whole suite takes far longer (679 tests; about
+18 minutes on a two-core sandbox, 4 jobs at a time). So, since 0.17.1:
+
+- Every validation.sh runs the fast tier, `tests/run.sh --fast`, plus
+  what the session touched, named after it (`tests/run.sh --fast
+  test_land.TestLandWhichSession test_x.TestY.test_z`; a module, a class
+  or a test), and asserts its own wall time under 120 seconds. The tier
+  is `tests/fast-tier.toml` and nowhere else: one test per verb
+  `bin/office` dispatches (and the walk-in), then the tests that cost
+  under half a second. `--fast` stops before running anything when a
+  verb has no entry point there or a name is not in the suite, prints
+  its wall time, and fails past `budget_seconds`. Add a module whole only
+  when it is cheap; `times.tsv` beside every run's logs says what each
+  test costs.
+- The whole suite stays reachable from validation.sh behind `--slow`,
+  and the worker runs it in the sandbox before shipping and reports its
+  count, result and wall time in notes.md.
+- No test reads the machine it runs on. A test's HOME, TMPDIR,
+  XDG_CONFIG_HOME and downloads are its Env's (`self.e.home`,
+  `self.e.tmpdir`, `self.e.downloads`; `Env.this_process()` for a helper
+  called in-process, which lends the Env's whole environment, git
+  identity included). The runner gives every job its own HOME and
+  TMPDIR besides, so a test that leans on the machine (its git identity,
+  its temporary directory) fails in the sandbox, not on the occupant's
+  box. `tests/test_suite_clock.py` fails the suite on any test file that
+  names the machine's temporary directory, `expanduser`, `Path.home(` or
+  `$HOME` outside Env; its ALLOWED list holds the few that are text a
+  fake host runs or paths a probe printed, each with its reason.
+- After every landing, office-src's after-land actions start the whole
+  suite detached (`tests/run.sh --detach`): one line naming the verdict
+  file under `~/.local/state/office-src/suite/`, and nobody waits.
+  `latest/verdict` there is the last run's one line: `RUNNING since`,
+  `OK`, `FAILED` or `BROKEN`, with the count, the time and the commit.
+  A worker on office-src can ask for it in a probe.
+
 ## Recent changes
 
+- 0.17.1 (session 2026-10-12-suite-clock-001): the suite's clock. The
+  fast tier (`tests/run.sh --fast`, `tests/fast-tier.toml`, 280 of the
+  suite's 679 tests, 55 seconds on a two-core sandbox, 91 with this
+  session's additions), the detached whole run (`tests/run.sh
+  --detach`), per-test times in every run (`times.tsv`), a HOME and
+  TMPDIR of its own for every job, and the rule that no test reads the
+  machine, kept by `tests/test_suite_clock.py`. Env gives TMPDIR and
+  downloads; eight tests that leaned on the machine now use their Env.
+  The runner's plan test no longer re-reads every test file per test
+  (113 seconds to under 2). No verb changed. Additive: no migration, no
+  office needs anything done; add `tests/run.sh --detach` to
+  office-src's after-land actions.
 - 0.17.0 (session 2026-10-08-audience-line-002): the audience line.
   Three declarations on the projects table, `audience` (the remote in the
   workbench clone that points at the audience's git host), `author` (the
@@ -539,6 +589,12 @@ pastes.
   batches each round of reads into one connection, and a walk-in makes
   two per hosted project. ssh connection sharing (ControlMaster) would
   cut the handshake, not the login; the office does not set it.
+- The fast tier's time was measured only in a two-core sandbox (55
+  seconds; 91 with the 0.17.1 session's own additions). The first
+  office-src apply on WSL is its test there; validation.sh prints the
+  number, and `--fast` fails past 120 seconds. `tests/run.sh --detach`
+  ran end to end in the sandbox, not yet from `office land`: the first
+  landing after the after-land line is added is its test.
 
 ## Questions likely to come up
 
@@ -590,6 +646,10 @@ pastes.
   in says how many are pending and which session wrote them until it is
   run.
 
+- *Did the whole suite pass after the last landing?* `cat
+  ~/.local/state/office-src/suite/latest/verdict`: one line, `OK`,
+  `FAILED` (with the log to read) or `BROKEN`, or `RUNNING since` while it
+  runs. Nothing waits for it, and nothing reports it yet.
 - *What window is the digest's "since the last sitting"?* From the
   commit that filed the latest sitting's page in the notepad
   (`notepad/DATE-SLUG.md`, which `office start` files from a sitting's

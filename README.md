@@ -984,9 +984,35 @@ twice.
 
 ## Tests
 
-    tests/run.sh                 # the whole suite, side by side (the default)
-    tests/run.sh --serial        # the whole suite in one process, as before 0.13.0
-    tests/run.sh test_land       # one module, with its share of the serial group
+    tests/run.sh                   # the whole suite, side by side (the default)
+    tests/run.sh --fast            # the fast tier, under two minutes: what validation runs
+    tests/run.sh --fast test_land  # the fast tier and all of one module (or a class, or a test)
+    tests/run.sh --detach          # the whole suite in the background, for after a landing
+    tests/run.sh --serial          # the whole suite in one process, as before 0.13.0
+    tests/run.sh test_land         # one module, with its share of the serial group
+
+The suite's clock. The whole suite takes many minutes, and bale's
+contract gives a session's validation two; so validation runs the fast
+tier and the whole suite runs where nobody waits for it. The tier is
+`tests/fast-tier.toml`, defined there once: for every verb the command
+dispatches (and the walk-in) a test that runs its entry point, then the
+units, catalogs and text rules that cost little and guard much. The runner
+holds it to the suite the way it holds the whole plan to `unittest
+discover`, and a verb added to `bin/office` with no entry point in the
+tier stops `--fast` before anything runs. A session adds what it touched
+by naming it after `--fast`. `--fast` prints its wall time and fails when
+it runs past the tier's budget (`budget_seconds`, 120). Each job's result
+carries each test's time and every run writes `times.tsv` beside its
+logs, slowest first: the place to look when the tier grows slow.
+`--detach` copies the tree, starts the whole suite in a session of its
+own at a lower priority and returns at once, printing one line that names
+its verdict file under `~/.local/state/office-src/suite/` (or
+`$XDG_STATE_HOME`), outside the repo: `RUNNING since ...` until it ends,
+then one line, `OK`, `FAILED` or `BROKEN`, with the count, the time, the
+commit it tested and the log to read; `latest` names the newest run, and
+the ten newest are kept. It restores SIGINT for its tests itself. It is
+meant as office-src's after-land action, so every landing runs the whole
+suite without holding the terminal.
 
 `tests/run.sh` runs each test module as its own process, four at a time
 (`--jobs N`, or `OFFICE_TEST_JOBS`), since the modules share nothing and
@@ -1007,15 +1033,21 @@ when every test passed, 1 when one failed, 2 when it could not run.
 `--serial` is today's single process, `python3 -m unittest discover -s
 tests -v`, which still works as it always did.
 
-Run the suite in the foreground. A background job started from a
-non-interactive shell (`nohup tests/run.sh &`) inherits SIGINT ignored,
+Run the suite in the foreground, or with `--detach`. A background job
+started from a non-interactive shell (`nohup tests/run.sh &`) inherits SIGINT ignored,
 every process it starts ignores Ctrl-C, and the terminal tests that check
 what an interrupt does then fail for that reason; the runner says so at
 the start of such a run, naming them.
 
 The suite builds offices, installs and synthetic migrations under
 temporary directories and never touches your home directory or offices,
-nor reads what this machine holds outside them: the downloads question's
+nor reads what this machine holds outside them. The runner gives every
+job (and `--serial`) a HOME, TMPDIR and XDG directories of its own, an
+empty git config and none of your `OFFICE_` settings, and removes them
+after; each test's `Env` (tests/test_office.py) gives it its own HOME,
+TMPDIR, config and downloads besides, and `tests/test_suite_clock.py`
+fails the suite on a test file that names this machine's temporary
+directory, expands `~` or reads HOME anywhere but there. The downloads question's
 scan of the Windows users' homes (`/mnt/c/Users` on WSL) is pointed away
 by `OFFICE_WINDOWS_USERS`, empty for none, or a directory a test makes.
 bale need not be installed, and no real ssh ever runs: the read side's tests put a fake bale first
