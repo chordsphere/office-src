@@ -228,7 +228,47 @@ trigger = ["manual"]
 kind = "script"
 built = true
 writes = ["the repo the session belongs to, through bale's apply (or, for a read-only sitting, bale's unlock)", "desk/{folder}/folder.md",
+          "desk/{folder}/walkthrough.md", "desk/{folder}/delivery.md",
           "filing-cabinet/{folder}", "what the project's after-land actions write"]
+lands = []
+attended = true
+trigger = ["manual"]
+
+# The audience line (0.17.0). deliver carries a folder's landed work to
+# its project's audience as a delivery branch of curated commits, the
+# words from the folder's delivery.md, and records the delivery in the
+# folder's History; outside the office it writes that branch on the
+# audience's git host, the push guard in the clone's .git/hooks when it
+# is missing, and a temporary repo on this machine, removed after.
+# Nothing is guaranteed to exist after it: a letterhead hit, a conflict
+# or a refused push leaves nothing pushed and nothing recorded.
+[verbs.deliver]
+kind = "script"
+built = true
+writes = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md", "a delivery branch on the project's audience",
+          "the push guard in the clone's .git/hooks"]
+lands = []
+attended = true
+trigger = ["manual"]
+
+# Read-only: the letterhead's guard on what leaves, run by hand on a
+# tree here or in a project's repo; office deliver runs the same check
+# before anything is pushed.
+[verbs.letterhead-check]
+kind = "script"
+built = true
+writes = []
+lands = []
+attended = true
+trigger = ["manual"]
+
+# Carries a planner's answer to a clarification back to the repo the
+# session is open in: bale relay there, the answer file on its stdin.
+# What it writes is bale's own exchange record, under .bale/ in that repo.
+[verbs.relay]
+kind = "script"
+built = true
+writes = ["bale's exchange thread in the repo the session is open in"]
 lands = []
 attended = true
 trigger = ["manual"]
@@ -397,13 +437,22 @@ attended = true
 trigger = ["manual"]
 
 # Packed by office start, on a project. Attended until a build kind
-# with a declared landing is proven by hand.
+# with a declared landing is proven by hand. Since 0.17.0 the two
+# deliverables of doctrine section 3, principle 6, are the session's to
+# write and the folder's to hold: the walkthrough and the delivery words,
+# written as the Walkthrough and Delivery sections at the end of the
+# response's notes.md (the install's templates ride with the session to
+# say their shape) and filed in the folder as walkthrough.md and
+# delivery.md by office land after the landing, the office step that
+# brings the folder up to date (doctrine section 4); the session never
+# writes into the office. lands names what exists after a build session
+# that wrote both has landed; writes names the folder for it.
 [verbs.build]
 kind = "project-session"
 built = true
-ships = ["desk/{folder}", "handbook/{systems}"]
-writes = ["{project}"]
-lands = []
+ships = ["desk/{folder}", "handbook/{systems}", "templates/walkthrough.md and templates/delivery.md, from the install"]
+writes = ["{project}", "desk/{folder}"]
+lands = ["desk/{folder}/walkthrough.md", "desk/{folder}/delivery.md"]
 attended = true
 trigger = ["manual"]
 

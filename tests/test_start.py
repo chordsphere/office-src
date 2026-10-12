@@ -617,6 +617,8 @@ class TestDeclarations(unittest.TestCase):
         ride = str(self.other / "blueprints")
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "projects", "set", "alpha"], self.root, self.e.env, [
             (b"Keep alpha on this machine? (y/n) [y]:", ""),
+            # Since 0.17.0 set also offers to keep the audience line (none).
+            (b"Keep alpha without an audience? (y/n) [y]:", ""),
             (b"(--ride) [return ends the list]:", str(self.e.tmp / "gone")),
             (b"no such path on this machine", ride),
             (b"Another (--ride) [return ends the list]:", ""),
@@ -674,9 +676,12 @@ class TestStartOnAProject(StartCase):
         self.assertRegex(sid, r"^\d{4}-\d{2}-\d{2}-fix-login-001$")
         tray = self.tray(proc)
         self.assertEqual(tray, self.trays / sid)
+        # Since 0.17.0 a build session also gets the install's two page
+        # templates (context-office-src-install.tar.gz).
         self.assertEqual(sorted(p.name for p in tray.iterdir()),
                          sorted([f"request-{sid}.tar.gz", "context-doctrine.tar.gz", "context-home.tar.gz",
-                                 "context-other.tar.gz", "context-plain.tar.gz", "loose.md"]))
+                                 "context-office-src-install.tar.gz", "context-other.tar.gz", "context-plain.tar.gz",
+                                 "loose.md"]))
         # The request is bale's own tarball, byte for byte.
         self.assertEqual((tray / f"request-{sid}.tar.gz").read_bytes(),
                          (self.proj / ".bale/outbox" / f"request-{sid}.tar.gz").read_bytes())

@@ -732,7 +732,8 @@ def read_projects(manifest):
     for name, entry in sorted(table.items()):
         item = {"name": name, "path": None, "resolved": None, "problem": None,
                 "rides": [], "after_land": [], "declaration_problems": [],
-                "host": None, "shell": None, "connect": None}
+                "host": None, "shell": None, "connect": None,
+                "audience": None, "author": None, "base": None}
         if not PROJECT_NAME_RE.match(name):
             item["problem"] = "the name must be letters, digits, dash or underscore"
         elif not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
@@ -772,6 +773,19 @@ def read_projects(manifest):
                     item[key] = list(value)
                 else:
                     item["declaration_problems"].append(f"{key} is not a list of non-empty strings")
+            # The audience line's three keys (0.17.0), each optional and
+            # checked as office deliver reads it; one that does not read
+            # is a declaration problem, reported beside the project.
+            for key in AUDIENCE_KEYS:
+                value = entry.get(key)
+                if value is None:
+                    continue
+                try:
+                    if not isinstance(value, str):
+                        raise HelperError(f"{key} is not a string")
+                    item[key] = AUDIENCE_CHECKS[key](value)
+                except HelperError as exc:
+                    item["declaration_problems"].append(str(exc))
         out.append(item)
     return out
 
@@ -795,6 +809,63 @@ DECLARATION_KEYS = ("rides", "after_land")
 # what each means); set through office projects add --host / set --host,
 # cleared together by office projects set --on-this-machine.
 HOST_KEYS = ("host", "shell", "connect")
+# The audience line's three declarations (0.17.0), on the same entry,
+# set by office projects add and set and read by office deliver:
+#
+#   audience  the name of the remote in the workbench clone that points
+#             at the audience's git host; a project with none leaves it
+#             unset, and deliver refuses it by name
+#   author    the identity the audience expects on the commits,
+#             `Name <email>`; unset, deliver reads the clone's own
+#   base      the audience branch deliveries branch from; unset, the
+#             audience remote's HEAD branch, read from the clone
+AUDIENCE_KEYS = ("audience", "author", "base")
+REMOTE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+AUTHOR_RE = re.compile(r"^(?P<name>[^<>]+?)\s*<(?P<email>[^<>@\s]+@[^<>@\s]+)>$")
+# A branch name as git takes one: no space, no control character, none
+# of git's refused sequences; checked here so a bad value refuses at the
+# wizard, not at the push.
+BRANCH_BAD = re.compile(r"[\s~^:?*\[\\]|\.\.|@\{|^/|/$|^-|\.lock$|^\.|/\.|//|\.$")
+
+
+def check_audience(name):
+    """A remote's name, one word."""
+    text = (name or "").strip()
+    if not text:
+        raise HelperError("an audience is the name of a remote in the workbench clone, and is empty")
+    if not REMOTE_NAME_RE.match(text):
+        raise HelperError(f"an audience is the name of a remote in the workbench clone (origin, say), not {text!r}")
+    return text
+
+
+def check_author(text):
+    """`Name <email>`, as git writes an identity."""
+    value = " ".join((text or "").split())
+    if not value:
+        raise HelperError("an author is empty")
+    m = AUTHOR_RE.match(value)
+    if not m or not m.group("name").strip():
+        raise HelperError(f"an author is written as git writes one, Name <email>, not {value!r}")
+    return f"{m.group('name').strip()} <{m.group('email')}>"
+
+
+def split_author(text):
+    """(name, email) from an author as check_author writes it."""
+    m = AUTHOR_RE.match(check_author(text))
+    return m.group("name").strip(), m.group("email")
+
+
+def check_base(name):
+    """A branch name on the audience, as git takes one."""
+    text = (name or "").strip()
+    if not text:
+        raise HelperError("a base is a branch name on the audience, and is empty")
+    if text.startswith("refs/") or BRANCH_BAD.search(text) or not text.isascii():
+        raise HelperError(f"a base is a branch name on the audience (main, say), not {text!r}")
+    return text
+
+
+AUDIENCE_CHECKS = {"audience": check_audience, "author": check_author, "base": check_base}
 
 
 def check_ride(path):
@@ -845,14 +916,16 @@ def check_host_keys(host, shell=None, connect=None):
         raise HelperError(str(exc))
 
 
-def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys=None):
+def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys=None, audience_keys=None):
     """Write a project's declarations, keeping every other byte of the
     floor plan. A list replaces the key's value; [] removes the key;
     None leaves it as it is. host_keys is a dict of the three host keys
     to write (each a string, or None to remove it), or None to leave
-    them. Returns the project's entry as it reads back. Refuses a
-    project the table does not list, a key written over several lines
-    (not the shape this writes), and a value that does not check."""
+    them; audience_keys the same for the audience line's three (any
+    subset of them, each a string checked here, or None to remove it).
+    Returns the project's entry as it reads back. Refuses a project the
+    table does not list, a key written over several lines (not the shape
+    this writes), and a value that does not check."""
     if not PROJECT_NAME_RE.match(name):
         raise HelperError(f"a project name must be letters, digits, dash or underscore: {name!r}")
     want = {}
@@ -868,6 +941,10 @@ def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys
     if host_keys is not None:
         for key in HOST_KEYS:
             want[key] = host_keys.get(key)
+    for key, value in (audience_keys or {}).items():
+        if key not in AUDIENCE_KEYS:
+            raise HelperError(f"{key!r} is not one of the audience line's keys ({', '.join(AUDIENCE_KEYS)})")
+        want[key] = AUDIENCE_CHECKS[key](value) if value is not None else None
     path = pathlib.Path(manifest_path)
     text = path.read_text(encoding="ascii")
     lines = text.splitlines()
@@ -881,11 +958,12 @@ def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys
     body = lines[start + 1:end]
     for key, value in want.items():
         at = [i for i, l in enumerate(body) if re.match(rf"^\s*{key}\s*=", l)]
+        string_key = key in HOST_KEYS or key in AUDIENCE_KEYS
         for i in at:
-            if not body[i].rstrip().endswith('"' if key in HOST_KEYS else "]"):
+            if not body[i].rstrip().endswith('"' if string_key else "]"):
                 raise HelperError(f"[projects.{name}] writes {key} over several lines, which office projects "
                                   "does not rewrite; put it on one line first")
-        if key in HOST_KEYS:
+        if string_key:
             new_line = f"{key} = {toml_basic_string(value)}" if value is not None else ""
         else:
             new_line = f"{key} = [" + ", ".join(toml_basic_string(v) for v in value) + "]"
@@ -921,10 +999,23 @@ def describe_host(entry):
             f"when it does not answer: {entry['connect']}"]
 
 
+def describe_audience(entry):
+    """Lines for office projects: the audience line's declarations, when
+    the project has an audience."""
+    if not entry.get("audience"):
+        return []
+    out = [f"audience: the remote {entry['audience']} (office deliver pushes a delivery branch there, and nothing else)"]
+    out.append(f"author: {entry['author']}" if entry.get("author")
+               else "author: the workbench clone's own identity (set --author to name another)")
+    out.append(f"base: {entry['base']}" if entry.get("base")
+               else "base: the audience's HEAD branch, read from the clone (set --base to name another)")
+    return out
+
+
 def describe_declarations(entry):
     """Lines for office projects: what rides and what runs after landing,
     each ride-along checked on this machine."""
-    out = describe_host(entry)
+    out = describe_host(entry) + describe_audience(entry)
     for r in entry["rides"]:
         try:
             resolved = expand_project_path(r)
@@ -1148,9 +1239,11 @@ STATUSES = DESK_STATUSES + CABINET_STATUSES
 # --candidate writes, the one state the blueprint's set had no verb for.
 # `ended` is the line office land writes when it ends a read-only sitting
 # (bale unlock); it changes no status.
+# `delivered` is the line office deliver writes when a delivery branch
+# reached the audience; it changes no status.
 HISTORY_VERBS = ("candidate", "queued", "opened", "ratified", "gated", "cleared", "grown",
                  "re-scoped", "corrected", "ruled", "carried", "consumed", "done",
-                 "absorbed", "split", "retired", "reopened", "note", "ended")
+                 "absorbed", "split", "retired", "reopened", "note", "ended", "delivered")
 # The state-changing verbs and the status each leaves the folder in:
 # candidate -> queued -> open -> done; any desk status -> absorbed,
 # split or retired; done -> reopened -> open.
@@ -1503,6 +1596,244 @@ def ratify_session(folder_md, sid, day, except_text=None):
     lines.insert(at + 1, entry)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return entry[2:]
+
+
+# --- the audience line: a folder's lane, its two pages and its deliveries ------
+#
+# Nearly every job produces two deliverables (doctrine section 3,
+# principle 6): the thing, which lives in a project, and the message
+# about the thing. A build session writes the message as two sections at
+# the end of its notes.md, Walkthrough and Delivery, and office land
+# files them in the folder as walkthrough.md and delivery.md (the
+# templates say their shape); office deliver reads delivery.md for the
+# words a delivery leaves with, and writes a dated `delivered` History
+# line for each delivery it made.
+
+PAGE_SECTIONS = {"walkthrough": "Walkthrough", "delivery": "Delivery"}
+PAGE_FILES = {"walkthrough": "walkthrough.md", "delivery": "delivery.md"}
+TO_LINE_RE = re.compile(r"^(?:- )?to:\s*(.+?)\s*$", re.I)
+PATHS_LINE_RE = re.compile(r"^(?:- )?paths:\s*(.+?)\s*$", re.I)
+DELIVERED_RE = re.compile(r"^(?P<branch>\S+) on (?P<audience>\S+) of (?P<project>\S+): sessions (?P<sessions>.*?); "
+                          r"workbench (?P<workbench>[0-9a-f]{7,40}); delivery (?P<delivery>[0-9a-f]{7,40})$")
+SUBJECT_LIMIT = 72
+
+
+def lane_project(lane):
+    """The project a folder's lane names (`project: paths`, or a bare
+    project name), or None."""
+    text = (lane or "").strip()
+    if not text:
+        return None
+    name = text.split(":", 1)[0].strip() if ":" in text else text
+    return name if PROJECT_NAME_RE.match(name) else None
+
+
+def folder_lane_project(folder_md):
+    f = parse_folder(pathlib.Path(folder_md).read_text(encoding="utf-8"))
+    lanes = f["fields"].get("lane") or []
+    return lane_project(lanes[0]) if lanes else None
+
+
+def cmd_lane_project(a):
+    name = folder_lane_project(a.folder_md)
+    if name:
+        print(name)
+
+
+def cmd_check_audience_key(a):
+    print(AUDIENCE_CHECKS[a.key](a.value))
+
+
+def promote_headings(lines):
+    """A section's body as a page of its own: every heading one level up
+    (### Commit under ## Delivery becomes ## Commit on delivery.md)."""
+    out = []
+    for line in lines:
+        m = re.match(r"^(#{2,6}) (.*)$", line)
+        out.append(f"{m.group(1)[1:]} {m.group(2)}" if m else line)
+    return out
+
+
+def pages_from_notes(text):
+    """{walkthrough: lines or None, delivery: lines or None} from a
+    response's notes.md: the body of each `## Walkthrough` and
+    `## Delivery` section, headings promoted one level."""
+    lines = text.splitlines()
+    out = {}
+    for key, heading in PAGE_SECTIONS.items():
+        start, end = section_bounds(lines, heading)
+        if start is None:
+            out[key] = None
+            continue
+        body = lines[start + 1:end]
+        while body and not body[0].strip():
+            body.pop(0)
+        while body and not body[-1].strip():
+            body.pop()
+        out[key] = promote_headings(body) if body else None
+    return out
+
+
+def notes_from_response(tarball):
+    """The notes.md inside a response tarball, or None when it ships
+    none; a tarball that cannot be read is an error."""
+    import tarfile
+    try:
+        with tarfile.open(tarball) as t:
+            for m in t.getmembers():
+                if m.isfile() and re.fullmatch(r"response-\d{3}/notes\.md", m.name):
+                    return t.extractfile(m).read().decode("utf-8", "replace")
+    except (OSError, tarfile.TarError) as exc:
+        raise HelperError(f"{tarball} is not a response tarball the office can read: {exc}")
+    return None
+
+
+def file_pages(folder_dir, pages, sid, title):
+    """Write the folder's walkthrough.md and delivery.md from the
+    sections a response carried. Returns [(key, state, path)] with state
+    filed (new), rewritten (it was there, and is replaced: a desk folder
+    is live paper, and git keeps what it said) or absent (the response
+    carried no such section; nothing is written)."""
+    out = []
+    folder_dir = pathlib.Path(folder_dir)
+    for key, name in PAGE_FILES.items():
+        path = folder_dir / name
+        body = pages.get(key)
+        if not body:
+            out.append((key, "absent", path))
+            continue
+        head = f"# {PAGE_SECTIONS[key]}: {title}" if title else f"# {PAGE_SECTIONS[key]}"
+        text = "\n".join([head, "", f"<!-- filed by office land from {sid}'s notes.md -->", "", *body]) + "\n"
+        state = "rewritten" if path.exists() else "filed"
+        path.write_text(ascii_escape(text)[0], encoding="utf-8")
+        out.append((key, state, path))
+    return out
+
+
+def cmd_file_pages(a):
+    folder_dir = pathlib.Path(a.folder_dir)
+    md = folder_dir / "folder.md"
+    title = parse_folder(md.read_text(encoding="utf-8"))["title"] if md.is_file() else None
+    notes = notes_from_response(a.response)
+    pages = pages_from_notes(notes) if notes is not None else {k: None for k in PAGE_SECTIONS}
+    for key, state, path in file_pages(folder_dir, pages, a.sid, title):
+        print(f"{key}\t{state}\t{path}")
+
+
+def parse_delivery(text):
+    """What a folder's delivery.md says: {to, commits: [{subject, body,
+    paths}], review: {title, body}}, or HelperError naming what is wrong.
+    A Commit section's first paragraph is the subject (one line); the
+    rest is the body. Several Commit sections make several commits, each
+    but the last naming the paths it takes on a `paths:` line (comma-
+    separated, relative to the repo's top; a directory takes what is
+    under it); the last takes the rest. The Review section's first
+    paragraph is the title, the rest the body. A `to:` line, before the
+    first section, names the reviewer."""
+    lines = text.splitlines()
+    first = next((i for i, l in enumerate(lines) if l.startswith("## ")), len(lines))
+    to = None
+    for line in lines[:first]:
+        m = TO_LINE_RE.match(line.strip())
+        if m:
+            to = m.group(1)
+    sections = []
+    i = first
+    while i < len(lines):
+        heading = lines[i][3:].strip()
+        j = next((k for k in range(i + 1, len(lines)) if lines[k].startswith("## ")), len(lines))
+        sections.append((heading, lines[i + 1:j]))
+        i = j
+
+    def paragraphs(body):
+        out, cur = [], []
+        for line in body:
+            if line.strip():
+                cur.append(line.rstrip())
+            elif cur:
+                out.append(cur)
+                cur = []
+        if cur:
+            out.append(cur)
+        return out
+
+    commits, review = [], None
+    for heading, body in sections:
+        if heading.lower() == "commit":
+            paths = None
+            if body and PATHS_LINE_RE.match((body[0] if body[0].strip() else "").strip()):
+                paths = [x.strip() for x in PATHS_LINE_RE.match(body[0].strip()).group(1).split(",") if x.strip()]
+                body = body[1:]
+            else:
+                # The paths line may follow a blank line.
+                stripped = [l for l in body if l.strip()]
+                if stripped and PATHS_LINE_RE.match(stripped[0].strip()):
+                    at = body.index(stripped[0])
+                    paths = [x.strip() for x in PATHS_LINE_RE.match(stripped[0].strip()).group(1).split(",") if x.strip()]
+                    body = body[:at] + body[at + 1:]
+            paras = paragraphs(body)
+            if not paras:
+                raise HelperError("a Commit section is empty: its first paragraph is the commit's subject, one line")
+            if len(paras[0]) != 1:
+                raise HelperError("a Commit section's first paragraph is the subject, one line; put a blank line "
+                                  "between it and the body")
+            subject = paras[0][0].strip()
+            if subject.startswith("#") or subject.startswith("- "):
+                raise HelperError(f"a commit subject is a line of words, not {subject!r}")
+            if len(subject) > SUBJECT_LIMIT:
+                raise HelperError(f"a commit subject is at most {SUBJECT_LIMIT} characters: {subject!r}")
+            commits.append({"subject": subject, "body": "\n\n".join("\n".join(x) for x in paras[1:]), "paths": paths})
+        elif heading.lower() == "review":
+            if review is not None:
+                raise HelperError("delivery.md has two Review sections; one review request per delivery")
+            paras = paragraphs(body)
+            if not paras:
+                raise HelperError("the Review section is empty: its first paragraph is the review's title")
+            if len(paras[0]) != 1:
+                raise HelperError("the Review section's first paragraph is the title, one line; put a blank line "
+                                  "between it and the body")
+            review = {"title": paras[0][0].strip(), "body": "\n\n".join("\n".join(x) for x in paras[1:])}
+    if not commits:
+        raise HelperError("delivery.md has no Commit section (## Commit: the subject, a blank line, the body)")
+    if review is None:
+        raise HelperError("delivery.md has no Review section (## Review: the title, a blank line, the body)")
+    for n, c in enumerate(commits):
+        if n < len(commits) - 1 and not c["paths"]:
+            raise HelperError(f"Commit {n + 1} of {len(commits)} names no paths; every Commit section but the last "
+                              "starts with a paths: line naming what it takes")
+    if commits[-1]["paths"]:
+        raise HelperError("the last Commit section takes everything the others left, so it names no paths")
+    return {"to": to, "commits": commits, "review": review}
+
+
+def cmd_delivery_words(a):
+    import json
+    text = pathlib.Path(a.delivery_md).read_text(encoding="utf-8")
+    print(json.dumps(parse_delivery(text)))
+
+
+def delivered_records(folder_md):
+    """[(day, record dict)] for each `delivered` History line of a
+    folder, oldest first: branch, audience, project, sessions (a list),
+    workbench and delivery (commits)."""
+    f = parse_folder(pathlib.Path(folder_md).read_text(encoding="utf-8"))
+    out = []
+    for day, verb, text in f["history"]:
+        if verb != "delivered":
+            continue
+        m = DELIVERED_RE.match(text)
+        if not m:
+            continue
+        rec = m.groupdict()
+        rec["sessions"] = [s.strip() for s in rec["sessions"].split(",") if s.strip() and s.strip() != "none"]
+        out.append((day, rec))
+    return out
+
+
+def delivered_text(branch, audience, project, sessions, workbench, delivery):
+    """The `delivered` History line's text, as delivered_records reads it."""
+    return (f"{branch} on {audience} of {project}: sessions {', '.join(sessions) or 'none'}; "
+            f"workbench {workbench}; delivery {delivery}")
 
 
 # --- office status's checks over the desk and the filed pages ------------------
@@ -2162,7 +2493,16 @@ def cmd_project_declare(a):
         keep = current if current and current.get("host") == host and not current.get("problem") else {}
         host_keys = check_host_keys(host, a.shell if a.shell is not None else keep.get("shell"),
                                     a.connect if a.connect is not None else keep.get("connect"))
-    entry = set_declarations(a.manifest, a.name, rides, after, host_keys)
+    audience_keys = {}
+    for key in AUDIENCE_KEYS:
+        given, cleared = getattr(a, key), getattr(a, f"no_{key}")
+        if given is not None and cleared:
+            raise HelperError(f"--{key} and --no-{key} contradict each other")
+        if cleared:
+            audience_keys[key] = None
+        elif given is not None:
+            audience_keys[key] = given
+    entry = set_declarations(a.manifest, a.name, rides, after, host_keys, audience_keys or None)
     lines = describe_declarations(entry)
     print(f"{a.name}: " + ("; ".join(lines) if lines else "nothing rides with it and nothing runs after it lands"))
 
@@ -2228,7 +2568,7 @@ def cmd_project_facts(a):
         raise HelperError(f"{a.name}: " + "; ".join(entry["declaration_problems"]))
     print(f"path\t{entry['path']}")
     print(f"resolved\t{entry['resolved'] if entry['resolved'] is not None else ''}")
-    for key in HOST_KEYS:
+    for key in HOST_KEYS + AUDIENCE_KEYS:
         if entry.get(key):
             print(f"{key}\t{entry[key]}")
     for r in entry["rides"]:
@@ -2625,7 +2965,20 @@ def main(argv=None):
     p.add_argument("--after-land", action="append"); p.add_argument("--no-after-land", action="store_true")
     p.add_argument("--host"); p.add_argument("--shell"); p.add_argument("--connect")
     p.add_argument("--on-this-machine", action="store_true")
+    for key in AUDIENCE_KEYS:
+        p.add_argument(f"--{key}"); p.add_argument(f"--no-{key}", action="store_true")
     p.set_defaults(fn=cmd_project_declare)
+    p = sub.add_parser("check-audience-key", help="one of the audience line's keys as it would be stored, or why not")
+    p.add_argument("key", choices=AUDIENCE_KEYS); p.add_argument("value"); p.set_defaults(fn=cmd_check_audience_key)
+    p = sub.add_parser("lane-project", help="the project a folder's lane names, or nothing")
+    p.add_argument("folder_md"); p.set_defaults(fn=cmd_lane_project)
+    p = sub.add_parser("file-pages", help="file the Walkthrough and Delivery sections of a response's notes.md as the "
+                                          "folder's walkthrough.md and delivery.md: one line per page, filed, "
+                                          "rewritten or absent")
+    p.add_argument("folder_dir"); p.add_argument("--response", required=True)
+    p.add_argument("--sid", required=True); p.set_defaults(fn=cmd_file_pages)
+    p = sub.add_parser("delivery-words", help="read a folder's delivery.md and print it as JSON, or say what is wrong")
+    p.add_argument("delivery_md"); p.set_defaults(fn=cmd_delivery_words)
     p = sub.add_parser("check-host-keys"); p.add_argument("host"); p.add_argument("--shell"); p.add_argument("--connect")
     p.set_defaults(fn=cmd_check_host_keys)
     p = sub.add_parser("check-project-dir"); p.add_argument("path"); p.set_defaults(fn=cmd_check_project_dir)

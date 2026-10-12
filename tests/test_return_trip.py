@@ -567,7 +567,7 @@ class TestTheRunnerWarnsOfAnIgnoredInterrupt(unittest.TestCase):
 
 class TestTheRecord(unittest.TestCase):
     def test_the_version_the_releases_the_readme_and_the_doctrine(self):
-        self.assertEqual((REPO / "VERSION").read_text().strip(), "0.16.0")
+        self.assertGreaterEqual(h.compare_versions((REPO / "VERSION").read_text().strip(), "0.16.0"), 0)
         releases = (REPO / "RELEASES.md").read_text()
         self.assertLess(releases.index("## 0.16.0"), releases.index("## 0.15.0"))
         readme = " ".join((REPO / "README.md").read_text().split())

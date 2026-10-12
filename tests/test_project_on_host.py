@@ -444,6 +444,8 @@ class TestProjectsWizard(HostedCase):
             # Since 0.15.0, after the host: a clone here to bring (none).
             (b"Is there a clone on this machine to bring there? Its path (--from) [return skips]:", ""),
             (b"Name for it in this office (--name) [other]:", ""),
+            # Since 0.17.0, after the name: the audience line (none here).
+            (b"or none (--audience) [none]:", ""),
             (b"(--ride) [return ends the list]:", ""),
             (b"(--after-land) [return ends the list]:", ""),
         ])
@@ -451,12 +453,16 @@ class TestProjectsWizard(HostedCase):
         self.assertIn(f"added other: {other} (a git repo with .bale/, no bale.toml, on {HOST})", seen)
         entry = next(p for p in h.read_projects(manifest_of(self.root)) if p["name"] == "other")
         self.assertEqual((entry["host"], entry["shell"], entry["connect"]), (HOST, f"ssh {HOST} bash -lc", "start the VPN"))
-        self.assertEqual([c[0] for c in self.ssh.connections()], [HOST])
+        # The check, and since 0.17.0 the clone's remotes and identity for
+        # the audience line's defaults: two connections, both to the host.
+        self.assertEqual([c[0] for c in self.ssh.connections()], [HOST, HOST])
 
     def test_set_offers_to_keep_the_host(self):
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "projects", "set", "far"], self.root, self.e.env, [
             (f"Keep far on {HOST}, reached through: ssh {HOST} bash -lc? (y/n) [y]:".encode(), "n"),
             (b"Where the repo is: this machine, or an ssh host (--host) [return skips]:", ""),
+            # Since 0.17.0 set also offers to keep the audience line (none).
+            (b"Keep far without an audience? (y/n) [y]:", ""),
             (b"(--ride) [return ends the list]:", ""),
             (b"(--after-land) [return ends the list]:", ""),
         ])

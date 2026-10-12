@@ -3478,6 +3478,16 @@ def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None, d
             plan["record"] = folder_record(office_root, f, x["sid"])
             plan["record"]["folder"] = f
             break
+    # Where the response is on this machine, for the pages office land
+    # files from its notes.md after an applied landing (0.17.0): a path
+    # the plan already holds, or the bare name found here and then in
+    # the downloads; None when only bale's own search knows.
+    tb = plan.get("tarball")
+    if tb and "/" in str(tb) and pathlib.Path(tb).is_file():
+        plan["response_here"] = str(tb)
+    else:
+        found_at = find_in(downloads, name, cwd or os.getcwd()) if tb else None
+        plan["response_here"] = str(found_at) if found_at else None
     return plan
 
 
@@ -3794,6 +3804,44 @@ def land_after_line(plan, index):
     return f"(cd {shell_quote(plan['repo'])} && {rest})"
 
 
+# --- office relay: a planner's answer carried back (0.17.0) -------------------------------
+
+def relay_answer(rd, office_root, sid, answer, cwd=None, downloads=None):
+    """bale relay SID - where the session is open (a project here or on
+    its host, or the office), with the planner's answer, a file on this
+    machine, on its stdin. The answer is a path, or a bare name found in
+    cwd and then the downloads. Returns (exit code, stdout, stderr); a
+    session open nowhere the office reads is a LandError."""
+    given = pathlib.Path(answer).expanduser()
+    here = given if given.is_absolute() else pathlib.Path(cwd or os.getcwd()) / given
+    if here.is_file():
+        path = here.resolve()
+    elif "/" in answer:
+        raise LandError([f"no such file: {answer}"])
+    else:
+        path = find_in(downloads, answer, cwd or os.getcwd())
+        if path is None:
+            looked = ", ".join([str(cwd or os.getcwd())] + [str(d) for d in downloads or []])
+            raise LandError([f"{answer} is not in {looked}; give the answer file's path"])
+    lost = []
+    every, problems = open_anywhere(rd, office_root, sid, lost)
+    found = [x for x in every if x["sid"] == sid]
+    if not found:
+        lines = [f"{sid} is not open in this office or in any project it scopes, so there is no thread to answer on"]
+        lines += [f"{label}'s host did not answer, so it may be open there: {line}" for label, line in lost]
+        raise LandError(lines + problems)
+    x = found[0]
+    place = x["place"]
+    argv = ["bale", *rd.consumption.argv("relay_answer", sid=sid)]
+    log(f"bale relay {sid} - in {place}, with {path} on its stdin" + (f" (through {x['host']})" if x["host"] else ""))
+    try:
+        run = ohost.run_feeding(ohost.as_place(place), argv, str(path))
+    except ohost.HostError as exc:
+        raise LandError([f"{x['label']}: {exc}"])
+    rd.forget(place)
+    return run.returncode, run.stdout, run.stderr
+
+
 # --- command line --------------------------------------------------------------------
 
 # bale ran, but office land could not (no bale, no such directory, a host
@@ -3820,6 +3868,18 @@ def project_main(a):
         if a.cmd == "clone-to":
             for line in ohost.clone_to(place, a.source):
                 print(line)
+            return 0
+        if a.cmd == "git-facts":
+            # What office projects asks of a clone for the audience
+            # line's defaults: one tab-separated line per fact.
+            facts = ohost.git_facts(place)
+            for key in ("branch", "head", "name", "email", "hooks_path", "guard", "guard_audience"):
+                print(f"{key}\t{facts.get(key) or ''}")
+            for name, url in facts["remotes"].items():
+                print(f"remote\t{name}\t{url}\t{facts['remote_heads'].get(name, '')}")
+            return 0
+        if a.cmd == "install-guard":
+            print(ohost.install_push_guard(place, a.audience, a.url))
             return 0
         if a.cmd == "check-project":
             ok, text = ohost.check_project(place)
@@ -3985,7 +4045,11 @@ def main(argv=None):
     p.add_argument("office")
     p = sub.add_parser("bundle-where", help="where a bundle opens by default: DEFAULT<tab>WHY, or nothing")
     p.add_argument("office"); p.add_argument("--bundle", required=True); p.add_argument("--lane")
-    for name, text in (("check-project", "is the path the top of a git repo bale runs in, here or through a "
+    for name, text in (("git-facts", "a clone's branch, identity, remotes and push guard, here or through a "
+                                     "host's shell: one tab-separated line per fact"),
+                       ("install-guard", "write the push guard into a clone's .git/hooks/pre-push: --audience "
+                                         "REMOTE --url URL"),
+                       ("check-project", "is the path the top of a git repo bale runs in, here or through a "
                                          "host's shell; what was found on stdout, else the reason on stderr "
                                          "(exit 4: a repo bale has not run in, which --prepare sets up)"),
                        ("prepare-project", "prepare a clone for bale without a trace in git, here or through "
@@ -3998,6 +4062,8 @@ def main(argv=None):
         p.add_argument("--connect"); p.add_argument("--name")
         if name.startswith("clone-"):
             p.add_argument("--from", dest="source", required=True)
+        if name == "install-guard":
+            p.add_argument("--audience", required=True); p.add_argument("--url", default="")
     p = sub.add_parser("land-out", help="the sessions out: sid, where, folders; one per line")
     p.add_argument("office")
     p = sub.add_parser("land-plan", help="the one session to land and how, as JSON into --plan")
@@ -4020,12 +4086,31 @@ def main(argv=None):
     p = sub.add_parser("find-download", help="a file by name in the downloads, the newest of its browser copies: "
                                              "its path, and on stderr which was taken")
     p.add_argument("--name", required=True); p.add_argument("--dir", action="append", default=[])
+    p = sub.add_parser("relay", help="bale relay SID - where the session is open, the planner's answer on its stdin")
+    p.add_argument("office"); p.add_argument("--sid", required=True); p.add_argument("--answer", required=True)
+    p.add_argument("--cwd"); p.add_argument("--downloads", action="append", default=[])
     p = sub.add_parser("land-outcome", help="what happened, from bale's records; one JSON line")
     p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--capture", required=True)
     p.add_argument("--exit", type=int, required=True); p.add_argument("--day", required=True)
     a = ap.parse_args(argv)
     if a.cmd.startswith("land-"):
         return land_main(a)
+    if a.cmd == "relay":
+        try:
+            rc, out, err = relay_answer(Reader(), a.office, a.sid, a.answer, a.cwd, a.downloads or None)
+        except StartError as exc:
+            for line in exc.lines:
+                log(f"error: {line}")
+            return 1
+        except (oh.HelperError, BaleError, ohost.HostError, OSError) as exc:
+            log(f"error: {exc}")
+            return 1
+        sys.stderr.write(err)
+        sys.stdout.write(out)
+        if rc != 0:
+            log(f"error: bale relay {a.sid} refused (exit {rc}); its words are above, and nothing was recorded")
+            return 1
+        return 0
     if a.cmd == "find-download":
         try:
             path, note = newest_copy(browser_copies(a.dir, a.name), a.name, StartError)
@@ -4040,7 +4125,7 @@ def main(argv=None):
             log(note)
         print(path)
         return 0
-    if a.cmd in ("check-project", "prepare-project", "clone-dirty", "clone-to"):
+    if a.cmd in ("check-project", "prepare-project", "clone-dirty", "clone-to", "git-facts", "install-guard"):
         return project_main(a)
     if a.cmd in ("level-plan", "level-bale"):
         return level_main(a)

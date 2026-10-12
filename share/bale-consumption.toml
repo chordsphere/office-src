@@ -323,6 +323,18 @@ format = "text"
 contract = "bale relay --help (v0.4.22)"
 block = ["BALE EXCHANGE BEGIN {sid}", "BALE EXCHANGE END"]
 
+# A planner's answer carried back (office relay, 0.17.0): bale relay
+# SID - with the answer file on its stdin, in the repo the session is
+# open in (through the project's shell for a hosted one; the file never
+# travels on its own). bale verifies the block's trailer, records the
+# round and prints the worker-facing block on stdout, which the office
+# prints whole and copies; a refusal is bale's exit 1 and its words.
+# Read on 0.4.51 (bale relay --help); asks nothing, so stdin is the file.
+[surfaces.relay_answer]
+argv = ["relay", "{sid}", "-"]
+format = "text"
+contract = "bale relay --help (v0.4.22; the stdin form)"
+
 # Ending a read-only sitting: office land SID on a read-only session a
 # folder records, and on no other session (the ruling of sitting
 # 2026-10-03-plan-4b-sitting-001, extending the 2026-10-01 ruling on pack

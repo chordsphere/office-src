@@ -40,6 +40,21 @@ Messages about the job, including copies of what was sent.
 What the job produced and where it lives. A thing with an audience lives
 in its project; this names the project and path.
 
+## Walkthrough
+
+What changed, why, how to explain each piece, the questions a reviewer
+will ask, and a hand test for what only eyes can check: walkthrough.md
+in this folder, which a build session writes as the Walkthrough section
+of its notes.md and office land files here.
+
+## Delivery
+
+The words the landed work leaves with, in the occupant's voice: the
+commit subject and body, the review request's title and body, and whom
+to send it to: delivery.md in this folder, which a build session writes
+as the Delivery section of its notes.md, office land files here, and
+office deliver reads.
+
 ## Concerns
 
 Projects, handbook chapters and people this job touches.

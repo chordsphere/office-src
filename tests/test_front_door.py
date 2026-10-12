@@ -199,7 +199,7 @@ class TestNextOnTheWalkIn(LandCase):
 TASKS = ["Walk in and look around", "Capture a thought or a friction", "Start a job, and finish one",
          "Plan work too big for one folder", "Send a session out", "Bring one back", "Look after the office"]
 TWO_WORD = ("blueprint-open", "blueprint-ratify", "rider-add", "rider-carry", "rider-consumed", "agenda-add",
-            "watches-check")
+            "watches-check", "letterhead-check")
 
 
 class TestHelpByTask(unittest.TestCase):
@@ -478,6 +478,8 @@ class TestInitProjects(unittest.TestCase):
             # After the path, where the repo is: a plain return, this machine.
             (b"Where the repo is: this machine, or an ssh host (--host) [return skips]:", ""),
             (b"Name for it in this office (--name) [alpha]:", ""),
+            # Since 0.17.0, after the name: the audience line (none here).
+            (b"or none (--audience) [none]:", ""),
             (b"(--ride) [return ends the list]:", ""),
             (b"(--after-land) [return ends the list]:", "./install.sh"),
             (b"Another (--after-land) [return ends the list]:", ""),
@@ -500,6 +502,8 @@ class TestInitProjects(unittest.TestCase):
             (b"no such directory on this machine", str(self.beta)),
             (b"Where the repo is: this machine, or an ssh host (--host) [return skips]:", ""),
             (b"Name for it in this office (--name) [beta-src]:", ""),
+            # Since 0.17.0, after the name: the audience line (none here).
+            (b"or none (--audience) [none]:", ""),
             (b"(--ride) [return ends the list]:", ""),
             (b"(--after-land) [return ends the list]:", ""),
         ])

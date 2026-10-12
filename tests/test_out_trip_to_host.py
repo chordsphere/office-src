@@ -371,6 +371,9 @@ class TestCloneWizard(CloneCase):
             (b"Is there a clone on this machine to bring there? Its path (--from) [return skips]:", "?"),
             (b"carried from this machine as a git bundle", str(self.clone)),
             (b"Name for it in this office (--name) [work-clone]:", "work"),
+            # Since 0.17.0, after the name: the audience line; the clone
+            # brought there has an origin, offered as the default.
+            (b"or none (--audience) [origin]:", "none"),
             (b"(--ride) [return ends the list]:", ""),
             (b"(--after-land) [return ends the list]:", ""),
         ])

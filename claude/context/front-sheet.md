@@ -26,12 +26,19 @@ pack carries, and asks bale whether a bundle can open before it writes
 anything), `office land` to bring
 it back (bale applies it in its repo, the office says how it ended, hands
 over the relay to carry, runs the project's after-land actions, records
-the planner's ratification, closes the founding folder once the founding
+the planner's ratification, files the folder's walkthrough and delivery
+pages from the response, closes the founding folder once the founding
 has landed, names any watch that fired, and ends saying how each action
 went; given a read-only sitting, it ends the sitting; for a project on
 another machine it does all of this there, the response carried over;
 and it offers to close a folder whose one session landed and was
-ratified), `office open`, `desk`, `close` and `reopen` for folders (numbered,
+ratified), `office relay` to carry a planner's answer to a clarification
+back to the session's repo, `office deliver` to carry a folder's landed
+work to its project's audience as curated commits on a branch named from
+the folder (the words from the folder's delivery.md, the letterhead
+check run first, one question before anything leaves, the delivery
+recorded in the folder), `office letterhead check` for what the
+letterhead refuses in any tree, `office open`, `desk`, `close` and `reopen` for folders (numbered,
 with statuses, gates and a History, and a desk that orders itself),
 `office week` for the calendar, and `office sessions` to record which
 sessions worked on a job and see how each one went. `office projects` names the
@@ -69,6 +76,34 @@ pastes.
 
 ## Recent changes
 
+- 0.17.0 (session 2026-10-08-audience-line-002): the audience line.
+  Three declarations on the projects table, `audience` (the remote in the
+  workbench clone that points at the audience's git host), `author` (the
+  identity the audience expects on the commits; unset, the clone's own)
+  and `base` (the audience branch deliveries branch from; unset, the
+  remote's HEAD branch), set by `office projects add` and `set`, wizard
+  and flags, and shown by `office projects`; declaring an audience puts
+  the push guard in the clone's .git/hooks, which refuses a push to the
+  audience by hand and lets only `office deliver`'s branch through.
+  `office letterhead check` names every line that holds what the
+  letterhead refuses (names, phrasing, bale's marks, the office's
+  forbidden words), on a tree here, a range, a file, or a project's repo
+  on its host; the list is share/letterhead.toml, which the suite's text
+  rules read too. `office deliver FOLDER` carries the folder's landed
+  work to the audience: the base fetched, the applied sessions named by
+  folder, the words from delivery.md, the squash in a temporary worktree,
+  the letterhead check on the diff and the words, one question, one
+  curated commit (several when delivery.md marks them) as the author,
+  that branch pushed and nothing else, a `delivered` History line, the
+  review's URL. Built and pushed from this machine (the probe found the
+  work host's credential cache empty), the landed commits of a hosted
+  project carried here as a bundle. The folder's two pages,
+  walkthrough.md and delivery.md, from two new templates that ride with
+  every build session: the session writes them at the end of its
+  notes.md and `office land` files them (`office sessions --pages` when
+  land could not). `office relay SID ANSWER-FILE` carries a planner's
+  answer to bale relay where the session is open. Additive: no
+  migration, no office needs anything done.
 - 0.16.0 (session 2026-10-08-return-trip-to-host-001): the return trip
   from a host. `office land` on a project on a host checks that the host
   answers (the connect line and the rerun line when it does not, before
@@ -469,9 +504,29 @@ pastes.
   own setting, asked once), since the office still cannot list bale's
   search directories (the same slip as above) and does not read bale's
   config.
-- A clarification on a hosted project goes back by a line land prints,
+- ~~A clarification on a hosted project goes back by a line land prints,
   `SHELL '...bale relay SID -' < ANSWER-FILE`, which you run here with the
-  planner's answer saved as a file; no office verb carries it yet.
+  planner's answer saved as a file; no office verb carries it yet.~~
+  Struck in 0.17.0: `office relay SID ANSWER-FILE` carries it, here or
+  through the shell.
+- A delivery is pushed from this machine, never from the host: the
+  0.17.0 probe found the work host's credential helper (`cache`) empty,
+  so a push from the clone there would prompt for a token on every
+  delivery. The landed commits come here as a bundle through the shell
+  and the audience answers with this machine's credentials. A push from
+  the host is the known gap; a `mirror` declaration (a clone here that
+  already holds the audience's history, sparing the temporary repo its
+  fetch) is a follow-up if a project's history grows large. The whole
+  crossing is tested against a bare repo on this machine as the audience
+  and the suite's fake ssh as the host; the first real `office deliver`
+  on a work project is its test on the real git host.
+- The review's URL is known for GitHub-shaped hosts (github.com and
+  instances named github.*) and GitLab; any other host gets the branch's
+  name and the review's title to paste.
+- The letterhead check's phrasing list is a seed; the office's own
+  `letterhead/forbidden.txt` (a later space) is where the occupant's
+  words go, and a false hit on a project's text is answered by changing
+  the text or the list.
 - ~~Each step of a hosted start is its own connection.~~ Since 0.16.0 one
   start or land reaches a host once and its reads share connections; a
   hosted start still makes about four (a bundle, eight, since its check
