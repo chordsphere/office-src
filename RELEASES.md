@@ -4,6 +4,40 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.20.1
+
+Additive: no migration, nothing to do in any office, and no verb gains a
+flag or a question. The test suite no longer touches the machine it runs
+on.
+
+On 2026-10-13 two session openers turned up on the occupant's clipboard
+while he was not using the office. They were the suite's: the detached
+run that `office land` starts after every landing ran two `office start`
+tests on a terminal, and on WSL `office start` puts the opener on the
+clipboard with `clip.exe` and opens the out tray with `explorer.exe`
+whenever machine.toml names neither, which a test's own HOME never does.
+(It started `explorer.exe` too; the test's terminal closed as the command
+ended, which most likely stopped it before a window opened.) The same
+detached runs failed on one test, and only there: the terminal test of
+`office probe`'s paste question expected the clipboard reader the test
+had put on the PATH, and the occupant's machine offered its own
+`powershell.exe` first. Both came from the office reading the machine:
+whether it is WSL (the kernel's version string) and which desktop
+programs are on the PATH. Each now comes from one place the environment
+can steer: `OFFICE_PROC_VERSION` names the file the WSL check reads, and
+`OFFICE_DESKTOP_PATH` the directories the office searches for `clip.exe`,
+`explorer.exe` and a clipboard reader. Unset, nothing changes, except
+that the log names `clip.exe` and `explorer.exe` by the path they were
+found at. The suite sets both for every test: the machine is not WSL, and
+the only desktop programs are the ones a test puts in its own desktop
+directory. The probe test keeps its assertion and now finds its reader
+there. New terminal tests imitate the occupant's machine (WSL, with fake
+`clip.exe`, `explorer.exe` and `powershell.exe` first on the PATH) and
+show none of them runs, and, pointed at the fakes, that the same steps
+reach them. `tests/test_suite_clock.py`'s rule now also fails a test file
+that reads the kernel's version or looks a program up on the PATH, and
+office source that does either except through those two doors.
+
 ## 0.20.0
 
 Additive: no migration and nothing to do in any office. `office land`

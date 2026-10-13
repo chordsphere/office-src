@@ -30,7 +30,7 @@ import tomllib
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from test_office import REPO, Env, h  # noqa: E402
+from test_office import REPO, WSL_KERNEL, Env, h  # noqa: E402
 
 import office_bale as ob  # noqa: E402  (lib/ is on sys.path through test_office)
 
@@ -296,6 +296,34 @@ def opener_from(text):
     a = lines.index("--8<-- session opener --8<--")
     b = lines.index("--8<-- end session opener --8<--")
     return lines[a + 1:b]
+
+
+def recording_windows(d, clipboard_text=""):
+    """A directory of fake Windows programs, as WSL puts the real ones on
+    the PATH: clip.exe, explorer.exe and powershell.exe. Each appends one
+    line to d/calls (its name, its arguments, the directory it ran in);
+    clip.exe keeps what it was fed in d/clip.exe.in, and powershell.exe
+    prints clipboard_text, as Get-Clipboard would. Returns (d, d/calls)."""
+    d.mkdir(parents=True)
+    calls = d / "calls"
+    record = f'printf \'%s %s (in %s)\\n\' "$(basename "$0")" "$*" "$PWD" >> {calls}\n'
+    bodies = {"clip.exe": f"cat > {d / 'clip.exe.in'}\n", "explorer.exe": "",
+              "powershell.exe": f"cat {d / 'clipboard.txt'}\n"}
+    (d / "clipboard.txt").write_text(clipboard_text)
+    for name, body in bodies.items():
+        (d / name).write_text("#!/bin/sh\n" + record + body)
+        (d / name).chmod(0o755)
+    return d, calls
+
+
+def imitate_wsl(e, path_first):
+    """The env of e with this machine made WSL to the office (a WSL
+    kernel's version string in a file of the test's own) and path_first
+    first on the PATH, as WSL puts the Windows directories there. The
+    Env's desktop is left as it is."""
+    kernel = e.tmp / "proc-version"
+    kernel.write_text(WSL_KERNEL)
+    return dict(e.env, OFFICE_PROC_VERSION=str(kernel), PATH=f"{path_first}{os.pathsep}{e.env['PATH']}")
 
 
 # --- the captured packs themselves ---------------------------------------------------
@@ -861,3 +889,62 @@ class TestStartOnATerminal(StartCase):
         self.assertEqual(code, 0, seen)
         md = next(self.root.glob("desk/*-write-the-plan/folder.md")).read_text()
         self.assertIn("- status: open", md)
+
+
+# --- the desktop the suite never touches (0.20.1) -----------------------------------------------------
+
+class TestStartOnAnImitatedWsl(StartCase):
+    """office start on a terminal, on a machine that is WSL to the office
+    and holds clip.exe and explorer.exe on its PATH, as a WSL machine
+    does. Under the suite's Env, neither runs: the Env's desktop is the
+    only place the office looks for them, and it holds none. Pointed at
+    the fakes, the same start reaches both, so the imitation is the real
+    path: the opener fed to clip.exe as UTF-16, explorer.exe opened in
+    the out tray.
+
+    The command runs under a stand-in for the occupant's shell, which
+    holds the terminal's session and outlives it. Run as the session's
+    leader itself (as on_a_terminal runs a command), the office's exit
+    hangs up the terminal and the program it started in the background
+    dies before it runs: most likely why the suite, before 0.20.1,
+    started explorer.exe on a WSL machine and no window opened."""
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
+
+    def setUp(self):
+        super().setUp()
+        self.windows, self.calls = recording_windows(self.e.tmp / "windows")
+        # The shell: runs the command, then lingers up to three seconds
+        # while a program the command started has not said it ran.
+        self.shell = self.e.tmp / "shell"
+        self.shell.write_text(f'#!/bin/sh\n"$@"; s=$?\nn=0\nwhile [ $n -lt 30 ] && '
+                              f'! grep -q "^explorer.exe" {self.calls} 2>/dev/null; do sleep 0.1; n=$((n + 1)); done\n'
+                              f'exit $s\n')
+        self.shell.chmod(0o755)
+
+    def start_on_a_terminal(self, env):
+        return on_a_terminal(self, [str(self.shell), str(self.e.office_bin), "start", "fix-login", "--on", "alpha",
+                                    "--goal", "Fix the login redirect"], self.root, env, [
+            (b"Which ride with this session: all, none, or the numbers to leave out", "")])
+
+    def test_under_the_suites_env_no_clipboard_is_written_and_no_file_manager_opens(self):
+        code, seen = self.start_on_a_terminal(imitate_wsl(self.e, self.windows))
+        self.assertEqual(code, 0, seen)
+        self.assertIn("Packed ", seen)
+        self.assertFalse(self.calls.exists(), self.calls.read_text() if self.calls.exists() else "")
+        self.assertNotIn("on the clipboard", seen)
+        self.assertNotIn("opened the out tray", seen)
+
+    def test_pointed_at_the_fakes_the_same_start_reaches_both(self):
+        env = dict(imitate_wsl(self.e, self.windows), OFFICE_DESKTOP_PATH=str(self.windows))
+        code, seen = self.start_on_a_terminal(env)
+        self.assertEqual(code, 0, seen)
+        screen = seen.replace("\r\n", "\n")
+        self.assertIn(f"the opener is on the clipboard ({self.windows / 'clip.exe'})", screen)
+        self.assertIn(f"opened the out tray with {self.windows / 'explorer.exe'}", screen)
+        fed = (self.windows / "clip.exe.in").read_bytes().decode("utf-16-le")
+        self.assertEqual(fed.splitlines(), opener_from(screen))
+        tray = pathlib.Path(re.search(r"^Out tray: (\S+)$", screen, re.M).group(1))
+        lines = sorted(self.calls.read_text().splitlines())
+        self.assertEqual(lines[0], f"clip.exe  (in {os.path.realpath(self.root)})")
+        self.assertEqual(lines[1], f"explorer.exe . (in {os.path.realpath(tray)})")
+

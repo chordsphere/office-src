@@ -4,14 +4,26 @@ the runner's isolated jobs and per-test times, and the detached run of the
 whole suite.
 
 The rule. Env (tests/test_office.py) is the one place a test's HOME,
-TMPDIR, XDG_CONFIG_HOME and downloads are said; the runner gives every
-job, and the --serial run, a HOME and TMPDIR of its own besides. A test
-file that names the machine's own temporary directory, expands ~ or reads
-HOME itself, outside Env, fails TestNoTestReadsTheMachine, unless the line
-is one of ALLOWED, each with its reason: text a fake host runs under its
-own HOME and TMPDIR, or paths a probe printed that the fixtures replay.
-An allowance that no longer matches anything fails too, so the list
-cannot outlive what it excuses.
+TMPDIR, XDG_CONFIG_HOME, downloads and desktop are said; the runner gives
+every job, and the --serial run, a HOME and TMPDIR of its own besides. A
+test file that names the machine's own temporary directory, expands ~,
+reads HOME itself, reads the kernel's version (the WSL check) or looks a
+program up on the PATH, outside Env, fails TestNoTestReadsTheMachine,
+unless the line is one of ALLOWED, each with its reason: text a fake host
+runs under its own HOME and TMPDIR, or paths a probe printed that the
+fixtures replay. An allowance that no longer matches anything fails too,
+so the list cannot outlive what it excuses.
+
+The office's own source is held to the same two reads (0.20.1), since a
+test of the command reads whatever the command reads: bin/office and
+lib/ read the kernel's version only as OFFICE_PROC_VERSION's default, and
+every program they look up on the PATH is one the runner declares
+(runner.DECLARED_TOOLS: git, python3, a shell, the coreutils, iconv),
+the suite's fake (FAKED), or a desktop program found through the one door
+the Env steers (bin/office desktop_tool, lib/office_helper.py
+desktop_which), never through a lookup of its own; SOURCE_ALLOWED holds
+the lookups by a variable, each with its reason. So the next session that
+adds a lookup of something.exe meets TestTheOfficeReadsTheDesktopThroughItsDoors.
 
 Every pattern here is written with one letter bracketed (t[m]p), the way
 share/letterhead.toml writes its names, so this file never spells what it
@@ -33,7 +45,7 @@ import time
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from test_office import REPO, Env, h  # noqa: E402
+from test_office import REPO, WSL_KERNEL, Env, h  # noqa: E402
 
 import runner  # noqa: E402
 
@@ -47,6 +59,10 @@ RULE = (
     ("$H[O]ME", re.compile(r"\$\{?H[O]ME\b")),
     ("gettemp[d]ir(", re.compile(r"\bgettemp[d]ir\(")),
     ("H[O]ME read from the environment", re.compile(r"""(?:environ(?:\.get\(|\[)|getenv\()\s*["']H[O]ME["']""")),
+    # 0.20.1: the WSL check's file, and a program looked up on the PATH (a
+    # WSL machine's holds clip.exe, explorer.exe and powershell.exe).
+    ("the kernel's version, /pr[o]c/version", re.compile(r"/pr[o]c/version\b")),
+    ("a program looked up on the PATH", re.compile(r"\bshutil\.wh[i]ch\(|\bcommand\s+-[v]\b|\btype\s+-[P]\b")),
 )
 
 # (module, the span allowed, why). The span is blanked before the rule
@@ -96,6 +112,99 @@ def breaches(paths, allowed=ALLOWED):
     return out, stale
 
 
+# --- the office's own source: the kernel's version and the PATH, through their doors (0.20.1) ---
+
+# What the office looks up on the PATH that is the suite's own: a fake in
+# the test's tree, first on its PATH. (name, why)
+FAKED = (
+    ("bale", "the suite's fake bale (tests/test_land.py, tests/test_start.py), first on the PATH of every test that "
+             "runs one, from the test's own tree; tests/test_read_side.py takes it away to say bale is missing"),
+)
+
+# (source file's name, the span allowed, why): lookups by a variable, and
+# the doors themselves. Blanked before the rule reads the line, as ALLOWED.
+SOURCE_ALLOWED = (
+    ("office", r'command -[v] "\$t" >/dev/null 2>&1 \|\| die "\$t is required',
+     "require_tools itself: each name its callers give it is checked as a lookup of its own"),
+    ("office", r'command -[v] "\$t"(?! >/dev/null 2>&1 \|\| die)',
+     "the survey's Tools facts (tool_version over bale, git, python3, R, quarto, node): what this machine holds "
+     "is the survey's whole point; the suite asserts the facts' shape from facts it makes, never what a machine has"),
+    ("office", r"command -[v] office\b",
+     "the survey's office-src on_path fact: which office this machine's PATH runs, recorded on the survey page, "
+     "asserted by no test"),
+    ("office_helper", r"shutil\.wh[i]ch\(name, path=dirs\)",
+     "desktop_which, the door itself: it searches OFFICE_DESKTOP_PATH, which every Env points at its own desktop"),
+    ("office_helper", r'(?<![\w.])wh[i]ch\((?:"powershell\.exe"|tool)\)',
+     "paste_candidate's lookups, through desktop_which unless a unit test hands it a which of its own"),
+)
+
+# A lookup on the PATH, and the name it looks up: bash's command -[v] and
+# type -[P] (and the names require_tools is given), Python's shutil.wh[i]ch
+# and a bare wh[i]ch(. A name with a $ in it is a variable.
+BASH_LOOKUP = re.compile(r"(?<![\w-])(?:command\s+-[v]|type\s+-[Pp])\s+([^\s;|&)]+)")
+BASH_REQUIRE = re.compile(r"^\s*require_tools\s+([^;|&]+)")
+PY_LOOKUP = re.compile(r"(?<![\w])(?:shutil\.)?wh[i]ch\(\s*([^,)]+)")
+
+
+def source_files():
+    return [REPO / "bin" / "office", *sorted((REPO / "lib").glob("*.py"))]
+
+
+def lookups(path, text, allowed=SOURCE_ALLOWED):
+    """(every lookup as (line, name, the line's text) with name None for a
+    variable, the allowances that matched) over one source file's text;
+    comment lines are not read."""
+    mine = [(i, re.compile(span)) for i, (name, span, _) in enumerate(allowed) if name == path.stem]
+    out, used = [], set()
+    for n, line in enumerate(text.splitlines(), 1):
+        if line.lstrip().startswith("#"):
+            continue
+        for i, pat in mine:
+            if pat.search(line):
+                used.add(i)
+                line = pat.sub(lambda m: " " * len(m.group(0)), line)
+        if path.suffix == ".py":
+            found = [m.group(1).strip() for m in PY_LOOKUP.finditer(line)]
+            names = [f[1:-1] if f[:1] in "\"'" and f[-1:] == f[:1] else None for f in found]
+        else:
+            names = [m.group(1) for m in BASH_LOOKUP.finditer(line)]
+            r = BASH_REQUIRE.match(line)
+            if r:
+                names += r.group(1).split()
+            names = [None if "$" in w else w.strip("\"'") for w in names]
+        out += [(n, name, line.strip()) for name in names]
+    return out, used
+
+
+def lookup_breaches(paths, allowed=SOURCE_ALLOWED, declared=None, faked=None):
+    """(every lookup of a program that is neither declared nor faked nor a
+    variable the allowances excuse, as 'file:line: name: text'; the
+    allowances that matched nothing)."""
+    declared = set(runner.DECLARED_TOOLS if declared is None else declared)
+    faked = {name for name, _ in (FAKED if faked is None else faked)}
+    out, used = [], set()
+    for path in paths:
+        found, matched = lookups(path, path.read_text(encoding="utf-8"), allowed)
+        used |= matched
+        for n, name, line in found:
+            if name is None or name not in declared | faked:
+                out.append(f"{path.name}:{n}: {name or 'a variable'}: {line}")
+    stems = {p.stem for p in paths}
+    stale = [allowed[i] for i in range(len(allowed)) if i not in used and allowed[i][0] in stems]
+    return out, stale
+
+
+def office_functions(*names):
+    """bin/office's definitions of the named shell functions, to run alone."""
+    src = (REPO / "bin" / "office").read_text(encoding="utf-8")
+    out = []
+    for name in names:
+        m = re.search(rf"^{name}\(\) \{{\n.*?^\}}\n", src, re.M | re.S)
+        assert m, f"bin/office defines no {name}"
+        out.append(m.group(0))
+    return "".join(out)
+
+
 def entry_call(verb):
     """A call of the command with verb as its first word (help and
     version by any of their spellings), or with no word for the walk-in."""
@@ -122,14 +231,17 @@ class TestNoTestReadsTheMachine(unittest.TestCase):
         d = pathlib.Path(Env(self).tmp)
         lines = ['x = pathlib.Path("/t' 'mp").glob("a*")', 'os.path.expand' 'user("~/x")', 'pathlib.Path.ho' 'me()',
                  's = "$H' 'OME/bin"', 's = "${H' 'OME}"', 'tempfile.gettemp' 'dir()', 'os.environ["H' 'OME"]',
-                 'os.environ.get("H' 'OME")', 'os.getenv("H' 'OME")', 'run(["ls", "/t' 'mp"])']
+                 'os.environ.get("H' 'OME")', 'os.getenv("H' 'OME")', 'run(["ls", "/t' 'mp"])',
+                 'wsl = "microsoft" in open("/pr' 'oc/version").read()', 'exe = shutil.wh' 'ich("clip.exe")',
+                 'run(["sh", "-c", "comm' 'and -v powershell.exe"])', 'run(["bash", "-c", "type -' 'P xclip"])']
         f = d / "test_probe_rule.py"
         f.write_text("\n".join(lines) + "\n")
         found, _ = breaches([f], allowed=())
         self.assertEqual([b.split(":")[1] for b in found], [str(n) for n in range(1, len(lines) + 1)], found)
         # What only looks like it: a path under another directory, a
         # variable's own tmp, the Env's attributes.
-        f.write_text('a = "$target/t' 'mp"\nb = self.e.tmp / "x"\nc = "/t' 'mpfs"\nd = self.e.home\n')
+        f.write_text('a = "$target/t' 'mp"\nb = self.e.tmp / "x"\nc = "/t' 'mpfs"\nd = self.e.home\n'
+                     'e = self.e.desktop / "clip.exe"\nf = h.desktop_wh' 'ich("clip.exe")\n')
         self.assertEqual(breaches([f], allowed=())[0], [])
 
     def test_env_is_the_one_place_and_an_allowance_excuses_its_span_alone(self):
@@ -154,6 +266,8 @@ class TestNoTestReadsTheMachine(unittest.TestCase):
             self.assertTrue(e.downloads.is_relative_to(e.home))
             self.assertEqual(e.env["OFFICE_WINDOWS_USERS"], "")
             self.assertNotIn("XDG_DOWNLOAD_DIR", e.env)
+            self.assertEqual((e.env["OFFICE_PROC_VERSION"], e.env["OFFICE_DESKTOP_PATH"]), ("", str(e.desktop)))
+            self.assertTrue(e.desktop.is_relative_to(e.tmp))
         self.assertNotEqual(a.env["HOME"], b.env["HOME"])
         # A command run through it makes its temporary files there.
         out = subprocess.run(["sh", "-c", 'mktemp -d "${TMPDIR:?}/x.XXXXXX"'], env=a.env, capture_output=True,
@@ -174,7 +288,8 @@ class TestNoTestReadsTheMachine(unittest.TestCase):
         e = Env(self)
         base = {"PATH": "/usr/bin:/bin", "HOME": "/home/someone", "TMPDIR": "/var/x", "XDG_DOWNLOAD_DIR": "/d",
                 "XDG_CONFIG_HOME": "/home/someone/.config", "OFFICE_ROOT": "/home/someone/office",
-                "OFFICE_DEBUG": "1", "OFFICE_TEST_JOBS": "2", "LC_ALL": "C.UTF-8"}
+                "OFFICE_DEBUG": "1", "OFFICE_TEST_JOBS": "2", "LC_ALL": "C.UTF-8",
+                "OFFICE_DESKTOP_PATH": "/mnt/c/WINDOWS/system32", "OFFICE_PROC_VERSION": "/x/version"}
         env = runner.isolated_env(base, e.tmp / "job")
         for key in ("HOME", "TMPDIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
                     "GIT_CONFIG_GLOBAL"):
@@ -186,12 +301,157 @@ class TestNoTestReadsTheMachine(unittest.TestCase):
         self.assertEqual((env["PATH"], env["LC_ALL"], env["OFFICE_TEST_JOBS"], env["OFFICE_WINDOWS_USERS"],
                           env["GIT_CONFIG_NOSYSTEM"]), ("/usr/bin:/bin", "C.UTF-8", "2", "", "1"))
         self.assertEqual(env["OFFICE_TESTS_UNDER_RUNNER"], "1")
+        # Not WSL, and no desktop program anywhere: a job never writes the
+        # clipboard or opens a file manager, whatever the caller said.
+        self.assertEqual((env["OFFICE_PROC_VERSION"], env["OFFICE_DESKTOP_PATH"]), ("", ""))
+        self.assertEqual(runner.DESKTOP_VARS, {"OFFICE_PROC_VERSION": "", "OFFICE_DESKTOP_PATH": ""})
         # This very test runs in such a job when the runner runs it: its
         # TMPDIR (and HOME beside it) is the runner's scratch, not the one
         # the runner was started with. Under bare unittest discover there
         # is no runner to say, and nothing to check.
         if os.environ.get("OFFICE_TESTS_UNDER_RUNNER"):
             self.assertIn("office-tests-scratch.", os.environ.get("TMPDIR", ""))
+
+
+# A plain Linux kernel's version string, beside test_office's WSL one, for
+# the files a test points OFFICE_PROC_VERSION at.
+LINUX_KERNEL = "Linux version 6.8.0-45-generic (buildd@lcy02) (gcc 13.2.0) #45-Ubuntu SMP\n"
+
+
+def fake_windows(d):
+    """A directory of fake Windows programs, as WSL puts them on the PATH:
+    clip.exe, explorer.exe and powershell.exe, each exiting 0, and one
+    file that is not executable."""
+    d.mkdir(parents=True)
+    for name in ("clip.exe", "explorer.exe", "powershell.exe"):
+        (d / name).write_text("#!/bin/sh\nexit 0\n")
+        (d / name).chmod(0o755)
+    (d / "notes.exe").write_text("not a program\n")
+    return d
+
+
+class TestTheDesktopDoors(unittest.TestCase):
+    """The two reads the desktop steps make, each from one place the
+    environment steers: whether this machine is WSL (OFFICE_PROC_VERSION)
+    and where its desktop programs are (OFFICE_DESKTOP_PATH), on both sides
+    of the office: bin/office (on_wsl, desktop_tool) and the helper
+    (machine_is_wsl, desktop_which, paste_candidate)."""
+
+    def setUp(self):
+        self.e = Env(self)
+        self.windows = fake_windows(self.e.tmp / "windows")
+        self.wsl = self.e.tmp / "wsl-version"
+        self.wsl.write_text(WSL_KERNEL)
+        self.linux = self.e.tmp / "linux-version"
+        self.linux.write_text(LINUX_KERNEL)
+        # The office's view with the fake Windows programs on the PATH, as
+        # on a WSL machine; the Env's desktop is still the only door.
+        self.on_path = dict(self.e.env, PATH=f"{self.windows}{os.pathsep}{self.e.env['PATH']}")
+
+    def bash(self, call, env):
+        return subprocess.run(["bash", "-c", office_functions("on_wsl", "desktop_tool") + call], env=env,
+                              capture_output=True, text=True, timeout=30)
+
+    def test_the_env_says_not_wsl_and_holds_an_empty_desktop_first_on_the_path(self):
+        self.assertEqual(self.e.env["OFFICE_PROC_VERSION"], "")
+        self.assertEqual(self.e.env["OFFICE_DESKTOP_PATH"], str(self.e.desktop))
+        self.assertTrue(self.e.desktop.is_relative_to(self.e.tmp))
+        self.assertEqual(list(self.e.desktop.iterdir()), [])
+        self.assertEqual(self.e.env["PATH"].split(os.pathsep)[0], str(self.e.desktop))
+        with self.e.this_process():
+            self.assertFalse(h.machine_is_wsl())
+            self.assertIsNone(h.desktop_which("clip.exe"))
+        # Even with WSL's programs on the PATH, the office finds none.
+        self.assertIsNone(h.desktop_which("clip.exe", self.on_path))
+        self.assertEqual(self.bash("desktop_tool clip.exe", self.on_path).returncode, 1)
+        self.assertEqual(self.bash("on_wsl", dict(self.e.env, OFFICE_PROC_VERSION=str(self.wsl))).returncode, 0)
+
+    def test_the_wsl_check_reads_the_one_file_the_environment_names(self):
+        for source, wsl in ((self.wsl, True), (self.linux, False), ("", False), (self.e.tmp / "absent", False)):
+            env = dict(self.e.env, OFFICE_PROC_VERSION=str(source))
+            self.assertEqual(h.machine_is_wsl(env), wsl, source)
+            self.assertEqual(self.bash("on_wsl", env).returncode, 0 if wsl else 1, source)
+
+    def test_a_desktop_program_is_found_only_where_the_door_looks(self):
+        empty = self.e.tmp / "empty"
+        empty.mkdir()
+        for dirs, found in ((f"{empty}{os.pathsep}{os.pathsep}{self.windows}", self.windows / "clip.exe"),
+                            (str(empty), None), ("", None)):
+            env = dict(self.on_path, OFFICE_DESKTOP_PATH=dirs)
+            self.assertEqual(h.desktop_which("clip.exe", env), str(found) if found else None, dirs)
+            proc = self.bash("desktop_tool clip.exe", env)
+            self.assertEqual((proc.returncode, proc.stdout), (0, f"{found}\n") if found else (1, ""), dirs)
+        # Unset, the door is the PATH; a file that is not a program is no program.
+        env = {k: v for k, v in self.on_path.items() if k != "OFFICE_DESKTOP_PATH"}
+        self.assertEqual(h.desktop_which("explorer.exe", env), str(self.windows / "explorer.exe"))
+        self.assertEqual(self.bash("desktop_tool explorer.exe", env).stdout, f"{self.windows / 'explorer.exe'}\n")
+        self.assertIsNone(h.desktop_which("notes.exe", env))
+        self.assertEqual(self.bash("desktop_tool notes.exe", env).returncode, 1)
+
+    def test_the_paste_candidate_takes_both_reads_from_the_environment(self):
+        wsl = dict(self.on_path, OFFICE_PROC_VERSION=str(self.wsl))
+        # The Env's own view of an imitated WSL machine: nothing offered.
+        self.assertIsNone(h.paste_candidate(environ=wsl))
+        # Its desktop holding a reader: that reader, not the machine's PowerShell.
+        (self.e.desktop / "wl-paste").write_text("#!/bin/sh\n")
+        (self.e.desktop / "wl-paste").chmod(0o755)
+        self.assertEqual(h.paste_candidate(environ=wsl), "wl-paste --no-newline")
+        # Pointed at the Windows programs, it is WSL's line; not WSL, the reader's.
+        self.assertEqual(h.paste_candidate(environ=dict(wsl, OFFICE_DESKTOP_PATH=str(self.windows))), h.WSL_PASTE)
+        both = f"{self.windows}{os.pathsep}{self.e.desktop}"
+        self.assertEqual(h.paste_candidate(environ=dict(wsl, OFFICE_DESKTOP_PATH=both,
+                                                        OFFICE_PROC_VERSION=str(self.linux))),
+                         "wl-paste --no-newline")
+        # The command's own call reads the same two (office probe asks the helper).
+        (self.e.desktop / "wl-paste").unlink()
+        machine = self.e.home / ".config" / "office-src" / "machine.toml"
+        proc = subprocess.run([sys.executable, "-B", str(REPO / "lib" / "office_helper.py"), "paste-command",
+                               str(machine), "--candidate"], env=wsl, capture_output=True, text=True, timeout=30)
+        self.assertEqual((proc.returncode, proc.stdout), (3, ""), proc.stderr)
+
+
+class TestTheOfficeReadsTheDesktopThroughItsDoors(unittest.TestCase):
+    def test_the_kernels_version_is_read_once_on_each_side_as_a_default(self):
+        found = {}
+        for path in source_files():
+            for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if "/pr" "oc/version" in line:
+                    self.assertIn("OFFICE_PROC_VERSION", line, f"{path.name}:{n} reads the kernel's version itself; "
+                                                                "ask on_wsl or machine_is_wsl")
+                    found.setdefault(path.name, []).append(n)
+        self.assertEqual(sorted(found), ["office", "office_helper.py"], found)
+        self.assertTrue(all(len(v) == 1 for v in found.values()), found)
+
+    def test_every_program_the_office_looks_up_is_declared_faked_or_behind_the_door(self):
+        found, stale = lookup_breaches(source_files())
+        self.assertEqual(found, [], "the office looks a program up on the PATH that the runner does not declare "
+                                    "(tests/runner.py DECLARED_TOOLS) and the suite does not fake: a desktop "
+                                    "program goes through desktop_tool or desktop_which, which the Env steers")
+        self.assertEqual(stale, [], "an allowance matches nothing any more; take it out of SOURCE_ALLOWED")
+        self.assertTrue({"git", "python3", "bash", "timeout", "iconv"} <= set(runner.DECLARED_TOOLS))
+
+    def test_the_source_rule_catches_each_way_of_looking_a_program_up(self):
+        d = Env(self).tmp
+        office = d / "office"
+        bad = ['x="$(comm' 'and -v clip.exe)"', "type -" "P explorer.exe", 'comm' 'and -v "$tool" >/dev/null',
+               "  require_tools git wl-paste", "if comm" "and -v xclip >/dev/null; then :; fi"]
+        good = ["# comm" "and -v clip.exe, in a comment", 'clip="$(desktop_tool clip.exe)"',
+                "comm" "and -v git >/dev/null", "  require_tools git python3 timeout", "comm" "and -v bale"]
+        office.write_text("\n".join(bad + good) + "\n")
+        found, _ = lookup_breaches([office], allowed=())
+        self.assertEqual([b.split(":")[1] for b in found], ["1", "2", "3", "4", "5"], found)
+        self.assertIn("office:4: wl-paste:", found[3])
+        helper = d / "office_helper.py"
+        helper.write_text("a = shutil.wh" "ich('powershell.exe')\nb = wh" "ich(name)\n"
+                          "c = desktop_wh" "ich('clip.exe')\nd = shutil.wh" "ich('git')\n")
+        found, _ = lookup_breaches([helper], allowed=())
+        self.assertEqual([b.split(":")[1] for b in found], ["1", "2"], found)
+        # An allowance excuses its span alone, and one that matches nothing is stale.
+        found, stale = lookup_breaches([office], allowed=(("office", r"type -[P] explorer\.exe", "why"),))
+        self.assertNotIn("2", [b.split(":")[1] for b in found])
+        self.assertEqual(stale, [])
+        self.assertEqual(lookup_breaches([helper], allowed=(("office_helper", r"nothing", "why"),))[1],
+                         [("office_helper", r"nothing", "why")])
 
 
 class TestTheFastTier(unittest.TestCase):

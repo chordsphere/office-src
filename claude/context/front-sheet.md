@@ -115,6 +115,20 @@ For the worker first. bale gives a session's validation two minutes
   names the machine's temporary directory, `expanduser`, `Path.home(` or
   `$HOME` outside Env; its ALLOWED list holds the few that are text a
   fake host runs or paths a probe printed, each with its reason.
+- Since 0.20.1 the rule covers the desktop too. Env says the machine is
+  not WSL (`OFFICE_PROC_VERSION` empty) and gives each test a desktop
+  directory of its own (`self.e.desktop`, first on its PATH) as the only
+  place the office looks for `clip.exe`, `explorer.exe` or a clipboard
+  reader (`OFFICE_DESKTOP_PATH`); the runner sets both for every job. A
+  test that needs a desktop program puts a fake there; a test that
+  imitates WSL writes its own kernel version file (`imitate_wsl` in
+  tests/test_start.py). The rule fails a test file that names the
+  kernel's version file or looks a program up on the PATH, and office
+  source that reads the kernel's version except as `OFFICE_PROC_VERSION`'s
+  default, or looks up a program that is not in the runner's
+  `DECLARED_TOOLS`, not the suite's fake bale, and not found through
+  `desktop_tool` / `desktop_which`; SOURCE_ALLOWED holds the lookups by a
+  variable (the survey's tools), each with its reason.
 - After every landing, office-src's after-land actions start the whole
   suite detached (`tests/run.sh --detach`): one line naming the verdict
   file under `~/.local/state/office-src/suite/`, and nobody waits.
@@ -127,6 +141,27 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Recent changes
 
+- 0.20.1 (session 2026-10-13-suite-machine-reads-005): the suite keeps
+  off the machine it runs on.
+  - The detached suite wrote two session openers to your clipboard on
+    WSL (the two terminal `office start` tests; `clip.exe` is the default
+    there) and failed one test only on your machine (`office probe`'s
+    paste question offered your `powershell.exe`). Both reads now come
+    from one steerable place each: `OFFICE_PROC_VERSION` for whether the
+    machine is WSL, `OFFICE_DESKTOP_PATH` for where desktop programs are.
+    You set neither; the suite sets both, so no test writes the
+    clipboard, opens Explorer or is offered what your machine holds.
+  - The only change you can see: on WSL the office's clipboard and
+    Explorer lines name `clip.exe` and `explorer.exe` by the path they
+    were found at.
+  - New terminal tests imitate your machine (WSL, fake Windows programs
+    on the PATH) and show nothing of Windows runs; pointed at the fakes,
+    the clipboard step feeds `clip.exe` the opener as UTF-16 and the out
+    tray opens with `explorer.exe`, and `office probe` reads the clipboard
+    through `powershell.exe`: the WSL paths' first tests.
+  - `tests/test_suite_clock.py`'s rule names the kernel's version and
+    programs looked up on the PATH, in the test files and in the source.
+  - Additive: no migration.
 - 0.20.0 (session 2026-10-13-office-sort-004): the return of a sort, the
   standalone sort and the handbook.
   - `office land` files three more sections of a session's notes.md:
@@ -566,9 +601,12 @@ For the worker first. bale gives a session's validation two minutes
   bale's session ids are unique within one repo only; `office start`
   gives an office session's default slug an -office suffix so a folder
   packed in the office and in a project the same day gets two ids.
-- On WSL the clipboard and Explorer steps were built without a WSL
-  machine to run them on; the first `office start` there is their test,
-  and the first `office land` is the relay's.
+- On WSL the Explorer step was built without a WSL machine to run it on;
+  the first `office start` there is its test, and the first `office land`
+  is the relay's. The clipboard step has run there: the suite's detached
+  run of 2026-10-13 put two openers on the occupant's clipboard through
+  `clip.exe`, whole (fixed in 0.20.1: the suite no longer reaches it).
+  The suite's own tests of both steps run against fakes.
 - ~~A response saved twice by a browser is `response-SID (1).tar.gz`;
   bale's search finds `response-SID.tar.gz` first, so after a HOLD the
   corrected response is named by its path (`office land` asks for it).~~

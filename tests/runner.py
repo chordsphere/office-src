@@ -39,8 +39,10 @@ Nothing a test runs reads the running machine's home or temporary
 directory: every job, and the --serial run, is given a HOME, a TMPDIR and
 XDG directories of its own under one scratch directory the runner makes
 and removes, an empty global git config, no Windows users' homes to scan
-for downloads, and none of the caller's OFFICE_ settings (isolated_env).
-tests/test_suite_clock.py holds the test files to the same rule.
+for downloads, a machine that is not WSL and has no desktop program (so
+no test writes the clipboard or opens a file manager), and none of the
+caller's OFFICE_ settings (isolated_env). tests/test_suite_clock.py holds
+the test files, and the office's own source, to the same rule.
 
 Each job writes one log, <logs>/<job>.log (unittest -v's own output), and
 one result, <logs>/<job>.json, which carries each test's time; the run
@@ -105,6 +107,30 @@ DETACHED_NICE = 10
 # variable (OFFICE_ROOT, OFFICE_DEBUG, ...) would point a test at the
 # running machine's office or change what the command prints.
 KEEP_OFFICE_VARS = ("OFFICE_TEST_JOBS",)
+# The programs a job takes from the running machine's PATH: git, python3,
+# a shell and the coreutils, and iconv (the C library's, which turns text
+# to UTF-16 for clip.exe). Everything else a test runs is in its own tree:
+# the fake bale and the fake ssh first on its PATH, a fake desktop program
+# in its Env's desktop. tests/test_suite_clock.py holds the office's source
+# to this list: a program the office looks up on the PATH is one of these,
+# the suite's fake, or a desktop program found through the one door the
+# Env steers (bin/office desktop_tool, lib/office_helper.py desktop_which).
+COREUTILS = (
+    "arch", "b2sum", "base32", "base64", "basename", "basenc", "cat", "chcon", "chgrp", "chmod", "chown",
+    "chroot", "cksum", "comm", "cp", "csplit", "cut", "date", "dd", "df", "dir", "dircolors", "dirname", "du",
+    "echo", "env", "expand", "expr", "factor", "false", "fmt", "fold", "groups", "head", "hostid", "id",
+    "install", "join", "kill", "link", "ln", "logname", "ls", "md5sum", "mkdir", "mkfifo", "mknod", "mktemp",
+    "mv", "nice", "nl", "nohup", "nproc", "numfmt", "od", "paste", "pathchk", "pinky", "pr", "printenv",
+    "printf", "ptx", "pwd", "readlink", "realpath", "rm", "rmdir", "runcon", "seq", "sha1sum", "sha224sum",
+    "sha256sum", "sha384sum", "sha512sum", "shred", "shuf", "sleep", "sort", "split", "stat", "stdbuf", "stty",
+    "sum", "sync", "tac", "tail", "tee", "test", "timeout", "touch", "tr", "true", "truncate", "tsort", "tty",
+    "uname", "unexpand", "uniq", "users", "vdir", "wc", "who", "whoami", "yes",
+)
+DECLARED_TOOLS = ("git", "python3", "bash", "sh", "iconv") + COREUTILS
+# What every job is told of the desktop it runs on (bin/office on_wsl and
+# desktop_tool read these): not WSL, and no desktop program anywhere. An
+# Env gives each test a desktop directory of its own in their place.
+DESKTOP_VARS = {"OFFICE_PROC_VERSION": "", "OFFICE_DESKTOP_PATH": ""}
 _print_lock = threading.Lock()
 
 
@@ -265,10 +291,12 @@ def isolated_env(base, root):
     """The environment a job (or the --serial run) runs under, made under
     root: its own HOME (with an empty global git config), TMPDIR and XDG
     config, data, state and cache directories; no Windows users' homes to
-    scan for downloads (OFFICE_WINDOWS_USERS empty) and no XDG variable of
-    the caller's (XDG_DOWNLOAD_DIR among them); none of the caller's OFFICE_
-    settings but the job count. PATH and the locale stay: the suite needs
-    git, python3 and a shell, and reads nothing through them."""
+    scan for downloads (OFFICE_WINDOWS_USERS empty), a machine that is not
+    WSL with no desktop program on it (DESKTOP_VARS), and no XDG variable
+    of the caller's (XDG_DOWNLOAD_DIR among them); none of the caller's
+    OFFICE_ settings but the job count. PATH and the locale stay: the suite
+    needs the programs DECLARED_TOOLS names, and reads nothing else
+    through them."""
     root = pathlib.Path(root)
     home, tmp = root / "home", root / "tmp"
     dirs = {"XDG_CONFIG_HOME": home / ".config", "XDG_DATA_HOME": home / ".local" / "share",
@@ -280,7 +308,7 @@ def isolated_env(base, root):
     env = {k: v for k, v in base.items()
            if not k.startswith("XDG_") and not (k.startswith("OFFICE_") and k not in KEEP_OFFICE_VARS)}
     env.update({k: str(v) for k, v in dirs.items()})
-    env.update({"HOME": str(home), "TMPDIR": str(tmp), "OFFICE_WINDOWS_USERS": "",
+    env.update({"HOME": str(home), "TMPDIR": str(tmp), "OFFICE_WINDOWS_USERS": "", **DESKTOP_VARS,
                 "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": str(gitconfig),
                 "PYTHONDONTWRITEBYTECODE": "1", "OFFICE_TESTS_UNDER_RUNNER": "1"})
     return env

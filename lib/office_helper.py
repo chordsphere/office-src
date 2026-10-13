@@ -2856,6 +2856,49 @@ def set_machine_downloads(machine_file, directories):
     return line
 
 
+# --- what the office reads of the desktop it runs on (0.20.1) ----------------------------------
+#
+# Two reads decide the desktop steps' defaults (bin/office: on_wsl and
+# desktop_tool, which read the same two variables): whether this machine
+# is WSL, and which desktop programs it has. Each comes from one place the
+# environment can steer, as the downloads scan does (OFFICE_WINDOWS_USERS):
+# the suite's Env points both into each test's own tree, so no test reads
+# the machine it runs on, and tests/test_suite_clock.py holds the source
+# to these two doors.
+
+DESKTOP_PATH_ENV = "OFFICE_DESKTOP_PATH"
+
+
+def machine_is_wsl(environ=None):
+    """True when the kernel's version string names Microsoft. The file read
+    is OFFICE_PROC_VERSION's when that is set ("" for none: not WSL), the
+    kernel's own otherwise; one that cannot be read says no."""
+    environ = os.environ if environ is None else environ
+    # Spelled out on the one line: the kernel's file is named only as this
+    # variable's default (tests/test_suite_clock.py holds the source to it).
+    source = environ.get("OFFICE_PROC_VERSION", "/proc/version")
+    if not source:
+        return False
+    try:
+        return "microsoft" in pathlib.Path(source).read_text(errors="replace").lower()
+    except OSError:
+        return False
+
+
+def desktop_which(name, environ=None):
+    """The path of the desktop program name (a clipboard reader, a Windows
+    program WSL puts on the PATH), or None: searched in the directories
+    OFFICE_DESKTOP_PATH lists when it is set ("" lists none), on PATH when
+    it is not. Every check for a desktop program goes through here."""
+    environ = os.environ if environ is None else environ
+    dirs = environ.get(DESKTOP_PATH_ENV)
+    if dirs is None:
+        dirs = environ.get("PATH", os.defpath)
+    if not dirs:
+        return None
+    return shutil.which(name, path=dirs)
+
+
 # --- how this machine reads its clipboard: machine.toml's paste_command (0.18.0) -------------
 #
 # office probe reads a worker's probe block from the clipboard when it is
@@ -2892,16 +2935,15 @@ def machine_string(machine_file, key):
     return data[key]
 
 
-def paste_candidate(on_wsl=None, which=None):
+def paste_candidate(on_wsl=None, which=None, environ=None):
     """This machine's likely paste command, or None: on WSL with
-    powershell.exe on the PATH, the PowerShell line; elsewhere the first
-    clipboard reader on the PATH."""
-    which = which or shutil.which
+    powershell.exe among the desktop programs, the PowerShell line;
+    elsewhere the first clipboard reader there. Whether it is WSL and
+    where the programs are come from machine_is_wsl and desktop_which
+    (with environ, else this process's environment), unless given."""
+    which = which or (lambda name: desktop_which(name, environ))
     if on_wsl is None:
-        try:
-            on_wsl = "microsoft" in pathlib.Path("/proc/version").read_text(errors="replace").lower()
-        except OSError:
-            on_wsl = False
+        on_wsl = machine_is_wsl(environ)
     if on_wsl and which("powershell.exe"):
         return WSL_PASTE
     for tool, line in OTHER_PASTES:
