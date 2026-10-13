@@ -23,8 +23,13 @@ office moves and office land read every key):
 `clipboard`, `stdin` or `file NAME` (the basename); `status` is
 `unsorted` when the drop lands and `sorted` once a Sort has been filed
 under it. The field lines are the office command's, never written by
-hand. The page stays ASCII: anything outside it is kept as a backslash
-escape, as office note keeps it.
+hand: render_page writes them, and set_status is the one writer of the
+status line after that (0.20.0). The page stays ASCII: anything outside
+it is kept as a backslash escape, as office note keeps it.
+
+Once office land files a session's Sort for the drop (lib/office_sort.py,
+0.20.0), the page ends with a `## Sort` section whose first line is
+`- sorted: DATE, by SID`; the text under `## Text` stops above it.
 
 The in-tray arrives with the first drop, the way the drafting table
 arrives with the first verb that writes it (doctrine section 5): its
@@ -69,6 +74,10 @@ VIA_RE = re.compile(r"^(clipboard|stdin|file \S.*)$")
 DROPPED_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})$")
 PAGE_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 FIELD_RE = re.compile(r"^- ([a-z]+): (.*)$")
+# The section office land appends when it files a Sort (0.20.0): its
+# first line names the day and the session.
+SORT_HEADING = "## Sort"
+SORTED_LINE_RE = re.compile(r"^- sorted: (\d{4}-\d{2}-\d{2}), by (\S+)$")
 
 # The lines a drop's page sits between in the brief office start --drop
 # writes: notepad-style markers, but their own, so office start never
@@ -174,12 +183,57 @@ def parse_page(text):
         out["problems"].append(f"status is not {' or '.join(STATUSES)}: {f['status']!r}")
     if "via" in f and not VIA_RE.match(f["via"]):
         out["problems"].append(f"via is not clipboard, stdin or file NAME: {f['via']!r}")
+    out["sort_lines"] = None
     try:
         at = lines.index(TEXT_HEADING, i)
-        out["text"] = "\n".join(lines[at + 1:]).strip("\n")
     except ValueError:
         out["problems"].append(f"it has no '{TEXT_HEADING}' section")
+        return out
+    end = sort_start(lines, at + 1)
+    if end is not None:
+        out["sort_lines"] = lines[end + 1:]
+    out["text"] = "\n".join(lines[at + 1:end]).strip("\n")
+    if f.get("status") == "sorted" and end is None:
+        out["problems"].append(f"it says status sorted, and no '{SORT_HEADING}' section says by whom")
     return out
+
+
+def sort_start(lines, start=0):
+    """The index of the page's filed Sort section, `## Sort` with its
+    `- sorted: DATE, by SID` line, at or after start; None when the page
+    has none. The last such heading counts, so a thread that quotes a
+    `## Sort` line of its own keeps it in its text."""
+    found = None
+    for i in range(start, len(lines)):
+        if lines[i] != SORT_HEADING:
+            continue
+        j = i + 1
+        while j < len(lines) and not lines[j].strip():
+            j += 1
+        if j < len(lines) and SORTED_LINE_RE.match(lines[j]):
+            found = i
+    return found
+
+
+def set_status(path, status):
+    """The one writer of a drop's status line after render_page: the page
+    with its `- status:` line set, every other byte kept. Returns the
+    status it had. Raises HelperError for a page whose field lines do not
+    read, or a status that is not one."""
+    if status not in STATUSES:
+        raise oh.HelperError(f"status is one of {', '.join(STATUSES)}, not {status!r}")
+    path = pathlib.Path(path)
+    text = path.read_text(encoding="utf-8")
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        if line.startswith("## "):
+            break
+        m = FIELD_RE.match(line)
+        if m and m.group(1) == "status":
+            lines[i] = f"- status: {status}"
+            path.write_text("\n".join(lines), encoding="ascii")
+            return m.group(2)
+    raise oh.HelperError(f"{path.name} has no status line above its first section")
 
 
 def project_text(fields):
@@ -285,6 +339,13 @@ def drops(root):
 def unsorted(root):
     """The drops office start carries: status unsorted, and readable."""
     return [d for d in drops(root) if d["status"] == "unsorted" and not d["problems"]]
+
+
+def sorted_waiting(root):
+    """The sorted drops still in the in-tray, oldest first: each is a desk
+    move office moves applies (0.20.0), and the walk-in counts them as
+    pending moves."""
+    return [d for d in drops(root) if d["status"] == "sorted"]
 
 
 def age_days(drop, today):

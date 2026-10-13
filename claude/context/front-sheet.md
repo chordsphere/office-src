@@ -20,7 +20,9 @@ reaches it only through `office upgrade`. Every day: `office` to walk in
 to capture a line, `office slip` to drop a friction slip, `office drop`
 to drop a message or a thread in the in-tray (from the clipboard, a file
 or stdin, with the project in any words), `office start` to send a
-session out for a folder (it packs the session with bale, or opens a
+session out for a folder (with the folder's own goal and brief when it
+has them; `office start --sort` sends the drops nothing carried to a
+session of their own) (it packs the session with bale, or opens a
 planner's bundle, records it in the folder and puts everything to attach
 in one out tray beside the opener; it surveys the machine first, asks
 which of the project's ride-alongs go this time, offers the riders the
@@ -29,8 +31,10 @@ anything), `office land` to bring
 it back (bale applies it in its repo, the office says how it ended, hands
 over the relay to carry, runs the project's after-land actions, records
 the planner's ratification, files the folder's walkthrough and delivery
-pages from the response, closes the founding folder once the founding
-has landed, names any watch that fired, and ends saying how each action
+pages from the response, files its Sort on each drop's page, its
+questions and answers in the folder and its facts in the handbook, runs
+`office moves` when a drop was sorted, closes the founding folder once
+the founding has landed, names any watch that fired, and ends saying how each action
 went; given a read-only sitting, it ends the sitting; for a project on
 another machine it does all of this there, the response carried over;
 and it offers to close a folder whose one session landed and was
@@ -53,7 +57,8 @@ about them: the trust ledger, who last landed a file, the version trail.
 For work too big for one folder there is the drafting table, which
 arrives in an office with the first verb that writes it: `office
 blueprint open`, `ratify` and `close` for an arc, `office moves` to
-apply the desk moves a sitting decided, `office rider` and `office
+apply the desk moves a sitting decided (and, first, the in-tray's sorted
+drops, each into its folder with its brief), `office rider` and `office
 riders` for small work with a named carrier, `office agenda add` for a
 question a sitting will rule on, `office rulings` and `office
 evidence` to read the ledgers a sitting keeps, `office watches` and
@@ -122,6 +127,34 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Recent changes
 
+- 0.20.0 (session 2026-10-13-office-sort-004): the return of a sort, the
+  standalone sort and the handbook.
+  - `office land` files three more sections of a session's notes.md:
+    its `## Sort` on each drop's page (status sorted, the Sort word for
+    word under the office's `- sorted: DATE, by SID`), its `## Questions
+    and answers` in the folder, and its `## Handbook` facts and front
+    sheets in the project's chapter. Then it runs `office moves` when a
+    drop was sorted and names the folders it minted, all before the
+    after-land actions.
+  - `office moves` takes each sorted drop in the in-tray to its folder: a
+    new one minted through `office open` (`folder: new`) or folder N. The
+    page moves in, the folder gets the Brief as brief.md, a `dropped`
+    History line, its goal, and the Sort's `tell:` on its Next.
+  - `office open --goal` writes a `goal` line; `office start N` offers it
+    and sends the folder's brief.md as the brief. A routine ask stays
+    drop, start, land, with nothing asked twice.
+  - The handbook arrives with the first fact: a front page, one chapter
+    per project (a front sheet for you, facts for sessions), riding with
+    every session on that project. `office status` checks it.
+  - `office start --sort`: an office session for the drops nothing
+    carried, belonging to no folder; it carries every folder's folder.md,
+    the handbook and the desk, writes Sorts, facts and, with a drafting
+    table, the moves page (closes among them). The Next line names it for
+    a drop no project claims once a session has gone by, or for three or
+    more drops with nothing ready.
+  - The doctrine's core: a session writes its light blocks' answers and
+    the facts it learns in notes.md and reads its chapter before asking.
+  - Additive: no migration.
 - 0.19.0 (session 2026-10-13-office-drop-003): `office drop`, the in-tray,
   and the drops riding with every session; `office start --drop`.
   - `office drop` takes a message or a thread from the clipboard, a file

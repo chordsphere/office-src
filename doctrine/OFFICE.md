@@ -204,6 +204,16 @@ A session is packed where it lands.
   what; `facts:` is `none` or one or more lines for the project's
   handbook chapter, each starting with `- `; `#### Brief` is present
   when `folder:` is `new` and may be present otherwise.
+- A session writes what the office keeps for it at the end of its
+  notes.md, and `office land` files it, so a project session never
+  writes the office: each light block it sent and the occupant's answer
+  under `## Questions and answers`, one `- DATE question? answer` line
+  each; each fact the occupant gave it, or that it learned about a
+  project's shape, under `## Handbook`, `### PROJECT`, as `- ` lines,
+  with a `#### Front sheet` paragraph when what the occupant should know
+  changed. It reads the handbook chapter it carries before it asks
+  anything, so nothing is asked twice. A Sort's `tell:` lands on its
+  folder's Next.
 
 > Section 4 continues past the core banner, from "`office start`
 > does all of this", and sections 5 to 8 follow it there.
@@ -361,7 +371,46 @@ office: `office land` files the folder's walkthrough.md and delivery.md
 from the Walkthrough and Delivery sections of the response's notes.md
 (principle 6), when it found the response on the occupant's machine;
 `office sessions FOLDER SID --pages RESPONSE` files them from a response
-bale found on its own.
+bale found on its own. Both then file three more sections of any
+session's notes.md, in this order, each only when present and each said
+in a line. The Sort: each `### NAME.md` subsection on the drop's page,
+found in the in-tray or in the landed folder's drops/, as a `## Sort`
+section at its end (section 5), its status set to sorted; a page sorted
+already is said and left as it is, and a subsection naming a page that is
+nowhere is said and skipped. The Questions and answers: each line as it
+is, in the folder's Questions and answers section, after a line naming
+the session. The Handbook: each fact as `- DATE: fact (SID)` at the end
+of its project's chapter, with a Sort's `facts:` lines, and a Front sheet
+in place of the chapter's, whole. Then, when a sorted drop waits in the
+in-tray, or the session was a standalone sort whose moves page holds
+pending lines, `office land` runs `office moves` and names each folder it
+minted, before the after-land actions and the ratification question. A
+HOLD, a refusal or a clarification files nothing. A standalone sort, which
+no folder records, is filed by `office sessions --in-tray SID --pages
+RESPONSE` when only bale found its response.
+
+`office start N` asks nothing the folder already knows. A folder with a
+`goal` field offers it as the session's goal (a return takes it, piped it
+is taken, `--goal` overrides), and a folder with a brief.md sends it as
+the session's brief (`--brief` names another; a bundle keeps its own, and
+the office says so). The folder rides as it always has, the drops in its
+drops/ with it.
+
+`office start --sort` sends the drops nothing carried to a session of
+their own: an office session that belongs to no folder, packed from the
+office with the goal "Sort the in-tray's drops" and a brief from the
+install's templates/sort-brief.md, which carries the standing
+instructions, every unsorted drop between its DROP markers and the desk as
+`office desk` prints it. It ships every folder's folder.md (not the
+folders whole), every handbook chapter, the hung items and the doctrine,
+and forecasts the notepad and, where the office has a drafting table, its
+moves page (which arrives first when it must), and nothing else: like
+every session it writes its Sort, Questions and answers and Handbook in
+notes.md, and `office land SID` files them, runs the moves and ends with
+the ratification question. The walk-in and `office desk` show it in flight
+as the in-tray's session. It is refused while another sort is out, while
+an open session in the office's registry forecasts the in-tray, and when
+no drop is unsorted.
 
 Delivering to the audience is a further step, the occupant's, and one
 command: `office deliver FOLDER`. It reads the folder's delivery.md,
@@ -388,8 +437,9 @@ the `shell` that runs one command there and the `connect` line printed
 when the host does not answer. `office init` builds the base spaces. The others are added by a
 renovation session when real work asks for them, except the drafting
 table, whose pages hold no judgment until a sitting writes them: it
-arrives with the first verb that writes it; and the in-tray, which
-arrives with the first `office drop`. The install's catalog of
+arrives with the first verb that writes it; the in-tray, which
+arrives with the first `office drop`; and the handbook, which arrives
+with the first fact `office land` files. The install's catalog of
 spaces is share/spaces.toml.
 
 | path | what it does | base | hung | filed |
@@ -401,7 +451,7 @@ spaces is share/spaces.toml.
 | notepad/ | the occupant's words, verbatim and dated | yes | no | yes |
 | suggestion-box/ | friction slips | yes | no | no |
 | drawer/ | the office's own tools: probes, survey steps | yes | no | no |
-| handbook/ | the private layer of documentation | renovation | front page | no |
+| handbook/ | the private layer of documentation | no; arrives with the first fact filed | front page | no |
 | clipboards/ | one per recurring meeting | renovation | no | no |
 | calendar/ | when things happen, and what actually happened | renovation | yes | no |
 | rolodex/ | how to deal with each person | renovation | no | no |
@@ -421,8 +471,10 @@ rewriting it: the bytes move as they are, and git keeps the history.
 
 Under its title a folder carries its facts as field lines, written by
 the office command and never by hand: its number, its status, the day
-it was queued, and whichever of class, size, lane, source, blueprint,
-links and gates it was given. A field the command cannot fill is left
+it was queued, and whichever of class, size, lane, source, goal,
+blueprint, links and gates it was given (goal, one sentence, is written
+by `office open --goal` and by `office moves` from a sorted drop, and
+`office start N` offers it). A field the command cannot fill is left
 out rather than left blank. The number is the folder's citation, folder
 N: `office open` mints it as one more than the highest number on the
 desk and in the filing cabinet, and it is never reused or renumbered. A
@@ -485,11 +537,37 @@ office without a calendar is told so, with the renovation that adds one.
 
 Handbook. Only the private layer. Shareable technical documentation
 belongs in the projects (README, docs/), and a chapter points at it
-rather than restating it. Each chapter opens with a front sheet for the
-occupant in plain language; below it is written for sessions. Every
-session that lands a change to a system updates that chapter's front
-sheet. Correspondence, including copies of messages sent, is the
-folder's, not the handbook's.
+rather than restating it. One chapter per project, handbook/PROJECT.md,
+in two parts (values illustrative):
+
+  ```
+  # alpha
+
+  ## Front sheet
+
+  <for the occupant, in plain language: what the project is and where it stands; replaced whole by a session's Front sheet>
+
+  ## Facts
+
+  - 2026-10-14: the login page is served by the api's static route (2026-10-14-alpha-login-error-001)
+  ```
+
+The front sheet is for the occupant, in plain language, and a session's
+`#### Front sheet` replaces it whole. The facts are for sessions: one
+line each, dated and naming the session that gave it, appended at the end
+by `office land` from a session's Handbook section or a Sort's `facts:`,
+and never rewritten by hand. Every session that lands a change to a
+system updates that chapter's front sheet, through its notes.md. The
+handbook arrives with the first fact `office land` files, as the in-tray
+arrives with the first drop: its front page from the install's template,
+the floor plan's entry as the catalog declares it with the front page
+hung, and bale.toml's trigger and pull, committed with that filing; a
+chapter arrives from its template with its project's first fact. A
+chapter rides with every session whose lane names its project, and every
+chapter rides with the standalone sort. `office status` checks a handbook
+that exists against the catalog, and every chapter against its shape.
+The handbook is live, never filed. Correspondence, including copies of
+messages sent, is the folder's, not the handbook's.
 
 Rolodex. One card per person, as a guide for responding to them.
 
@@ -516,8 +594,9 @@ office command writes what a script can: `office blueprint open` drafts
 a blueprint, `office blueprint ratify` writes the ratified line given
 outside a sitting, `office rider add`, `carry` and `consumed` keep the
 riders, `office agenda add` puts a question on the agenda, and `office
-moves` applies the desk moves, since the desk is the office command's
-to write and folder numbers are minted by it alone. No script mints a
+moves` applies the desk moves and the in-tray's sorted drops, since the
+desk is the office command's to write and folder numbers are minted by it
+alone. No script mints a
 ruling or an evidence entry: those are judgment. `office blueprint
 close` sends out the sitting that closes an arc. `office rulings`,
 `office evidence`, `office riders` and `office watches` only read.
@@ -535,7 +614,12 @@ agenda item leaves the agenda when a sitting rules on it, and a dated
 line at the foot of the page says which ruling disposed of it. A desk
 move is one line of data, `- [ ] DATE MOVE ...`, ticked with the folder
 it acted on once applied; walking in says how many are pending and which
-session wrote them. Every pointer uses one citation form per kind of
+session wrote them. A sorted drop still in the in-tray is a desk move too
+(section 5, In-tray), counted with them and applied first, and the
+standalone sort writes the moves page as a sitting does: a finished
+folder's close is `- [ ] DATE close folder N`, a job that lives on in
+another `- [ ] DATE absorb folder N into="folder M"`, one that ends
+undone `- [ ] DATE retire folder N why="..."`. Every pointer uses one citation form per kind of
 thing (folder N, blueprint ID, ruling ID, evidence N, watch WN, rider N,
 agenda N, a session id, a notepad page), and `office rulings --check`
 resolves them all.
@@ -593,7 +677,43 @@ ASCII as a note is. Only the office command writes the field lines,
 never a hand, as with a folder's. Every session `office start` sends out
 carries the unsorted drops, and a session sorts what it can judge
 (section 4). A sorted drop leaves the in-tray whole, its bytes as they
-are, into the folder it became, as drops/DATE-SLUG.md. `office start
+are, into the folder it became, as drops/DATE-SLUG.md. When a session's Sort
+lands, `office land` files it on the page as a section at its end, the
+first line the office's and the rest the session's subsection, verbatim
+and in its order, with `### Brief` exactly when the subsection had
+`#### Brief` (values illustrative):
+
+  ```
+  ## Sort
+
+  - sorted: 2026-10-14, by 2026-10-14-alpha-login-error-001
+  - project: alpha
+  - folder: new
+  - goal: Fix the login page's error on narrow screens
+  - size: small
+  - tell: the sender, in reply: fixed in the next release
+  - facts: none
+
+  ### Brief
+
+  <the subsection's Brief, verbatim>
+  ```
+
+and the page's status becomes sorted, written by the office command as
+every field line is. A sorted page still in the in-tray is a desk move:
+`office moves` applies it, before the moves page. For `folder: new` it
+mints the folder through `office open`'s own code (the title from the
+page's heading, the slug from its name, the lane the Sort's project,
+which must be one of the office's or the page stays, the size and the
+goal the Sort's, the source `drop`); for `folder: N`, folder N on the desk
+(one in the filing cabinet is said and the page stays). The page moves in
+whole, the folder's brief.md is written from the Brief (its text, nothing
+added), the History gains `- DATE dropped: drops/NAME.md, sorted by SID`,
+the goal is written when the folder has none, and the `tell:` goes on the
+folder's Next, which `office desk` shows, until the meeting spaces exist.
+An open session forecasting the in-tray, the desk or the folder stops that
+page's move, named, and the rest go on. Fact lines in a Sort follow an
+empty `- facts:` line, one `- ` line each. `office start
 --drop in-tray/PAGE` is the direct path for a drop whose job is plain:
 it mints the folder through `office open`'s own code (the title from the
 drop's first line, the lane from its project when that is one of the
@@ -686,20 +806,20 @@ Kinds:
 | note | script: append a dated line to the notepad | yes |
 | slip | script: drop a friction slip in the suggestion box, saying what it is about | yes |
 | drop | script: capture a message or a thread as one in-tray page, with an optional free-text project | yes |
-| open | script: start a numbered folder on the desk, or a candidate, or one born done in the filing cabinet | yes |
+| open | script: start a numbered folder on the desk, or a candidate, or one born done in the filing cabinet; with --goal, the goal office start offers | yes |
 | desk | script: in flight, ready in order, parked under what each waits for, candidates | yes |
 | week | script: this week's calendar and its gaps | yes |
 | close, reopen | script: move a folder to the filing cabinet, done, absorbed, split or retired, and a done one back | yes |
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes |
 | projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace, a clone here brought there with --from), declare where it is, what rides with it and what runs after it lands, bring a host's bale level with this machine's (level-bale), render what bale records about them | yes |
-| start | script: pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
-| land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, the folder's walkthrough and delivery pages filed from the response, the founding folder closed when the founding has landed, the watches that fired, and what became of each action; or end a read-only sitting the office sent out | yes |
+| start | script: pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; with --sort, send the standalone sort; send a folder out with its goal and brief.md when it has them; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
+| land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, the folder's walkthrough and delivery pages filed from the response, then its Sort on each drop's page, its questions and answers in the folder and its facts in the handbook, and office moves when a drop was sorted, the founding folder closed when the founding has landed, the watches that fired, and what became of each action; or end a read-only sitting the office sent out | yes |
 | relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes |
 | probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), stdin closed, once its purpose header has been shown and the occupant said yes; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes |
 | deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, checked by the letterhead, asked once, recorded in the folder | yes |
 | letterhead check | script, read-only: name every line in a tree, a range or a file that holds what the letterhead refuses | yes |
 | tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes |
-| moves | script: apply the desk moves a sitting wrote, through open's, close's and the gate flags' own code, ticking each and writing a minted number onto its blueprint's decomposition line; stops at the first line it cannot apply | yes |
+| moves | script: apply the in-tray's sorted drops (a folder minted through open's code for folder: new, or folder N; the page moved in whole with its brief, its History line, its goal and its tell), then the desk moves a sitting or a sort wrote, through open's, close's and the gate flags' own code, ticking each and writing a minted number onto its blueprint's decomposition line; stops at the first line it cannot apply | yes |
 | blueprint open, blueprint ratify | script: draft a blueprint from the template; write its charter's ratified line | yes |
 | rider add, rider carry, rider consumed | script: a rider on the riders page; moved into the folder that carries it; consumed at a session | yes |
 | riders | script, read-only: the riders, where each is, the orphans, and the ones a pack's forecast would carry | yes |
@@ -710,6 +830,7 @@ Kinds:
 | founding | office session: the profile, the occupant's words, the timezone | yes, via init, found and start |
 | work | office session: answer, draft, probe, decide, deliver | yes, via start |
 | build | project session: change a project for a folder, and write the folder's walkthrough and delivery pages at the end of its notes.md | yes, via start |
+| sort | office session: the standalone sort, belonging to no folder: read every unsorted drop, write one Sort subsection each, a Brief for every new folder, facts in a Handbook section and, with a drafting table, the moves the desk needs on its moves page | yes, via start |
 | prep | office session: a briefing for a meeting | not yet |
 | meeting | office session held open during a meeting | not yet |
 | cleanup | office session: keep the office as designed | not yet |
@@ -777,7 +898,12 @@ lane: `office start --drop in-tray/PAGE`; the oldest whose project is
 none of the office's, or that has none: the same line with `--lane
 LANE` for the occupant to fill; an office that scopes no project skips
 it; placed here in 0.19.0, since drop, start, land is a routine ask's
-whole count); an unfounded office (start its founding
+whole count); an unsorted drop whose project is none,
+or none of the office's, that has waited through one session (a session
+packed after the drop landed), or an in-tray of three or more unsorted
+drops with nothing ready on the desk (`office start --sort`; the drop
+rule above leaves such a drop to it; placed here in 0.20.0); an
+unfounded office (start its founding
 folder, which goes out through the founding door with the answers it
 keeps, or, with none on the desk, found it); the first ready folder
 (start it); an open folder no session is out for;

@@ -139,6 +139,7 @@ trigger = ["manual"]
 
 # open writes one folder: on the desk, or in the filing cabinet when it
 # is born done (--filed); lands names both, one of which it lands.
+# open writes one folder (and, with --goal, its goal field, 0.20.0).
 [verbs.open]
 kind = "script"
 built = true
@@ -224,7 +225,9 @@ trigger = ["manual"]
 [verbs.start]
 kind = "script"
 built = true
-writes = ["desk/{folder}", "in-tray/{date}-{slug}.md", "notepad/{date}-{slug}.md", "floor-plan/survey.md", "drafting-table/riders.md", "bale's registry where the session is packed", "the out tray"]
+writes = ["desk/{folder}", "in-tray/{date}-{slug}.md", "notepad/{date}-{slug}.md", "floor-plan/survey.md", "drafting-table/riders.md",
+          "drafting-table/moves.md", "drafting-table/README.md", "floor-plan/manifest.toml", "bale.toml",
+          "bale's registry where the session is packed", "the out tray"]
 lands = ["desk/{folder}/folder.md"]
 attended = true
 trigger = ["manual"]
@@ -244,7 +247,8 @@ kind = "script"
 built = true
 writes = ["the repo the session belongs to, through bale's apply (or, for a read-only sitting, bale's unlock)", "desk/{folder}/folder.md",
           "desk/{folder}/walkthrough.md", "desk/{folder}/delivery.md",
-          "filing-cabinet/{folder}", "what the project's after-land actions write"]
+          "filing-cabinet/{folder}", "in-tray", "desk", "handbook", "floor-plan/manifest.toml", "bale.toml",
+          "drafting-table/moves.md", "what office moves writes", "what the project's after-land actions write"]
 lands = []
 attended = true
 trigger = ["manual"]
@@ -324,12 +328,14 @@ trigger = ["manual"]
 # those three are in its writes (and in no lands: they exist already
 # after the first). A two-word verb's key is hyphenated.
 
-# Applies a sitting's desk moves through office open, office close and
-# the gate flags; a script a harness may run after a sitting lands.
+# Applies the in-tray's sorted drops (0.20.0), then a sitting's desk moves,
+# through office open, office close and the gate flags; a script a
+# harness may run after a sitting lands, and office land runs after a
+# landing that sorted a drop.
 [verbs.moves]
 kind = "script"
 built = true
-writes = ["desk", "filing-cabinet", "drafting-table/moves.md", "drafting-table/blueprints/{id}/blueprint.md",
+writes = ["in-tray", "desk", "filing-cabinet", "drafting-table/moves.md", "drafting-table/blueprints/{id}/blueprint.md",
           "drafting-table/README.md", "floor-plan/manifest.toml", "bale.toml"]
 lands = ["drafting-table/moves.md"]
 attended = false
@@ -484,6 +490,22 @@ built = true
 ships = ["desk/{folder}", "handbook/{systems}", "templates/walkthrough.md and templates/delivery.md, from the install"]
 writes = ["{project}", "desk/{folder}"]
 lands = ["desk/{folder}/walkthrough.md", "desk/{folder}/delivery.md"]
+attended = true
+trigger = ["manual"]
+
+# The standalone sort (0.20.0), packed by office start --sort in the
+# office: it belongs to no folder. It ships every folder's folder.md, every
+# handbook chapter, the unsorted drops (in its brief and its request), the
+# hung items and the doctrine; it writes notes.md, which office land files,
+# and the notepad and, with a drafting table, the moves page. Nothing is
+# guaranteed to exist after it: a sort that judges no drop lands nothing.
+[verbs.sort]
+kind = "office-session"
+built = true
+ships = ["desk/{folder}/folder.md, every folder's", "filing-cabinet/{folder}/folder.md, every folder's", "handbook",
+         "in-tray/{date}-{slug}.md, every unsorted drop", "templates/sort-brief.md, as the brief"]
+writes = ["notepad", "drafting-table/moves.md"]
+lands = []
 attended = true
 trigger = ["manual"]
 
