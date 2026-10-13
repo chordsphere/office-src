@@ -708,8 +708,16 @@ in the request for an office session), and every chapter rides with the
 sort.
 
 On WSL the out tray opens in Explorer and the opener goes on the
-clipboard. `~/.config/office-src/machine.toml` holds this machine's own
-settings, outside every office:
+clipboard. The office knows it is on WSL when the kernel's version string
+names Microsoft, and finds `explorer.exe` and `clip.exe` on the PATH, as
+WSL puts them there. Two variables steer those two reads, and the test
+suite is what sets them: `OFFICE_PROC_VERSION` names the file read for
+the kernel's version (empty: not WSL), and `OFFICE_DESKTOP_PATH` lists
+the directories searched for a desktop program (`clip.exe`,
+`explorer.exe`, and the clipboard readers `office probe` offers) in place
+of the PATH (empty: none). Neither is needed for everyday use.
+`~/.config/office-src/machine.toml` holds this machine's own settings,
+outside every office:
 
 - `out_tray = "~/somewhere"`: where out trays go (default `~/out-tray`).
 - `clipboard_command = "..."` and `open_command = "..."`: the two desktop
@@ -1288,6 +1296,19 @@ fails the suite on a test file that names this machine's temporary
 directory, expands `~` or reads HOME anywhere but there. The downloads question's
 scan of the Windows users' homes (`/mnt/c/Users` on WSL) is pointed away
 by `OFFICE_WINDOWS_USERS`, empty for none, or a directory a test makes.
+No test writes your clipboard or opens a file manager, on any machine:
+each `Env` says the machine is not WSL (`OFFICE_PROC_VERSION` empty) and
+gives the test a desktop directory of its own as the only place the
+office looks for `clip.exe`, `explorer.exe` or a clipboard reader
+(`OFFICE_DESKTOP_PATH`), and the runner sets both for every job besides.
+The tests that imitate WSL write a kernel version string of their own
+and put fake Windows programs in their own tree. `tests/test_suite_clock.py`
+fails the suite on a test file that reads the kernel's version or looks
+a program up on the PATH outside `Env`, and on office source that does
+either except through those two doors: every program `bin/office` and
+`lib/` look up on the PATH is one the runner declares (git, python3, a
+shell, the coreutils, iconv), the suite's fake bale, or a desktop program
+found through the door.
 bale need not be installed, and no real ssh ever runs: the read side's tests put a fake bale first
 on the PATH that replays real bale output captured by a probe, kept in
 the development record, and refuses anything it did not capture; the

@@ -7,9 +7,10 @@ in its repo here, through its shell on a host (the suite's fake ssh), or
 in the office root. No test reads the machine and none makes a network
 call: the block is a synthetic one in the crafter's shape, the host is
 the fake ssh of tests/test_project_on_host.py, bale is the fake of
-tests/test_land.py (which now replays the 0.4.52 captures), and the
-clipboard is a command the test names in its own machine.toml. Run with
-the rest of the suite:
+tests/test_land.py (which now replays the 0.4.52 captures), the
+clipboard is a command the test names in its own machine.toml, and the
+clipboard reader the paste question offers is one the test puts in its
+Env's desktop (0.20.1). Run with the rest of the suite:
 
     tests/run.sh test_probe
 """
@@ -27,7 +28,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from test_office import REPO, Env, h  # noqa: E402
-from test_start import on_a_terminal  # noqa: E402
+from test_start import imitate_wsl, on_a_terminal, recording_windows  # noqa: E402
 from test_land import LandCase, bundle_file, brief_with_page  # noqa: E402
 from test_project_on_host import HOST  # noqa: E402
 from test_out_trip_to_host import HostedStartCase  # noqa: E402
@@ -397,13 +398,15 @@ class TestProbeOnATerminal(ProbeCase):
         self.assertEqual(self.history(), [])
 
     def test_the_paste_command_is_asked_once_with_this_machines_reader_offered(self):
-        tools = self.e.tmp / "tools"
-        tools.mkdir()
+        # The machine's reader is the one this test's Env holds: a fake
+        # wl-paste in its desktop, the only place the office looks for one
+        # (on a WSL machine the running machine's powershell.exe was
+        # offered instead, and this test failed only there).
         clip = self.e.tmp / "clipboard.txt"
         clip.write_text(probe_block())
-        (tools / "wl-paste").write_text(f'#!/bin/sh\n[ "$1" = --no-newline ] || exit 9\ncat {clip}\n')
-        (tools / "wl-paste").chmod(0o755)
-        env = dict(self.e.env, PATH=f"{tools}:{self.e.env['PATH']}")
+        (self.e.desktop / "wl-paste").write_text(f'#!/bin/sh\n[ "$1" = --no-newline ] || exit 9\ncat {clip}\n')
+        (self.e.desktop / "wl-paste").chmod(0o755)
+        env = self.e.env
         code, screen = on_a_terminal(self, [str(self.e.office_bin), "probe", "fix-login"], self.root, env, [
             (b"(paste_command in machine.toml) [wl-paste --no-newline]:", "?"),
             (b"Get-Clipboard", ""),
@@ -416,6 +419,43 @@ class TestProbeOnATerminal(ProbeCase):
                                      [(b"Run it? y or N (--yes) [N]:", "y")])
         self.assertEqual(code, 0, screen)
         self.assertNotIn("How does this machine read its clipboard?", screen)
+
+
+    # 0.20.1: a WSL machine, imitated. It holds powershell.exe, clip.exe
+    # and explorer.exe on its PATH (recording fakes here); the test above
+    # failed on such a machine, offered the machine's PowerShell line.
+
+    def test_on_an_imitated_wsl_the_envs_reader_is_offered_and_nothing_of_windows_runs(self):
+        windows, calls = recording_windows(self.e.tmp / "windows", probe_block())
+        clip = self.e.tmp / "clipboard.txt"
+        clip.write_text(probe_block())
+        (self.e.desktop / "wl-paste").write_text(f'#!/bin/sh\n[ "$1" = --no-newline ] || exit 9\ncat {clip}\n')
+        (self.e.desktop / "wl-paste").chmod(0o755)
+        code, screen = on_a_terminal(self, [str(self.e.office_bin), "probe", "fix-login"], self.root,
+                                     imitate_wsl(self.e, windows), [
+            (b"(paste_command in machine.toml) [wl-paste --no-newline]:", ""),
+            (b"Run it? y or N (--yes) [N]:", "y")])
+        self.assertEqual(code, 0, screen)
+        self.assertEqual(tomllib.loads(self.machine.read_text())["paste_command"], "wl-paste --no-newline")
+        self.assertIn("the block is not on the clipboard (no clipboard_command here)", screen)
+        self.assertFalse(calls.exists(), calls.read_text() if calls.exists() else "")
+
+    def test_on_an_imitated_wsl_pointed_at_the_fakes_powershell_is_offered_and_clip_exe_fed(self):
+        windows, calls = recording_windows(self.e.tmp / "windows", probe_block())
+        env = dict(imitate_wsl(self.e, windows), OFFICE_DESKTOP_PATH=str(windows))
+        code, screen = on_a_terminal(self, [str(self.e.office_bin), "probe", "fix-login"], self.root, env, [
+            (f"(paste_command in machine.toml) [{h.WSL_PASTE}]:".encode(), ""),
+            (b"Run it? y or N (--yes) [N]:", "y")])
+        self.assertEqual(code, 0, screen)
+        self.assertEqual(tomllib.loads(self.machine.read_text())["paste_command"], h.WSL_PASTE)
+        made = [l.split(" (in ")[0] for l in calls.read_text().splitlines()]
+        self.assertEqual(made, ["powershell.exe -NoProfile -Command [Console]::OutputEncoding = "
+                                "[Text.Encoding]::UTF8; Get-Clipboard", "clip.exe "])
+        back = (windows / "clip.exe.in").read_bytes().decode("utf-16-le").splitlines()
+        self.assertEqual((back[0], back[-2], back[-1]), ("=== PROBE BEGIN fix-login ===",
+                                                         "--- integrity: 4 lines ---", "=== PROBE END fix-login ==="))
+        self.assertIn(f"the probe block (PROBE BEGIN to PROBE END) is on the clipboard ({windows / 'clip.exe'})",
+                      screen.replace("\r\n", "\n"))
 
 
 # --- 5. the second-desk ruling in office start ----------------------------------------------------------

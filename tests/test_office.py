@@ -42,6 +42,12 @@ NEXT, AFTER = later(1), later(2)   # the next two synthetic breaking releases
 PATCH = later(0, 5)                # a synthetic additive release past this one
 
 
+# A WSL kernel's version string, as WSL2's kernel reports it: a test that
+# imitates WSL writes it to a file of its own and points the Env's
+# OFFICE_PROC_VERSION there.
+WSL_KERNEL = "Linux version 5.15.167.4-microsoft-standard-WSL2 (root@build) (gcc 11.2.0) #1 SMP\n"
+
+
 def filled_profile(name="test"):
     """A profile with every required section written."""
     shape = tomllib.loads((REPO / "share/profile-shape.toml").read_text())
@@ -54,13 +60,19 @@ def filled_profile(name="test"):
 class Env:
     """A scratch HOME with a git identity and no global git config: the
     one place the suite says where a test's home, temporary directory,
-    config and downloads are. Every test gets its own: HOME (self.home),
-    TMPDIR (self.tmpdir, inside self.tmp), XDG_CONFIG_HOME (machine.toml,
-    the downloads setting, lives there) and downloads (self.downloads,
-    inside HOME; the scan of the Windows users' homes is off). Nothing of
-    the running machine's reaches a test through them, and
-    tests/test_suite_clock.py fails the suite on a test file that names
-    the machine's own (its temporary directory, its HOME) anywhere but
+    config, downloads and desktop are. Every test gets its own: HOME
+    (self.home), TMPDIR (self.tmpdir, inside self.tmp), XDG_CONFIG_HOME
+    (machine.toml, the downloads setting, lives there), downloads
+    (self.downloads, inside HOME; the scan of the Windows users' homes is
+    off) and desktop (self.desktop, inside self.tmp: the one directory the
+    office looks in for a desktop program, clip.exe, explorer.exe or a
+    clipboard reader, and first on the PATH, so what a test puts there is
+    what runs; empty, the office finds none). The machine is never WSL to
+    a test (OFFICE_PROC_VERSION empty) unless the test imitates it with a
+    file of its own. Nothing of the running machine's reaches a test
+    through them, and tests/test_suite_clock.py fails the suite on a test
+    file that names the machine's own (its temporary directory, its HOME,
+    its kernel's version, a program looked up on its PATH) anywhere but
     here. For a helper called in this process rather than through the
     command, this_process() lends it the same."""
 
@@ -74,8 +86,12 @@ class Env:
         # Where a browser on this test's machine would save: inside HOME,
         # made by the test that wants it there.
         self.downloads = self.home / "Downloads"
+        # Where this test's desktop programs are: none until the test puts
+        # one there (a fake wl-paste, a fake clip.exe).
+        self.desktop = self.tmp / "desktop"
+        self.desktop.mkdir()
         self.env = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "PATH": f"{self.desktop}{os.pathsep}{os.environ.get('PATH', '/usr/bin:/bin')}",
             "HOME": str(self.home),
             "TMPDIR": str(self.tmpdir),
             "XDG_CONFIG_HOME": str(self.home / ".config"),
@@ -89,6 +105,15 @@ class Env:
             # (lib/office_helper.py, download_candidates): what the running
             # machine holds never reaches a test.
             "OFFICE_WINDOWS_USERS": "",
+            # The desktop steps' two reads (bin/office: on_wsl and
+            # desktop_tool; lib/office_helper.py: machine_is_wsl and
+            # desktop_which): this machine is not WSL, and the only desktop
+            # programs are the ones in self.desktop. So no test writes the
+            # clipboard, opens a file manager or is offered a paste command
+            # the running machine holds (clip.exe, explorer.exe and
+            # powershell.exe are on a WSL machine's PATH).
+            "OFFICE_PROC_VERSION": "",
+            "OFFICE_DESKTOP_PATH": str(self.desktop),
         }
         (self.home / ".gitconfig-empty").write_text("")
         self.office_bin = REPO / "bin" / "office"
@@ -511,6 +536,18 @@ class TestStatusAndSurvey(unittest.TestCase):
         self.assertEqual(proc.stdout.strip(), "no changes since the previous survey")
         self.assertEqual(self.e.git(self.root, "status", "--porcelain").strip(), "?? desk/scratch.md")
         self.assertIn("office survey: 0 facts changed", self.e.git(self.root, "log", "-1", "--format=%s"))
+
+    def test_the_machine_class_is_read_from_the_one_steerable_source(self):
+        # 0.20.1: the survey asks on_wsl, which reads OFFICE_PROC_VERSION's
+        # file (the Env's is "": not WSL), never the kernel's own itself.
+        kernel = self.e.tmp / "proc-version"
+        kernel.write_text(WSL_KERNEL)
+        page = self.root / "floor-plan" / "survey.md"
+        self.e.run("survey", "--no-commit", cwd=self.root, extra={"OFFICE_PROC_VERSION": str(kernel)}, check=0)
+        self.assertIn("- class: WSL\n", page.read_text())
+        self.e.run("survey", "--no-commit", cwd=self.root, check=0)
+        self.assertNotIn("- class: WSL\n", page.read_text())
+        self.assertIn("- changed machine.class: WSL to ", page.read_text())
 
     def test_office_survey_steps(self):
         steps = self.root / "drawer" / "survey"

@@ -222,7 +222,7 @@ gather_facts() {
   fact Machine hostname "$(hostname 2>/dev/null || printf 'unknown')"
   fact Machine os "${os:-unknown (no /etc/os-release)}"
   fact Machine kernel "$(uname -srm 2>/dev/null)"
-  if grep -qi microsoft /proc/version 2>/dev/null; then fact Machine class "WSL"
+  if on_wsl; then fact Machine class "WSL"
   elif [ -f /.dockerenv ]; then fact Machine class "container"
   else fact Machine class "host (not WSL, no container marker)"; fi
   fact Machine login_shell "${SHELL:-unset}"
@@ -3249,7 +3249,39 @@ machine_setting() {
   printf '%s\n' "$2"
 }
 
-on_wsl() { grep -qi microsoft /proc/version 2>/dev/null; }
+# Whether this machine is WSL: its kernel's version string names
+# Microsoft. The one place the office asks it (the survey's machine class
+# and the two desktop steps' defaults here; the paste command's candidate
+# in lib/office_helper.py reads the same variable): OFFICE_PROC_VERSION
+# names the file to read in place of the kernel's own, and "" says no.
+# The suite's Env sets it, so no test depends on the machine it runs on,
+# and a test that imitates WSL points it at a file of its own.
+on_wsl() {
+  local source="${OFFICE_PROC_VERSION-/proc/version}"
+  [ -n "$source" ] || return 1
+  grep -qi microsoft "$source" 2>/dev/null || return 1
+}
+
+# desktop_tool NAME: the path of the desktop program NAME (clip.exe,
+# explorer.exe: what WSL puts on the PATH from Windows), found in the
+# directories OFFICE_DESKTOP_PATH lists when it is set ("" lists none)
+# and on PATH when it is not; nothing, and status 1, when there is none.
+# Every check for a desktop program goes through here, never through
+# command -v: the suite's Env points it at a directory of each test's
+# own, and tests/test_suite_clock.py holds the source to that. The path
+# is what runs, so a program found is the program used.
+desktop_tool() {
+  local name="$1" dir dirs=()
+  IFS=: read -r -a dirs <<< "${OFFICE_DESKTOP_PATH-$PATH}"
+  for dir in "${dirs[@]}"; do
+    [ -n "$dir" ] || continue
+    if [ -f "$dir/$name" ] && [ -x "$dir/$name" ]; then
+      printf '%s\n' "$dir/$name"
+      return 0
+    fi
+  done
+  return 1
+}
 
 # Where this machine's downloads land: machine.toml's downloads, a list
 # of directories, the office's own setting (it never reads bale's
@@ -4258,13 +4290,13 @@ file_sitting_pages() {
 
 # The two desktop steps, on a terminal only: copy the opener to the
 # clipboard and open the out tray in the file manager. On WSL they
-# default to clip.exe and explorer.exe; elsewhere they are off until
-# machine.toml names a command.
+# default to clip.exe and explorer.exe, as desktop_tool finds them;
+# elsewhere they are off until machine.toml names a command.
 start_desktop() {
   local tray="$1" opener="$2" open
   [ -t 1 ] || return 0
   if on_wsl; then
-    open="$(machine_setting open_command "$(command -v explorer.exe >/dev/null 2>&1 && printf explorer.exe)")"
+    open="$(machine_setting open_command "$(desktop_tool explorer.exe)")"
   else
     open="$(machine_setting open_command "")"
   fi
@@ -4276,14 +4308,15 @@ start_desktop() {
 }
 
 # to_clipboard TEXT WHAT: on a terminal, put TEXT on the clipboard and
-# say so. On WSL the default is clip.exe (fed UTF-16, which is what it
-# reads); elsewhere it is off until machine.toml names clipboard_command,
-# and "" there turns it off. Returns 1 when nothing was copied.
+# say so. On WSL the default is clip.exe as desktop_tool finds it (fed
+# UTF-16, which is what it reads); elsewhere it is off until machine.toml
+# names clipboard_command, and "" there turns it off. Returns 1 when
+# nothing was copied.
 to_clipboard() {
   local text="$1" what="$2" clip
   [ -t 1 ] || return 1
   if on_wsl; then
-    clip="$(machine_setting clipboard_command "$(command -v clip.exe >/dev/null 2>&1 && printf clip.exe)")"
+    clip="$(machine_setting clipboard_command "$(desktop_tool clip.exe)")"
   else
     clip="$(machine_setting clipboard_command "")"
   fi
