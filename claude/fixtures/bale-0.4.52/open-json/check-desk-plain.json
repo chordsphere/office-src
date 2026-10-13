@@ -1,0 +1,36 @@
+{
+ "argv": [
+  "open",
+  "--check",
+  "TMP/dl/2026-10-13-office-probe-open.bale-bundle"
+ ],
+ "cwd": "TMP/repo",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "[bale] bale open --check: rehearsing planner bundle TMP/dl/2026-10-13-office-probe-open.bale-bundle against the live tree \u2014 nothing will be written",
+  "[bale] second desk: this bundle opened session 2026-10-13-office-probe-open-001, which is still open; `bale open` would record desk-2 on it (no pre-flight, dry-run, sweep, or replay runs on that path)",
+  "",
+  "  rehearsal:    bale open --check",
+  "  project root: TMP/repo",
+  "  second desk:  would record desk-2 on open session 2026-10-13-office-probe-open-001 (2026-10-13-office-probe-open-001@desk-2)",
+  "  not run:      the desk's opened attempt, its sweep commit, and the opener \u2014 a second desk runs no gates or dry-run",
+  "  wrote:        nothing",
+  "",
+  "Rehearsal only: `bale open` with the same bundle joins the session as that desk."
+ ],
+ "stdout_sha256": [
+  "e67a7c90edd426400c397e47a1bb3d4088ac0e209174ce64d33726f1faa896c3",
+  "429547936bc319c185f61b8e08ead7f96c1b632efbe3e5bd0627e7f1b6450825",
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "ec7156bbf271b76074b2e2a94aa87edeaea0440963e5bdd7b5dce6d41d0677cc",
+  "c688989b29d81f4f0aeb3b508d5440d27a59bc355464b32231cfc3af1ecf790b",
+  "3cbf05c3a6d2f70b494e09ff759ffc79aeb8cb74c296cd7746a35d5da19f143a",
+  "58efaef62a9126b70cbd98983db1610685093296470da04663ca90b6b90d24ee",
+  "a9ca3894adbcc081ff2c7dc34f4d3470dd9da21e28be186a03b5219f70f6a34d",
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "a6e9b377b412cbdcbf683a6c87432bd04c5d1c5824e2db9b899000fead09917b"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-13-office-probe-002, run on the machine office-src is built on (WSL2, bale 0.4.52) on 2026-10-13, in a throwaway repo under ./probe-output/office-probe-002 (a file-based fallback probe); the probe printed that directory as TMP, kept here as it printed it"
+}

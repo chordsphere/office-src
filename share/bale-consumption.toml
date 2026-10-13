@@ -260,15 +260,18 @@ second_desk_since = "0.4.44"
 # open_bundle). Read from format_open_json's docstring in bale 0.4.52's
 # bin/bale_report.py, which owns the key contract, by the probe of session
 # 2026-10-13-doctrine-core-001, which found that the audience-line bundle
-# opened on 2026-10-08 was joined as a second desk on 2026-10-12; no live
-# line was captured.
+# opened on 2026-10-08 was joined as a second desk on 2026-10-12. Live
+# lines on 0.4.52, opened and second-desk, were captured by the fallback
+# probe of session 2026-10-13-office-probe-002 (fixtures/bale-0.4.52/
+# open-json/); every key below is in them, and the suite's fake replays
+# them.
 #
 # since     the first bale whose open --json serves every key below
 # outcomes  the outcomes of a run that exits 0 having opened or joined one
 [surfaces.open_json]
 argv = ["open", "{bundle}", "--json"]
 since = "0.4.50"
-contract = "format_open_json's docstring, bin/bale_report.py (read on 0.4.52)"
+contract = "format_open_json's docstring, bin/bale_report.py (read on 0.4.52; captured live on 0.4.52)"
 outcomes = ["opened", "second-desk"]
 opener = ["--8<-- session opener (copy everything between the scissor lines) --8<--",
           "--8<-- end session opener --8<--"]
@@ -298,6 +301,44 @@ argv = ["open", "--check", "{bundle}"]
 format = "text"
 contract = "bale open --help (--check since v0.4.45; probed on v0.4.47)"
 found_line = "[bale] bale open --check: rehearsing planner bundle "
+
+# The same rehearsal with --json (0.18.0), used where the bale the bundle
+# opens with is at open_json's since: one JSON line on stdout on exit 0
+# (outcome "rehearsed") and on a refusal, exit 1 (outcome
+# "open-refused", with a reason code from a closed vocabulary and the
+# refusal's first line as cause); the rehearsal report and bale's error
+# go to stderr. Captured live on bale 0.4.52 by the fallback probe of
+# session 2026-10-13-office-probe-002, in a throwaway repo
+# (fixtures/bale-0.4.52/open-json/). What it settled: a bundle whose
+# session is still open rehearses as "rehearsed", exit 0, its line byte
+# for byte a fresh bundle's, and `rehearsal` is only the kind ("check");
+# bale says which session it would join as a desk on stderr alone, in
+# the second_desk_line below, which the office shows the occupant and
+# never decides on. Another bundle overlapping that session's forecast
+# is "open-refused", reason "gate-refused". office start takes bale's
+# outcome as the verdict on an overlap its own check found (the ruling
+# that a second desk is bale's to recognize: lib/office_bale.py,
+# check_bundle_report).
+#
+# outcome_passed    the outcome of a rehearsal that passed, exit 0
+# refused           the outcome of a refusal, exit 1
+# second_desk_line  the start of bale's stderr line naming the open
+#                   session a second desk would join
+[surfaces.open_check_json]
+argv = ["open", "--check", "--json", "{bundle}"]
+since = "0.4.50"
+contract = "format_open_json's docstring, bin/bale_report.py (captured live on 0.4.52)"
+outcome_passed = "rehearsed"
+refused = "open-refused"
+second_desk_line = "[bale] second desk: "
+keys = [
+  "outcome",
+  "rehearsal",     # "check" on a rehearsal that passed; null on a refusal
+  "bundle",        # {path, sha256, stem}; null on a refusal before bale read the file
+  "bundle.path",   # the bundle's absolute path, as bale resolved it
+  "reason",        # on open-refused, the refusal's code (gate-refused for an overlap)
+  "cause",         # on open-refused, the refusal's first line
+]
 
 # Landing a response: run in the repo the session belongs to, with stdin
 # the occupant's own terminal, so every question bale asks (an admission,

@@ -273,6 +273,22 @@ lands = []
 attended = true
 trigger = ["manual"]
 
+# Runs a worker's probe block where the folder's project lives (0.18.0):
+# in its repo here, through its shell on a host, or in the office root,
+# after showing the block's header and asking once. What it writes is the
+# folder's History line, and the fallback's probe-output/ carried into the
+# session's out tray on this machine (outside every office) and removed
+# where it ran; whatever the block itself prints is its own, and a block
+# that does not say it is read-only is refused. Nothing is guaranteed to
+# exist after it: a refused or declined probe writes nothing.
+[verbs.probe]
+kind = "script"
+built = true
+writes = ["desk/{folder}/folder.md", "the session's out tray on this machine"]
+lands = []
+attended = true
+trigger = ["manual"]
+
 # The toy drawer: a throwaway office in a temporary directory, built,
 # walked through and deleted before the verb ends, so nothing it writes
 # exists after it. It never writes an office, this machine's default

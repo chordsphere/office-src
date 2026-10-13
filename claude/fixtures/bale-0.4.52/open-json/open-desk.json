@@ -1,0 +1,58 @@
+{
+ "argv": [
+  "open",
+  "--json",
+  "TMP/dl/2026-10-13-office-probe-open.bale-bundle"
+ ],
+ "cwd": "TMP/repo",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"second-desk\", \"sid\": \"2026-10-13-office-probe-open-001\", \"tarball\": \"TMP/repo/.bale/outbox/request-2026-10-13-office-probe-open-001.tar.gz\", \"log\": null, \"session_dir\": null, \"context_files\": null, \"readme_path\": null, \"readme_heading\": null, \"readme_sha256\": null, \"checkpoint_file_path\": null, \"checkpoint_file_sha256\": null, \"branch\": null, \"applied_latest\": null, \"sweep\": null, \"include_group\": null, \"opener\": \"I'm using \\\"bale\\\", a CLI that packaged the attached request tarball.\\nThis message opens bale session 2026-10-13-office-probe-open-001.\\nThis is desk desk-2 of that session: it is already open at another\\ndesk, and this chat joins it rather than opening a new one. Name this\\nchat 2026-10-13-office-probe-open-001@desk-2; the session id stays\\n2026-10-13-office-probe-open-001 in everything bale reads.\\nGoal, verbatim from the request manifest: Probe: open a bundle with --json\\nThe docs and tools in the tarball are mine, written for this workflow;\\nAGENT.md and the four docs beside it are my instructions for this\\nsession. Read manifest.json first, then AGENT.md, then README.md, my\\nbrief for this session; AGENT.md says when the other four docs are\\nneeded. tools/craft_response.py and tools/response_lint.py are\\nstdlib-only formatters with no network access \\u2014 conveniences over the\\ndocs, which are the contract; read them before you run them, and a\\nresponse assembled by hand is just as valid.\\nPacked at 2026-10-13T02:19:45+00:00 (UTC).\\nbale's dates are UTC and can run a day ahead of this chat's date (a timezone gap, not an error); date what you write from the session id.\\nIf you need something from me, a fact from my machine or a decision,\\nend that turn with the matching block from TARBALL.md (a probe, a\\nlight question block, or a clarification response) rather than a\\nquestion in prose, which tends to get lost. This is a worker session:\\nwhat I need back is one response tarball carrying the finished work.\\n\", \"bundle\": {\"path\": \"TMP/dl/2026-10-13-office-probe-open.bale-bundle\", \"sha256\": \"184e72b69799e2796fcedb10a75ff91399592b85349b2e1ab7b8e62ff84fdd2e\", \"stem\": \"2026-10-13-office-probe-open\"}, \"members\": {\"brief\": \"74c9611898b6a8c37fed8b3e8793580916f6e4ea1229a570a3cc531fb4dbc92d\", \"checkpoint\": null}, \"rehearsal\": null, \"checkpoint_dry_run\": null, \"desk\": \"desk-2\", \"reason\": null, \"cause\": null}"
+ ],
+ "stdout_sha256": [
+  "e1c1e5f55c8927e130f9da6569a713b2c9c483d8ff9a42551ec804a6819c4be3"
+ ],
+ "stderr": [
+  "[bale] opening planner bundle TMP/dl/2026-10-13-office-probe-open.bale-bundle",
+  "[bale] second desk: bundle 2026-10-13-office-probe-open.bale-bundle matches the bundle open session 2026-10-13-office-probe-open-001 was opened from; recording desk-2 on that session instead of opening a new one (no pre-flight, dry-run, sweep, or replay runs on this path)",
+  "[bale] second desk: desk-2 recorded as an 'opened' attempt (command 'open') on claude/telemetry/2026-10-13-office-probe-open-001.json",
+  "[bale] second desk: claude/telemetry/2026-10-13-office-probe-open-001.json is untracked (the open-time record stays untracked until the session closes); nothing to sweep",
+  "",
+  "  session id: 2026-10-13-office-probe-open-001",
+  "  desk:       desk-2 (2026-10-13-office-probe-open-001@desk-2)",
+  "  telemetry:  claude/telemetry/2026-10-13-office-probe-open-001.json",
+  "  tarball:    TMP/repo/.bale/outbox/request-2026-10-13-office-probe-open-001.tar.gz",
+  "",
+  "Attach the same request tarball to the new chat; this desk joins session 2026-10-13-office-probe-open-001 and opens nothing new.",
+  "",
+  "Open the session: paste the block below into a fresh agent chat,",
+  "unedited, with the request tarball attached.",
+  "",
+  "--8<-- session opener (copy everything between the scissor lines) --8<--",
+  "I'm using \"bale\", a CLI that packaged the attached request tarball.",
+  "This message opens bale session 2026-10-13-office-probe-open-001.",
+  "This is desk desk-2 of that session: it is already open at another",
+  "desk, and this chat joins it rather than opening a new one. Name this",
+  "chat 2026-10-13-office-probe-open-001@desk-2; the session id stays",
+  "2026-10-13-office-probe-open-001 in everything bale reads.",
+  "Goal, verbatim from the request manifest: Probe: open a bundle with --json",
+  "The docs and tools in the tarball are mine, written for this workflow;",
+  "AGENT.md and the four docs beside it are my instructions for this",
+  "session. Read manifest.json first, then AGENT.md, then README.md, my",
+  "brief for this session; AGENT.md says when the other four docs are",
+  "needed. tools/craft_response.py and tools/response_lint.py are",
+  "stdlib-only formatters with no network access \u2014 conveniences over the",
+  "docs, which are the contract; read them before you run them, and a",
+  "response assembled by hand is just as valid.",
+  "Packed at 2026-10-13T02:19:45+00:00 (UTC).",
+  "bale's dates are UTC and can run a day ahead of this chat's date (a timezone gap, not an error); date what you write from the session id.",
+  "If you need something from me, a fact from my machine or a decision,",
+  "end that turn with the matching block from TARBALL.md (a probe, a",
+  "light question block, or a clarification response) rather than a",
+  "question in prose, which tends to get lost. This is a worker session:",
+  "what I need back is one response tarball carrying the finished work.",
+  "--8<-- end session opener --8<--"
+ ],
+ "captured": "probe of session 2026-10-13-office-probe-002, run on the machine office-src is built on (WSL2, bale 0.4.52) on 2026-10-13, in a throwaway repo under ./probe-output/office-probe-002 (a file-based fallback probe); the probe printed that directory as TMP, kept here as it printed it"
+}

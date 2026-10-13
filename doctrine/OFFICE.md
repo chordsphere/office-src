@@ -58,6 +58,9 @@ the office matches the installed tool. `office upgrade` brings an office
 up to a new release, one commit per office. `office projects` lists the
 projects in the office's scope, declares what rides with each and what
 runs after its sessions land, and renders what bale records about them.
+`office probe` runs a worker's probe block where a folder's project lives,
+on its host when it has one, after showing the block's header and asking
+once, and hands the output back with the block on the clipboard.
 
 `office start` sends a session out: it asks which job, whether the work
 lands in the office or on a project, and the goal, then runs bale's pack
@@ -621,6 +624,7 @@ Kinds:
 | start | script: pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
 | land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, the folder's walkthrough and delivery pages filed from the response, the founding folder closed when the founding has landed, the watches that fired, and what became of each action; or end a read-only sitting the office sent out | yes |
 | relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes |
+| probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), stdin closed, once its purpose header has been shown and the occupant said yes; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes |
 | deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, checked by the letterhead, asked once, recorded in the folder | yes |
 | letterhead check | script, read-only: name every line in a tree, a range or a file that holds what the letterhead refuses | yes |
 | tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes |
@@ -678,7 +682,11 @@ sitting is over), how many folders are ready, parked and
 candidates, and the first three ready ones with their next moves, how
 many desk moves a sitting wrote are pending and which session wrote
 them, how many riders are orphaned, this week and its gaps, the last notepad lines, how many slips are in the
-suggestion box, and the verbs to reach for. It ends with one Next line:
+suggestion box, and the verbs to reach for. Where the office scopes the
+source the install came from, a `Suite:` line, under the install line,
+gives the latest detached run of that source's suite (`tests/run.sh
+--detach`) whenever it is not OK, a run still going after an hour
+included. It ends with one Next line:
 the one command to type now, its arguments filled in, worked out from the
 office on every walk-in and never written down. In the order they win: an
 office out of step with the install (upgrade it, or, when the renovation

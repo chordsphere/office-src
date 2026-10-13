@@ -1,0 +1,39 @@
+{
+ "argv": [
+  "open",
+  "--check",
+  "--json",
+  "TMP/dl/2026-10-13-office-probe-open.bale-bundle"
+ ],
+ "cwd": "TMP/repo",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"rehearsed\", \"sid\": null, \"tarball\": null, \"log\": null, \"session_dir\": null, \"context_files\": null, \"readme_path\": null, \"readme_heading\": null, \"readme_sha256\": null, \"checkpoint_file_path\": null, \"checkpoint_file_sha256\": null, \"branch\": null, \"applied_latest\": null, \"sweep\": null, \"include_group\": null, \"opener\": null, \"bundle\": {\"path\": \"TMP/dl/2026-10-13-office-probe-open.bale-bundle\", \"sha256\": \"184e72b69799e2796fcedb10a75ff91399592b85349b2e1ab7b8e62ff84fdd2e\", \"stem\": \"2026-10-13-office-probe-open\"}, \"members\": {\"brief\": \"74c9611898b6a8c37fed8b3e8793580916f6e4ea1229a570a3cc531fb4dbc92d\", \"checkpoint\": null}, \"rehearsal\": \"check\", \"checkpoint_dry_run\": null, \"desk\": null, \"reason\": null, \"cause\": null}"
+ ],
+ "stdout_sha256": [
+  "0521b962f6b0dd7737caa62b207d458191ae2071b1d2513895e29ec9019c28db"
+ ],
+ "stderr": [
+  "[bale] bale open --check: rehearsing planner bundle TMP/dl/2026-10-13-office-probe-open.bale-bundle against the live tree \u2014 nothing will be written",
+  "[bale] member brief verified: brief.md (sha256 74c9611898b6\u2026, LF-normalized)",
+  "[bale] member checkpoint: explicit null (not shipped)",
+  "[bale] argv-only pack gates passed before any exchange (slug/goal, forecast existence, bundle-file naming, cap values, checkpoint blindness)",
+  "",
+  "  rehearsal:          bale open --check",
+  "  project root:       TMP/repo",
+  "  branch:             main",
+  "  gates:              every argv-only gate passed (flag pairs, brief and checkpoint reads, detached HEAD, include group, slug/goal, forecast existence, bundle-file naming, cap values, checkpoint blindness, intents, supersession guards, forecast disjointness)",
+  "  write forecast:     notes",
+  "  read includes:      notes",
+  "  include group:      none engaged",
+  "  readme:             /tmp/bale-open-members-0xgvjha9/brief.md (read; no placeholder)",
+  "  supersession:       none (no --supersedes)",
+  "  checkpoint dry-run: no checkpoint member",
+  "  not run:            the wizard's prompts, the supersession exchange, the read-only sweep, the sid mint and session state, the context walk and its caps, hooks, the request tarball, and every telemetry write",
+  "  wrote:              nothing",
+  "",
+  "Rehearsal only: `bale open --dry-run` adds the checkpoint dry-run; `bale open` opens."
+ ],
+ "captured": "probe of session 2026-10-13-office-probe-002, run on the machine office-src is built on (WSL2, bale 0.4.52) on 2026-10-13, in a throwaway repo under ./probe-output/office-probe-002 (a file-based fallback probe); the probe printed that directory as TMP, kept here as it printed it"
+}

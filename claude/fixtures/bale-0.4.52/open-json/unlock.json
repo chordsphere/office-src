@@ -1,0 +1,28 @@
+{
+ "argv": [
+  "unlock",
+  "2026-10-13-office-probe-open-001",
+  "--json"
+ ],
+ "cwd": "TMP/repo",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"unlocked\", \"sid\": \"2026-10-13-office-probe-open-001\", \"log\": \"TMP/repo/.bale/logs/2026-10-13-office-probe-open-001.log\", \"closure_reason\": \"abandoned\", \"session_dir_wiped\": true, \"branch_preserved\": false, \"telemetry\": \"claude/telemetry/2026-10-13-office-probe-open-001.json\", \"debris\": null, \"sweep\": {\"status\": \"nothing\", \"detail\": \"nothing to commit\", \"sha\": null, \"files\": []}, \"reason\": null, \"message\": null, \"open_sessions\": null}"
+ ],
+ "stdout_sha256": [
+  "aa193c778d4eb8930b3cccfaff6f2b62f5af2e1c58d687fab1ed7378eeaf21b9"
+ ],
+ "stderr": [
+  "[bale] unlock: 2026-10-13-office-probe-open-001",
+  "[bale] closed session 2026-10-13-office-probe-open-001 in the registry",
+  "[bale] wiped TMP/repo/.bale/sessions/2026-10-13-office-probe-open-001",
+  "[bale] sweep: nothing to commit",
+  "",
+  "  [UNLOCK] 2026-10-13-office-probe-open-001",
+  "  lock:      cleared",
+  "  session:   wiped (TMP/repo/.bale/sessions/2026-10-13-office-probe-open-001)",
+  "  telemetry: recorded claude/telemetry/2026-10-13-office-probe-open-001.json"
+ ],
+ "captured": "probe of session 2026-10-13-office-probe-002, run on the machine office-src is built on (WSL2, bale 0.4.52) on 2026-10-13, in a throwaway repo under ./probe-output/office-probe-002 (a file-based fallback probe); the probe printed that directory as TMP, kept here as it printed it"
+}

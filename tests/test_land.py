@@ -331,47 +331,116 @@ def meets(a, b):
     a, b = a.strip("/"), b.strip("/")
     return a in ("", ".") or b in ("", ".") or a == b or a.startswith(b + "/") or b.startswith(a + "/")
 
-if argv[:2] == ["open", "--check"]:
+# bale 0.4.52's open --json and open --check --json, as the fallback probe
+# of session 2026-10-13-office-probe-002 captured them in a throwaway repo
+# (fixtures/bale-0.4.52/open-json): each JSON line is the captured one with
+# the session id, the bundle and the paths swapped in, and its stderr the
+# captured lines, swapped the same way.
+JFIX = FIX.parent.parent / "bale-0.4.52" / "open-json"
+J_SID = "2026-10-13-office-probe-open-001"
+J_BUNDLE = "TMP/dl/2026-10-13-office-probe-open.bale-bundle"
+J_GOAL = "Probe: open a bundle with --json"
+def jfx(label):
+    return json.loads((JFIX / (label + ".json")).read_text(encoding="utf-8"))
+def jline(label, **fields):
+    line = json.loads(jfx(label)["stdout"][0])
+    for k, v in fields.items():
+        assert k in line, k
+        line[k] = v
+    return json.dumps(line)
+def jswap(lines, sid, b, goal=None, desk=None, forecast=None):
+    out = []
+    for l in lines:
+        l = l.replace(J_SID, sid).replace(J_BUNDLE, str(b)).replace("2026-10-13-office-probe-open.bale-bundle", b.name)
+        l = l.replace("TMP/repo", cwd)
+        if goal is not None:
+            l = l.replace(J_GOAL, goal)
+        if desk is not None:
+            l = l.replace("desk-2", "desk-" + str(desk))
+        if forecast is not None:
+            l = l.replace("write forecast:     notes", "write forecast:     " + forecast)
+        out.append(l)
+    return out
+def scissors(lines):
+    a = lines.index("--8<-- session opener (copy everything between the scissor lines) --8<--")
+    z = lines.index("--8<-- end session opener --8<--")
+    return lines[a + 1:z]
+def read_bundle(b):
+    with tarfile.open(b) as t:
+        raw = t.extractfile("bundle.json").read()
+        manifest = json.loads(raw)
+        brief = t.extractfile("brief.md").read() if "brief.md" in t.getnames() and manifest["members"]["brief"] else None
+    shown = {{"path": str(b.resolve()), "sha256": hashlib.sha256(b.read_bytes()).hexdigest(),
+              "stem": b.name[:-len(".bale-bundle")]}}
+    members = {{"brief": hashlib.sha256(brief).hexdigest() if brief is not None else None, "checkpoint": None}}
+    # A bundle's identity is its manifest and its brief, not its file name:
+    # a browser's "NAME (1)" copy is the same bundle.
+    return manifest, brief, hashlib.sha256(raw + (brief or b"")).hexdigest(), shown, members
+
+if argv[:1] == ["open"] and "--check" in argv:
     # bale open --check BUNDLE, as the third-trip probe captured it on bale
     # 0.4.47: a name bale cannot find, a forecast path that is not there or
     # a forecast an open session holds refuses on stderr, exit 1; else the
-    # rehearsal report on stdout, exit 0. It writes nothing, here too.
+    # rehearsal report on stdout, exit 0. With --json (0.18.0's office asks
+    # it of bale 0.4.50 on), the 0.4.52 capture's one line on stdout,
+    # outcome rehearsed or open-refused, and the report on stderr. It
+    # writes nothing, here too.
     CHECK = FIX.parent.parent / "bale-0.4.47" / "open-check"
     def cfx(label):
         return json.loads((CHECK / (label + ".json")).read_text(encoding="utf-8"))
-    if len(argv) != 3:
+    rest = [w for w in argv[1:] if w != "--check"]
+    as_json = "--json" in rest
+    rest = [w for w in rest if w != "--json"]
+    if len(rest) != 1 or (as_json and FAKE_VERSION < (0, 4, 48)):
         say(fx("open-extra-flags")["stderr"], err=True); sys.exit(2)
-    b = resolve(argv[2], "bundle")
+    def refused(reason, cause, shown=None, members=None):
+        if as_json:
+            print(jline("check-other", bundle=shown, members=members, reason=reason, cause=cause))
+    b = resolve(rest[0], "bundle")
     if b is None:
-        missing(argv[2], "bundle")
-    with tarfile.open(b) as t:
-        check_bytes = t.extractfile("bundle.json").read()
-        pack_argv = json.loads(check_bytes)["pack_argv"]
-        check_brief = t.extractfile("brief.md").read() if "brief.md" in t.getnames() else b""
+        refused("not-found", "bundle not found: " + rest[0])
+        missing(rest[0], "bundle")
+    manifest, check_brief, check_id, shown, members = read_bundle(b)
+    pack_argv = manifest["pack_argv"]
     old_b = "TMP/dl/2026-01-01-office-probe-ok.bale-bundle"
     forecast = bundle_forecast_of(pack_argv)
     # A bundle whose session is still open rehearses as a second desk
     # (bale 0.4.44 on): no gate runs, since an open would mint nothing.
-    check_id = hashlib.sha256(check_bytes + check_brief).hexdigest()
     desk = [x for x in repo["sessions"] if L.get("opened_from", {{}}).get(x) == check_id]
     if desk:
-        say(["[bale] bale open --check: rehearsing planner bundle " + str(b) + " against " + cwd,
-             "[bale] second desk: this bundle opened session " + desk[0] + ", which is still open; an open would "
-             "record a further desk on it"])
+        n = L.get("desks", {{}}).get(desk[0], 1) + 1
+        lines = jswap(jfx("check-desk")["stderr"], desk[0], b, desk=n)
+        if as_json:
+            print(jline("check-desk", bundle=shown, members=members)); say(lines, err=True)
+        else:
+            say(lines)
         sys.exit(0)
     gone = [w for w in forecast if w not in (".", "") and not (pathlib.Path(cwd) / w).exists()]
     if gone:
         cap = cfx("check-nopath")
-        say([l.replace(old_b.replace("ok", "nopath"), str(b)) for l in cap["stdout"]])
-        say([l.replace(": nope.", ": " + gone[0] + ".") for l in cap["stderr"]], err=True); sys.exit(1)
+        err = [l.replace(": nope.", ": " + gone[0] + ".") for l in cap["stderr"]]
+        refused("gate-refused", err[0][len("[bale] error: "):], shown, members)
+        say([l.replace(old_b.replace("ok", "nopath"), str(b)) for l in cap["stdout"]], err=as_json)
+        say(err, err=True); sys.exit(1)
     sup = pack_argv[pack_argv.index("--supersedes") + 1] if "--supersedes" in pack_argv else None
     held = [s for s in repo["sessions"] if s != sup and repo["scopes"].get(s) != []
             and any(meets(m, t) for m in forecast for t in (repo["scopes"].get(s) or ["."]))]
     if held:
+        if as_json:
+            cap = jfx("check-other")
+            err = [l.replace(J_SID + " (notes ~ notes)", held[0] + " (" + ", ".join(forecast) + ")")
+                   .replace("TMP/dl/2026-10-13-office-probe-other.bale-bundle", str(b)) for l in cap["stderr"]]
+            refused("gate-refused", err[-1][len("[bale] error: "):], shown, members)
+            say(err, err=True); sys.exit(1)
         cap = cfx("check-overlap")
         say([l.replace(old_b.replace("ok", "overlap"), str(b)) for l in cap["stdout"]])
         say([l.replace("2026-10-07-probe-proj-001 (src ~ src)", held[0] + " (" + ", ".join(forecast) + ")")
              for l in cap["stderr"]], err=True); sys.exit(1)
+    if as_json:
+        print(jline("check-fresh", bundle=shown, members=members))
+        say(jswap(jfx("check-fresh")["stderr"], "", b, forecast=", ".join(forecast) if forecast else "none (read-only)"),
+            err=True)
+        sys.exit(0)
     cap = cfx("check-ro" if forecast == [] else "check-found")
     say([l.replace(old_b.replace("ok", "ro") if forecast == [] else old_b, str(b)).replace("TMP/proj", cwd)
          .replace("write forecast:     notes", "write forecast:     " + ", ".join(forecast)) for l in cap["stdout"]])
@@ -379,56 +448,34 @@ if argv[:2] == ["open", "--check"]:
 
 if argv[0] == "open":
     # bale open BUNDLE [--json]. --json (bale 0.4.48; a second desk's
-    # tarball since 0.4.50) prints one JSON line on stdout, shaped as
-    # format_open_json's docstring says, and everything else on stderr.
-    # A bundle whose identity (its manifest and brief, not its file name:
-    # a browser's "NAME (1)" copy is the same bundle) matches the bundle an
-    # open session was opened from is a second desk (bale 0.4.44 on): no
-    # session is minted, a desk is counted on that session, and the opener
-    # is the desk's.
-    as_json = argv[2:] == ["--json"]
-    if len(argv) != 2 and not as_json:
+    # tarball since 0.4.50) prints one JSON line on stdout, the 0.4.52
+    # capture's with this session swapped in, and everything else on
+    # stderr. A bundle whose identity matches the bundle an open session
+    # was opened from is a second desk (bale 0.4.44 on): no session is
+    # minted, a desk is counted on that session, and the opener is the
+    # desk's, as the probe captured them.
+    rest = argv[1:]
+    as_json = "--json" in rest
+    rest = [w for w in rest if w != "--json"]
+    if len(rest) != 1 or (as_json and FAKE_VERSION < (0, 4, 48)):
         say(fx("open-extra-flags")["stderr"], err=True); sys.exit(2)
-    if as_json and FAKE_VERSION < (0, 4, 48):
-        say(fx("open-extra-flags")["stderr"], err=True); sys.exit(2)
-    b = resolve(argv[1], "bundle")
+    b = resolve(rest[0], "bundle")
     if b is None:
-        missing(argv[1], "bundle")
-    with tarfile.open(b) as t:
-        bundle_bytes = t.extractfile("bundle.json").read()
-        bundle = json.loads(bundle_bytes)
-        brief = t.extractfile("brief.md").read() if bundle["members"]["brief"] else None
-    identity = hashlib.sha256(bundle_bytes + (brief or b"")).hexdigest()
+        missing(rest[0], "bundle")
+    bundle, brief, identity, shown, members = read_bundle(b)
     L.setdefault("opened_from", {{}}); L.setdefault("desks", {{}})
     joined = [x for x in repo["sessions"] if L["opened_from"].get(x) == identity]
-    def json_line(outcome, sid, tarball, opener):
-        keys = ["sid", "tarball", "log", "session_dir", "context_files", "readme_path", "readme_heading",
-                "readme_sha256", "checkpoint_file_path", "checkpoint_file_sha256", "branch", "applied_latest",
-                "sweep", "include_group", "opener"]
-        line = {{"outcome": outcome}}
-        line.update({{k: None for k in keys}})
-        line.update(sid=sid, tarball=tarball, opener=opener)
-        line["bundle"] = {{"path": str(b.resolve()), "sha256": hashlib.sha256(b.read_bytes()).hexdigest(),
-                          "stem": b.name[:-len(".bale-bundle")]}}
-        line["members"] = {{"brief": hashlib.sha256(brief).hexdigest() if brief is not None else None,
-                           "checkpoint": None}}
-        line["rehearsal"] = None
-        return json.dumps(line)
     if joined:
         sid = joined[0]
         s = load(); desks = s["land"].setdefault("desks", {{}}); n = desks.get(sid, 1) + 1; desks[sid] = n; save(s)
         tb = pathlib.Path(cwd) / ".bale" / "outbox" / ("request-" + sid + ".tar.gz")
-        opener = ["I'm using \"bale\", a CLI that packaged the attached request tarball.",
-                  "This message opens bale session " + sid + " as its desk " + str(n) + " (" + sid + "@desk-" + str(n) + ").",
-                  "Goal, verbatim from the request manifest: " + bundle["pack_argv"][0]]
-        lines = ["[bale] second desk: bundle " + b.name + " matches the bundle open session " + sid
-                 + " was opened from; recording desk-" + str(n) + " on that session instead of opening a new one",
-                 "", "--8<-- session opener (copy everything between the scissor lines) --8<--", *opener,
-                 "--8<-- end session opener --8<--"]
+        lines = jswap(jfx("open-desk")["stderr"], sid, b, goal=bundle["pack_argv"][0], desk=n)
+        opener = scissors(lines)
         if as_json:
             say(lines, err=True)
             tarball = str(tb) if tb.is_file() and not os.environ.get("FAKE_BALE_OUTBOX_GONE") else None
-            print(json_line("second-desk", sid, tarball, "\n".join(opener) + "\n"))
+            print(jline("open-desk", sid=sid, tarball=tarball, opener="\n".join(opener) + "\n", bundle=shown,
+                        members=members, desk="desk-" + str(n)))
         else:
             say(lines)
         sys.exit(0)
@@ -454,7 +501,13 @@ if argv[0] == "open":
     lines = swap(cap["stdout"], old_sid, sid, old_root, cwd, [(old_goal, bundle["pack_argv"][0]), (old_bundle, str(b))])
     if as_json:
         say(lines, err=True)
-        print(json_line("opened", sid, tarball, None))
+        bale_dir = pathlib.Path(cwd) / ".bale"
+        print(jline("open-opened", sid=sid, tarball=tarball, log=str(bale_dir / "logs" / (sid + ".log")),
+                    session_dir=str(bale_dir / "sessions" / sid),
+                    readme_path=str(pathlib.Path(tmp) / "brief.md") if brief is not None else None,
+                    readme_heading=None if brief is None else (brief.decode().splitlines() or [None])[0],
+                    readme_sha256=hashlib.sha256(brief).hexdigest() if brief is not None else None,
+                    opener="\n".join(scissors(lines)) + "\n", bundle=shown, members=members))
     else:
         say(lines)
     sys.exit(0)
@@ -1176,7 +1229,8 @@ class TestStartABundle(LandCase):
                       (self.root / later / "folder.md").read_text())
         self.assertIn(f"request-{sid}.tar.gz", [p.name for p in tray.iterdir()])
         opener = opener_from(proc.stdout)
-        self.assertIn(f"{sid}@desk-2", opener[1])
+        self.assertIn(f"{sid}@desk-2", "\n".join(opener))
+        self.assertIn(f"bale session {sid}.", opener[1])
         self.assertIn(f"When the response comes back: office land {sid}", proc.stdout)
         (_, argv, _), = [c for c in self.fake.calls_of("open") if copy in c[1]]
         self.assertEqual(argv, ["open", copy, "--json"])

@@ -20,6 +20,7 @@ import fnmatch
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -1241,9 +1242,12 @@ STATUSES = DESK_STATUSES + CABINET_STATUSES
 # (bale unlock); it changes no status.
 # `delivered` is the line office deliver writes when a delivery branch
 # reached the audience; it changes no status.
+# `probe` is the line office probe writes for each block it ran, `- DATE
+# probe: SID, N lines` (0.18.0), so a sitting can count the probes of a
+# session; it changes no status.
 HISTORY_VERBS = ("candidate", "queued", "opened", "ratified", "gated", "cleared", "grown",
                  "re-scoped", "corrected", "ruled", "carried", "consumed", "done",
-                 "absorbed", "split", "retired", "reopened", "note", "ended", "delivered")
+                 "absorbed", "split", "retired", "reopened", "note", "ended", "delivered", "probe")
 # The state-changing verbs and the status each leaves the folder in:
 # candidate -> queued -> open -> done; any desk status -> absorbed,
 # split or retired; done -> reopened -> open.
@@ -2804,6 +2808,105 @@ def set_machine_downloads(machine_file, directories):
     return line
 
 
+# --- how this machine reads its clipboard: machine.toml's paste_command (0.18.0) -------------
+#
+# office probe reads a worker's probe block from the clipboard when it is
+# given no file: with paste_command, a command whose stdout is the
+# clipboard's text, kept beside clipboard_command (which writes it) and
+# downloads. Asked once on a terminal, the first time a verb needs it,
+# with this machine's likely command offered; never asked again; a piped
+# verb that needs it refuses and names the key. "" turns it off.
+
+PASTE_KEY = "paste_command"
+# On WSL the Windows clipboard is read through PowerShell; its output is
+# made UTF-8 so a block's non-ASCII survives, and the CR of its CRLF
+# line ends is dropped by the reader (office_probe.read_block).
+WSL_PASTE = ('powershell.exe -NoProfile -Command '
+             '"[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-Clipboard"')
+# Elsewhere, the first of these on the PATH: Wayland, X11 (two tools),
+# macOS.
+OTHER_PASTES = (("wl-paste", "wl-paste --no-newline"), ("xclip", "xclip -selection clipboard -o"),
+                ("xsel", "xsel --clipboard --output"), ("pbpaste", "pbpaste"))
+
+
+def machine_string(machine_file, key):
+    """A string key of machine.toml, or None when it is not set (the file
+    may not exist yet). A value that is not a string is an error naming
+    the key."""
+    path = pathlib.Path(machine_file)
+    if not path.is_file():
+        return None
+    data = read_toml(path)
+    if key not in data:
+        return None
+    if not isinstance(data[key], str):
+        raise HelperError(f'{path}: {key} is one command line, like {key} = "pbpaste", not {data[key]!r}')
+    return data[key]
+
+
+def paste_candidate(on_wsl=None, which=None):
+    """This machine's likely paste command, or None: on WSL with
+    powershell.exe on the PATH, the PowerShell line; elsewhere the first
+    clipboard reader on the PATH."""
+    which = which or shutil.which
+    if on_wsl is None:
+        try:
+            on_wsl = "microsoft" in pathlib.Path("/proc/version").read_text(errors="replace").lower()
+        except OSError:
+            on_wsl = False
+    if on_wsl and which("powershell.exe"):
+        return WSL_PASTE
+    for tool, line in OTHER_PASTES:
+        if which(tool):
+            return line
+    return None
+
+
+def set_machine_string(machine_file, key, value, comment):
+    """Write key = "value" into machine.toml (made with its directory when
+    missing), as a top-level key ahead of any table, every other line left
+    as it is. Refuses when the key is already set (it is asked once) or
+    the result would not read back as the same value."""
+    path = pathlib.Path(machine_file)
+    if "\n" in value or "\r" in value:
+        raise HelperError(f"{key} is one line")
+    if machine_string(path, key) is not None:
+        raise HelperError(f"{path} already sets {key}; edit it there to change it")
+    line = f"{key} = {toml_basic_string(value)}"
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    lines = text.splitlines()
+    at = next((i for i, l in enumerate(lines) if re.match(r"^\s*\[", l)), len(lines))
+    new = lines[:at] + [comment, line] + ([""] if at < len(lines) else []) + lines[at:]
+    out = "\n".join(new) + "\n"
+    try:
+        back = tomllib.loads(out).get(key)
+    except tomllib.TOMLDecodeError as exc:
+        raise HelperError(f"{path} would not read as TOML with {key} in it ({exc}); nothing was written")
+    if back != value:
+        raise HelperError(f"{path}: {key} would read back as {back!r}; nothing was written")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(out, encoding="utf-8")
+    return line
+
+
+def cmd_paste_command(a):
+    if a.set is not None:
+        print(set_machine_string(a.machine_file, PASTE_KEY, a.set,
+                                 "# How this machine reads its clipboard: office probe takes a probe block from it."))
+        return 0
+    if a.candidate:
+        found = paste_candidate()
+        if found is None:
+            return 3
+        print(found)
+        return 0
+    value = machine_string(a.machine_file, PASTE_KEY)
+    if value is None:
+        return 3
+    print(value)
+    return 0
+
+
 def cmd_downloads(a):
     if a.set:
         print(set_machine_downloads(a.machine_file, a.set))
@@ -3008,6 +3111,10 @@ def main(argv=None):
                                          "it; --candidates lists this machine's likely ones")
     p.add_argument("machine_file"); p.add_argument("--set", nargs="+"); p.add_argument("--candidates", action="store_true")
     p.set_defaults(fn=cmd_downloads)
+    p = sub.add_parser("paste-command", help="machine.toml's paste_command (exit 3: not set); --set writes it; "
+                                             "--candidate prints this machine's likely one (exit 3: none)")
+    p.add_argument("machine_file"); p.add_argument("--set"); p.add_argument("--candidate", action="store_true")
+    p.set_defaults(fn=cmd_paste_command)
     p = sub.add_parser("ratify"); p.add_argument("folder_md"); p.add_argument("sid")
     p.add_argument("--day", required=True); p.add_argument("--except", dest="except_text")
     p.set_defaults(fn=cmd_ratify)

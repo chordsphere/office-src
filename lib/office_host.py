@@ -53,7 +53,9 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
+import threading
 
 # The one connection before any step that needs the host: a short
 # timeout, never a prompt (BatchMode), and the command stops at a host
@@ -1261,3 +1263,188 @@ def clone_to(place, local, facts=None):
                                    f"{_last_words(status.stdout) if status.stdout.strip() else 'its file count differs'}")
     lines.append(f"git status is clean there and git ls-files lists the same {facts['files']} file(s) as here")
     return lines
+
+
+# --- a worker's probe block, run where a project is (office probe, 0.18.0) -----------------
+#
+# A probe is a tool call whose courier is a role (TARBALL.md 4.6), and the
+# office is the occupant's hands at the terminal: office probe runs a
+# worker's probe block where the folder's project lives, so nobody opens a
+# VPN, an ssh and a docker exec by hand to paste one in. The block runs
+# with stdin closed, through the plain (non-attended) form of the
+# project's shell, since a probe never waits on a terminal (TARBALL.md
+# 4.3), in the project's path; its stdout comes back here as it comes, and
+# its stderr to this terminal. The file-based fallback (TARBALL.md 4.4)
+# leaves a probe-output/ directory where it ran: carry_dir_here brings it
+# to this machine and remove_dir_there removes it, since the office leaves
+# nothing on a host outside the project's repo and a probe's output is not
+# the repo's.
+
+# How long a block may run before the office stops it. A block bounds
+# itself (TARBALL.md 4.2); this is the office's backstop for one that
+# does not, and OFFICE_PROBE_TIMEOUT (whole seconds) overrides it.
+PROBE_TIMEOUT = 1800
+PROBE_TIMEOUT_ENV = "OFFICE_PROBE_TIMEOUT"
+
+
+def probe_timeout(environ=None):
+    """The backstop in seconds: OFFICE_PROBE_TIMEOUT when it is a whole
+    number above 0, else PROBE_TIMEOUT (a value that is not is said)."""
+    environ = os.environ if environ is None else environ
+    raw = environ.get(PROBE_TIMEOUT_ENV)
+    if raw is None:
+        return PROBE_TIMEOUT
+    if raw.isdigit() and int(raw) > 0:
+        return int(raw)
+    print(f"[office] warning: {PROBE_TIMEOUT_ENV}={raw!r} is not a whole number of seconds above 0; "
+          f"the block gets {PROBE_TIMEOUT}s", file=sys.stderr)
+    return PROBE_TIMEOUT
+
+
+def probe_command(place, block):
+    """The one command string that runs a block where the place is: in its
+    directory (exit 96 when that is not there), the block as bash -c's
+    script, stdin closed."""
+    return (f"cd {shell_path(place.path)} || exit {_NO_DIR}\n"
+            f"exec bash -c {shlex.quote(block)} office-probe </dev/null\n")
+
+
+def run_probe(place, block, screen=None, timeout=None):
+    """Run a probe block where the place is: on this machine, bash in its
+    directory; on a host, through the plain form of its shell, after the
+    reach. Its stdout is copied to screen (this terminal's stdout) as it
+    comes and kept; its stderr goes to this terminal as it is. Returns
+    (exit code, stdout text, whether the backstop stopped it). A path
+    that is not there and a host that stopped answering are HostErrors."""
+    place = as_place(place)
+    timeout = timeout or probe_timeout()
+    command = probe_command(place, block)
+    if place.hosted:
+        reach(place)
+        argv = place.argv(command)
+        debug(f"a probe block ({len(block)} bytes) through {place.host} in {place.path}, stdin closed")
+    else:
+        if not pathlib.Path(place.path).is_dir():
+            raise HostError("path", f"no such directory on this machine: {place.path}")
+        argv = ["bash", "-c", command]
+        debug(f"a probe block ({len(block)} bytes) in {place.path}, stdin closed")
+    try:
+        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+    except OSError as exc:
+        raise HostError("shell", f"could not run {argv[0]}: {exc}")
+    stopped = {"yes": False}
+
+    def stop():
+        stopped["yes"] = True
+        proc.kill()
+
+    timer = threading.Timer(timeout, stop)
+    timer.start()
+    screen = screen if screen is not None else sys.stdout.buffer
+    kept = bytearray()
+    try:
+        fd = proc.stdout.fileno()
+        while True:
+            chunk = os.read(fd, 4096)
+            if not chunk:
+                break
+            screen.write(chunk)
+            screen.flush()
+            kept += chunk
+    finally:
+        timer.cancel()
+    code = proc.wait()
+    text = kept.decode("utf-8", "replace")
+    if code == _NO_DIR and not kept:
+        raise HostError("path", f"no such directory {'on ' + place.host if place.hosted else 'on this machine'}: "
+                                f"{place.path}")
+    if place.hosted and code == SSH_CONNECTION_FAILED and not kept and place.words()[:1] == ["ssh"]:
+        raise _lost(place, f"exit {code}")
+    debug(f"the probe block in {place}: exit {code}, {len(kept)} bytes on stdout"
+          + (f", stopped at {timeout}s" if stopped["yes"] else ""))
+    return code, text, stopped["yes"]
+
+
+def _plain_name(name):
+    if not name or "/" in name or name in (".", ".."):
+        raise HostError("refused", f"{name!r} is not one directory's name")
+    return name
+
+
+def dir_there(place, name):
+    """Whether the directory name (one plain name) is there in the place's
+    directory: on this machine a look, on a host one call through its
+    shell."""
+    place = as_place(place)
+    return not missing_paths(place, [_plain_name(name)])
+
+
+def _count_files(root):
+    return sum(1 for p in pathlib.Path(root).rglob("*") if p.is_file() and not p.is_symlink())
+
+
+_CARRY_SCRIPT = 'echo "files=$(find "$1" -type f | wc -l | tr -d " ")" >&2 && tar -czf - -- "$1"'
+
+
+def carry_dir_here(place, name, dest):
+    """Bring the directory name (one plain name) in the place's directory
+    to dest on this machine, which must not exist yet: copied on this
+    machine, or carried from a host as one tar stream through its shell,
+    the files that arrive held to the count the far side reports. The
+    original is left where it is (remove_dir_there removes it once the
+    caller has what it carried). Returns the number of files carried."""
+    place = as_place(place)
+    name = _plain_name(name)
+    dest = pathlib.Path(dest)
+    if dest.exists():
+        raise HostError("refused", f"{dest} is there already; nothing was carried over it")
+    if not place.hosted:
+        shutil.copytree(pathlib.Path(place.path) / name, dest, symlinks=True)
+        return _count_files(dest)
+    with tempfile.TemporaryDirectory(prefix=SCRATCH_PREFIX) as tmp:
+        tgz = pathlib.Path(tmp) / "carried.tar.gz"
+        with open(tgz, "wb") as fh:
+            rc, _, err = _raw(place, f"cd {shell_path(place.path)} && sh -c {shlex.quote(_CARRY_SCRIPT)} office-carry "
+                                     f"{shlex.quote(name)}", stdout=fh)
+        if rc != 0:
+            raise HostError("refused", f"{name}/ in {place} could not be read (exit {rc}): {_last_words(err)}")
+        counts = [l.split("=", 1)[1].strip() for l in err.splitlines() if l.startswith("files=")]
+        there = int(counts[-1]) if counts and counts[-1].isdigit() else None
+        out = pathlib.Path(tmp) / "x"
+        out.mkdir()
+        try:
+            with tarfile.open(tgz) as t:
+                for m in t.getmembers():
+                    parts = pathlib.PurePosixPath(m.name).parts
+                    if not parts or parts[0] != name or ".." in parts or m.name.startswith("/"):
+                        raise HostError("output", f"{name}/ from {place.host} holds {m.name!r}, outside {name}/; "
+                                                  "nothing was carried")
+                if hasattr(tarfile, "data_filter"):
+                    t.extractall(out, filter="data")
+                else:
+                    t.extractall(out)
+        except (tarfile.TarError, OSError) as exc:
+            raise HostError("output", f"{name}/ from {place.host} did not arrive as a readable archive: {exc}")
+        here = _count_files(out / name)
+        if there is None or here != there:
+            raise HostError("output", f"{name}/ from {place.host} did not arrive whole: {there if there is not None else 'no'} "
+                                      f"file(s) there, {here} here; nothing was carried")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(out / name), str(dest))
+    debug(f"carried {name}/ from {place} to {dest}: {here} file(s)")
+    return here
+
+
+def remove_dir_there(place, name):
+    """Remove the directory name (one plain name, never a path) from the
+    place's directory: on this machine, or through the host's shell."""
+    place = as_place(place)
+    name = _plain_name(name)
+    if not place.hosted:
+        shutil.rmtree(pathlib.Path(place.path) / name)
+        return
+    run = run_in(place, ["rm", "-rf", "--", name])
+    if run.returncode != 0:
+        raise HostError("refused", f"rm -rf {name} in {place} exited {run.returncode}: {_last_words(run.stderr)}")
+    debug(f"removed {name}/ from {place}")

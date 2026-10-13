@@ -33,7 +33,10 @@ went; given a read-only sitting, it ends the sitting; for a project on
 another machine it does all of this there, the response carried over;
 and it offers to close a folder whose one session landed and was
 ratified), `office relay` to carry a planner's answer to a clarification
-back to the session's repo, `office deliver` to carry a folder's landed
+back to the session's repo, `office probe` to run a worker's probe block
+where a folder's project lives (on its host, in its container), after
+showing its header and asking once, with the output back on your
+terminal and the block on your clipboard, `office deliver` to carry a folder's landed
 work to its project's audience as curated commits on a branch named from
 the folder (the words from the folder's delivery.md, the letterhead
 check run first, one question before anything leaves, the delivery
@@ -117,6 +120,30 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Recent changes
 
+- 0.18.0 (session 2026-10-13-office-probe-002): `office probe`, the
+  second-desk ruling, and bale 0.4.52's live open --json lines.
+  - `office probe FOLDER` runs a worker's probe block where the folder's
+    project lives: in its repo, through its shell on a host (no terminal
+    asked for, stdin closed), or in the office root. The block comes from
+    a file, stdin, or the clipboard (machine.toml's new `paste_command`,
+    asked once). It shows the block's header and asks once; a block that
+    is not a probe, or whose header does not say it is read-only, is
+    refused by name. The output comes back whole, the block goes on the
+    clipboard here, a fallback's `probe-output/` is carried to the
+    session's out tray and removed where it ran, and the folder's History
+    gains `- DATE probe: SID, N lines`.
+  - `office start --bundle`: a second desk is bale's to recognize. From
+    bale 0.4.50 a bundle the office can read whose forecast overlaps an
+    open session goes to `bale open --check --json`. Where bale's
+    rehearsal passes it (its own session, still open), start goes on and
+    joins the desk; where bale refuses, the office refuses in its own
+    words with bale's reason beside them. bale's `rehearsal` key does not
+    say which bundle opened a session; the outcome is what the office
+    reads.
+  - fixtures/bale-0.4.52/: 13 live captures of open --json and open
+    --check --json, which the suite's fake replays.
+  - The doctrine names `office probe` and the walk-in's `Suite:` line.
+  - Additive: no migration.
 - 0.17.2 (session 2026-10-13-doctrine-core-001): the doctrine's core, the
   second desk and the suite's verdict on the walk-in.
   - doctrine/OFFICE.md opens with a reading card naming what each kind
@@ -422,6 +449,17 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Known problems
 
+- `office probe`'s WSL paste command, PowerShell's Get-Clipboard through
+  powershell.exe with its output made UTF-8, is offered from memory, not
+  from a probe that ran it: the first `office probe` there with the block
+  on the clipboard is its test. Correct it at the question, or later in
+  machine.toml.
+- The doctrine's section 4 (past the core) still says a bundle the
+  office can read is refused for an overlap the same way a pack is.
+  Since 0.18.0 that holds only below bale 0.4.50; from 0.4.50 bale's
+  rehearsal decides. The session that changed it was held to the
+  doctrine's two named sentences, so the sentence waits for the next
+  session that may change the doctrine.
 - ~~`office start` packs the doctrine from a copy, but the lines `office
   init` and `office upgrade` print still run `bale pack --context` in the
   install's doctrine directory, which writes an outbox there.~~ Struck in
