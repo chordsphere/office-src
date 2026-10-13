@@ -1035,6 +1035,10 @@ cmd_status() {
   # drop's page against the shape office drop writes (0.19.0).
   dropx tray-check "$root" 2>/dev/null
   case $? in 0|3) ;; *) printf 'in-tray:    could not be checked\n' ;; esac
+  # The handbook, when it exists, against the install's catalog, and every
+  # chapter against the shape office land writes (0.20.0).
+  sortx handbook-check "$root" 2>/dev/null
+  case $? in 0|3) ;; *) printf 'handbook:   could not be checked\n' ;; esac
   # The read side: which bale is installed against the version the
   # office's reads were written for, and whether each project in scope
   # can be read. Lines, never a refusal.
@@ -1542,7 +1546,7 @@ for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
 usage_open() {
   cat <<'USAGE'
 usage: office open [SLUG] [--title TITLE] [--size SIZE] [--lane LANE] [--source SOURCE]
-                   [--class CLASS] [--blueprint ID] [--linked GATE]... [--after GATE]...
+                   [--goal TEXT] [--class CLASS] [--blueprint ID] [--linked GATE]... [--after GATE]...
                    [--serializes-after GATE]... [--consumer GATE]...
                    [--candidate | --filed --sid SID] [--thread < pasted-thread]
 Starts a folder on the desk: numbered one more than the highest number on
@@ -1558,6 +1562,8 @@ asks.
 Examples:
   office open                                  (asks for the title, size, lane, source)
   office open fix-login --title "Fix the login" --size small --lane "office-src: bin/"
+  office open fix-login --title "Fix the login" --goal "Fix the login redirect"
+                                               (office start offers the goal)
   office open house-hunt --thread < thread.txt (keeps the pasted thread as thread.md)
   office open paint-fence --after "folder 3"   (waits until folder 3 is done)
   office open build-a-shed --candidate         (an idea on the desk, not queued yet)
@@ -1593,16 +1599,17 @@ short_slug() {
 }
 
 cmd_open() {
-  local slug="" title="" thread=0 candidate=0 filed=0 sid="" size="" lane="" source="" class="" blueprint=""
+  local slug="" title="" thread=0 candidate=0 filed=0 sid="" size="" lane="" source="" class="" blueprint="" goal=""
   local after=() serializes=() consumer=() linked=() root tz day name folder number space status verb text asked=0
   local raw_title=""
   local v i
   while [ $# -gt 0 ]; do
     case "$1" in
-      --title|--size|--lane|--source|--class|--blueprint|--sid|--after|--serializes-after|--consumer|--linked)
+      --title|--size|--lane|--source|--class|--blueprint|--sid|--after|--serializes-after|--consumer|--linked|--goal)
         [ $# -ge 2 ] || die "$1 needs a value (office open --help explains it)"
         case "$1" in
           --title) title="$2" ;; --size) size="$2" ;; --lane) lane="$2" ;; --source) source="$2" ;;
+          --goal) goal="$2" ;;
           --class) class="$2" ;; --blueprint) blueprint="$2" ;; --sid) sid="$2" ;;
           --after) after+=("$2") ;; --serializes-after) serializes+=("$2") ;;
           --consumer) consumer+=("$2") ;; --linked) linked+=("$2") ;;
@@ -1626,7 +1633,7 @@ cmd_open() {
   # on a terminal and refused when piped.
   raw_title="$title"
   check_field title title --title; check_field size size --size; check_field lane lane --lane
-  check_field source source --source; check_field sid sid --sid
+  check_field source source --source; check_field sid sid --sid; check_field goal goal --goal
   check_field class class --class || ask_field class class --class "Class: bale's work class for its sessions" "" 1
   check_field blueprint blueprint --blueprint || ask_field blueprint blueprint --blueprint "Blueprint id, YYYY-MM-DD-slug" "" 1
   for i in "${!after[@]}"; do v="${after[$i]}"; check_field v after --after || ask_field v after --after "Gate: what must be done first" "" 1; after[$i]="$v"; done
@@ -1711,6 +1718,12 @@ cmd_open() {
   mkdir -p "$root/$folder" || die "cannot create $folder"
   helper render-template "$TEMPLATES/folder.md" "${args[@]}" > "$root/$folder/folder.md" \
     || { rm -rf "${root:?}/$folder"; die "could not write $folder/folder.md"; }
+  if [ -n "$goal" ]; then
+    # The goal is a field the command writes after the template's block
+    # (0.20.0): office start N offers it as the session's goal.
+    helper folder-set-field "$root/$folder/folder.md" --key goal --value "$goal" >/dev/null \
+      || { rm -rf "${root:?}/$folder"; die "could not write the goal in $folder/folder.md"; }
+  fi
   if [ "$filed" = 1 ]; then
     helper record-session "$root/$folder/folder.md" "$sid" >/dev/null || die "could not record $sid in $folder/folder.md"
   fi
@@ -2031,9 +2044,34 @@ file_pages() {
 }
 FILED_PAGES=""
 
+# file_notes ROOT FOLDER SID RESPONSE: what the response's notes.md says
+# beyond the folder's two pages (0.20.0), filed by lib/office_sort.py and
+# committed together: its Sort on each drop's page (the in-tray, or
+# FOLDER's drops/), its Questions and answers in FOLDER, and its
+# Handbook's facts and front sheets in the chapters, the handbook
+# arriving with the first fact. FOLDER is empty for a session no folder
+# records (a standalone sort). Each section is said; a section the notes
+# lack files nothing and says nothing.
+file_notes() {
+  local root="$1" folder="$2" sid="$3" response="$4" tz day names out kind text paths=()
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+  out="$(sortx file-notes "$root" --response "$response" --sid "$sid" --day "$day" ${folder:+--folder "$folder"} \
+           --projects "$names")" || return 1
+  while IFS=$'\t' read -r kind text; do
+    case "$kind" in
+      say) log "$text" ;;
+      path) paths+=("$text") ;;
+    esac
+  done <<< "$out"
+  [ "${#paths[@]}" -eq 0 ] || commit_paths "$root" "office land: $sid's notes filed (sort, answers, handbook)" "${paths[@]}" || true
+  return 0
+}
+
 usage_sessions() {
   cat <<'USAGE'
 usage: office sessions [FOLDER] [SID | -] [-m WORDS] [--ratified [--except TEXT]] [--pages RESPONSE]
+       office sessions --in-tray SID --pages RESPONSE
   office sessions FOLDER               list the recorded sessions, with what bale records
   office sessions FOLDER SID|-         record one; - reads a bale pack --json report on stdin.
                                        The first one a candidate or queued folder records opens it.
@@ -2043,9 +2081,13 @@ usage: office sessions [FOLDER] [SID | -] [-m WORDS] [--ratified [--except TEXT]
   office sessions FOLDER SID --pages RESPONSE
                                        file the Walkthrough and Delivery sections of the
                                        response's notes.md as the folder's walkthrough.md and
-                                       delivery.md (office land does this after an applied
-                                       landing; this is for a response bale found on its own,
-                                       or a session applied by hand)
+                                       delivery.md, then its Sort, Questions and answers and
+                                       Handbook sections (office land does this after an
+                                       applied landing; this is for a response bale found on
+                                       its own, or a session applied by hand)
+  office sessions --in-tray SID --pages RESPONSE
+                                       the same for a standalone sort (office start --sort),
+                                       which no folder records: its Sort and Handbook
 office start and office land record sessions and ratifications themselves;
 this is for a session packed by hand, and for reading how each one went.
 Examples:
@@ -2057,9 +2099,10 @@ USAGE
 }
 
 cmd_sessions() {
-  local want="" source="" words="" ratified=0 except="" has_except=0 root space name sid tz day out pages=""
+  local want="" source="" words="" ratified=0 except="" has_except=0 root space name sid tz day out pages="" in_tray=0
   while [ $# -gt 0 ]; do
     case "$1" in
+      --in-tray) in_tray=1; shift ;;
       -m) [ $# -ge 2 ] || die "-m needs a few words"; words="$2"; shift 2 ;;
       --pages) [ $# -ge 2 ] || die "--pages needs the response tarball"; [ -f "$2" ] || die "--pages $2: no such file"; pages="$(readlink -f "$2")"; shift 2 ;;
       --ratified) ratified=1; shift ;;
@@ -2072,6 +2115,16 @@ cmd_sessions() {
   done
   [ "$has_except" = 0 ] || [ "$ratified" = 1 ] || die "--except goes with --ratified"
   root="$(resolve_office)" || exit 1
+  if [ "$in_tray" = 1 ]; then
+    # A standalone sort's notes (0.20.0): no folder records it, so the
+    # word after --in-tray is the session.
+    [ -n "$pages" ] && [ -n "$want" ] && [ -z "$source" ] && [ "$ratified" = 0 ] && [ -z "$words" ] \
+      || die "--in-tray goes as office sessions --in-tray SID --pages RESPONSE, and alone"
+    [[ "$want" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*-[0-9]{3}$ ]] || die "not a session id (YYYY-MM-DD-slug-NNN): $want"
+    file_notes "$root" "" "$want" "$pages" || die "the notes of $want could not be filed from $pages (the line above says why)"
+    sortx pending "$root" && log "a sorted drop waits in the in-tray: office moves applies it"
+    return 0
+  fi
   if [ -z "$want" ]; then
     can_ask || { usage_sessions >&2; die "name a folder: office sessions FOLDER; piped input is never asked"; }
     ask_folder want "$root" desk "record sessions in"
@@ -2107,8 +2160,10 @@ cmd_sessions() {
     [ "$ratified" = 0 ] && [ -z "$words" ] || die "--pages goes alone: office sessions FOLDER SID --pages RESPONSE"
     [ "$source" != "-" ] || die "--pages takes the session's id, not a pack report"
     [[ "$sid" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*-[0-9]{3}$ ]] || die "not a session id (YYYY-MM-DD-slug-NNN): $sid"
-    file_pages "$root" "$space/$name" "$sid" "$pages"
-    return $?
+    file_pages "$root" "$space/$name" "$sid" "$pages" || return 1
+    file_notes "$root" "$space/$name" "$sid" "$pages" || die "the Sort, Questions and answers and Handbook of $sid could not be filed from $pages (the line above says why)"
+    sortx pending "$root" && log "a sorted drop waits in the in-tray: office moves applies it"
+    return 0
   fi
   if [ "$ratified" = 1 ]; then
     [ -z "$words" ] || die "-m goes with recording a session, not with --ratified"
@@ -2409,16 +2464,30 @@ cmd_blueprint_close() {
 usage_moves() {
   cat <<'USAGE'
 usage: office moves [--dry-run]
-Applies the desk moves a sitting wrote on drafting-table/moves.md, every
-pending line in order, through the same code as office open, office close
-and the gate flags: open a folder, queue a candidate, gate a folder,
+Applies the desk moves waiting in the office: first the in-tray's sorted
+drops, oldest first, then every pending line a sitting (or a sort session)
+wrote on drafting-table/moves.md, in order.
+A sorted drop is a page in the in-tray whose Sort office land filed. Its
+Sort says where it goes: folder: new mints a folder through office open's
+own code (the title from the drop's heading, the slug from its page's
+name, the lane its project, the size and the goal the Sort's, the source
+drop), folder: N takes folder N on the desk. The page moves into the
+folder's drops/ whole, the folder's brief.md is written from the Sort's
+Brief, its History gains a dropped line, its goal is written when it has
+none, and the Sort's tell: goes on its Next. A drop whose project is none
+of the office's, whose folder is in the filing cabinet or not there, or
+that an open session's forecast holds, is said and stays where it is; the
+rest go on.
+A line on the moves page goes through the same code as office open, office
+close and the gate flags: open a folder, queue a candidate, gate a folder,
 close, absorb, split or retire one. Each line applied is ticked with the
 folder it acted on (- [x] ... -> folder N), an opened folder of a
 blueprint has its number written onto the blueprint's decomposition line,
 and everything is committed at once. A line that does not read is named
 before anything is applied; a line that cannot be applied stops the run
 there, named, with the lines before it applied and committed. Walking in
-says how many moves are pending and which session wrote them.
+says how many moves are pending and which session wrote them. office land
+runs office moves after a landing that sorted a drop.
 --dry-run lists the pending moves and applies nothing.
 Examples:
   office moves
@@ -2426,9 +2495,67 @@ Examples:
 USAGE
 }
 
+SORT_PY="$OFFICE_SRC/lib/office_sort.py"
+sortx() { python3 -B "$SORT_PY" "$@"; }
+
+# held ROOT TARGET...: 0 when no open session in the office's registry
+# holds a target (or there is no registry), 1 when one does, with
+# HELD_WORDS naming it. Unlike one_writer it never ends the command: a
+# sorted drop an open session holds stays where it is, and the rest go
+# on (0.20.0).
+HELD_WORDS=""
+held() {
+  local root="$1" out rc; shift
+  out="$(reader writers "$root" "$@")"; rc=$?
+  case $rc in
+    0) return 0 ;;
+    3) HELD_WORDS="$(printf '%s\n' "$out" | paste -sd ';' - | sed 's/;/; /g')"; return 1 ;;
+    *) warn "bale's registry in this office could not be read (the line above says why); moving without the one-writer check"
+       return 0 ;;
+  esac
+}
+
+# move_sorted_drop ROOT DAY PAGE KIND N TITLE SLUG LANE SIZE GOAL SID
+# PROBLEM: one sorted drop out of the in-tray and into its folder (office
+# moves). Returns 1, having said why, when the page stays where it is.
+move_sorted_drop() {
+  local root="$1" day="$2" page="$3" kind="$4" fnum="$5" title="$6" slug="$7" lane="$8" size="$9"
+  local goal="${10}" ssid="${11}" problem="${12}" rel out number
+  if [ -n "$problem" ]; then warn "$page stays in the in-tray: $problem"; return 1; fi
+  if [ "$kind" = new ]; then
+    if ! held "$root" in-tray desk; then
+      warn "$page stays in the in-tray: $HELD_WORDS (the one-writer rule)"; return 1
+    fi
+    if ! rel="$(MOVE_TEXT="office moves: $page, sorted by $ssid" cmd_open "$slug" --title "$title" --size "$size" \
+                  --lane "$lane" --source drop --goal "$goal" < /dev/null)"; then
+      warn "$page stays in the in-tray: its folder could not be opened (the lines above say why)"; return 1
+    fi
+    number="$(folder_fact "$root/$rel/folder.md" number)"
+    log "minted folder $number, $rel, for $page"
+    [ -z "${MOVES_MINTED_FILE:-}" ] || printf 'folder %s\t%s\t%s\n' "$number" "$rel" "$page" >> "$MOVES_MINTED_FILE"
+  else
+    if ! rel="$(helper folder-by-number "$root" "folder $fnum" 2>&1)"; then
+      warn "$page stays in the in-tray: its Sort names folder $fnum, and ${rel#\[office\] error: }"; return 1
+    fi
+    if [ "${rel%%/*}" != desk ]; then
+      warn "$page stays in the in-tray: its Sort names folder $fnum, which is in the filing cabinet (office reopen brings it back, or a sitting decides where the drop goes)"
+      return 1
+    fi
+    if ! held "$root" in-tray "$rel"; then
+      warn "$page stays in the in-tray: $HELD_WORDS (the one-writer rule)"; return 1
+    fi
+  fi
+  if ! out="$(sortx place "$root" "$page" "$rel" --day "$day")"; then
+    warn "$page stays in the in-tray: it could not be moved into $rel (the line above says why)"; return 1
+  fi
+  printf '%s\n' "$out" >> "$DEFER_COMMITS"
+  return 0
+}
+
 cmd_moves() {
-  local dry=0 root plan tz day lineno verb folder mday bp dline argstr args=() rel number n=0 stopped="" paths=()
-  local key i
+  local dry=0 root plan="" sorted_plan names tz day lineno verb folder mday bp dline argstr args=() rel number
+  local n=0 m=0 left=0 stopped="" blocked="" paths=() key i
+  local page kind fnum title slug lane size goal ssid problem
   while [ $# -gt 0 ]; do
     case "$1" in
       --dry-run) dry=1; shift ;;
@@ -2438,60 +2565,95 @@ cmd_moves() {
   done
   root="$(resolve_office)" || exit 1
   require_current "$root"
-  [ -f "$root/drafting-table/moves.md" ] || { log "no drafting-table/moves.md in this office: no desk moves pending"; return 0; }
-  plan="$(drafting moves-plan "$root" --shell)"
-  case $? in
-    0) ;;
-    1) printf '%s\n' "$plan" | sed 's/^/[office]   /' >&2
-       die "drafting-table/moves.md has line(s) that do not read (above); nothing was applied" ;;
-    *) die "could not read drafting-table/moves.md" ;;
-  esac
-  if [ -z "$plan" ]; then log "no desk moves pending in drafting-table/moves.md"; return 0; fi
-  if [ "$dry" = 1 ]; then
-    printf 'Pending desk moves, in the order office moves applies them:\n'
-    printf '%s\n' "$plan" | awk -F'\036' '{printf "  line %s: %s %s\n", $1, $4, $8}'
+  names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+  sorted_plan="$(sortx move-plans "$root" --projects "$names")" || die "could not read the in-tray's sorted drops"
+  if [ -f "$root/drafting-table/moves.md" ]; then
+    plan="$(drafting moves-plan "$root" --shell)"
+    case $? in
+      0) ;;
+      1) printf '%s\n' "$plan" | sed 's/^/[office]   /' >&2
+         die "drafting-table/moves.md has line(s) that do not read (above); nothing was applied" ;;
+      *) die "could not read drafting-table/moves.md" ;;
+    esac
+  fi
+  if [ -z "$sorted_plan" ] && [ -z "$plan" ]; then
+    log "no desk moves pending: no sorted drop waits in the in-tray, and $([ -f "$root/drafting-table/moves.md" ] && printf 'drafting-table/moves.md has no pending line' || printf 'this office has no drafting-table/moves.md')"
     return 0
   fi
-  mapfile -t paths < <(arrival_targets "$root")
-  one_writer "$root" moves desk filing-cabinet "drafting-table/moves.md" "drafting-table/blueprints" "${paths[@]}"
+  if [ "$dry" = 1 ]; then
+    printf 'Pending desk moves, in the order office moves applies them:\n'
+    [ -z "$sorted_plan" ] || printf '%s\n' "$sorted_plan" | awk -F'\036' '{
+      where = ($2 == "new") ? "a new folder on " $6 : ($2 == "into" ? "folder " $3 : "nowhere yet")
+      printf "  %s: sorted by %s, into %s%s\n", $1, ($9 == "" ? "?" : $9), where, ($10 == "" ? "" : "; it stays: " $10) }'
+    [ -z "$plan" ] || printf '%s\n' "$plan" | awk -F'\036' '{printf "  line %s: %s %s\n", $1, $4, $8}'
+    return 0
+  fi
   tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  # The moves page's one-writer rule is asked before anything is applied,
+  # so a page that waits leaves the sorted drops free to go on.
+  if [ -n "$plan" ]; then
+    mapfile -t paths < <(arrival_targets "$root")
+    held "$root" desk filing-cabinet "drafting-table/moves.md" "drafting-table/blueprints" "${paths[@]}" || blocked="$HELD_WORDS"
+  fi
   DEFER_COMMITS="$(mktemp)" || die "cannot make a temp file"; TMP_PATHS+=("$DEFER_COMMITS")
-  drafting arrive "$root" >> "$DEFER_COMMITS" || { DEFER_COMMITS=""; die "the drafting table could not arrive"; }
-  while IFS=$'\x1e' read -r lineno verb folder mday bp dline argstr _ <&3; do
-    IFS=$'\x1f' read -r -a args <<< "$argstr"
-    MOVE_TEXT="office moves: drafting-table/moves.md line $lineno, decided $mday${bp:+; blueprint $bp, decomposition line $dline}"
-    log "line $lineno: $verb${folder:+ folder $folder}"
-    case "$verb" in
-      open)
-        if ! rel="$(cmd_open "${args[@]}" < /dev/null)"; then stopped="$lineno"; break; fi
-        number="$(folder_fact "$root/$rel/folder.md" number)" ;;
-      queue)
-        if ! (move_queue "$root" "$folder" "$day") < /dev/null; then stopped="$lineno"; break; fi
-        number="$folder" ;;
-      gate)
-        if ! (move_gate "$root" "$folder" "$day" "${args[@]}") < /dev/null; then stopped="$lineno"; break; fi
-        number="$folder" ;;
-      close|absorb|split|retire)
-        if ! (cmd_close "${args[@]}") < /dev/null; then stopped="$lineno"; break; fi
-        number="$folder" ;;
-      *) stopped="$lineno"; warn "line $lineno: no such move: $verb"; break ;;
-    esac
-    if ! drafting moves-tick "$root" "$lineno" "$number" ${bp:+--blueprint "$bp" --decomposition "$dline"} >> "$DEFER_COMMITS"; then
-      stopped="$lineno"; break
+  # The in-tray's sorted drops first, oldest first (0.20.0).
+  while IFS=$'\x1e' read -r page kind fnum title slug lane size goal ssid problem <&4; do
+    [ -n "$page" ] || continue
+    log "$page: sorted by ${ssid:-?}, $([ "$kind" = new ] && printf 'folder: new' || printf 'folder: %s' "${fnum:-?}")"
+    if move_sorted_drop "$root" "$day" "$page" "$kind" "$fnum" "$title" "$slug" "$lane" "$size" "$goal" "$ssid" "$problem"; then
+      m=$((m + 1))
+    else
+      left=$((left + 1))
     fi
-    n=$((n + 1))
-  done 3< <(printf '%s\n' "$plan")
+  done 4< <(printf '%s\n' "$sorted_plan")
+  if [ -z "$blocked" ] && [ -n "$plan" ]; then
+    drafting arrive "$root" >> "$DEFER_COMMITS" || { DEFER_COMMITS=""; die "the drafting table could not arrive"; }
+    while IFS=$'\x1e' read -r lineno verb folder mday bp dline argstr _ <&3; do
+      IFS=$'\x1f' read -r -a args <<< "$argstr"
+      MOVE_TEXT="office moves: drafting-table/moves.md line $lineno, decided $mday${bp:+; blueprint $bp, decomposition line $dline}"
+      log "line $lineno: $verb${folder:+ folder $folder}"
+      case "$verb" in
+        open)
+          if ! rel="$(cmd_open "${args[@]}" < /dev/null)"; then stopped="$lineno"; break; fi
+          number="$(folder_fact "$root/$rel/folder.md" number)" ;;
+        queue)
+          if ! (move_queue "$root" "$folder" "$day") < /dev/null; then stopped="$lineno"; break; fi
+          number="$folder" ;;
+        gate)
+          if ! (move_gate "$root" "$folder" "$day" "${args[@]}") < /dev/null; then stopped="$lineno"; break; fi
+          number="$folder" ;;
+        close|absorb|split|retire)
+          if ! (cmd_close "${args[@]}") < /dev/null; then stopped="$lineno"; break; fi
+          number="$folder" ;;
+        *) stopped="$lineno"; warn "line $lineno: no such move: $verb"; break ;;
+      esac
+      if ! drafting moves-tick "$root" "$lineno" "$number" ${bp:+--blueprint "$bp" --decomposition "$dline"} >> "$DEFER_COMMITS"; then
+        stopped="$lineno"; break
+      fi
+      n=$((n + 1))
+    done 3< <(printf '%s\n' "$plan")
+  fi
   mapfile -t paths < <(sort -u "$DEFER_COMMITS" | grep -v '^$')
   DEFER_COMMITS=""; MOVE_TEXT=""
-  if [ "$n" -gt 0 ]; then
-    commit_paths "$root" "office moves: $n desk move(s) from drafting-table/moves.md" "${paths[@]}" || true
-    log "applied $n desk move(s)"
+  if [ $((n + m)) -gt 0 ]; then
+    local words="$n desk move(s) from drafting-table/moves.md"
+    [ "$m" = 0 ] || words="$((n + m)) desk move(s): $m sorted drop(s) from the in-tray$([ "$n" = 0 ] || printf ', %s from drafting-table/moves.md' "$n")"
+    commit_paths "$root" "office moves: $words" "${paths[@]}" || true
+    log "applied $((n + m)) desk move(s)"
   elif [ "${#paths[@]}" -gt 0 ]; then
     commit_paths "$root" "office moves: the drafting table arrives" "${paths[@]}" || true
   fi
-  if [ -n "$stopped" ]; then
-    die "office moves stopped at drafting-table/moves.md line $stopped, which could not be applied (the lines above say why); $n move(s) before it are applied and committed, and nothing after it ran"
+  [ "$left" = 0 ] || warn "$left sorted drop(s) stay in the in-tray (the lines above say why); office moves tries them again"
+  if [ -n "$blocked" ]; then
+    printf '%s\n' "$blocked" | sed 's/; /\n/g' | sed 's/^/[office]   /' >&2
+    local done_words=""
+    [ "$m" = 0 ] || done_words="; $m sorted drop(s) moved and committed"
+    die "an open session holds what office moves writes, so the moves page waits (the one-writer rule); run it once that session is applied or closed$done_words"
   fi
+  if [ -n "$stopped" ]; then
+    die "office moves stopped at drafting-table/moves.md line $stopped, which could not be applied (the lines above say why); $((n + m)) move(s) before it are applied and committed, and nothing after it ran"
+  fi
+  return 0
 }
 
 # A candidate folder becomes queued: the one move no other verb makes.
@@ -3167,6 +3329,7 @@ usage: office start [FOLDER] [--in-office | --on PROJECT] [--goal TEXT] [--slug 
                     [--carry N... | --carry none]
        office start --drop PAGE [--title TITLE] [--lane LANE] [--size SIZE] [--goal TEXT] [--slug SLUG]
                     [--write PATH]... [--include PATH]... [--leave-out PATH]... [--no-rides]
+       office start --sort
 Packs a session for a folder on the desk and gathers everything to attach
 into one out tray: the request, the doctrine, and whatever rides with the
 work (on a project, the office's context and the project's ride-alongs;
@@ -3193,7 +3356,9 @@ session; the out tray's listing and the opener say how many ride.
                  forecasting the folder and the notepad)
   --on PROJECT   the work lands in one of the office's projects (packed
                  from the project, with the office's context beside it)
-  --goal TEXT    the session's goal, one sentence
+  --goal TEXT    the session's goal, one sentence; a folder with a goal
+                 field (office open --goal, or a sorted drop) offers its
+                 own, which a plain return takes (piped, it is taken)
   --slug SLUG    default: the folder's name without its date, and
                  -office after it for a session in the office
   --write PATH   what the session will change, relative to where it is
@@ -3201,7 +3366,9 @@ session; the out tray's listing and the opener say how many ride.
                  lane, else the whole repo
   --include PATH more to ship as context (a project ships its whole repo
                  by default)
-  --brief FILE   a brief to ship as the request's README.md
+  --brief FILE   a brief to ship as the request's README.md; a folder
+                 with a brief.md (a sorted drop's Brief) sends that one
+                 unless --brief names another
   --read-only    forecast nothing: a sitting that lands nothing itself
                  (office land SID ends it when the sitting is over)
   --leave-out PATH
@@ -3232,6 +3399,17 @@ session; the out tray's listing and the opener say how many ride.
                  holds the in-tray or the desk. Given a FOLDER too, PAGE
                  is in that folder's drops/: the one line that retries a
                  drop start whose session did not go out
+  --sort         the standalone sort: an office session for the drops
+                 nothing carried, belonging to no folder. It ships every
+                 folder's folder.md, every handbook chapter, the hung items
+                 and the doctrine, and a brief from the install's
+                 templates/sort-brief.md carrying every unsorted drop and
+                 the desk as office desk prints it; it forecasts the
+                 notepad and, where the office has a drafting table, its
+                 moves page (which arrives if it must). office land SID
+                 files its Sort and Handbook, and runs office moves.
+                 Refused while another sort is out, while an open session
+                 holds the in-tray, and when no drop is unsorted
   --bundle FILE  a planner's bundle (FILE.bale-bundle, a path or the bare
                  name bale's search finds; given as a word, it needs no
                  flag): bale open replays the bundle's own pack line, so
@@ -3275,6 +3453,7 @@ Examples:
   office start fix-login --on office-src --goal "Fix it" --carry 3
   office start --drop in-tray/2026-10-14-login-error.md
   office start --drop 2026-10-14-login-error --lane office-src --size medium
+  office start --sort
 The out tray is ~/out-tray/SID unless this machine's
 ~/.config/office-src/machine.toml sets out_tray. On WSL the tray opens in
 Explorer and the opener goes to the clipboard; clipboard_command and
@@ -3653,11 +3832,86 @@ start_drop() {
   want="$fname"; where=project; project="$lane_proj"
 }
 
+# The standalone sort (0.20.0): office start --sort sends the drops
+# nothing carried to a session of their own, an office session that
+# belongs to no folder. Every refusal comes before anything is written.
+# Reads and sets cmd_start's root.
+SORT_GOAL="Sort the in-tray's drops"
+SORT_SLUG="in-tray-sort"
+
+start_sort() {
+  local out sorts tmp desk_file brief_file tray_root sid tray opener d includes=() writes=() paths=() first
+  out="$(dropx list "$root" --unsorted)" || die "the in-tray could not be read; nothing was written"
+  [ -n "$out" ] || die "the in-tray holds no unsorted drop, so there is nothing to sort; nothing was written"
+  if ! sorts="$(reader sort-out "$root")"; then
+    die "bale's registry in this office could not be read, so whether a sort is out cannot be told (the line above says why); nothing was written"
+  fi
+  if [ -n "$sorts" ]; then
+    first="$(printf '%s\n' "$sorts" | head -n 1)"
+    die "a sort is out already: $first is open in this office; office land $first brings it back, and then office start --sort sends the next; nothing was written"
+  fi
+  one_writer "$root" "start --sort" in-tray
+  # Where the office has a drafting table, the moves page is the sort's
+  # to write, as a sitting writes it: it arrives first when it must.
+  if [ -d "$root/drafting-table" ]; then
+    if [ ! -f "$root/drafting-table/moves.md" ]; then
+      one_writer "$root" "start --sort" "drafting-table/moves.md"
+      out="$(drafting arrive "$root" --page moves.md)" || die "the drafting table's moves page could not arrive; nothing was sent out"
+      mapfile -t paths < <(printf '%s\n' "$out" | grep -v '^$')
+      [ "${#paths[@]}" -eq 0 ] || commit_paths "$root" "office start --sort: the drafting table's moves page arrives" "${paths[@]}" || true
+    fi
+    writes+=(--write drafting-table/moves.md)
+  fi
+  # What ships: every folder's folder.md (not the folders whole) and every
+  # handbook chapter; the hung items ride through bale.toml's group, and
+  # the unsorted drops and the doctrine as for every office session.
+  for d in "$root"/desk/*/folder.md "$root"/filing-cabinet/*/folder.md; do
+    [ -f "$d" ] && includes+=(--include "${d#"$root"/}")
+  done
+  [ ! -d "$root/handbook" ] || includes+=(--include handbook)
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/office-sort-brief.XXXXXXXX")" || die "no temporary directory for the brief"
+  TMP_PATHS+=("$tmp")
+  desk_file="$tmp/desk.txt"; brief_file="$tmp/README.md"
+  ( OFFICE_ROOT="$root" cmd_desk ) > "$desk_file" 2>/dev/null \
+    || printf '(the desk could not be rendered here; office desk says why)\n' > "$desk_file"
+  sortx brief "$root" --desk-file "$desk_file" > "$brief_file" \
+    || die "the brief could not be written from the install's templates/sort-brief.md (the line above says why); nothing was sent out"
+  tray_root="$(machine_setting out_tray "$HOME/out-tray")"
+  case "$tray_root" in "~"|"~/"*) tray_root="$HOME${tray_root#\~}" ;; esac
+  log "packing the standalone sort in the office: $(printf '%s\n' "$out" | grep -c .) unsorted drop(s), no folder"
+  out="$(reader start "$root" - --where office --goal "$SORT_GOAL" --slug "$SORT_SLUG" "${includes[@]}" "${writes[@]}" \
+           --brief "$brief_file" --work-class meta --tray-root "$tray_root")" || exit 1
+  sid="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sid"])')" || die "could not read what office start packed"
+  tray="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tray"])')"
+  printf '%s' "$out" | python3 -c 'import json,sys
+for w in json.load(sys.stdin)["warnings"]:
+    print(w)' | while IFS= read -r d; do warn "$d"; done
+  printf 'Packed %s for the in-tray (the standalone sort; no folder records it).\n\n' "$sid"
+  printf 'Out tray: %s\n' "$tray"
+  printf '%s' "$out" | python3 -c 'import json,sys
+r = json.load(sys.stdin)
+for line in r["carried"]:
+    print("  " + line)'
+  printf '\nAttach every file in the out tray to a fresh chat, then paste the opener:\n\n'
+  opener="$(printf '%s' "$out" | python3 -c 'import json,sys
+r = json.load(sys.stdin)
+if r["opener"] is not None:
+    print("\n".join(r["opener"]))')"
+  if [ -z "$opener" ]; then
+    warn "bale printed no opener between its scissor lines; the session is open, and bale status shows it"
+    return 0
+  fi
+  printf -- '--8<-- session opener --8<--\n%s\n--8<-- end session opener --8<--\n' "$opener"
+  printf '\nWhen the response comes back: office land %s\n' "$sid"
+  start_desktop "$tray" "$opener"
+  return 0
+}
+
 cmd_start() {
   local want="" where="" project="" goal="" slug="" brief="" read_only=0 includes=() writes=() set_w=0 bundle=""
   local leave_out=() no_rides=0 carry=() carry_none=0 bundle_given="" slug_flag=0
   local root name md status lane lane_project lane_paths names cls ans tz day out sid tray tray_root rel about="" args=() v
-  local packed_flags=() drop="" drop_title="" drop_lane="" drop_size="" drop_title_given=""
+  local packed_flags=() drop="" drop_title="" drop_lane="" drop_size="" drop_title_given="" sort=0 others=()
   START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_DROP_PAGE=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -3669,6 +3923,7 @@ cmd_start() {
         case "$1" in --goal) goal="$2" ;; --slug) slug="$2"; slug_flag=1 ;; --brief) brief="$2" ;;
                      --write) writes+=("$2"); set_w=1 ;; --include) includes+=("$2") ;; esac
         packed_flags+=("$1"); shift 2 ;;
+      --sort) sort=1; shift ;;
       --drop) [ $# -ge 2 ] || die "--drop needs the drop's page: in-tray/NAME.md, or its name (office desk lists them)"
               [ -z "$drop" ] || die "office start takes one drop"; drop="$2"; shift 2 ;;
       --title|--lane|--size)
@@ -3689,6 +3944,19 @@ cmd_start() {
       *) [ -z "$want" ] || die "office start takes one folder"; want="$1"; shift ;;
     esac
   done
+  if [ "$sort" = 1 ]; then
+    # The standalone sort takes nothing else: its goal, forecast and brief
+    # are the office's own (0.20.0).
+    [ -z "$want$where$drop$bundle$drop_title$drop_lane$drop_size" ] && [ "${#packed_flags[@]}" -eq 0 ] \
+      && [ "$no_rides" = 0 ] && [ "${#leave_out[@]}" -eq 0 ] && [ "${#carry[@]}" -eq 0 ] && [ "$carry_none" = 0 ] \
+      || die "--sort sends the in-tray's own session, with the office's goal, forecast and brief, so it takes nothing else: office start --sort"
+    root="$(resolve_office)" || exit 1
+    require_current "$root"
+    warn_if_unfounded "$root"
+    command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office start runs bale pack"
+    start_sort
+    return $?
+  fi
   [ "$read_only" = 0 ] || [ "$set_w" = 0 ] || die "--read-only forecasts nothing, so it takes no --write"
   [ "$no_rides" = 0 ] || [ "${#leave_out[@]}" -eq 0 ] || die "--no-rides leaves every ride-along out, so it takes no --leave-out"
   [ "$carry_none" = 0 ] || [ "${#carry[@]}" -eq 0 ] || die "--carry none carries no rider, so it takes no --carry N"
@@ -3778,6 +4046,23 @@ cmd_start() {
     return $?
   fi
 
+  # A folder that knows its goal and its brief goes out with them (0.20.0:
+  # office open --goal, or a drop office moves filed in it): the goal is
+  # offered below, and brief.md is the session's brief unless --brief
+  # names another; a bundle keeps its own, and that is said.
+  local folder_goal
+  folder_goal="$(folder_fact "$md" goal)"
+  if [ -f "$root/desk/$name/brief.md" ]; then
+    if [ -n "$bundle" ]; then
+      log "desk/$name/brief.md rides in the folder, not as the brief: a bundle carries its own brief, and the office adds nothing to it"
+    elif [ -z "$brief" ]; then
+      brief="$root/desk/$name/brief.md"
+      log "the session's brief is desk/$name/brief.md, the folder's own (--brief FILE sends another)"
+    elif [ "$(readlink -f "$brief")" != "$(readlink -f "$root/desk/$name/brief.md")" ]; then
+      log "the session's brief is $brief, as given; desk/$name/brief.md rides in the folder"
+    fi
+  fi
+
   # What the folder already says: its lane (project: paths) and class.
   lane="$(folder_fact "$md" lane)"; cls="$(folder_fact "$md" class)"
   lane_project=""; lane_paths=""
@@ -3823,10 +4108,13 @@ cmd_start() {
   # The goal: the one thing the pack cannot derive (a bundle carries its own).
   if [ -n "$bundle" ]; then
     goal="(the bundle's)"
+  elif [ -z "$goal" ] && [ -n "$folder_goal" ] && ! can_ask; then
+    goal="$folder_goal"
+    log "the goal is the folder's own: $folder_goal (--goal TEXT overrides it)"
   elif [ -z "$goal" ]; then
     can_ask || die "give the session's goal: --goal TEXT, one sentence; piped input is never asked"
-    ask goal "The session's goal, in one sentence (--goal)" "" 1 \
-      "What the session is for, in one sentence: it becomes the request's goal and the opener's first line. The folder, its lane and the project's ride-alongs go with it on their own."
+    ask goal "The session's goal, in one sentence (--goal)" "$folder_goal" 1 \
+      "What the session is for, in one sentence: it becomes the request's goal and the opener's first line. The folder, its lane and the project's ride-alongs go with it on their own.${folder_goal:+ The default is the goal field of the folder; a plain return takes it.}"
   fi
   goal="$(printf '%s' "$goal" | tr '\n' ' ' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
   [ -n "$goal" ] || die "the goal is empty"
@@ -4044,13 +4332,21 @@ After an applied landing, when the folder records that session alone and
 the planner ratified it with no exception, land offers to close the
 folder, done, in the same breath (default: close); piped, it leaves the
 folder open and says so.
-After an applied landing of a project session it files the folder's two
-pages from the response's notes.md: its Walkthrough section as
-walkthrough.md and its Delivery section as delivery.md (the words office
-deliver carries to the audience), when the office found the response on
-this machine (a path, or by name in the downloads); when only bale's own
-search knew where it was, land names the line that files them (office
-sessions FOLDER SID --pages RESPONSE).
+After an applied landing, before the after-land actions, it files what
+the response's notes.md says, when the office found the response on this
+machine (a path, or by name in the downloads): for a project session the
+folder's two pages, its Walkthrough section as walkthrough.md and its
+Delivery section as delivery.md (the words office deliver carries to the
+audience); then, for any session, its Sort on each drop's page (the page's
+status becomes sorted), its Questions and answers in the folder, and its
+Handbook's facts and front sheets in the project's chapter (the handbook
+arrives with the first fact). Then, when a sorted drop waits in the
+in-tray (or the session was the standalone sort and its moves page holds
+pending lines), it runs office moves and names each folder it minted.
+When only bale's own search knew where the response was, land names the
+line that files it all (office sessions FOLDER SID --pages RESPONSE, or
+office sessions --in-tray SID --pages RESPONSE for the standalone sort,
+which no folder records).
 A session on a project on a host (office projects add --host) lands
 there. land first checks that the host answers (one that does not stops
 land before anything is carried, with your connect line and the line
@@ -4402,9 +4698,18 @@ for l in json.load(sys.stdin)["told"]:
     return 1
   fi
 
-  # After an applied landing: the project's after-land actions, in order.
-  # What became of each is said again as land's last lines, after the
-  # ratification, so it is never lost above a long screen.
+  # After an applied landing, first what the session's notes.md says (the
+  # folder's two pages, its Sort, answers and facts), then the desk moves
+  # a sort earned, each said as it happens (0.20.0); then the project's
+  # after-land actions.
+  local folders
+  folders="$(plan_field "$plan" folders | head -n 1)"
+  land_files "$root" "$folders" "$sid" "$plan"
+  land_moves "$root" "$sid"
+
+  # The project's after-land actions, in order. What became of each is
+  # said again as land's last lines, after the ratification, so it is
+  # never lost above a long screen.
   local problem actions=() project
   AFTER_LAND_REPORT=()
   project="$(plan_field "$plan" project)"
@@ -4428,8 +4733,6 @@ for l in json.load(sys.stdin)["told"]:
   fi
 
   # The planner's ratification, through the same step as office sessions.
-  local folders
-  folders="$(plan_field "$plan" folders | head -n 1)"
   if [ -z "$folders" ]; then
     log "no folder records $sid, so there is nothing to ratify in"
   else
@@ -4464,7 +4767,6 @@ for l in json.load(sys.stdin)["told"]:
     else
       log "not ratified; when the planner rules: office sessions $name $sid --ratified (or --ratified --except TEXT)"
     fi
-    file_pages_after_land "$root" "$folders" "$sid" "$plan"
     close_founding_folder "$root" "$folders" "$sid" "$day"
     offer_close "$root" "$folders" "$sid"
   fi
@@ -4473,28 +4775,60 @@ for l in json.load(sys.stdin)["told"]:
   return "$rc"
 }
 
-# file_pages_after_land ROOT FOLDER SID PLAN: after an applied landing of
-# a project session, the folder's walkthrough.md and delivery.md from
-# the response's notes.md, when the office found the response on this
-# machine (a path, or the name in the downloads); when only bale's own
-# search knew where it was, land says the line that files them. Never
-# fails the landing.
-file_pages_after_land() {
-  local root="$1" folder="$2" sid="$3" plan="$4" response
-  [ -n "$(plan_field "$plan" project)" ] || return 0
-  [ -n "$folder" ] || return 0
+# land_files ROOT FOLDER SID PLAN: after an applied landing, what the
+# response's notes.md says, when the office found the response on this
+# machine (a path, or the name in the downloads): a project session's
+# folder pages, walkthrough.md and delivery.md (0.17.0), then any
+# session's Sort, Questions and answers and Handbook (0.20.0, file_notes).
+# When only bale's own search knew where the response was, land says the
+# line that files them. Never fails the landing.
+land_files() {
+  local root="$1" folder="$2" sid="$3" plan="$4" response line
   response="$(plan_field "$plan" response_here)"
-  # Said as it happens, never among land's last lines: what became of
-  # each after-land action stays the last thing on the screen (0.9.0).
+  if [ -n "$folder" ]; then line="office sessions ${folder#*/} $sid --pages FILE"
+  else line="office sessions --in-tray $sid --pages FILE"; fi
   if [ -z "$response" ]; then
-    log "the walkthrough and delivery pages were not filed: bale found the response in its own search directories, which the office cannot list; office sessions ${folder#*/} $sid --pages FILE files them from the response"
+    log "the response's notes were not filed (the walkthrough and delivery pages, the Sort, answers and facts): bale found the response in its own search directories, which the office cannot list; $line files them from the response"
     return 0
   fi
-  FILED_PAGES=""
-  if file_pages "$root" "$folder" "$sid" "$response"; then
-    log "the folder's pages: ${FILED_PAGES:-nothing filed}"
-  else
-    warn "the folder's pages were not filed (the lines above say why); office sessions ${folder#*/} $sid --pages $response files them"
+  if [ -n "$(plan_field "$plan" project)" ] && [ -n "$folder" ]; then
+    FILED_PAGES=""
+    if file_pages "$root" "$folder" "$sid" "$response"; then
+      log "the folder's pages: ${FILED_PAGES:-nothing filed}"
+    else
+      warn "the folder's pages were not filed (the lines above say why); office sessions ${folder#*/} $sid --pages $response files them"
+    fi
+  fi
+  file_notes "$root" "$folder" "$sid" "$response" \
+    || warn "the response's Sort, answers and facts were not filed (the lines above say why); ${line%FILE}$response files them"
+  return 0
+}
+
+# land_moves ROOT SID: after the notes are filed, office moves runs when a
+# sorted drop waits in the in-tray, or when the session was a standalone
+# sort and its moves page holds pending lines, and the folders it minted
+# are named before the after-land actions and the ratification question.
+# Never fails the landing.
+land_moves() {
+  local root="$1" sid="$2" run=0 minted number rel page
+  if sortx pending "$root"; then
+    run=1
+  elif sortx is-sort "$sid" && [ -f "$root/drafting-table/moves.md" ] \
+      && [ -n "$(drafting moves-plan "$root" --shell 2>/dev/null)" ]; then
+    run=1
+  fi
+  [ "$run" = 1 ] || return 0
+  minted="$(mktemp)" || { warn "no temporary file for office moves; office moves applies the sorted drops"; return 0; }
+  TMP_PATHS+=("$minted")
+  log "office moves: the desk moves this landing earned"
+  if ! ( OFFICE_ROOT="$root" MOVES_MINTED_FILE="$minted" cmd_moves ); then
+    warn "office moves did not finish (the lines above say why); office moves runs it again"
+  fi
+  if [ -s "$minted" ]; then
+    printf '\nFolders office moves minted:\n'
+    while IFS=$'\t' read -r number rel page; do
+      printf '  %s  %s  (from %s)\n' "$number" "$rel" "$page"
+    done < "$minted"
   fi
   return 0
 }
@@ -6215,8 +6549,9 @@ Plan work too big for one folder (the drafting table)
   office blueprint ratify ID
                             freeze its charter, pointing at the ratifying words
   office blueprint close ID send out the sitting that writes its close report
-  office moves              apply the desk moves a sitting wrote: open, queue, gate,
-                            close or retire folders, each ticked with its folder
+  office moves              apply the desk moves: the in-tray's sorted drops, each into
+                            its folder, then the moves a sitting wrote: open, queue,
+                            gate, close or retire folders, each ticked with its folder
   office rider add TITLE    small work with a named carrier, on the riders page
   office rider carry N      moved into the folder that carries it (--folder M)
   office rider consumed N SID
@@ -6241,12 +6576,16 @@ Send a session out
                             a dropped message straight out as a project session: a
                             folder minted from the drop, the drop moved into it, and a
                             brief that tells the session to sort it, then do it
+  office start --sort       the drops nothing carried, to a session of their own: it
+                            reads them all with the desk, and land files its Sort
 
 Bring one back
   office land [SID]         applies the response in the right repo, says how it ended,
                             hands you the relay, runs the after-land steps, records the
                             planner's ratification, files the walkthrough and delivery
-                            pages in the folder, and ends saying how each step went;
+                            pages in the folder, the Sort on each drop, the answers and
+                            the handbook's facts, moves the sorted drops, and ends
+                            saying how each step went;
                             given a read-only sitting's id, ends the sitting
   office relay SID FILE     carries the planner's answer to a clarification back to the
                             session's repo (bale relay there), and hands you bale's block

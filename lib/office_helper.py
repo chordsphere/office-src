@@ -1227,6 +1227,14 @@ def folder_summary(folder_md, template_md):
 # In the order the field block writes them.
 FIELD_KEYS = ("number", "status", "queued", "class", "size", "lane", "source",
               "blueprint", "linked", "after", "serializes after", "consumer")
+# The fields the command writes after the template's block, in the place
+# FIELD_ORDER gives them: the template shows FIELD_KEYS and is never
+# touched for these (0.20.0). goal is office open --goal's, the one
+# sentence office start N offers as the session's goal.
+LATE_FIELDS = ("goal",)
+# Every field line a folder may carry, in the order the block holds them.
+FIELD_ORDER = FIELD_KEYS[:FIELD_KEYS.index("source") + 1] + LATE_FIELDS + \
+    FIELD_KEYS[FIELD_KEYS.index("source") + 1:]
 # The fields a folder may carry more than once, one line each.
 MULTI_FIELDS = ("linked", "after", "serializes after", "consumer")
 SIZES = ("small", "medium", "high")
@@ -1284,6 +1292,9 @@ FIELD_HELP = {
             "`office-src: bin/, lib/`. The folder's forecast in waiting.",
     "source": "where the job came from, in one form: `proposal SID #n`, `rider N`, `ruling ID`, "
               "`blueprint ID`, a notepad page (`notepad/...`), or a person (whose words go in Asked).",
+    "goal": "the job's goal in one sentence: office start N offers it as the session's goal (a return "
+            "takes it, --goal overrides). Written by office open --goal, or by office moves from a sorted "
+            "drop.",
     "blueprint": "the blueprint the folder belongs to, by its id, YYYY-MM-DD-slug.",
     "linked": "a folder this one relates to without waiting for it: `folder N`.",
     "after": "do not open this before X is done. X is `folder N` (a bare number means a folder), "
@@ -1353,7 +1364,7 @@ def normalize_field(key, value):
         if SID_RE.match(text):
             return text
         raise HelperError(f"not a session id (YYYY-MM-DD-slug-NNN): {text!r}")
-    if key in ("title", "lane", "source"):
+    if key in ("title", "lane", "source", "goal"):
         return one_line(text, key)
     raise HelperError(f"no field named {key!r}")
 
@@ -1364,7 +1375,7 @@ def parse_folder(text):
     and the History lines that do not read, and its session ids.
 
     Fields are the `- key: value` lines between the title and the first
-    section whose key is one of FIELD_KEYS; a folder from before the
+    section whose key is one of FIELD_ORDER; a folder from before the
     field block has none, and every reader takes that as unknown, never
     as a value."""
     lines = text.splitlines()
@@ -1373,7 +1384,7 @@ def parse_folder(text):
     fields = {}
     for line in lines[1:first]:
         m = FIELD_LINE_RE.match(line)
-        if m and m.group(1) in FIELD_KEYS:
+        if m and m.group(1) in FIELD_ORDER:
             fields.setdefault(m.group(1), []).append(m.group(2).strip())
     history, unreadable = [], []
     start, end = section_bounds(lines, "History")
@@ -1550,18 +1561,44 @@ def folder_gate(folder_md, key, value, day):
                           "or no History)")
     if value in [normalize_field(key, v) for v in f["fields"].get(key, []) if v]:
         raise HelperError(f"{path.parent.name} already carries `{key}: {value}`")
-    first_section = next((i for i, l in enumerate(lines) if l.startswith("## ")), len(lines))
-    rank = FIELD_KEYS.index(key)
-    at = 1
-    for i in range(1, first_section):
-        m = FIELD_LINE_RE.match(lines[i])
-        if m and m.group(1) in FIELD_KEYS and FIELD_KEYS.index(m.group(1)) <= rank:
-            at = i + 1
-    lines.insert(at, f"- {key}: {value}")
+    lines.insert(field_position(lines, key), f"- {key}: {value}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     text = f"{key} {value}"
     folder_event(folder_md, day, "gated", text)
     return text
+
+
+def field_position(lines, key):
+    """The index a new `- key: ...` line goes at in a folder's field
+    block: after every field line FIELD_ORDER puts at or before it."""
+    first_section = next((i for i, l in enumerate(lines) if l.startswith("## ")), len(lines))
+    rank = FIELD_ORDER.index(key)
+    at = 1
+    for i in range(1, first_section):
+        m = FIELD_LINE_RE.match(lines[i])
+        if m and m.group(1) in FIELD_ORDER and FIELD_ORDER.index(m.group(1)) <= rank:
+            at = i + 1
+    return at
+
+
+def folder_set_field(folder_md, key, value):
+    """Write one field line the folder does not carry yet, where
+    FIELD_ORDER puts it (0.20.0: goal, from office open --goal or a sorted
+    drop). A field the folder carries already is left as it is, and a
+    folder from before the field block (no status line) gets none.
+    Returns the line written, or None when nothing was."""
+    if key not in LATE_FIELDS:
+        raise HelperError(f"{key!r} is not a field written after the folder's block ({', '.join(LATE_FIELDS)})")
+    value = normalize_field(key, value)
+    path = pathlib.Path(folder_md)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    f = parse_folder("\n".join(lines))
+    if not f["has_status_line"] or f["fields"].get(key):
+        return None
+    line = f"- {key}: {value}"
+    lines.insert(field_position(lines, key), line)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return line
 
 
 def record_session_opening(folder_md, sid, day, words=None):
@@ -2649,7 +2686,7 @@ def cmd_folder_facts(a):
     print(f"sids\t{len(f['sids'])}")
     # The fields office start derives from: the lane (project: paths),
     # the work class and the title.
-    for key in ("lane", "class"):
+    for key in ("lane", "class", "goal"):
         print(f"{key}\t{(f['fields'].get(key) or [''])[0]}")
     print(f"title\t{f['title'] or ''}")
     if problem:
@@ -2667,6 +2704,12 @@ def cmd_folder_event(a):
 
 def cmd_folder_gate(a):
     print(f"History: {a.day} gated: {folder_gate(a.folder_md, a.key.replace('-', ' '), a.value, a.day)}")
+
+
+def cmd_folder_set_field(a):
+    line = folder_set_field(a.folder_md, a.key, a.value)
+    if line:
+        print(line)
 
 
 def cmd_ratify(a):
@@ -3109,6 +3152,10 @@ def main(argv=None):
     p.add_argument("--status"); p.set_defaults(fn=cmd_folder_event)
     p = sub.add_parser("folder-gate"); p.add_argument("folder_md"); p.add_argument("--key", required=True)
     p.add_argument("--value", required=True); p.add_argument("--day", required=True); p.set_defaults(fn=cmd_folder_gate)
+    p = sub.add_parser("folder-set-field", help="write a field the command writes after the block (goal), when "
+                                                "the folder carries none; prints the line, or nothing")
+    p.add_argument("folder_md"); p.add_argument("--key", required=True); p.add_argument("--value", required=True)
+    p.set_defaults(fn=cmd_folder_set_field)
     p = sub.add_parser("finished-folder", help="exit 0 when land offers to close the folder after SID landed; "
                                                "else 3 and why not")
     p.add_argument("folder_md"); p.add_argument("sid"); p.set_defaults(fn=cmd_finished_folder)

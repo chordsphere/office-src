@@ -50,6 +50,7 @@ import office_drafting as od  # noqa: E402
 import office_door as odoor  # noqa: E402
 import office_host as ohost  # noqa: E402
 import office_drop as odrop  # noqa: E402
+import office_sort as osort  # noqa: E402
 
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 CONSUMPTION = INSTALL / "share" / "bale-consumption.toml"
@@ -768,15 +769,17 @@ def in_flight(rd, office_root, now=None):
                 # sitting is over. A sitting no folder records is not
                 # the office's to end.
                 ends = f" (office land {sid} when the sitting is over)" if read_only and folders else ""
+                # The standalone sort belongs to no folder: it is the
+                # in-tray's session (0.20.0).
+                target = ", ".join(folders) or ("the in-tray (the standalone sort)"
+                                                if label == OFFICE_LABEL and osort.is_sort_sid(sid) else "no folder")
                 if d is None:
-                    lines.append(f"{label}: {sid} open, with no record in bale's telemetry yet"
-                                 f" -> {', '.join(folders) or 'no folder'}{ends}")
+                    lines.append(f"{label}: {sid} open, with no record in bale's telemetry yet -> {target}{ends}")
                     continue
                 v = session_view(rd, d)
                 state = "read-only" if read_only else outcome_word(v)
                 age = describe_age(parse_stamp(v["created"]), now)
-                lines.append(f"{label}: {sid} {state}, opened {age} ago"
-                             f" -> {', '.join(folders) or 'no folder'}{ends}")
+                lines.append(f"{label}: {sid} {state}, opened {age} ago -> {target}{ends}")
         except BaleError as exc:
             bad += 1
             lines.append(f"{label}: cannot read: {exc}")
@@ -1198,18 +1201,44 @@ def render_desk(rd, office_root, today, since=None, walk_in=False, now=None, gro
     except (OSError, oh.HelperError, ValueError) as exc:
         debug(f"the in-tray could not be read for the desk: {exc}")
         groups["drops"], groups["drops_oldest_age"] = [], None
+    # A sorted drop still in the in-tray is a desk move (0.20.0): counted
+    # with the moves page's, ahead of them, as office moves applies them.
+    try:
+        waiting = odrop.sorted_waiting(office_root)
+    except (OSError, oh.HelperError, ValueError) as exc:
+        debug(f"the in-tray's sorted drops could not be read for the desk: {exc}")
+        waiting = []
+    if waiting:
+        count, sources, errors = groups["moves"]
+        groups["moves"] = (count + len(waiting), f"{len(waiting)} sorted drop(s) in the in-tray"
+                           + (f", {sources}" if sources else ""), errors)
+    # The drops that have waited through a session, for the Next line's
+    # sort rule; read from git only when there is a Next line to work out.
+    groups["drops_waited"] = osort.drops_waited(office_root, groups["drops"]) if groups_out is not None else set()
     if groups_out is not None:
         groups_out.update(groups)
     if not walk_in and groups["moves"][0]:
-        # Each pending move by line, so the desk shows what office moves
-        # will do; the words are the sitting's, as it wrote them.
+        # Each pending move, so the desk shows what office moves will do:
+        # the sorted drops first, then the moves page by line, the words
+        # the sitting's, as it wrote them.
+        groups["move_lines"] = []
+        if waiting:
+            try:
+                names = [p["name"] for p in office_projects(office_root) or []]
+                for m in osort.move_plans(office_root, names):
+                    where = (f"a new folder on {m['lane']}" if m["kind"] == "new" else
+                             f"folder {m['folder']}" if m["kind"] == "into" else "nowhere yet")
+                    groups["move_lines"].append(f"  {m['page']}: sorted by {m['sid'] or '?'}, into {where}"
+                                                + (f"  (stays: {m['problem']})" if m["problem"] else ""))
+            except (OSError, oh.HelperError) as exc:
+                groups["move_lines"].append(f"  the sorted drops could not be listed: {exc}")
         try:
             moves, _ = od.pending_moves(office_root)
-            src = od.move_sources(office_root)
-            groups["move_lines"] = [f"  line {m['line']}: {m['day']} {m['text']}  (from {src.get(m['line'], '?')})"
-                                    for m in moves]
+            src = od.move_sources(office_root) if moves else {}
+            groups["move_lines"] += [f"  line {m['line']}: {m['day']} {m['text']}  (from {src.get(m['line'], '?')})"
+                                     for m in moves]
         except (OSError, oh.HelperError) as exc:
-            groups["move_lines"] = [f"  could not be listed: {exc}"]
+            groups["move_lines"].append(f"  could not be listed: {exc}")
     lines = desk_lines(groups, flight, walk_in=walk_in)
     if groups.get("move_lines"):
         at = next(i for i, l in enumerate(lines) if l.startswith("Pending desk moves"))
@@ -1286,6 +1315,13 @@ def blueprint_desk(table, folders, flying, since, bid, flight):
 #      since a drop is capture waiting and the occupant's count is drop,
 #      start, land. An office that scopes no project has nowhere to send
 #      a drop, and the rule stays quiet there;
+#   3c. the standalone sort (0.20.0): an unsorted drop whose project is
+#      none, or none of the office's, that has waited through one session
+#      (a session recorded in a folder after the drop was committed), gives
+#      office start --sort; so does an in-tray of SORT_PILE or more
+#      unsorted drops with nothing ready on the desk. The drop rule leaves
+#      such a drop to it. Unlike 3b it needs no project: a sort routes to
+#      folders that exist;
 #   4. unfounded: the profile is the office's reason to exist. With the
 #      founding folder on the desk and no session out for it, the line
 #      names office start for that folder (which goes out through the
@@ -1387,10 +1423,13 @@ def drop_move(drops, groups, projects):
     if not drops or not names:
         return None
     busy = {lane_project(f, set(names)) for f in groups.get("flying", [])} - {None}
+    waited = groups.get("drops_waited") or set()
     later = len(drops) - 1
     more = f"; {later} more unsorted after it" if later else ""
     for d in drops:
         resolved = odrop.resolve_project(d.get("project"), names)
+        if resolved is None and d["rel"] in waited:
+            continue  # it has waited through a session: the sort's (sort_move)
         if resolved is None:
             said = f"names {d['project']!r}, which is none of" if d.get("project") else "names no project of"
             return (f"office start --drop {d['rel']} --lane LANE",
@@ -1402,6 +1441,32 @@ def drop_move(drops, groups, projects):
         return (f"office start --drop {d['rel']}",
                 f"the oldest unsorted drop in the in-tray is for {resolved} and no session is in flight there; "
                 f"start mints its folder, moves the drop in and sends it out to be sorted and done{more}")
+    return None
+
+
+SORT_PILE = 3
+
+
+def sort_move(drops, groups, projects):
+    """(command, why) for office start --sort, or None (the rule 3c
+    above): an unsorted drop with no project, or one that does not
+    resolve, that has waited through one session; or an in-tray of
+    SORT_PILE or more unsorted drops with nothing ready on the desk."""
+    if not drops:
+        return None
+    names = [p["name"] for p in projects or []]
+    waited = groups.get("drops_waited") or set()
+    stuck = [d for d in drops if d["rel"] in waited and odrop.resolve_project(d.get("project"), names) is None]
+    if stuck:
+        d = stuck[0]
+        return ("office start --sort",
+                f"{d['rel']} names {'no project' if not d.get('project') else repr(d['project'])} this office can "
+                f"send it to, and a session has gone out since it was dropped; the sort reads every unsorted drop "
+                f"({len(drops)}) and says where each goes")
+    if len(drops) >= SORT_PILE and not groups.get("ready"):
+        return ("office start --sort",
+                f"{len(drops)} unsorted drops wait in the in-tray and nothing is ready on the desk; the sort reads "
+                "them all and says where each goes")
     return None
 
 
@@ -1457,7 +1522,8 @@ def next_move(skew, founded, out, groups, projects, slips, behind=None):
                 (f"{count} desk move(s) a sitting decided are pending ({sources})" if count else
                  "drafting-table/moves.md holds lines that do not read")
                 + "; until they run, the desk is not in the order the sitting decided" + unread)
-    move = drop_move(groups.get("drops") or [], groups, projects)
+    move = drop_move(groups.get("drops") or [], groups, projects) \
+        or sort_move(groups.get("drops") or [], groups, projects)
     if move is not None:
         return move
     if not founded:
@@ -2969,12 +3035,23 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             raise StartError([f"{project}: {p}" for p in problems])
     rides, left = ride_choice(entry, project, leave_out)
     rd.bale()
+    # The project's handbook chapter rides with every session whose lane
+    # names the project (0.20.0): in the office's context for a project
+    # session, in the request for an office session about it.
+    chapter = osort.chapter_rel(project) if project else None
+    if chapter and not (office_root / chapter).is_file():
+        chapter = None
 
     # Where the pack runs, and its forecast.
     warnings = []
     if where == "office":
         pack_dir = office_root
-        includes = [folder, *includes]
+        # A standalone sort (folder None, 0.20.0) belongs to no folder: it
+        # ships what its includes name and forecasts the notepad and its
+        # writes.
+        includes = [*([folder] if folder else []), *includes]
+        if chapter and chapter not in includes and osort.HANDBOOK not in includes:
+            includes.append(chapter)
         if read_only:
             forecast = []
         elif any(w.strip().strip("/") in ("", ".") for w in writes):
@@ -2983,7 +3060,8 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             # forecast, as the renovation's printed pack line was.
             writes, includes, forecast = [], [], None
         else:
-            writes = [folder] + (["notepad"] if (office_root / "notepad").is_dir() else []) + list(writes)
+            writes = ([folder] if folder else []) + (["notepad"] if (office_root / "notepad").is_dir() else []) \
+                + list(writes)
             forecast = writes
     elif hosted_project(entry):
         pack_dir = check_hosted_place(rd, entry, checked)
@@ -3176,8 +3254,11 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             # it: the folder and the hung items, named, because include
             # groups do not fire under --context.
             hung = [h for h in oh.space_paths(manifest, "hung") if (office_root / h).exists()]
-            carried.append(context_into_tray(rd, tray, office_root, [folder, *hung, *riding],
+            carried.append(context_into_tray(rd, tray, office_root,
+                                              [folder, *hung, *([chapter] if chapter and chapter not in hung else []),
+                                               *riding],
                                               f"the office: {folder} and the hung items"
+                                              + (f", {project}'s handbook chapter" if chapter else "")
                                               + (f", and {len(riding)} unsorted drop(s)" if riding else "")))
         elif riding and bundle:
             # An office bundle: the drops ride beside it, as their own
@@ -3193,6 +3274,11 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         elif entry is not None:
             # An office session about a project reads the project's tree.
             carried.append(context_into_tray(rd, tray, entry["resolved"], None, f"{project}'s tree"))
+        if chapter and bundle and where == "office":
+            # An office bundle about a project: its chapter rides beside it,
+            # the bundle's pack line being the planner's (0.20.0).
+            carried.append(context_into_tray(rd, tray, office_root, [chapter], f"{project}'s handbook chapter",
+                                              name="context-handbook.tar.gz"))
         if sitting and od.SPACE in includes:
             carried.append(f"(the drafting table rides inside the request, its {od.SPACE}/digest.md written "
                            "just before the pack)")
@@ -3283,7 +3369,8 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         raise StartError([f"session {sid} is open, but its out tray could not be finished: {exc}",
                           f"what was gathered is in {tray.dir}; the request is {opened['tarball']}"
                           + (f" on {pack_dir.host}" if hosted else ""),
-                          f"record the session in its folder with: office sessions {pathlib.Path(folder).name} {sid}"])
+                          (f"record the session in its folder with: office sessions {pathlib.Path(folder).name} {sid}"
+                           if folder else "no folder records a standalone sort; office land SID brings it back")])
     # The opener says how many drops ride, in one line after bale's own.
     if riding and opened["opener"] is not None:
         opened["opener"] = [*opened["opener"], "", odrop.opener_line(len(riding), sitting=forecast == [])]
@@ -3558,11 +3645,29 @@ def open_anywhere(rd, office_root, sid=None, unreachable=None):
     return out, problems
 
 
+def landable_out(x):
+    """Whether an open session is one the office has out: a folder records
+    it, or it is a standalone sort in the office's own registry (0.20.0);
+    a read-only sitting lands nothing."""
+    return not x["read_only"] and bool(x["folders"] or (x["label"] == OFFICE_LABEL and osort.is_sort_sid(x["sid"])))
+
+
 def sessions_out(rd, office_root):
     """(sessions, problems): the sessions the office has out, the open
-    ones a folder records, read-only sittings aside (they land nothing)."""
+    ones a folder records and the standalone sort, read-only sittings
+    aside (they land nothing)."""
     every, problems = open_anywhere(rd, office_root)
-    return [x for x in every if x["folders"] and not x["read_only"]], problems
+    return [x for x in every if landable_out(x)], problems
+
+
+def sorts_out(rd, office_root):
+    """The standalone sorts open in the office's own registry: their ids.
+    [] when the office has no registry. Raises BaleError when it has one
+    that cannot be read."""
+    own = office_registry(office_root)
+    if own is None:
+        return []
+    return [sid for sid in rd.key(rd.status(own), "status", "sessions") or [] if osort.is_sort_sid(sid)]
 
 
 def responds_to(path):
@@ -3777,7 +3882,7 @@ def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None, d
                 or LandError([f"{sid} is not open in this office or in any project it scopes, so there is "
                               "nothing to land (office sessions FOLDER shows how it went)"] + problems)
     else:
-        found = [x for x in every if x["folders"] and not x["read_only"]]
+        found = [x for x in every if landable_out(x)]
         if not found:
             raise unanswered("no session is out where the office could read") \
                 or LandError(["no session is out: none that a folder records is open in this office or in a "
@@ -4377,8 +4482,10 @@ def main(argv=None):
     p.add_argument("--founded", choices=("yes", "no"), default="yes", help="whether the profile is complete")
     p.add_argument("--blueprint", help="only this blueprint's member folders, in the desk's order")
     p = sub.add_parser("writers"); p.add_argument("office"); p.add_argument("paths", nargs="+")
+    p = sub.add_parser("sort-out", help="the standalone sorts open in the office's registry, one id per line")
+    p.add_argument("office")
     p = sub.add_parser("start", help="pack a session for a folder and fill its out tray; one JSON line on stdout")
-    p.add_argument("office"); p.add_argument("folder", help="desk/NAME")
+    p.add_argument("office"); p.add_argument("folder", help="desk/NAME, or - for the standalone sort (no folder)")
     p.add_argument("--where", choices=("office", "project"), required=True)
     p.add_argument("--project", default=None, help="the project it is on, or the one an office session is about")
     p.add_argument("--goal", required=True); p.add_argument("--slug", required=True)
@@ -4577,7 +4684,8 @@ def main(argv=None):
         return 0
     if a.cmd == "start":
         try:
-            result = start(Reader(), a.office, a.folder, a.where, a.project, a.goal, a.slug, a.include,
+            result = start(Reader(), a.office, None if a.folder == "-" else a.folder, a.where, a.project, a.goal,
+                           a.slug, a.include,
                            a.write, a.read_only, a.brief, a.work_class, a.tray_root, a.bundle, a.leave_out,
                            a.install_file, a.checked, a.bale_rehearsed)
         except StartError as exc:
@@ -4591,6 +4699,11 @@ def main(argv=None):
         return 0
     try:
         rd = Reader()
+        if a.cmd == "sort-out":
+            # The standalone sorts open in this office: one id per line.
+            for sid in sorts_out(rd, a.office):
+                print(sid)
+            return 0
         if a.cmd == "writers":
             # The one-writer rule: exit 3 and one line per session whose
             # forecast holds a path, 0 when none does or there is no

@@ -4,6 +4,95 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.20.0
+
+Additive: no migration and nothing to do in any office. `office land`
+brings back what every session's Sort says, `office moves` takes a sorted
+drop to its folder, `office start N` sends a folder out with its own goal
+and brief, the handbook arrives with the first fact a session gives, and
+`office start --sort` sends the drops nothing carried to a session of
+their own. A routine ask stays three steps: drop, start, land.
+
+`office land`, after an applied landing and before the after-land
+actions, files three more sections of the response's notes.md, after the
+folder's two pages, each only when present and each said in a line; and
+`office sessions FOLDER SID --pages RESPONSE` does the same
+(`--in-tray SID` for the sort, which no folder records).
+
+- `## Sort`: each `### NAME.md` subsection is filed on its page (in the
+  in-tray, or the landed folder's drops/) as a `## Sort` section at the
+  page's end: `- sorted: DATE, by SID`, then the subsection's fields
+  verbatim and in its order, and `### Brief` exactly when it had `####
+  Brief`. The page's status becomes `sorted` through
+  `office_drop.set_status`, the status line's one writer. A page sorted
+  already is said and left; a subsection naming a page that is nowhere,
+  or one off the pinned format, is said and skipped. A Sort's `tell:`
+  goes on the folder's Next when the page is in a folder.
+- `## Questions and answers`: `- DATE question? answer` lines, appended
+  to the folder's Questions and answers section after `- from SID:`.
+- `## Handbook`: `### PROJECT` subsections of `- ` facts and an optional
+  `#### Front sheet`; each fact is appended to the chapter's Facts as `-
+  DATE: fact (SID)`, with a Sort's `facts:` lines, and a front sheet
+  replaces the chapter's whole. A project none of the office's is said
+  and skipped.
+- notes.md is read fence-aware: a heading inside a fenced block is never
+  a section.
+- Then, when a sorted drop waits in the in-tray, or the session was the
+  standalone sort and its moves page holds pending lines, land runs
+  `office moves` and prints the folders it minted. A HOLD, a refusal or a
+  clarification files nothing.
+
+`office moves` applies the in-tray's sorted drops first, oldest first,
+then the moves page. `folder: new` mints a folder through `office open`'s
+code (title from the heading, slug from the page's name, lane the Sort's
+project, size and goal the Sort's, source `drop`); `folder: N` takes
+folder N on the desk. The page moves in whole, brief.md is written from
+the Brief, the History gains `- DATE dropped: drops/NAME.md, sorted by
+SID`, the goal is written when the folder has none, and the `tell:` goes
+on its Next. A drop whose project does not resolve, whose folder is in
+the filing cabinet or missing, or that an open session's forecast holds,
+is said and stays, and the rest go on; the moves page's own one-writer
+check and its stop-at-the-first-failure are as before. The walk-in counts
+sorted drops waiting as pending desk moves, and `office desk` lists them.
+
+`office open --goal TEXT` writes one more field line, `- goal: TEXT`,
+after `source` (the folder template is untouched: the command writes it).
+`office start N` offers a folder's goal (a return takes it, piped it is
+taken, `--goal` overrides) and sends its brief.md as the session's brief
+(`--brief` names another; a bundle keeps its own, said).
+
+The handbook, `handbook/`, arrives with the first fact `office land`
+files: handbook/README.md from the new templates/handbook-README.md, the
+floor plan's entry as share/spaces.toml declares it (its front page
+hung), and bale.toml's `handbook` trigger and `handbook/README.md` pull.
+One chapter per project, `handbook/PROJECT.md`, from the reshaped
+templates/handbook-chapter.md: `## Front sheet` for the occupant, `##
+Facts` for sessions, appended and never rewritten by hand. A chapter
+rides with every session whose lane names its project; `office status`
+gains a `handbook:` line.
+
+`office start --sort` is the standalone sort, the verb `sort` in
+share/verbs.toml (an office session, built via start). It packs from the
+office with the goal "Sort the in-tray's drops", the slug `in-tray-sort`
+and a brief from the new templates/sort-brief.md (the standing
+instructions, every unsorted drop between its DROP markers, the desk as
+`office desk` prints it, and the Sort format); it ships every folder's
+folder.md and the handbook, and forecasts the notepad and, with a drafting
+table, drafting-table/moves.md (made from its template first when
+missing). It belongs to no folder: the walk-in shows it in flight as the
+in-tray's session, and `office land` finds it. Refused while another sort
+is out, while an open session holds the in-tray, and with no drop
+unsorted. The Next line names it, after the `--drop` rule, for an
+unsorted drop whose project does not resolve once a session has been
+recorded since it was dropped, and for three or more unsorted drops with
+nothing ready; the `--drop` rule leaves such a drop to it.
+
+The doctrine's core gains one bullet (ten lines): a session records its
+light blocks and answers, and the facts it learns, in notes.md, reads the
+chapter it carries before it asks, and `office land` files it all.
+Sections 4, 5 and 7 say the rest, with the page's Sort section and the
+chapter pinned as blocks the templates hold to the same bytes.
+
 ## 0.19.0
 
 Additive: no migration and nothing to do in any office. A new verb,

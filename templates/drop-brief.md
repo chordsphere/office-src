@@ -60,3 +60,5 @@ this order (values illustrative):
 what; `facts:` is `none` or one or more lines for the project's handbook
 chapter, each starting with `- `; `#### Brief` is present when `folder:`
 is `new` and may be present otherwise.
+Fact lines follow an empty `- facts:` line, one `- ` line each, before
+the blank line above `#### Brief`.
