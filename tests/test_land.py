@@ -22,6 +22,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -65,6 +66,7 @@ MISS = pathlib.Path({miss!r})
 STATE = pathlib.Path({state!r})
 CALLS = pathlib.Path({calls!r})
 PACKER = {packer!r}
+FAKE_VERSION = tuple(int(x) for x in os.environ.get("FAKE_BALE_VERSION", "0.4.45").split("."))
 argv = sys.argv[1:]
 cwd = os.path.realpath(os.getcwd())
 with CALLS.open("a", encoding="utf-8") as log:
@@ -343,9 +345,20 @@ if argv[:2] == ["open", "--check"]:
     if b is None:
         missing(argv[2], "bundle")
     with tarfile.open(b) as t:
-        pack_argv = json.loads(t.extractfile("bundle.json").read())["pack_argv"]
+        check_bytes = t.extractfile("bundle.json").read()
+        pack_argv = json.loads(check_bytes)["pack_argv"]
+        check_brief = t.extractfile("brief.md").read() if "brief.md" in t.getnames() else b""
     old_b = "TMP/dl/2026-01-01-office-probe-ok.bale-bundle"
     forecast = bundle_forecast_of(pack_argv)
+    # A bundle whose session is still open rehearses as a second desk
+    # (bale 0.4.44 on): no gate runs, since an open would mint nothing.
+    check_id = hashlib.sha256(check_bytes + check_brief).hexdigest()
+    desk = [x for x in repo["sessions"] if L.get("opened_from", {{}}).get(x) == check_id]
+    if desk:
+        say(["[bale] bale open --check: rehearsing planner bundle " + str(b) + " against " + cwd,
+             "[bale] second desk: this bundle opened session " + desk[0] + ", which is still open; an open would "
+             "record a further desk on it"])
+        sys.exit(0)
     gone = [w for w in forecast if w not in (".", "") and not (pathlib.Path(cwd) / w).exists()]
     if gone:
         cap = cfx("check-nopath")
@@ -365,14 +378,60 @@ if argv[:2] == ["open", "--check"]:
     sys.exit(0)
 
 if argv[0] == "open":
-    if len(argv) != 2:
+    # bale open BUNDLE [--json]. --json (bale 0.4.48; a second desk's
+    # tarball since 0.4.50) prints one JSON line on stdout, shaped as
+    # format_open_json's docstring says, and everything else on stderr.
+    # A bundle whose identity (its manifest and brief, not its file name:
+    # a browser's "NAME (1)" copy is the same bundle) matches the bundle an
+    # open session was opened from is a second desk (bale 0.4.44 on): no
+    # session is minted, a desk is counted on that session, and the opener
+    # is the desk's.
+    as_json = argv[2:] == ["--json"]
+    if len(argv) != 2 and not as_json:
+        say(fx("open-extra-flags")["stderr"], err=True); sys.exit(2)
+    if as_json and FAKE_VERSION < (0, 4, 48):
         say(fx("open-extra-flags")["stderr"], err=True); sys.exit(2)
     b = resolve(argv[1], "bundle")
     if b is None:
         missing(argv[1], "bundle")
     with tarfile.open(b) as t:
-        bundle = json.loads(t.extractfile("bundle.json").read())
+        bundle_bytes = t.extractfile("bundle.json").read()
+        bundle = json.loads(bundle_bytes)
         brief = t.extractfile("brief.md").read() if bundle["members"]["brief"] else None
+    identity = hashlib.sha256(bundle_bytes + (brief or b"")).hexdigest()
+    L.setdefault("opened_from", {{}}); L.setdefault("desks", {{}})
+    joined = [x for x in repo["sessions"] if L["opened_from"].get(x) == identity]
+    def json_line(outcome, sid, tarball, opener):
+        keys = ["sid", "tarball", "log", "session_dir", "context_files", "readme_path", "readme_heading",
+                "readme_sha256", "checkpoint_file_path", "checkpoint_file_sha256", "branch", "applied_latest",
+                "sweep", "include_group", "opener"]
+        line = {{"outcome": outcome}}
+        line.update({{k: None for k in keys}})
+        line.update(sid=sid, tarball=tarball, opener=opener)
+        line["bundle"] = {{"path": str(b.resolve()), "sha256": hashlib.sha256(b.read_bytes()).hexdigest(),
+                          "stem": b.name[:-len(".bale-bundle")]}}
+        line["members"] = {{"brief": hashlib.sha256(brief).hexdigest() if brief is not None else None,
+                           "checkpoint": None}}
+        line["rehearsal"] = None
+        return json.dumps(line)
+    if joined:
+        sid = joined[0]
+        s = load(); desks = s["land"].setdefault("desks", {{}}); n = desks.get(sid, 1) + 1; desks[sid] = n; save(s)
+        tb = pathlib.Path(cwd) / ".bale" / "outbox" / ("request-" + sid + ".tar.gz")
+        opener = ["I'm using \"bale\", a CLI that packaged the attached request tarball.",
+                  "This message opens bale session " + sid + " as its desk " + str(n) + " (" + sid + "@desk-" + str(n) + ").",
+                  "Goal, verbatim from the request manifest: " + bundle["pack_argv"][0]]
+        lines = ["[bale] second desk: bundle " + b.name + " matches the bundle open session " + sid
+                 + " was opened from; recording desk-" + str(n) + " on that session instead of opening a new one",
+                 "", "--8<-- session opener (copy everything between the scissor lines) --8<--", *opener,
+                 "--8<-- end session opener --8<--"]
+        if as_json:
+            say(lines, err=True)
+            tarball = str(tb) if tb.is_file() and not os.environ.get("FAKE_BALE_OUTBOX_GONE") else None
+            print(json_line("second-desk", sid, tarball, "\n".join(opener) + "\n"))
+        else:
+            say(lines)
+        sys.exit(0)
     tmp = tempfile.mkdtemp(prefix="bale-open-members-")
     args = ["pack"] + bundle["pack_argv"]
     if brief is not None:
@@ -385,14 +444,19 @@ if argv[0] == "open":
         sys.stderr.write(p.stderr); sys.exit(p.returncode)
     report = json.loads(p.stdout.splitlines()[-1])
     sid, tarball = report["sid"], report["tarball"]
+    s = load(); s["land"].setdefault("opened_from", {{}})[sid] = identity; save(s)
     label = "open-brief" if brief is not None else "open-ro-bare"
     cap = fx(label)
     old_sid = "2026-10-03-probe-open-brief-001" if brief is not None else "2026-10-03-probe-open-ro-001"
     old_root = "/tmp/office-probe.waUkTl/openb" if brief is not None else "/tmp/office-probe.waUkTl/openro"
     old_goal = re.search(r"^Goal, verbatim from the request manifest: (.*)$", "\n".join(cap["stdout"]), re.M).group(1)
     old_bundle = [l for l in cap["stdout"] if l.startswith("[bale] opening planner bundle ")][0][len("[bale] opening planner bundle "):]
-    say(swap(cap["stdout"], old_sid, sid, old_root, cwd,
-             [(old_goal, bundle["pack_argv"][0]), (old_bundle, str(b))]))
+    lines = swap(cap["stdout"], old_sid, sid, old_root, cwd, [(old_goal, bundle["pack_argv"][0]), (old_bundle, str(b))])
+    if as_json:
+        say(lines, err=True)
+        print(json_line("opened", sid, tarball, None))
+    else:
+        say(lines)
     sys.exit(0)
 
 print("fake bale: not built for bale " + " ".join(argv), file=sys.stderr)
@@ -1043,6 +1107,96 @@ class TestStartABundle(LandCase):
         self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
         # The goal was never asked, and nothing was added to the bundle.
         self.assertEqual([c for c in self.fake.calls_of("pack") if "--context" not in c[1]], [])
+
+    # --- which session a bundle leaves open (0.17.2) ---------------------------------
+    #
+    # The live case (home-office, 2026-10-12; probe of session
+    # 2026-10-13-doctrine-core-001): the audience-line bundle was opened on
+    # 2026-10-08 as 2026-10-08-audience-line-002, and on 2026-10-12 its
+    # browser copy "2026-10-08-audience-line (1).bale-bundle" went to bale
+    # open again while that session was still open. bale 0.4.52 took it as
+    # a second desk on the open session and minted nothing, so the open set
+    # did not move, and office start said nothing was newly open and made
+    # no tray.
+
+    def started(self, proc):
+        sid = re.search(r"^(?:Packed|Joined) (\d{4}-\d{2}-\d{2}-[a-z0-9-]+-\d{3})\b", proc.stdout, re.M).group(1)
+        tray = pathlib.Path(re.search(r"^Out tray: (.*)$", proc.stdout, re.M).group(1))
+        return sid, tray
+
+    def test_a_stem_dated_days_before_the_start(self):
+        """The sid is bale's, minted on its own clock, and found as the one
+        session newly open: never by the day of the start, whatever the
+        stem's date, with bale open's report and with its --json line."""
+        for version, stem, write in (("0.4.45", "2026-10-08-audience-line", "src"),
+                                     ("0.4.52", "2026-10-01-dated-before", "docs")):
+            self.e.env["FAKE_BALE_VERSION"] = version
+            folder = self.run_office("open", f"job-{write}", "--lane", f"alpha: {write}", check=0).stdout.strip()
+            bundle = bundle_file(self.e.tmp / "b", stem, self.argv(slug=stem[11:], write=write))
+            proc = self.run_office("start", folder.split("/")[1], "--on", "alpha", "--bundle", str(bundle), check=0)
+            sid, tray = self.started(proc)
+            self.assertTrue(proc.stdout.startswith(f"Packed {sid} for {folder}."), proc.stdout)
+            self.assertTrue(self.fake.is_open(self.proj, sid), sid)
+            self.assertIn(f"\n- {sid}\n", (self.root / folder / "folder.md").read_text())
+            self.assertIn(f"request-{sid}.tar.gz", [p.name for p in tray.iterdir()])
+            self.assertIn(f"bale session {sid}", opener_from(proc.stdout)[1])
+            (_, argv, _) = self.fake.calls_of("open")[-1]
+            self.assertEqual(argv, ["open", str(bundle)] + (["--json"] if version == "0.4.52" else []), version)
+
+    def open_on_the_eighth(self, version="0.4.52"):
+        """The audience-line bundle opened on 2026-10-08 by bare name from
+        the downloads, recorded in folder fix-login; its browser copy saved
+        days later. Returns (sid, the copy's name)."""
+        self.e.env["FAKE_BALE_VERSION"] = version
+        bundle_file(self.downloads, "2026-10-08-audience-line", self.argv(slug="audience-line"), brief_with_page())
+        self.e.env["FAKE_BALE_DAY"] = "2026-10-08"
+        sid, _ = self.started(self.run_office("start", "fix-login", "--on", "alpha",
+                                              "2026-10-08-audience-line.bale-bundle", check=0))
+        del self.e.env["FAKE_BALE_DAY"]
+        self.assertEqual(sid, "2026-10-08-audience-line-001")
+        copy = "2026-10-08-audience-line (1).bale-bundle"
+        shutil.copy(self.downloads / "2026-10-08-audience-line.bale-bundle", self.downloads / copy)
+        later = self.run_office("open", "audience-again", "--lane", "alpha: src", check=0).stdout.strip()
+        return sid, copy, later
+
+    def test_the_live_case_a_second_desk_is_joined_recorded_and_carried(self):
+        sid, copy, later = self.open_on_the_eighth()
+        proc = self.run_office("start", later.split("/")[1], "--on", "alpha", copy, check=0)
+        got, tray = self.started(proc)
+        self.assertEqual(got, sid)
+        self.assertTrue(proc.stdout.startswith(f"Joined {sid}, already open, as a second desk for {later}."),
+                        proc.stdout)
+        self.assertIn("bale opened no new session", proc.stderr)
+        self.assertIn(f"{self.folder} records it too", proc.stderr)
+        self.assertIn("joined as a second desk: the session was already open", proc.stdout)
+        self.assertEqual(json.loads(self.fake.state.read_text())["repos"][os.path.realpath(self.proj)]["sessions"],
+                         [sid], "a second desk opens nothing")
+        self.assertEqual(self.fake.land_state()["desks"][sid], 2)
+        self.assertIn(f"\n- {sid}: a second desk on a session already open\n",
+                      (self.root / later / "folder.md").read_text())
+        self.assertIn(f"request-{sid}.tar.gz", [p.name for p in tray.iterdir()])
+        opener = opener_from(proc.stdout)
+        self.assertIn(f"{sid}@desk-2", opener[1])
+        self.assertIn(f"When the response comes back: office land {sid}", proc.stdout)
+        (_, argv, _), = [c for c in self.fake.calls_of("open") if copy in c[1]]
+        self.assertEqual(argv, ["open", copy, "--json"])
+
+    def test_a_second_desk_whose_request_left_the_outbox_is_said(self):
+        sid, copy, later = self.open_on_the_eighth()
+        self.e.env["FAKE_BALE_OUTBOX_GONE"] = "1"
+        proc = self.run_office("start", later.split("/")[1], "--on", "alpha", copy, check=1)
+        self.assertIn(f"joined the open session {sid}", proc.stderr)
+        self.assertIn("no request tarball for it in the outbox", proc.stderr)
+        self.assertNotIn(f"- {sid}", (self.root / later / "folder.md").read_text())
+
+    def test_below_open_json_the_second_desk_is_named_as_the_likely_reason(self):
+        sid, copy, later = self.open_on_the_eighth(version="0.4.45")
+        proc = self.run_office("start", later.split("/")[1], "--on", "alpha", copy, check=1)
+        self.assertIn("bale status names 0 newly open session(s) (none)", proc.stderr)
+        self.assertIn("joins it as a second desk instead of opening one (bale 0.4.44 on)", proc.stderr)
+        self.assertIn("needs bale 0.4.50", proc.stderr)
+        self.assertNotIn(f"- {sid}", (self.root / later / "folder.md").read_text())
+        self.assertNotIn("Out tray:", proc.stdout)
 
     def test_a_bare_name_is_bales_to_find_and_the_page_files_once(self):
         bundle_file(self.downloads, "2026-10-05-fix-from-bundle", self.argv(), brief_with_page())

@@ -71,7 +71,7 @@ def save(s):
 state = load()
 repo = state["repos"].setdefault(cwd, {{"sessions": [], "scopes": {{}}, "outbox": []}})
 if argv == ["--version"]:
-    print("bale 0.4.45"); sys.exit(0)
+    print("bale " + os.environ.get("FAKE_BALE_VERSION", "0.4.45")); sys.exit(0)
 if argv == ["status", "--json"]:
     line = json.loads(fx("office-status")["stdout"][0])
     line["sid"] = repo["sessions"][0] if repo["sessions"] else None
@@ -152,7 +152,7 @@ for sid in repo["sessions"]:
         print(err, file=sys.stderr); sys.exit(1)
 if "pack" in state["fail"]:
     print("[bale] error: the fake was told to refuse this pack", file=sys.stderr); sys.exit(1)
-day = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+day = os.environ.get("FAKE_BALE_DAY") or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 n = 1 + sum(1 for s in repo["outbox"] if s.startswith("request-" + day + "-" + a.slug + "-"))
 sid = day + "-" + a.slug + "-" + format(n, "03d")
 outbox.mkdir(parents=True, exist_ok=True)

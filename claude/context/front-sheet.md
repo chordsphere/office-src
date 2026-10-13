@@ -110,10 +110,30 @@ For the worker first. bale gives a session's validation two minutes
   file under `~/.local/state/office-src/suite/`, and nobody waits.
   `latest/verdict` there is the last run's one line: `RUNNING since`,
   `OK`, `FAILED` or `BROKEN`, with the count, the time and the commit.
-  A worker on office-src can ask for it in a probe.
+  Since 0.17.2, walking into an office that scopes office-src's source
+  shows it as one `Suite:` line whenever it is not `OK`, including a
+  `RUNNING` more than an hour old. A worker on office-src can ask for it
+  in a probe.
 
 ## Recent changes
 
+- 0.17.2 (session 2026-10-13-doctrine-core-001): the doctrine's core, the
+  second desk and the suite's verdict on the walk-in.
+  - doctrine/OFFICE.md opens with a reading card naming what each kind
+    of session reads. A build session's read sits above a PAST THE CORE
+    banner: 199 lines, against the 1,044 it read before. No section is
+    renumbered and no word changed; section 4 is split across the banner
+    under its own number.
+  - `office start --bundle` handles a bundle whose session is still
+    open. bale 0.4.44 and later take it as a second desk and open
+    nothing, which is why the audience-line start of 2026-10-12 made no
+    tray. Start now records the joined session, fills the tray and
+    prints the desk's opener, reading `bale open --json` from bale
+    0.4.50.
+  - Walking into an office that scopes office-src's source shows one
+    `Suite:` line when the latest `tests/run.sh --detach` verdict is not
+    OK.
+  - Additive: no migration.
 - 0.17.1 (session 2026-10-12-suite-clock-001): the suite's clock. The
   fast tier (`tests/run.sh --fast`, `tests/fast-tier.toml`, 280 of the
   suite's 679 tests, 55 seconds on a two-core sandbox, 91 with this
@@ -527,6 +547,17 @@ For the worker first. bale gives a session's validation two minutes
   asks bale with `bale open --check`, which says where it searched when
   it cannot find the name. Since 0.13.0 that happens before anything is
   written.
+- A bundle that the office can read (a path, not a bare name), whose
+  forecast overlaps a session the same bundle opened, is refused in the
+  office's own words as an overlap (doctrine section 4), though bale
+  would take it as a second desk. Today a second desk reaches bale only
+  by bare name. Whether the office should let it through is a planner's
+  ruling (proposed in session 2026-10-13-doctrine-core-001's notes). The
+  office cannot tell which bundle opened a session without reading
+  .bale/.
+- `bale open --json`, which start reads from bale 0.4.50 on, was read
+  from bale 0.4.52's key contract (its docstring) by a read-only probe;
+  no live line is captured yet. The suite's fake follows that contract.
 - A rider's glob names no project unless it is written with one
   (`office-src: bin/`), so a bare glob such as `bin/` rides the next
   pack on any project whose forecast touches `bin/`, and a pack

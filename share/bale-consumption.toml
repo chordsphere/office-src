@@ -11,7 +11,8 @@
 # It never writes what bale records. The surfaces after the reads run a
 # bale verb when the occupant asks: office start makes a session and its
 # context tarballs (pack, context, open), asking bale first whether a
-# bundle can open (open_check, which writes nothing), and office land lands one
+# bundle can open (open_check, which writes nothing; open_json from bale
+# 0.4.50 on), and office land lands one
 # (apply, retry), carries a clarification back (relay), and ends a
 # read-only sitting the office sent out (unlock). A datum the
 # office needs and bale does not stamp is a slip for bale-src, never a
@@ -222,17 +223,21 @@ keys = [
 
 # A planner bundle: bale verifies it, gates its stored pack argv and
 # replays it. Probed in 2026-10-03-friction-return-trip-001 on bale
-# 0.4.45, in throwaway repos. open has no --json and takes no flag beyond
-# its own, so the bundle's pack argv is the whole forecast: the office
-# adds nothing to it and answers none of its intents. The report is all
-# on stdout. The new session's id is read from bale status --json, the
+# 0.4.45, in throwaway repos. open had no --json there and takes no flag
+# beyond its own, so the bundle's pack argv is the whole forecast: the
+# office adds nothing to it and answers none of its intents. The report is
+# all on stdout. The new session's id is read from bale status --json, the
 # sessions open after the open that were not open before; the request
 # tarball is the path on the report's tarball line, checked against the
 # status outbox; the opener is between the same scissor lines as the
-# pack's (slips for bale-src: --json on open, with sid, tarball and
-# opener keys).
+# pack's. This form serves a bale below open_json's since (below); from
+# that bale on, open_json does.
 #
-# tarball_line  the report line that names the request tarball's path
+# tarball_line      the report line that names the request tarball's path
+# second_desk_since the first bale that joins a bundle whose session is
+#                   still open as a second desk and opens none: the open
+#                   set then does not move, and this form cannot say which
+#                   session the bundle joined
 [surfaces.open]
 argv = ["open", "{bundle}"]
 format = "text"
@@ -240,6 +245,39 @@ contract = "bale open --help (v0.4.45)"
 opener = ["--8<-- session opener (copy everything between the scissor lines) --8<--",
           "--8<-- end session opener --8<--"]
 tarball_line = "  tarball:        "
+second_desk_since = "0.4.44"
+
+# The same open with --json (bale 0.4.48; the second desk's tarball key
+# since 0.4.50), used when the bale where the bundle opens is at since or
+# later. One JSON line on stdout; every [bale] line, the second-desk
+# summary and the opener's scissor block go to stderr. outcome "opened"
+# is a real open (a sid minted; the replayed pack's own values); outcome
+# "second-desk" is a bundle whose session was still open, joined as one
+# more desk: sid is the joined session, opener that desk's paste text (LF
+# joined, one trailing LF), tarball the request desk one opened with, or
+# null when it is no longer in the outbox. The office holds the line to
+# bale status's open set before and after (lib/office_bale.py,
+# open_bundle). Read from format_open_json's docstring in bale 0.4.52's
+# bin/bale_report.py, which owns the key contract, by the probe of session
+# 2026-10-13-doctrine-core-001, which found that the audience-line bundle
+# opened on 2026-10-08 was joined as a second desk on 2026-10-12; no live
+# line was captured.
+#
+# since     the first bale whose open --json serves every key below
+# outcomes  the outcomes of a run that exits 0 having opened or joined one
+[surfaces.open_json]
+argv = ["open", "{bundle}", "--json"]
+since = "0.4.50"
+contract = "format_open_json's docstring, bin/bale_report.py (read on 0.4.52)"
+outcomes = ["opened", "second-desk"]
+opener = ["--8<-- session opener (copy everything between the scissor lines) --8<--",
+          "--8<-- end session opener --8<--"]
+keys = [
+  "outcome",
+  "sid",       # the session minted, or the one a second desk joined
+  "tarball",   # the request's absolute path; null on a second desk whose request left the outbox
+  "opener",    # the paste text, LF-joined; when not a string, the scissor block on stderr is read
+]
 
 # Asked before office start writes anything, for a planner bundle: bale
 # open --check where the bundle opens, stdin closed. bale resolves a bare

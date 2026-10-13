@@ -8,6 +8,19 @@ says why it exists, and what it adds to these rules, in its own profile
 
 ## Front sheet
 
+Reading card. Find the row for the session you are, read the sections
+it names, and stop. What a build session on a project reads is the
+core: it sits above the banner marked PAST THE CORE, in reading order,
+and everything else sits below it, its section numbers unchanged.
+
+| Kind of session | Reads |
+|---|---|
+| A build session on a project, the common case | this card and the front sheet below it; section 2, the audience line and its three boundaries; section 3, the principles, whose sixth is the two pages at the end of notes.md; section 4 to the end of its list, how a session is packed and what the doctrine tarball beside its request is; and section 9, the house rules |
+| A work session in an office | the build row, then section 5 for the spaces it writes (the table, then those spaces' paragraphs), section 6, what every office session ships, and section 15, filed paper and its check |
+| The founding session | the work row, then section 12, the profile |
+| A sitting | the work row, the drafting table being the space it writes; then the rest of section 4, and sections 7, the verbs, and 8, when to open a session |
+| A session building office-src | the whole doc, since the tool implements it |
+
 An office is where you go to begin work on the projects in its scope. It
 holds what only you and your sessions may read, organized like a physical
 office so that anyone, you or a session, can guess where something lives.
@@ -61,25 +74,8 @@ own questions and only you answer them. It never schedules a session,
 never hands one to a model and never carries pastes. bale carries the
 session.
 
-## 1. What an office is
-
-An office holds what only its occupant and their sessions may read, and
-the context around the work: why a job was taken on, the correspondence
-that produced it, deliberation, candid notes, the rolodex, private
-versions of things. It is organized like a physical office because a
-predictable layout is what lets a session find what it needs without
-being told.
-
-The work itself mostly lives elsewhere. A project exists when a thing has
-an audience or must run somewhere: code, a report, a user guide, a
-filled-in comparison of houses that sold nearby. Projects are their own
-repos. The office is where a job starts (a folder) and where everything
-around the work lives. A thing whose only audience is the occupant can
-live in its folder; the office is in git, so it has history.
-
-The occupant's work in an office is creating, making judgment calls and
-directing traffic. Anything that asks the occupant for bookkeeping is a
-design flaw and goes in the suggestion box.
+> Section 1, what an office is, sits past the core banner, ahead of
+> the rest of section 4; its number is unchanged.
 
 ## 2. The audience line and three boundaries
 
@@ -170,6 +166,61 @@ A session is packed where it lands.
   writes on a host outside the project's repo is removed again, whether
   the start succeeded or not. One start reaches the host once, and the
   reads it needs there share a connection.
+
+> Section 4 continues past the core banner, from "`office start`
+> does all of this", and sections 5 to 8 follow it there.
+
+## 9. House rules for every office
+
+These hold in every office. Each office adds its own in its profile.
+
+1. Every session lands something: at minimum a notepad entry and the
+   folder it touched. A planning sitting's words travel in the briefs of
+   the sessions it authors, and `office start` files them in the notepad
+   when it sends one of those sessions out.
+2. Every session that lands a change to something the handbook describes
+   updates the front sheet of that chapter in plain language.
+3. Nothing goes on a rolodex card that would embarrass the occupant if
+   the person read it.
+4. Anything that asks the occupant for bookkeeping, setup or moving files
+   is friction. Say so in a suggestion slip. When a hand step cannot be
+   avoided, give it as one line and say where to run it.
+
+> Sections 10 to 15 sit past the core banner, after section 8.
+
+---
+
+> **PAST THE CORE.** Everything above this banner (the reading card,
+> the front sheet, sections 2 and 3, section 4 to the end of its
+> list, and section 9) is what a build session on a project
+> reads. Everything below it (section 1, the rest of section 4,
+> sections 5 to 8 and 10 to 15) is read when the reading card's
+> row for the session names it, and a session building office-src
+> reads it all.
+
+---
+
+## 1. What an office is
+
+An office holds what only its occupant and their sessions may read, and
+the context around the work: why a job was taken on, the correspondence
+that produced it, deliberation, candid notes, the rolodex, private
+versions of things. It is organized like a physical office because a
+predictable layout is what lets a session find what it needs without
+being told.
+
+The work itself mostly lives elsewhere. A project exists when a thing has
+an audience or must run somewhere: code, a report, a user guide, a
+filled-in comparison of houses that sold nearby. Projects are their own
+repos. The office is where a job starts (a folder) and where everything
+around the work lives. A thing whose only audience is the occupant can
+live in its folder; the office is in git, so it has history.
+
+The occupant's work in an office is creating, making judgment calls and
+directing traffic. Anything that asks the occupant for bookkeeping is a
+design flaw and goes in the suggestion box.
+
+## 4. How a session is packed, continued
 
 `office start` does all of this for a folder in one command. It packs
 the session from the office or from the project (on the project's host,
@@ -666,22 +717,6 @@ chapters current.
 That is the shape. Each profile sets its own threshold inside it: an
 office where every session costs a long round trip opens fewer; an office
 for personal research may open one for any question worth keeping.
-
-## 9. House rules for every office
-
-These hold in every office. Each office adds its own in its profile.
-
-1. Every session lands something: at minimum a notepad entry and the
-   folder it touched. A planning sitting's words travel in the briefs of
-   the sessions it authors, and `office start` files them in the notepad
-   when it sends one of those sessions out.
-2. Every session that lands a change to something the handbook describes
-   updates the front sheet of that chapter in plain language.
-3. Nothing goes on a rolodex card that would embarrass the occupant if
-   the person read it.
-4. Anything that asks the occupant for bookkeeping, setup or moving files
-   is friction. Say so in a suggestion slip. When a hand step cannot be
-   avoided, give it as one line and say where to run it.
 
 ## 10. bale and the office
 
