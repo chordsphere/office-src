@@ -1504,5 +1504,86 @@ class TestText(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
+class TestTheDoctrinesCore(unittest.TestCase):
+    """The doctrine is read core-first (0.17.2): a reading card at the top
+    of its front sheet names what each kind of session reads, and what a
+    build session on a project reads sits above the PAST THE CORE banner,
+    in reading order, with everything else below it. Sections move and
+    keep their numbers; section 4 sits in two places, its list in the
+    core and the rest past the banner under the same number."""
+
+    CORE = ["Front sheet", "2", "3", "4", "9"]
+    PAST = ["1", "4 continued", "5", "6", "7", "8", "10", "11", "12", "13", "14", "15"]
+
+    def setUp(self):
+        self.lines = (REPO / "doctrine/OFFICE.md").read_text(encoding="ascii").splitlines()
+        banners = [i for i, l in enumerate(self.lines) if l.startswith("> **PAST THE CORE.**")]
+        self.assertEqual(len(banners), 1, "one PAST THE CORE banner")
+        self.banner = banners[0]
+
+    def headings(self, lines):
+        out = []
+        for l in lines:
+            if l == "## 4. How a session is packed, continued":
+                out.append("4 continued")
+            elif re.match(r"## (\d+)\. ", l):
+                out.append(re.match(r"## (\d+)\. ", l).group(1))
+            elif l.startswith("## "):
+                out.append(l[3:])
+        return out
+
+    def card(self):
+        top = self.lines[:30]
+        self.assertIn("## Front sheet", top)
+        rows = [l for l in top if l.startswith("| ") and not l.startswith("| Kind of session")]
+        return {l.split(" | ")[0][2:]: l.split(" | ")[1] for l in rows}
+
+    def test_the_card_is_read_in_under_thirty_lines(self):
+        rows = self.card()
+        self.assertEqual(sorted(rows), sorted(["A build session on a project, the common case",
+                                                "A work session in an office", "The founding session", "A sitting",
+                                                "A session building office-src"]))
+        self.assertLess(self.lines.index("## Front sheet"), self.lines.index("| Kind of session | Reads |"))
+        self.assertIn("the whole doc", rows["A session building office-src"])
+
+    def test_the_core_holds_the_build_read_in_reading_order(self):
+        self.assertEqual(self.headings(self.lines[:self.banner]), self.CORE)
+        self.assertEqual(self.headings(self.lines[self.banner:]), self.PAST)
+        # Under the sitting's target of 300 lines, against 1,044 for the
+        # whole doc before the core.
+        # A quarter of the doc at most, as the sitting asked.
+        self.assertLess(self.banner + 1, 300)
+        self.assertLessEqual(4 * (self.banner + 1), len(self.lines))
+
+    def test_every_section_the_build_row_names_is_in_the_core(self):
+        build = self.card()["A build session on a project, the common case"]
+        named = re.findall(r"section (\d+)", build)
+        self.assertEqual(named, ["2", "3", "4", "9"])
+        core = self.headings(self.lines[:self.banner])
+        for n in named:
+            self.assertIn(n, core)
+        # And the build read leaves out what the brief said it does not
+        # need: the spaces catalog, the verb table, the drafting table and
+        # the upgrade rules.
+        core_text = "\n".join(self.lines[:self.banner])
+        for words in ("| path | what it does | base | hung | filed |", "| verb | kind | built |",
+                      "Drafting table. Blueprints", "`office upgrade` runs the pending migrations"):
+            self.assertNotIn(words, core_text)
+
+    def test_every_section_a_row_names_exists(self):
+        numbered = {h for h in self.headings(self.lines) if h.isdigit()}
+        self.assertEqual(numbered, {str(n) for n in range(1, 16)})
+        for kind, reads in self.card().items():
+            for n in re.findall(r"sections? (\d+)", reads) + re.findall(r", (\d+), ", reads):
+                self.assertIn(n, numbered, kind)
+
+    def test_each_moved_section_leaves_a_pointer_where_it_was(self):
+        core = "\n".join(self.lines[:self.banner])
+        for words in ("> Section 1, what an office is, sits past the core banner",
+                      "> Section 4 continues past the core banner",
+                      "> Sections 10 to 15 sit past the core banner"):
+            self.assertIn(words, core)
+
+
 if __name__ == "__main__":
     unittest.main()

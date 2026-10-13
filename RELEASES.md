@@ -4,6 +4,67 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.17.2
+
+Additive: no migration, nothing to do in any office, and no verb gains a
+flag or a question. The doctrine reads core-first, `office start`
+carries a bundle that bale takes as a second desk, and the walk-in says
+when office-src's detached suite did not pass.
+
+doctrine/OFFICE.md opens with a reading card at the top of its front
+sheet: one row per kind of session the doctrine reaches (a build session
+on a project, a work session in an office, the founding session, a
+sitting, a session building office-src), each naming the sections it
+reads. What a build session on a project reads (the card, the front
+sheet, section 2, section 3, section 4 to the end of its list, and
+section 9) sits above a PAST THE CORE banner: 199 of the doc's 1,079
+lines, where a build session read all 1,044 before. Everything else sits
+below the banner in number order: section 1, the rest of section 4,
+sections 5 to 8, and 10 to 15. No section is renumbered and no sentence
+changed. Section 4 sits in two places under its own number, and each
+moved section leaves a one-line pointer where it was.
+`tests/test_office.py`'s TestTheDoctrinesCore holds the shape.
+
+`office start --bundle` still finds the session a bundle leaves open
+from bale's registry: the open set before `bale open` against the open
+set after. It now also handles the case where bale opens no session.
+Since bale 0.4.44, a bundle whose session is still open is taken as a
+second desk on that session: bale records the desk, prints that desk's
+opener, and mints no sid. That is what happened on 2026-10-12. The
+audience-line bundle had opened as 2026-10-08-audience-line-002 on
+2026-10-08, and its browser copy went to `bale open` again while the
+session was open. The office found nothing newly open and made no tray.
+
+From bale 0.4.50 on, start runs `bale open --json`. Its line says
+`opened` or `second-desk`, with the session id, the request tarball and
+the opener, and start holds that line to the open-set diff. For a second
+desk:
+
+- the folder records the session with the words "a second desk on a
+  session already open";
+- the out tray carries that session's request;
+- the opener printed is the desk's, and any other folder that records
+  the session is named;
+- the first line says Joined rather than Packed.
+
+Below bale 0.4.50, a start that finds nothing newly open says a second
+desk is the likely reason. `share/bale-consumption.toml` declares the
+new surface, `open_json`, read from bale 0.4.52's key contract. No
+session id is read from a date or from .bale/.
+
+The walk-in shows one `Suite:` line when the latest detached run's
+verdict is not OK. It does so only in an office that scopes office-src's
+own source, the project the install came from, as the `Install:` line
+already knows it. The verdict is `latest/verdict` under
+`$XDG_STATE_HOME/office-src/suite/`, else `~/.local/state/office-src/suite/`:
+
+- `FAILED` and `BROKEN` are said as written;
+- `RUNNING` is said once it is more than an hour old, with its log;
+- a verdict in no shape the runner writes is said as such;
+- no run yet, or `OK`, prints nothing.
+
+Nothing else on the walk-in moves, the Next line included.
+
 ## 0.17.1
 
 Additive: no migration, nothing to do in any office, and no verb

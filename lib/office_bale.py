@@ -2278,9 +2278,10 @@ def check_hosted_place(rd, entry, checked=False):
     return place
 
 
-def hosted_round(rd, place, paths=(), doctrine=False, extra=()):
+def hosted_round(rd, place, paths=(), doctrine=False, extra=(), version=False):
     """The reads a step on a hosted place needs, in one connection (since
-    0.16.0): bale status (cached in the reader), which of the paths are
+    0.16.0): bale status (cached in the reader), with version bale's
+    --version too (a bundle's open asks it, 0.17.2), which of the paths are
     not there, and with doctrine the sums of the doctrine its tree holds;
     extra argvs ride after them. Kept in rd.facts for paths_missing_in and
     doctrine_sums, so each answers from this round without connecting.
@@ -2292,7 +2293,8 @@ def hosted_round(rd, place, paths=(), doctrine=False, extra=()):
     if doctrine:
         argvs.append(["sh", "-c", _DOCTRINE_SUMS])
     try:
-        _, runs = rd.prefetch(place, [("status", {})], extra=[*argvs, *extra])
+        _, runs = rd.prefetch(place, [("status", {})] + ([("version", {})] if version else []),
+                              extra=[*argvs, *extra])
     except BaleError as exc:
         raise StartError([f"{place.name or place.host}: {exc}"])
     i = 0
@@ -2518,14 +2520,13 @@ def shell_quote(word):
     return "'" + word.replace("'", "'\\''") + "'"
 
 
-def install_behind(office_root, install=None):
-    """When this office scopes the project the running install came from
-    (INSTALLED's source:) and that repo's HEAD is not the installed
-    commit: {source, commit, head, version, words}, words being the
-    sentence office status's source line says (BEHIND: ...). None
-    otherwise: no INSTALLED stamp (a working copy), a source this office
-    does not scope, a source that is not a git work tree, or one level
-    with the install."""
+def install_source(office_root, install=None):
+    """(source, commit, project) when this office scopes the project the
+    running install came from: INSTALLED's source: and commit: lines,
+    and the name the office's [projects] gives that repo. None otherwise:
+    no INSTALLED stamp (a working copy), a stamp without both lines, or a
+    source this office does not scope (a hosted project is never the
+    source: the install is on this machine)."""
     stamp = pathlib.Path(install or INSTALL) / "INSTALLED"
     if not stamp.is_file():
         return None
@@ -2545,6 +2546,22 @@ def install_behind(office_root, install=None):
               if not p["problem"] and p["resolved"] is not None and pathlib.Path(p["resolved"]).resolve() == src_real]
     if not scoped:
         return None
+    return src, commit, scoped[0]["name"]
+
+
+def install_behind(office_root, install=None, source=False):
+    """When this office scopes the project the running install came from
+    (install_source) and that repo's HEAD is not the installed commit:
+    {source, commit, head, version, words, project}, words being the
+    sentence office status's source line says (BEHIND: ...). None
+    otherwise: no INSTALLED stamp (a working copy), a source this office
+    does not scope, a source that is not a git work tree, or one level
+    with the install. source, when given, is install_source's answer
+    already read (False: read it here)."""
+    found = install_source(office_root, install) if source is False else source
+    if found is None:
+        return None
+    src, commit, project = found
 
     def git_out(*args):
         try:
@@ -2567,25 +2584,136 @@ def install_behind(office_root, install=None):
     words = (f"BEHIND: the install is {commit}, and {src} is now at {short} (office-src {version}); "
              f"(cd {shell_quote(src)} && ./install.sh) brings the install level")
     return {"source": src, "commit": commit, "head": short, "version": version, "words": words,
-            "project": scoped[0]["name"]}
+            "project": project}
 
 
-def open_bundle(rd, pack_dir, bundle, scratch=None):
+# --- the detached suite's verdict, on the walk-in ----------------------------------------
+#
+# tests/run.sh --detach (0.17.1) runs office-src's whole suite in the
+# background and writes a one-line verdict under the state directory,
+# office-src/suite/<stamp>-<pid>/verdict, with latest naming the newest
+# run. A verdict is only as good as someone reading it, and the walk-in is
+# where the occupant already looks: when the office scopes the install's
+# own source, the walk-in says the latest verdict in one line, and only
+# when it is not OK. The shape is tests/runner.py's (detach and
+# detached_child); test_read_side holds the two to each other.
+
+# A RUNNING verdict older than this is reported: the whole suite takes
+# minutes, so a run that has said RUNNING for an hour has likely died.
+SUITE_RUNNING_STALE = dt.timedelta(hours=1)
+SUITE_RUNNING_RE = re.compile(r"^RUNNING since (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\b")
+
+
+def suite_state_dir(environ=None):
+    """Where tests/runner.py keeps detached runs: office-src/suite under
+    XDG_STATE_HOME, else under HOME's .local/state (runner.state_dir)."""
+    environ = os.environ if environ is None else environ
+    base = environ.get("XDG_STATE_HOME") or os.path.join(environ.get("HOME") or os.path.expanduser("~"),
+                                                         ".local", "state")
+    return pathlib.Path(base) / "office-src" / "suite"
+
+
+def suite_verdict_words(line, run_dir, now=None):
+    """What the walk-in says of one verdict line, or None when there is
+    nothing to say: OK, or RUNNING for less than SUITE_RUNNING_STALE. A
+    FAILED or BROKEN verdict is said as written (it names the log to
+    read); a RUNNING one past the hour says so with its log; a line in no
+    shape the runner writes is said as such, never taken for OK. A pure
+    function of its arguments."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    line = line.strip()
+    if line == "OK" or line.startswith("OK "):
+        return None
+    if line.startswith(("FAILED ", "BROKEN ")):
+        return line
+    m = SUITE_RUNNING_RE.match(line)
+    if m:
+        since = dt.datetime.strptime(m.group(1), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+        age = now - since
+        if age < SUITE_RUNNING_STALE:
+            return None
+        hours = int(age.total_seconds() // 3600)
+        return (f"{line}; still RUNNING after {hours} hour(s), so the run has likely died: "
+                f"read {pathlib.Path(run_dir) / 'run.log'}")
+    return f"the latest verdict, {pathlib.Path(run_dir) / 'verdict'}, is in no shape the runner writes: {line!r}"
+
+
+def suite_verdict(office_root, install=None, environ=None, now=None, source=False):
+    """The walk-in's Suite line for the latest detached run, or None.
+    Only when this office scopes the install's own source (install_source,
+    or source when already read), and only when the verdict is not OK
+    (suite_verdict_words). No state directory, or one holding no run yet,
+    is nothing to say: the suite has not been run detached on this
+    machine. A verdict that cannot be read where a run is named is said,
+    never skipped."""
+    found = install_source(office_root, install) if source is False else source
+    if found is None:
+        return None
+    state = suite_state_dir(environ)
+    latest = state / "latest"
+    if not state.is_dir() or not (latest.is_symlink() or latest.exists()):
+        debug(f"no detached run of the suite at {state}; nothing to say on the walk-in")
+        return None
+    run_dir = latest.resolve()
+    try:
+        text = (run_dir / "verdict").read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return f"the latest detached run's verdict could not be read ({run_dir / 'verdict'}: {exc.strerror or exc})"
+    first = text.splitlines()[0] if text.strip() else ""
+    if not first.strip():
+        return f"the latest detached run's verdict is empty ({run_dir / 'verdict'})"
+    return suite_verdict_words(first, run_dir, now)
+
+
+def open_json_ok(rd, pack_dir):
+    """Whether the bale that opens a bundle in pack_dir speaks bale open
+    --json with the joined session's tarball on a second desk ([surfaces.
+    open_json]'s since, 0.4.50): this machine's bale, or the one a hosted
+    place's shell reaches (asked in the start's round, so no connection
+    of its own). A version that cannot be read or compared is no."""
+    since = rd.consumption.surface("open_json")["since"]
+    try:
+        v = rd.installed_version(pack_dir if rd.hosted(pack_dir) else None)
+        return oh.compare_versions(v, since) >= 0
+    except (BaleError, oh.HelperError) as exc:
+        debug(f"bale's version where the bundle opens could not be read or compared ({exc}); "
+              "bale open runs without --json")
+        return False
+
+
+def open_bundle(rd, pack_dir, bundle, scratch=None, as_json=False):
     """Run bale open for a planner bundle in pack_dir, stdin closed, so
     no question is answered for the occupant; a pre-answered intent in
-    the bundle is bale's to honour. Returns sid, tarball and opener. The
-    sid is the session bale status lists after the open and did not
-    before; the tarball is the report's tarball line, held to the
-    request that status lists for that sid. On a host the status after
-    the open, and the scratch's removal, ride the open's own connection."""
-    spec = rd.consumption.surface("open")
+    the bundle is bale's to honour. Returns sid, tarball, opener and
+    second_desk.
+
+    Which session the open leaves the bundle in is read from the registry,
+    never from the day of the start and never from .bale/: bale status's
+    open set before the open against the open set after. A real open adds
+    one session to it. A second desk adds none: since 0.4.44 a bundle whose
+    session is still open joins it as one more desk (bale records a desk-2
+    attempt on that session and prints a desk-qualified opener) instead of
+    minting a sid, which is what happened to the audience-line bundle on
+    2026-10-12 (probe of session 2026-10-13-doctrine-core-001). With
+    as_json (bale 0.4.50 or later, open_json_ok) bale open --json says
+    which it did, outcome "opened" or "second-desk" with the sid, and the
+    office holds that line to the diff: an open must add exactly its sid,
+    a second desk must add nothing and name a session open before and
+    after. Without it (an older bale) the diff alone decides, and a diff
+    that shows nothing newly open says the second desk is the likely
+    reason. The tarball is the report's (the JSON key, or the human
+    report's tarball line), held to the request bale status lists for
+    that sid. On a host the status after the open, and the scratch's
+    removal, ride the open's own connection."""
+    surface = "open_json" if as_json else "open"
+    spec = rd.consumption.surface(surface)
     before = set(rd.key(rd.status(pack_dir), "status", "sessions") or [])
     hosted = rd.hosted(pack_dir)
     status_argv = rd.consumption.argv("status")
     also = None
     if hosted:
         also = [["bale", *status_argv]] + ([scratch.removal_argv()] if scratch is not None and scratch.made else [])
-    proc, shown, where = rd.invoke("open", pack_dir, timeout=PACK_TIMEOUT, whole_why=True, also=also, bundle=bundle)
+    proc, shown, where = rd.invoke(surface, pack_dir, timeout=PACK_TIMEOUT, whole_why=True, also=also, bundle=bundle)
     lines = proc.stdout.splitlines()
     rd.forget(pack_dir)
     if hosted:
@@ -2599,20 +2727,55 @@ def open_bundle(rd, pack_dir, bundle, scratch=None):
             except BaleError as exc:
                 debug(f"bale status after the open did not read from its batch ({exc}); asked on its own")
     st = rd.status(pack_dir)
-    new = [x for x in (rd.key(st, "status", "sessions") or []) if x not in before]
-    if len(new) != 1:
-        raise BaleError("output", f"{shown} exited 0 in {where}, but bale status names {len(new)} newly open "
-                                  f"session(s) ({', '.join(new) or 'none'}), so the office cannot tell which it opened")
-    sid = new[0]
+    after = rd.key(st, "status", "sessions") or []
+    new = [x for x in after if x not in before]
+    second_desk = False
+    if as_json:
+        report = rd.parse(surface, proc, shown, where)
+        outcome = rd.key(report, "open_json", "outcome")
+        sid = rd.key(report, "open_json", "sid")
+        tarball = rd.key(report, "open_json", "tarball")
+        opener = rd.key(report, "open_json", "opener")
+        if outcome not in spec["outcomes"]:
+            raise BaleError("output", f"{shown} exited 0 in {where} with outcome {outcome!r}, which is neither of "
+                                      f"{' and '.join(spec['outcomes'])}")
+        if outcome == "second-desk":
+            second_desk = True
+            if new or sid not in before or sid not in after:
+                raise BaleError("output", f"{shown} says it joined {sid} in {where} as a second desk, but bale "
+                                          f"status names {', '.join(new) or 'no'} newly open session(s) and "
+                                          f"{sid} {'was' if sid in before else 'was not'} open before, so the "
+                                          "office cannot tell which session the bundle is in")
+        elif new != [sid]:
+            raise BaleError("output", f"{shown} says it opened {sid} in {where}, but bale status names "
+                                      f"{len(new)} newly open session(s) ({', '.join(new) or 'none'})")
+        if second_desk and tarball is None:
+            raise BaleError("output", f"{shown} joined the open session {sid} in {where} as a second desk, but bale "
+                                      "has no request tarball for it in the outbox (its summary says so), so there "
+                                      "is no request to put in the out tray; bale status shows the session")
+        opener = (opener.rstrip("\n").split("\n") if isinstance(opener, str) and opener.strip()
+                  else opener_lines(proc.stderr.splitlines(), spec))
+    else:
+        if len(new) != 1:
+            why = ("; a bundle whose session is still open joins it as a second desk instead of opening one "
+                   f"(bale {spec['second_desk_since']} on), and bale open --json, which says so, "
+                   f"needs bale {rd.consumption.surface('open_json')['since']}: bale's own lines say which, and "
+                   "bale status names the open sessions" if not new else "")
+            raise BaleError("output", f"{shown} exited 0 in {where}, but bale status names {len(new)} newly open "
+                                      f"session(s) ({', '.join(new) or 'none'}), so the office cannot tell which "
+                                      f"it opened{why}")
+        sid = new[0]
+        tarball = None
+        for line in lines:
+            if line.startswith(spec["tarball_line"]):
+                tarball = line[len(spec["tarball_line"]):].strip()
+        opener = opener_lines(lines, spec)
     name = f"request-{sid}.tar.gz"
-    tarball = None
-    for line in lines:
-        if line.startswith(spec["tarball_line"]):
-            tarball = line[len(spec["tarball_line"]):].strip()
-    if tarball is None or pathlib.Path(tarball).name != name or name not in (rd.key(st, "status", "outbox") or []):
-        raise BaleError("output", f"{shown} opened {sid} in {where}, but its report's tarball line "
-                                  f"({tarball or 'none'}) is not the request bale status lists for it ({name})")
-    return {"sid": sid, "tarball": tarball, "opener": opener_lines(lines, spec)}
+    if tarball is None or pathlib.PurePath(tarball).name != name or name not in (rd.key(st, "status", "outbox") or []):
+        raise BaleError("output", f"{shown} {'joined' if second_desk else 'opened'} {sid} in {where}, but its "
+                                  f"report's tarball ({tarball or 'none'}) is not the request bale status lists "
+                                  f"for it ({name})")
+    return {"sid": sid, "tarball": tarball, "opener": opener, "second_desk": second_desk}
 
 
 def start(rd, office_root, folder, where, project, goal, slug, includes, writes, read_only,
@@ -2685,7 +2848,7 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             except ValueError:
                 b_inc, b_wr = [], []
             named = [*b_inc, *b_wr]
-        hosted_round(rd, pack_dir, named, doctrine=True)
+        hosted_round(rd, pack_dir, named, doctrine=True, version=bool(bundle))
     else:
         pack_dir = entry["resolved"]
         ok, why = oh.check_project_dir(pack_dir)
@@ -2867,7 +3030,15 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                 stage = "sending the bundle to " + pack_dir.host
                 asked = send_bundle(pack_dir, local_bundle, scratch)
                 stage = "the bundle's open"
-            opened = open_bundle(rd, pack_dir, asked if hosted else bundle, scratch if hosted else None)
+            opened = open_bundle(rd, pack_dir, asked if hosted else bundle, scratch if hosted else None,
+                                 as_json=open_json_ok(rd, pack_dir))
+            if opened["second_desk"]:
+                already = [f for f in folders_naming(office_root).get(opened["sid"], []) if f != folder]
+                warnings.append(f"bale opened no new session: {opened['sid']}, opened from this bundle earlier and "
+                                "still open, took it as a second desk (bale records the desk on that session and "
+                                "prints a desk-qualified opener); the tray and the opener below are that desk's, "
+                                "and land brings the session back as before"
+                                + (f"; {', '.join(already)} records it too" if already else ""))
         else:
             readme = str(pathlib.Path(brief).resolve()) if brief else None
             if hosted and readme:
@@ -2887,7 +3058,7 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             if gone_too:
                 scratch.removed_by_step()
             opened = {"sid": rd.key(report, "pack", "sid"), "tarball": rd.key(report, "pack", "tarball"),
-                      "opener": opener_lines(stderr, spec)}
+                      "opener": opener_lines(stderr, spec), "second_desk": False}
     except (BaleError, ohost.HostError) as exc:
         tray.discard()
         raise StartError([f"{stage} failed, so no session was opened and no out tray was made: {exc}"])
@@ -2924,10 +3095,14 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     kind = "an office session" if where == "office" else project + " session"
     if hosted:
         kind += f", packed on {pack_dir.host} and carried back"
-    carried.insert(0, f"{name}: the request ({kind}" + (f", from the bundle {pathlib.Path(bundle).name})" if bundle else ")"))
+    if bundle:
+        kind += f", from the bundle {pathlib.Path(bundle).name}"
+        if opened["second_desk"]:
+            kind += ", joined as a second desk: the session was already open"
+    carried.insert(0, f"{name}: the request ({kind})")
     return {"sid": sid, "tray": str(final), "files": sorted(tray.files), "carried": carried,
             "opener": opened["opener"], "pack_dir": str(pack_dir), "request": str(final / name),
-            "warnings": warnings, "sitting": forecast == []}
+            "warnings": warnings, "sitting": forecast == [], "second_desk": opened["second_desk"]}
 
 
 # --- a host's bale brought level: office projects level-bale ---------------------------
@@ -4040,8 +4215,10 @@ def main(argv=None):
     p.add_argument("--where", choices=("office", "project"), required=True); p.add_argument("--project")
     p.add_argument("--include", action="append", default=[]); p.add_argument("--write", action="append", default=[])
     p.add_argument("--read-only", action="store_true"); p.add_argument("--bundle")
-    p = sub.add_parser("install-behind", help="the BEHIND sentence when this office scopes the install's source "
-                                              "and it moved past the install; nothing otherwise")
+    p = sub.add_parser("install-lines", help="the walk-in's lines about the install, when this office scopes its "
+                                             "source: Install: BEHIND ... when the source moved past the install, "
+                                             "Suite: ... when the latest detached run's verdict is not OK; nothing "
+                                             "otherwise")
     p.add_argument("office")
     p = sub.add_parser("bundle-where", help="where a bundle opens by default: DEFAULT<tab>WHY, or nothing")
     p.add_argument("office"); p.add_argument("--bundle", required=True); p.add_argument("--lane")
@@ -4156,14 +4333,27 @@ def main(argv=None):
         for r in riders:
             print(f"{r['number']}\t{r['title']}\t{r['rides']}\t{', '.join(r['touched'])}")
         return 0
-    if a.cmd == "install-behind":
+    if a.cmd == "install-lines":
+        # Each line is read on its own, so one that cannot be read never
+        # hides the other; the source is looked up once for both.
         try:
-            behind = install_behind(a.office)
+            source = install_source(a.office)
+        except (OSError, oh.HelperError) as exc:
+            debug(f"the install's source could not be read: {exc}")
+            source = None
+        try:
+            behind = install_behind(a.office, source=source)
         except (OSError, oh.HelperError) as exc:
             debug(f"the install could not be compared with its source: {exc}")
             behind = None
         if behind:
-            print(behind["words"])
+            print(f"Install: {behind['words']}")
+        try:
+            verdict = suite_verdict(a.office, source=source)
+        except (OSError, oh.HelperError) as exc:
+            verdict = f"the latest detached run's verdict could not be read: {exc}"
+        if verdict:
+            print(f"Suite: {verdict}")
         return 0
     if a.cmd == "bundle-where":
         try:

@@ -70,7 +70,10 @@ Walking in shows the office's name, the date and time in its timezone
 whether it is founded and current (and, when the office scopes the
 project the install came from and that project has moved past the
 installed commit, an `Install: BEHIND: ...` line in the words `office
-status` uses), the sessions in flight in its projects
+status` uses; and, for that same office, a `Suite: ...` line when the
+latest detached run of the project's suite, below, did not end `OK`:
+its `FAILED` or `BROKEN` verdict as written, or a `RUNNING` one over an
+hour old, with the log to read), the sessions in flight in its projects
 and in the office itself with the folder each belongs to, how many
 folders are ready, parked and candidates and the first three ready ones,
 this week and its gaps, the last notepad lines and the slips, and the
@@ -515,6 +518,22 @@ naming the session, its folder and the overlap, as for a pack; given as a
 bare name bale's search finds, the bundle cannot be read first, and
 `bale open --check` says it in bale's words before anything is written.
 
+Which session the bundle is in is read from bale's registry: the
+sessions open after `bale open` that were not open before. A bundle
+whose session is still open (opened from it earlier, say, and its
+browser copy `NAME (1).bale-bundle` started again) mints nothing. bale
+0.4.44 and later take it as a second desk on that session. From bale
+0.4.50 the office runs `bale open --json`, which says so, and carries the
+desk:
+
+- the folder records the session as a second desk;
+- the tray holds that session's request;
+- the opener is the desk's;
+- start's first line says `Joined SID, already open, as a second desk`.
+
+With an older bale, a start that finds nothing newly open names the
+second desk as the likely reason.
+
 The riders a pack carries ride with it. When the office has a drafting
 table, start runs `office riders --forecast` over the pack's forecast
 before it packs: on a terminal it offers each queued rider on the riders
@@ -944,7 +963,7 @@ matches the floor plan.
 | lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check), its run (the commits, the push, the record) and what it abandons; office letterhead check --on PROJECT |
 | lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin) |
 | share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks, one list for office letterhead check and the suite's text rules |
-| doctrine/OFFICE.md | how every office works |
+| doctrine/OFFICE.md | how every office works; it opens with a reading card naming what each kind of session reads, and what a build session reads sits above its PAST THE CORE banner |
 | doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |
 | share/spaces.toml | every space an office can have; the base ones are the default floor plan; a space files itself whole or as a list of paths |
 | share/profile-shape.toml | the profile's required sections |
@@ -1012,7 +1031,10 @@ then one line, `OK`, `FAILED` or `BROKEN`, with the count, the time, the
 commit it tested and the log to read; `latest` names the newest run, and
 the ten newest are kept. It restores SIGINT for its tests itself. It is
 meant as office-src's after-land action, so every landing runs the whole
-suite without holding the terminal.
+suite without holding the terminal; and walking into an office that
+scopes office-src's source shows the latest verdict, one `Suite:` line,
+whenever it is not `OK` (a run still `RUNNING` after an hour counts as
+not OK), so nobody has to go and read the file.
 
 `tests/run.sh` runs each test module as its own process, four at a time
 (`--jobs N`, or `OFFICE_TEST_JOBS`), since the modules share nothing and

@@ -16,6 +16,7 @@ third-trip probe's captures, in the development record beside the
 """
 
 import ast
+import datetime
 import hashlib
 import json
 import os
@@ -534,6 +535,57 @@ class TestInstallBehindItsSource(unittest.TestCase):
                                                   "office-src is behind its source, which this office scopes as "
                                                   "office-src"), last_line(out))
 
+    def test_the_suite_verdict_when_it_is_not_ok(self):
+        """0.17.2: the latest detached run's verdict, one line, when the
+        office scopes the install's source and the verdict is not OK; the
+        rest of the walk-in is as it was."""
+        state = self.e.tmp / "state"
+        extra = {"XDG_STATE_HOME": str(state)}
+
+        def walk_in():
+            return self.e.run(cwd=self.root, bin_path=self.office, check=0, extra=extra).stdout
+
+        def verdict(line):
+            run = state / "office-src" / "suite" / "20261013T010203Z-4242"
+            run.mkdir(parents=True, exist_ok=True)
+            (run / "verdict").write_text(line + "\n")
+            latest = state / "office-src" / "suite" / "latest"
+            if not latest.is_symlink():
+                latest.symlink_to(run.name)
+            return run
+
+        failed = "FAILED 2026-10-13T01:20:00Z: 2 of 679 tests failed, in 1061s, at abc123def456; read /x/run.log"
+        verdict(failed)
+        self.assertNotIn("Suite:", walk_in(), "a source the office does not scope is not its business")
+        self.e.run("projects", "add", "office-src", str(self.src), cwd=self.root, bin_path=self.office, check=0)
+        shutil.rmtree(state / "office-src")
+        before = walk_in()
+        self.assertNotIn("Suite:", before, "no detached run yet: nothing to say")
+        verdict(failed)
+        out = walk_in()
+        self.assertEqual([l for l in out.splitlines() if l.startswith("Suite:")], [f"Suite: {failed}"])
+        # Nothing else on the walk-in moves: the one line, after the header.
+        # (The header's clock is masked: two walk-ins may straddle a minute.)
+        clock = lambda text: re.sub(r"\b\d{2}:\d{2}\b", "HH:MM", text).splitlines()  # noqa: E731
+        self.assertEqual([l for l in clock(out) if not l.startswith("Suite:")], clock(before))
+        self.assertEqual(out.splitlines()[2], f"Suite: {failed}")
+        self.assertEqual(last_line(out), last_line(before))
+        verdict("OK 2026-10-13T01:20:00Z: 679 tests passed in 1061s, at abc123def456")
+        self.assertNotIn("Suite:", walk_in())
+        broken = "BROKEN 2026-10-13T01:20:00Z: the runner could not run the suite (exit 2) after 3s, at abc; read /x/run.log"
+        verdict(broken)
+        self.assertIn(f"Suite: {broken}\n", walk_in())
+        run = verdict("RUNNING since 2026-01-01T00:00:00Z: the whole suite, at abc123def456")
+        line = next(l for l in walk_in().splitlines() if l.startswith("Suite:"))
+        self.assertTrue(line.startswith("Suite: RUNNING since 2026-01-01T00:00:00Z"), line)
+        self.assertIn("still RUNNING after", line)
+        self.assertIn(str(run.resolve() / "run.log"), line)
+        # Under HOME's .local/state when XDG_STATE_HOME is unset.
+        home_state = self.e.home / ".local" / "state"
+        shutil.move(str(state), str(home_state))
+        extra.clear()
+        self.assertIn("Suite: RUNNING since 2026-01-01T00:00:00Z", walk_in())
+
     def test_the_order_behind_the_skew_cases_and_ahead_of_a_session_out(self):
         behind = {"source": "/s", "commit": "abc1234", "head": "def5678", "version": "9.9.9", "project": "office-src"}
         out = [{"sid": "2026-10-07-x-001", "label": "alpha", "folders": ["desk/x"], "held": False}]
@@ -542,6 +594,59 @@ class TestInstallBehindItsSource(unittest.TestCase):
         self.assertEqual(ob.next_move("ahead", True, out, {}, [], 0, behind)[0], "office status")
         self.assertEqual(ob.next_move("current", True, out, {}, [], 0, None)[0], "office land 2026-10-07-x-001")
         self.assertEqual(ob.shell_quote("/a b/it's"), "'/a b/it'\\''s'")
+
+
+class TestTheSuiteVerdict(unittest.TestCase):
+    """The walk-in's Suite line as units (0.17.2): what a verdict says,
+    where the runner keeps it, and that the reader and tests/runner.py
+    agree on both."""
+
+    NOW = datetime.datetime(2026, 10, 13, 12, 0, tzinfo=datetime.timezone.utc)
+
+    def test_what_each_verdict_says(self):
+        words = lambda line: ob.suite_verdict_words(line, "/s/run", now=self.NOW)  # noqa: E731
+        self.assertIsNone(words("OK 2026-10-13T11:00:00Z: 679 tests passed in 1061s, at abc"))
+        failed = "FAILED 2026-10-13T11:00:00Z: 1 of 679 tests failed, in 900s, at abc; read /s/run/run.log"
+        self.assertEqual(words(failed), failed)
+        self.assertEqual(words(failed + "\n"), failed)
+        broken = "BROKEN 2026-10-13T11:00:00Z: the runner could not run the suite (exit 2) after 1s, at abc; read x"
+        self.assertEqual(words(broken), broken)
+        self.assertIsNone(words("RUNNING since 2026-10-13T11:30:00Z: the whole suite, at abc"))
+        self.assertIsNone(words("RUNNING since 2026-10-13T11:00:01Z: the whole suite, at abc"))
+        old = words("RUNNING since 2026-10-13T09:00:00Z: the whole suite, at abc")
+        self.assertTrue(old.startswith("RUNNING since 2026-10-13T09:00:00Z: the whole suite, at abc; still RUNNING "
+                                       "after 3 hour(s)"), old)
+        self.assertTrue(old.endswith("read /s/run/run.log"), old)
+        for junk in ("PASSED", "RUNNING since yesterday", "ok 2026"):
+            self.assertIn("in no shape the runner writes", words(junk), junk)
+
+    def test_where_the_runner_keeps_it_and_what_is_said_of_it(self):
+        e = Env(self)
+        source = ("/s", "abc1234", "office-src")
+        env = {"XDG_STATE_HOME": str(e.tmp / "state"), "HOME": str(e.home)}
+        read = lambda **kw: ob.suite_verdict(e.home, environ=env, now=self.NOW, **kw)  # noqa: E731
+        self.assertIsNone(read(source=source), "no state directory: nothing to say")
+        suite = e.tmp / "state" / "office-src" / "suite"
+        suite.mkdir(parents=True)
+        self.assertIsNone(read(source=source), "no run yet: nothing to say")
+        run = suite / "20261013T110000Z-7"
+        run.mkdir()
+        (suite / "latest").symlink_to(run.name)
+        self.assertIn("could not be read", read(source=source), "a run named with no verdict is said")
+        (run / "verdict").write_text("")
+        self.assertIn("is empty", read(source=source))
+        (run / "verdict").write_text("FAILED 2026-10-13T11:00:00Z: 1 of 2 tests failed\n")
+        self.assertEqual(read(source=source), "FAILED 2026-10-13T11:00:00Z: 1 of 2 tests failed")
+        self.assertIsNone(read(source=None), "an office that does not scope the source hears nothing")
+
+    def test_the_reader_and_the_runner_agree(self):
+        for env in ({"XDG_STATE_HOME": "/x/state", "HOME": "/x/home"}, {"HOME": "/x/home"}):
+            self.assertEqual(ob.suite_state_dir(env), runner.state_dir(env))
+        text = (REPO / "tests" / "runner.py").read_text()
+        for written in ('f"RUNNING since {utc_now():%Y-%m-%dT%H:%M:%SZ}: ', 'verdict = f"OK {stamp}: ',
+                        '(f"FAILED {stamp}: ', 'verdict = f"BROKEN {stamp}: ', 'stamp = f"{utc_now():%Y-%m-%dT%H:%M:%SZ}"'):
+            self.assertIn(written, text)
+        self.assertIn('state / "latest"', text)
 
 
 # --- 7. a founding answer that runs to a paragraph -----------------------------------------------

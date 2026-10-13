@@ -3605,12 +3605,21 @@ cmd_start() {
 for w in json.load(sys.stdin)["warnings"]:
     print(w)' | while IFS= read -r v; do warn "$v"; done
   tz="$(office_tz "$root")"; day="$(office_date "$tz")"
-  record_session "$root" "desk/$name" "$sid" "" "$day"
+  # A bundle whose session was still open joins it as a second desk
+  # (bale 0.4.44 on): no new session, so the folder records the one the
+  # bundle joined, saying so, and the first line says it was joined.
+  local second_desk
+  second_desk="$(printf '%s' "$out" | python3 -c 'import json,sys; print("yes" if json.load(sys.stdin).get("second_desk") else "")')"
+  record_session "$root" "desk/$name" "$sid" "${second_desk:+a second desk on a session already open}" "$day"
   local filed_rc=0 request
   request="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["request"])')"
   file_sitting_pages "$root" "$request" "$sid" || filed_rc=1
 
-  printf 'Packed %s for desk/%s.\n\n' "$sid" "$name"
+  if [ -n "$second_desk" ]; then
+    printf 'Joined %s, already open, as a second desk for desk/%s.\n\n' "$sid" "$name"
+  else
+    printf 'Packed %s for desk/%s.\n\n' "$sid" "$name"
+  fi
   printf 'Out tray: %s\n' "$tray"
   printf '%s' "$out" | python3 -c 'import json,sys
 r = json.load(sys.stdin)
@@ -5457,12 +5466,14 @@ walk_in() {
   esac
   printf 'The %s office, %s\n' "$name" "$root"
   printf '%s, %s %s. %s; %s.\n' "$(TZ="$tz" date '+%A %F')" "$(office_time "$tz")" "$tz_shown" "$founded" "$state"
-  # The install behind its source, when this office scopes the project
-  # it came from: one line, in office status's words. Start and land run
-  # the install, so the Next line names the install line too.
-  local behind
-  behind="$(reader install-behind "$root" 2>/dev/null)" || behind=""
-  [ -z "$behind" ] || printf 'Install: %s\n' "$behind"
+  # When this office scopes the project the install came from: the install
+  # behind its source, one line in office status's words (start and land
+  # run the install, so the Next line names the install line too); and the
+  # latest detached run of the source's suite when its verdict is not OK
+  # (FAILED, BROKEN, or RUNNING for over an hour), one line (0.17.2).
+  local install_lines
+  install_lines="$(reader install-lines "$root" 2>/dev/null)" || install_lines=""
+  [ -z "$install_lines" ] || printf '%s\n' "$install_lines"
   printf '\n'
 
   # In flight: one line per session open in the projects this office
