@@ -49,6 +49,7 @@ import office_helper as oh  # noqa: E402
 import office_drafting as od  # noqa: E402
 import office_door as odoor  # noqa: E402
 import office_host as ohost  # noqa: E402
+import office_drop as odrop  # noqa: E402
 
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 CONSUMPTION = INSTALL / "share" / "bale-consumption.toml"
@@ -1085,6 +1086,7 @@ def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
         if groups["no_status"]:
             counts.append(f"{len(groups['no_status'])} with no status line")
         lines += ["", "On the desk: " + ", ".join(counts) + " (office desk shows every group)"]
+        tray_line = in_tray_walk_in_line(groups)
         if not on_desk:
             lines.append("  the desk is clear")
         elif groups["ready"]:
@@ -1096,10 +1098,12 @@ def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
         if errors:
             lines.append(f"  {errors} gate error(s): office desk names them")
         lines += drafting_lines(groups, walk_in=True)
+        if tray_line:
+            lines += ["", tray_line]
         return lines
     if not on_desk:
         extra = drafting_lines(groups)
-        return lines + ["", "the desk is clear"] + extra
+        return lines + ["", "the desk is clear"] + in_tray_lines(groups) + extra
     if groups["ready"] or groups["ready_errors"]:
         lines += ["", "Ready:"] + [f"  {e}" for e in groups["ready_errors"]] + ready_block(groups["ready"])
     if groups["parked"]:
@@ -1111,6 +1115,7 @@ def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
                 lines += [f"      and {a}" for a in also]
     if groups["candidates"]:
         lines += ["", "Candidates:"] + [f"  {folder_line(f)}" for f in groups["candidates"]]
+    lines += in_tray_lines(groups)
     lines += drafting_lines(groups)
     if groups["no_status"]:
         lines += ["", "No status line (folders from before the field block; the desk cannot order them):"]
@@ -1121,6 +1126,28 @@ def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
     if groups["unreadable"]:
         lines += ["", "Cannot be read:"] + [f"  {f['name']}  ({f['problem']})" for f in groups["unreadable"]]
     return lines
+
+
+def in_tray_lines(groups):
+    """office desk's group after the candidates: each unsorted drop's page
+    name, its project or `no project`, and its first line (0.19.0)."""
+    drops = groups.get("drops") or []
+    if not drops:
+        return []
+    return ["", "Unsorted drops (in-tray/; office start --drop in-tray/PAGE sends one out):"] + \
+        [f"  {d['name']}  ({d['project'] or 'no project'})  {d['heading']}" for d in drops]
+
+
+def in_tray_walk_in_line(groups):
+    """The walk-in's one line when the in-tray holds unsorted drops: how
+    many, and the oldest's age in days; None when it holds none."""
+    drops = groups.get("drops") or []
+    if not drops:
+        return None
+    age = groups.get("drops_oldest_age")
+    old = "" if age is None else (", the oldest dropped today" if age <= 0 else
+                                  f", the oldest {age} day{'s' if age != 1 else ''} old")
+    return f"In-tray: {len(drops)} unsorted drop(s){old} (office desk lists them)"
 
 
 def drafting_lines(groups, walk_in=False):
@@ -1163,6 +1190,14 @@ def render_desk(rd, office_root, today, since=None, walk_in=False, now=None, gro
     if blueprint is not None:
         return blueprint_desk(table, folders, flying, since or today, blueprint, flight), bad
     groups = classify_desk(folders, flying, since or today, table)
+    # The in-tray's unsorted drops, oldest first (0.19.0): the desk lists
+    # them, the walk-in counts them, and the Next line may name one.
+    try:
+        groups["drops"] = odrop.unsorted(office_root)
+        groups["drops_oldest_age"] = odrop.age_days(groups["drops"][0], today) if groups["drops"] else None
+    except (OSError, oh.HelperError, ValueError) as exc:
+        debug(f"the in-tray could not be read for the desk: {exc}")
+        groups["drops"], groups["drops_oldest_age"] = [], None
     if groups_out is not None:
         groups_out.update(groups)
     if not walk_in and groups["moves"][0]:
@@ -1241,6 +1276,16 @@ def blueprint_desk(table, folders, flying, since, bid, flight):
 #      in the order the sitting decided, so the next two states could
 #      name a folder a move retires or miss one a move opens (0.11.0;
 #      0.8.0's order ratified, this step added by the plan-4b sitting);
+#   3b. an unsorted drop (0.19.0): the oldest drop in the in-tray whose
+#      project resolves to one of the floor plan's projects, with no
+#      session in flight on a folder of that lane, goes straight out as a
+#      project session (office start --drop in-tray/PAGE); the oldest one
+#      whose project does not resolve, or that has none, gives the same
+#      line with --lane left for the occupant to fill. Placed after the
+#      moves (a sitting's decisions come first) and before the founding,
+#      since a drop is capture waiting and the occupant's count is drop,
+#      start, land. An office that scopes no project has nowhere to send
+#      a drop, and the rule stays quiet there;
 #   4. unfounded: the profile is the office's reason to exist. With the
 #      founding folder on the desk and no session out for it, the line
 #      names office start for that folder (which goes out through the
@@ -1298,10 +1343,11 @@ def sessions_to_land(rd, office_root):
 
 
 def lane_project(folder, project_names):
-    """The project a folder's lane names (`project: paths`), when it is
-    one this office scopes, else None."""
+    """The project a folder's lane names (`project: paths`, or the
+    project alone, as office start --drop writes it), when it is one this
+    office scopes, else None."""
     lane = (folder.get("fields", {}).get("lane") or [""])[0]
-    name = lane.partition(":")[0].strip() if ":" in lane else ""
+    name = lane.partition(":")[0].strip()
     return name if name in project_names else None
 
 
@@ -1333,18 +1379,45 @@ def founding_folder(groups):
     return sorted(found, key=lambda f: (f.get("number") or 0, f["name"]))[-1]
 
 
+def drop_move(drops, groups, projects):
+    """(command, why) for the oldest unsorted drop the Next line can send
+    out, or None (the rule 3b above). A drop whose project resolves waits
+    while a session is in flight on a folder of that project's lane."""
+    names = [p["name"] for p in projects or []]
+    if not drops or not names:
+        return None
+    busy = {lane_project(f, set(names)) for f in groups.get("flying", [])} - {None}
+    later = len(drops) - 1
+    more = f"; {later} more unsorted after it" if later else ""
+    for d in drops:
+        resolved = odrop.resolve_project(d.get("project"), names)
+        if resolved is None:
+            said = f"names {d['project']!r}, which is none of" if d.get("project") else "names no project of"
+            return (f"office start --drop {d['rel']} --lane LANE",
+                    f"the oldest unsorted drop in the in-tray {said} this office's projects "
+                    f"({', '.join(sorted(names))}): put the one it belongs to for LANE, and start mints its "
+                    f"folder, moves the drop in and sends it out to be sorted and done{more}")
+        if resolved in busy:
+            continue
+        return (f"office start --drop {d['rel']}",
+                f"the oldest unsorted drop in the in-tray is for {resolved} and no session is in flight there; "
+                f"start mints its folder, moves the drop in and sends it out to be sorted and done{more}")
+    return None
+
+
 def next_move(skew, founded, out, groups, projects, slips, behind=None):
     """(command, why) for the walk-in's Next line, from the office's state:
     skew (current, behind, ahead or unreadable), founded (bool), out
-    (sessions_to_land's list), groups (classify_desk's), projects (the
-    [projects] entries, or None for no table), slips (a count) and behind
-    (install_behind's dict when the install is behind a source this
-    office scopes, else None). A pure function, so every state is
-    testable without an office.
+    (sessions_to_land's list), groups (classify_desk's, with the
+    in-tray's unsorted drops under "drops" as render_desk adds them),
+    projects (the [projects] entries, or None for no table), slips (a
+    count) and behind (install_behind's dict when the install is behind a
+    source this office scopes, else None). A pure function, so every
+    state is testable without an office.
 
     The order (doctrine section 7, the walk-in): the office out of step with the
     install, then the install behind its source, then a session out,
-    the moves, the founding, the desk. The install comes before a
+    the moves, an unsorted drop, the founding, the desk. The install comes before a
     session out because office start and office land run the install:
     behind its source, they would run the old office."""
     if skew == "ahead":
@@ -1384,6 +1457,9 @@ def next_move(skew, founded, out, groups, projects, slips, behind=None):
                 (f"{count} desk move(s) a sitting decided are pending ({sources})" if count else
                  "drafting-table/moves.md holds lines that do not read")
                 + "; until they run, the desk is not in the order the sitting decided" + unread)
+    move = drop_move(groups.get("drops") or [], groups, projects)
+    if move is not None:
+        return move
     if not founded:
         f = founding_folder(groups)
         if f is not None:
@@ -3022,6 +3098,31 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         if not bundle and (office_root / od.SPACE).is_dir() and od.SPACE not in includes:
             includes = [*includes, od.SPACE]
 
+    # The ride-along (0.19.0): every unsorted drop in the in-tray rides
+    # with every session the office sends out, so a session that can
+    # judge one sorts it (doctrine section 4). For an office session the
+    # drops are in the pack's includes (or inside the whole tree a
+    # renovation ships); for a project session, in the office's context
+    # beside the request; for a bundle, which the office adds nothing to,
+    # beside it as a context tarball of their own. The goal is unchanged.
+    try:
+        riding = [d["rel"] for d in odrop.unsorted(office_root)]
+    except (OSError, oh.HelperError) as exc:
+        riding = []
+        warnings.append(f"the in-tray could not be read, so no drop rides with this session: {exc}")
+    drops_place = None
+    if riding:
+        if where == "office" and not bundle:
+            if includes:
+                includes = [*includes, *[r for r in riding if r not in includes]]
+                drops_place = "inside the request"
+            else:
+                drops_place = "inside the request, with the whole office"
+        elif where == "office":
+            drops_place = "beside the request, in context-in-tray.tar.gz (the office adds nothing to a bundle)"
+        else:
+            drops_place = "beside the request, in the office's context"
+
     # The packed trees that may carry a doctrine of their own: the
     # request's (a project session's repo) and, for an office session
     # about a project, the project's tree riding as context.
@@ -3075,8 +3176,15 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             # it: the folder and the hung items, named, because include
             # groups do not fire under --context.
             hung = [h for h in oh.space_paths(manifest, "hung") if (office_root / h).exists()]
-            carried.append(context_into_tray(rd, tray, office_root, [folder, *hung],
-                                              f"the office: {folder} and the hung items"))
+            carried.append(context_into_tray(rd, tray, office_root, [folder, *hung, *riding],
+                                              f"the office: {folder} and the hung items"
+                                              + (f", and {len(riding)} unsorted drop(s)" if riding else "")))
+        elif riding and bundle:
+            # An office bundle: the drops ride beside it, as their own
+            # context tarball, since the bundle's pack line is the planner's.
+            carried.append(context_into_tray(rd, tray, office_root, riding,
+                                              f"{len(riding)} unsorted drop(s) from the in-tray",
+                                              name="context-in-tray.tar.gz"))
         elif entry is not None and hosted_project(entry):
             # An office session about a hosted project: its tree is on
             # the host and does not ride until sessions are sent there.
@@ -3088,6 +3196,8 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         if sitting and od.SPACE in includes:
             carried.append(f"(the drafting table rides inside the request, its {od.SPACE}/digest.md written "
                            "just before the pack)")
+        if riding:
+            carried.append(odrop.carried_words([pathlib.PurePosixPath(r).name for r in riding], drops_place))
         for ride in left:
             carried.append(f"(left out of this session: {ride}, which rides with {project} as declared)")
         if entry is not None:
@@ -3174,6 +3284,9 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                           f"what was gathered is in {tray.dir}; the request is {opened['tarball']}"
                           + (f" on {pack_dir.host}" if hosted else ""),
                           f"record the session in its folder with: office sessions {pathlib.Path(folder).name} {sid}"])
+    # The opener says how many drops ride, in one line after bale's own.
+    if riding and opened["opener"] is not None:
+        opened["opener"] = [*opened["opener"], "", odrop.opener_line(len(riding), sitting=forecast == [])]
     kind = "an office session" if where == "office" else project + " session"
     if hosted:
         kind += f", packed on {pack_dir.host} and carried back"
@@ -3184,7 +3297,8 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     carried.insert(0, f"{name}: the request ({kind})")
     return {"sid": sid, "tray": str(final), "files": sorted(tray.files), "carried": carried,
             "opener": opened["opener"], "pack_dir": str(pack_dir), "request": str(final / name),
-            "warnings": warnings, "sitting": forecast == [], "second_desk": opened["second_desk"]}
+            "warnings": warnings, "sitting": forecast == [], "second_desk": opened["second_desk"],
+            "drops": len(riding)}
 
 
 # --- a host's bale brought level: office projects level-bale ---------------------------

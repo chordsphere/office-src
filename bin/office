@@ -1031,6 +1031,10 @@ cmd_status() {
   # commit on.
   drafting table-check "$root" 2>/dev/null
   case $? in 0|3) ;; *) printf 'drafting:   could not be checked\n' ;; esac
+  # The in-tray, when it exists, against the install's catalog, and every
+  # drop's page against the shape office drop writes (0.19.0).
+  dropx tray-check "$root" 2>/dev/null
+  case $? in 0|3) ;; *) printf 'in-tray:    could not be checked\n' ;; esac
   # The read side: which bale is installed against the version the
   # office's reads were written for, and whether each project in scope
   # can be read. Lines, never a refusal.
@@ -1430,6 +1434,108 @@ cmd_slip() {
     > "$root/$page" || { rm -f "$root/$page"; die "could not write $page"; }
   log "slipped $page${about:+ (about $about)}"
   commit_paths "$root" "office slip: $(basename "$page" .md)${about:+ (about $about)}" "$page" || true
+  printf '%s\n' "$page"
+}
+
+# --- the in-tray: office drop (0.19.0) -----------------------------------------
+#
+# A message or a thread, captured instant and dumb (doctrine principle 1)
+# as one page of the in-tray, with an optional free-text project. Nothing
+# is judged here: the sort is a session's (the one office start --drop
+# sends, or any session that carries the drop), since judgment sits with
+# the session that has the code in context. lib/office_drop.py writes and
+# reads the pages; this is the wizard around it.
+
+DROP_PY="$OFFICE_SRC/lib/office_drop.py"
+dropx() { python3 -B "$DROP_PY" "$@"; }
+
+usage_drop() {
+  cat <<'USAGE'
+usage: office drop [FILE | -] [--project TEXT]
+Drops a message or a thread in the in-tray: one new page,
+in-tray/DATE-SLUG.md, committed on its own, waiting to be sorted. The text
+comes from FILE, from stdin (-, or anything piped), or, on a terminal with
+neither, from the clipboard (machine.toml's paste_command, asked once). It
+says what it took: the first line and how many lines. On a terminal it asks
+one question, the project, as free text: the office's projects are offered
+as hints, any words are taken, and a plain return leaves it empty
+(--project is the flag twin). Piped, it asks nothing. It never refuses a
+drop it can write: no project is needed, and like office note it works in an
+unfounded office and one behind or ahead of the installed tool, and only
+warns. The in-tray arrives with the first drop. Every session office start
+sends out carries the unsorted drops; office start --drop in-tray/PAGE sends
+one straight out as a project session.
+Examples:
+  office drop                                  (the clipboard; asks the project)
+  office drop --project alpha                  (the clipboard, for alpha)
+  office drop thread.txt --project "the website"
+  pbpaste | office drop - --project alpha
+USAGE
+}
+
+cmd_drop() {
+  local file="" project="" project_given=0 root tz day now tmp text_file via took lines first slug out page rc
+  local paths=() names
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --project) [ $# -ge 2 ] || die "--project needs the project, in any words (office drop --help)"
+                 project="$2"; project_given=1; shift 2 ;;
+      -h|--help) usage_drop; return 0 ;;
+      -) [ -z "$file" ] || die "office drop takes one text: FILE, or - for stdin"; file="-"; shift ;;
+      -*) usage_drop >&2; die "office drop does not know $1; it takes FILE or -, and --project" ;;
+      *) [ -z "$file" ] || die "office drop takes one text: FILE, or - for stdin"; file="$1"; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  warn_on_skew "$root"
+  warn_if_unfounded "$root"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/office-drop.XXXXXXXX")" || die "no temporary directory for the drop"
+  TMP_PATHS+=("$tmp")
+  text_file="$tmp/text"
+  if [ "$file" = "-" ]; then
+    [ ! -t 0 ] || die "office drop - reads the text from stdin, and stdin is this terminal: pipe the text in, give it as a file, or leave it on the clipboard and give neither"
+    cat > "$text_file" || die "could not read the text from stdin"
+    via="stdin"
+  elif [ -n "$file" ]; then
+    [ -f "$file" ] || die "$file: no such file (the text is a file, - for stdin, or neither for the clipboard)"
+    cp -- "$file" "$text_file" || die "could not read $file"
+    via="file $(basename -- "$file")"
+  elif ! can_ask; then
+    cat > "$text_file" || die "could not read the text from stdin"
+    via="stdin"
+  else
+    paste_setting "office drop reads the message from the clipboard when it is given no file" \
+      "give the message as a file (office drop FILE) or on stdin (office drop -)"
+    log "reading the message from the clipboard ($PASTE)"
+    timeout 15 bash -c "$PASTE" < /dev/null > "$text_file" 2> "$tmp/paste.err"; rc=$?
+    [ "$rc" = 0 ] || die "the clipboard could not be read: $PASTE exited $rc ($(tail -n 1 "$tmp/paste.err")); paste_command in $MACHINE_FILE"
+    via="clipboard"
+  fi
+  took="$(dropx took --text-file "$text_file")" \
+    || die "nothing to drop: the text from $([ "$via" = clipboard ] && printf 'the clipboard' || printf '%s' "$via") is empty"
+  lines="${took%%$'\t'*}"; first="${took#*$'\t'}"
+  log "took $lines line(s) from $([ "$via" = clipboard ] && printf 'the clipboard' || printf '%s' "$via"): $first"
+  if [ "$project_given" = 0 ] && can_ask; then
+    names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null | paste -sd, - | sed 's/,/, /g')"
+    ask project "Which project it is for, in any words${names:+ ($names, or anything)} (--project)" "" 0 \
+      "Free text, kept on the page as you type it, to help the session that sorts the drop decide where it goes. When it names one of this office's projects, office start --drop sends the drop out on that project without asking. A plain return leaves it empty: the drop is taken either way."
+  fi
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"; now="$(office_time "$tz")"
+  # The slug from the first line as typed, the way office slip makes one:
+  # an escape is no part of a file name.
+  slug="$(short_slug "$(python3 -B -c 'import sys
+for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    if line.strip():
+        print(line.strip()); break' "$text_file" | title_words)")"
+  [ -n "$slug" ] || slug="drop"
+  out="$(dropx write "$root" --text-file "$text_file" --project "$project" --via "$via" \
+           --day "$day" --time "$now" --slug "$slug")" || die "the drop could not be written (the line above says why)"
+  mapfile -t paths <<< "$out"
+  page="${paths[0]}"
+  log "dropped $page${project:+ (project: $project)}, unsorted"
+  # The page alone, like a note; the in-tray's arrival, when this drop
+  # brought it, in the same commit.
+  commit_paths "$root" "office drop: $(basename "$page" .md)" "${paths[@]}" || true
   printf '%s\n' "$page"
 }
 
@@ -3059,6 +3165,8 @@ usage: office start [FOLDER] [--in-office | --on PROJECT] [--goal TEXT] [--slug 
                     [--leave-out PATH]... [--no-rides] [--carry N... | --carry none]
        office start [FOLDER] [--in-office | --on PROJECT] --bundle FILE [--leave-out PATH]... [--no-rides]
                     [--carry N... | --carry none]
+       office start --drop PAGE [--title TITLE] [--lane LANE] [--size SIZE] [--goal TEXT] [--slug SLUG]
+                    [--write PATH]... [--include PATH]... [--leave-out PATH]... [--no-rides]
 Packs a session for a folder on the desk and gathers everything to attach
 into one out tray: the request, the doctrine, and whatever rides with the
 work (on a project, the office's context and the project's ride-alongs;
@@ -3072,7 +3180,10 @@ whose doctrine differs gets the install's beside it, named as the
 install's). A session on a project also gets the install's
 templates/walkthrough.md and templates/delivery.md: it writes the folder's
 two pages from them as the Walkthrough and Delivery sections at the end
-of its notes.md, and office land files them in the folder.
+of its notes.md, and office land files them in the folder. Every session
+it sends out carries the in-tray's unsorted drops (office drop): in the
+request for an office session, in the office's context for a project
+session; the out tray's listing and the opener say how many ride.
   FOLDER         the job: its name, a unique part of it, or folder N;
                  on a terminal it is asked for, and new opens one through
                  office open's own questions (a title already on the desk
@@ -3105,6 +3216,22 @@ of its notes.md, and office land files them in the folder.
                  riders page whose path glob the pack's forecast touches
                  (office riders --forecast), default carry; piped, it
                  carries none and names each that matched
+  --drop PAGE    a dropped message straight out as a project session: PAGE
+                 is the drop's page in the in-tray (in-tray/NAME.md, or its
+                 name). start mints the folder through office open's own
+                 code (the title from the drop's first line, --title
+                 overrides; the lane from the drop's project when it is
+                 one of the office's, else asked, --lane the twin; the
+                 size asked, small by default, --size; the source drop),
+                 moves the page into the folder as drops/NAME.md, and
+                 packs the session on the lane's project with the goal
+                 "Sort the dropped message and do what it asks" (--goal
+                 overrides) and a brief from the install's
+                 templates/drop-brief.md: sort first, then do the work.
+                 Refused while an open session in the office's registry
+                 holds the in-tray or the desk. Given a FOLDER too, PAGE
+                 is in that folder's drops/: the one line that retries a
+                 drop start whose session did not go out
   --bundle FILE  a planner's bundle (FILE.bale-bundle, a path or the bare
                  name bale's search finds; given as a word, it needs no
                  flag): bale open replays the bundle's own pack line, so
@@ -3146,6 +3273,8 @@ Examples:
   office start fix-login --on office-src 2026-10-05-fix-login.bale-bundle
   office start fix-login --on office-src --goal "Fix it" --leave-out ~/nisaba-src/blueprints
   office start fix-login --on office-src --goal "Fix it" --carry 3
+  office start --drop in-tray/2026-10-14-login-error.md
+  office start --drop 2026-10-14-login-error --lane office-src --size medium
 The out tray is ~/out-tray/SID unless this machine's
 ~/.config/office-src/machine.toml sets out_tray. On WSL the tray opens in
 Explorer and the opener goes to the clipboard; clipboard_command and
@@ -3370,10 +3499,22 @@ start_retry_hint() {
   local rc="$1" line number v
   [ "$rc" != 0 ] && [ -n "${START_OPENED:-}" ] || return 0
   line="office start $(qword "$START_OPENED")"
-  case "${where:-}" in office) line+=" --in-office" ;; project) line+=" --on $(qword "$project")" ;; esac
-  if [ -n "${bundle_given:-}" ]; then
+  if [ -n "${START_DROP_PAGE:-}" ]; then
+    # A drop start (0.19.0): the folder holds the drop now and its lane
+    # names the project, so the line names the page in its drops/ and the
+    # brief is written again from it; the goal only when it was given.
+    line+=" --drop $(qword "$(basename "$START_DROP_PAGE")")"
+    [ -z "${goal:-}" ] || [ "$goal" = "$DROP_GOAL" ] || line+=" --goal $(shq "$goal")"
+    [ "${slug_flag:-0}" = 0 ] || line+=" --slug $(qword "$slug")"
+    if [ "${set_w:-0}" = 1 ] || [ "${START_ASKED_WRITES:-0}" = 1 ]; then
+      for v in "${writes[@]}"; do [ -z "$v" ] || line+=" --write $(qword "$v")"; done
+    fi
+    for v in "${includes[@]}"; do line+=" --include $(qword "$v")"; done
+  elif [ -n "${bundle_given:-}" ]; then
+    case "${where:-}" in office) line+=" --in-office" ;; project) line+=" --on $(qword "$project")" ;; esac
     line+=" $(qword "$bundle_given")"
   else
+    case "${where:-}" in office) line+=" --in-office" ;; project) line+=" --on $(qword "$project")" ;; esac
     [ -z "${goal:-}" ] || line+=" --goal $(shq "$goal")"
     [ "${slug_flag:-0}" = 0 ] || line+=" --slug $(qword "$slug")"
     if [ "${set_w:-0}" = 1 ] || [ "${START_ASKED_WRITES:-0}" = 1 ]; then
@@ -3397,12 +3538,127 @@ start_retry_hint() {
   printf '%s\n' "$line" >&2
 }
 
+# The direct path (0.19.0): office start --drop PAGE sends a dropped
+# message out as a project session in one command. The folder is minted
+# through office open's own code (the one-writer rule: only the office
+# command mints folders), the page moves into it as drops/NAME.md with a
+# `dropped` History line, and the session goes out on the lane's project
+# with the install's sort brief. Every refusal comes before anything is
+# written. Given a folder too (the retry line), the page is already in
+# that folder's drops/ and nothing is minted or moved. Reads and sets
+# cmd_start's own variables: want, where, project, goal, brief, root and
+# the START_ ones.
+DROP_GOAL="Sort the dropped message and do what it asks"
+START_DROP_PAGE=""
+
+drop_fact() { printf '%s\n' "$1" | sed -n "s/^$2\t//p"; }
+
+start_drop() {
+  local names list facts rel page_name heading pproj resolved status via lane_proj fname md number ftitle tz day
+  local tmp brief_file dest paths=() slug
+  names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+  list="$(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')"
+  [ -n "$names" ] || die "--drop sends the drop out as a project session, and this office scopes no project (office projects add adds one); nothing was written"
+  if [ -n "$want" ]; then
+    # The retry line: the page is in this folder's drops/ already.
+    fname="$(find_folder "$root" desk "$want")" || exit 1
+    md="$root/desk/$fname/folder.md"
+    [ -f "$md" ] || die "desk/$fname has no folder.md"
+    facts="$(dropx facts "$root" "$drop" --folder "desk/$fname" --projects "$names")" \
+      || die "--drop $drop: not a drop's page in desk/$fname/drops/ (the line above says why); nothing was written"
+    [ -z "$drop_title$drop_lane$drop_size" ] || die "desk/$fname is minted already, so --title, --lane and --size change nothing; office start $fname --drop $(basename "$(drop_fact "$facts" rel)") retries it"
+    lane_proj="$(folder_fact "$md" lane)"; lane_proj="$(printf '%s' "${lane_proj%%:*}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    printf '%s\n' "$names" | grep -qxF -- "$lane_proj" \
+      || die "desk/$fname's lane names no project this office scopes ($list), so its drop has nowhere to go; nothing was written"
+    rel="$(drop_fact "$facts" rel)"
+    log "desk/$fname holds the drop ${rel#desk/$fname/}: sending it out again, nothing minted or moved"
+  else
+    facts="$(dropx facts "$root" "$drop" --projects "$names")" \
+      || die "--drop $drop: no drop to send out (the line above says why); nothing was written"
+    rel="$(drop_fact "$facts" rel)"; page_name="$(basename "$rel")"
+    heading="$(drop_fact "$facts" heading)"; pproj="$(drop_fact "$facts" project)"
+    resolved="$(drop_fact "$facts" resolved)"; status="$(drop_fact "$facts" status)"; via="$(drop_fact "$facts" via)"
+    [ "$status" = unsorted ] || die "$rel says status $status: only an unsorted drop is sent out; nothing was written"
+
+    # The lane: the drop's project when it is one of the office's, else
+    # asked as office open asks a lane (--lane the twin); piped, a drop
+    # whose project does not resolve is refused by name.
+    if [ -n "$drop_lane" ]; then
+      check_field drop_lane lane --lane || true
+    elif [ -n "$resolved" ]; then
+      drop_lane="$resolved"
+      log "the drop's project, $pproj, is $resolved: the folder's lane"
+    fi
+    while :; do
+      if [ -n "$drop_lane" ]; then
+        lane_proj="$(printf '%s' "${drop_lane%%:*}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+        printf '%s\n' "$names" | grep -qxF -- "$lane_proj" && break
+        can_ask || die "--lane $drop_lane names no project this office scopes ($list); the drop is sent out on one of them; nothing was written"
+        printf '  %s is not one of this office'"'"'s projects: %s\n' "$lane_proj" "$list" >&2
+        drop_lane=""
+      fi
+      can_ask || die "$rel's project ($([ -n "$pproj" ] && printf '%s' "$pproj" || printf 'none given')) names no project this office scopes ($list): give --lane PROJECT; nothing was written"
+      ask_field drop_lane lane --lane "Lane: the project the drop is for ($list), or project: paths" "" 1
+    done
+    # The size: asked, small by default (--size); piped, small.
+    if [ -n "$drop_size" ]; then check_field drop_size size --size || true; fi
+    if [ -z "$drop_size" ]; then
+      if can_ask; then ask_field drop_size size --size "Size: small, medium or high" "small" 1; else drop_size=small; fi
+    fi
+    [ -n "$drop_title" ] || drop_title="$heading"
+    check_field drop_title title --title || { ask_field drop_title title --title "Title, in a few words" "" 1; }
+
+    # The one-writer rule, before anything is written: the in-tray this
+    # start takes the page from, and the desk it mints the folder on.
+    one_writer "$root" "start --drop" in-tray desk
+    start_check_place project "$lane_proj" "$names"
+
+    # Minted through office open's own code; the slug from the drop's
+    # page name, so the folder and the page are named alike.
+    slug="${page_name%.md}"; slug="${slug#[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-}"
+    local open_args=(--title "$drop_title" --size "$drop_size" --lane "$drop_lane" --source drop)
+    [ -n "$drop_title_given" ] || open_args=("$slug" "${open_args[@]}")
+    local folder_rel
+    folder_rel="$(cmd_open "${open_args[@]}")" || exit 1
+    fname="${folder_rel#desk/}"
+    md="$root/desk/$fname/folder.md"
+    START_OPENED="$fname"; START_TOOK=0
+    trap 'start_retry_hint $?; cleanup_tmp' EXIT
+
+    # The page moves into the folder, its bytes as they are, and the
+    # History says so before the `opened` line the start writes.
+    dest="desk/$fname/drops/$page_name"
+    mkdir -p "$root/desk/$fname/drops" || die "cannot create desk/$fname/drops"
+    mv -- "$root/$rel" "$root/$dest" || die "could not move $rel into desk/$fname/drops/"
+    tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+    folder_event "$md" "$day" dropped "drops/$page_name, via $via"
+    paths=("desk/$fname")
+    git -C "$root" ls-files --error-unmatch -- "$rel" >/dev/null 2>&1 && paths+=("$rel")
+    commit_paths "$root" "office start --drop: $page_name into desk/$fname" "${paths[@]}" || true
+    log "moved $rel into desk/$fname/drops/: the in-tray is one page lighter"
+    rel="$dest"
+  fi
+  START_DROP_PAGE="${rel#desk/$fname/}"
+
+  # The brief, from the install's template, and the goal.
+  number="$(folder_fact "$md" number)"
+  ftitle="$(head -n 1 "$md" | sed 's/^# //')"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/office-drop-brief.XXXXXXXX")" || die "no temporary directory for the brief"
+  TMP_PATHS+=("$tmp")
+  brief_file="$tmp/README.md"
+  dropx brief "$root" "desk/$fname" "$rel" --number "${number:-?}" --title "$ftitle" --project "$lane_proj" > "$brief_file" \
+    || die "the brief could not be written from the install's templates/drop-brief.md (the line above says why)"
+  brief="$brief_file"
+  [ -n "$goal" ] || goal="$DROP_GOAL"
+  want="$fname"; where=project; project="$lane_proj"
+}
+
 cmd_start() {
   local want="" where="" project="" goal="" slug="" brief="" read_only=0 includes=() writes=() set_w=0 bundle=""
   local leave_out=() no_rides=0 carry=() carry_none=0 bundle_given="" slug_flag=0
   local root name md status lane lane_project lane_paths names cls ans tz day out sid tray tray_root rel about="" args=() v
-  local packed_flags=()
-  START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0
+  local packed_flags=() drop="" drop_title="" drop_lane="" drop_size="" drop_title_given=""
+  START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_DROP_PAGE=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --in-office) [ -z "$where" ] || [ "$where" = office ] || die "--in-office and --on are two places; give one"; where=office; shift ;;
@@ -3413,6 +3669,12 @@ cmd_start() {
         case "$1" in --goal) goal="$2" ;; --slug) slug="$2"; slug_flag=1 ;; --brief) brief="$2" ;;
                      --write) writes+=("$2"); set_w=1 ;; --include) includes+=("$2") ;; esac
         packed_flags+=("$1"); shift 2 ;;
+      --drop) [ $# -ge 2 ] || die "--drop needs the drop's page: in-tray/NAME.md, or its name (office desk lists them)"
+              [ -z "$drop" ] || die "office start takes one drop"; drop="$2"; shift 2 ;;
+      --title|--lane|--size)
+        [ $# -ge 2 ] || die "$1 needs a value (office start --help explains it)"
+        case "$1" in --title) drop_title="$2"; drop_title_given=1 ;; --lane) drop_lane="$2" ;; --size) drop_size="$2" ;; esac
+        shift 2 ;;
       --bundle) [ $# -ge 2 ] || die "--bundle needs the bundle: a path, or the name bale's search finds"
                 [ -z "$bundle" ] || die "office start takes one bundle"; bundle="$2"; shift 2 ;;
       --read-only) read_only=1; packed_flags+=("$1"); shift ;;
@@ -3430,6 +3692,15 @@ cmd_start() {
   [ "$read_only" = 0 ] || [ "$set_w" = 0 ] || die "--read-only forecasts nothing, so it takes no --write"
   [ "$no_rides" = 0 ] || [ "${#leave_out[@]}" -eq 0 ] || die "--no-rides leaves every ride-along out, so it takes no --leave-out"
   [ "$carry_none" = 0 ] || [ "${#carry[@]}" -eq 0 ] || die "--carry none carries no rider, so it takes no --carry N"
+  if [ -n "$drop" ]; then
+    [ -z "$bundle" ] || die "--drop sends the drop out with the office's own brief, so it takes no bundle"
+    [ "$where" != office ] || die "--drop sends a project session, so it takes no --in-office"
+    [ "$where" != project ] || die "with --drop the project is the drop's own, or --lane PROJECT's, so it takes no --on"
+    [ "$read_only" = 0 ] || die "--drop sends a session that lands, so it takes no --read-only"
+    [ -z "$brief" ] || die "--drop writes the session's brief from the install's template, so it takes no --brief"
+  else
+    [ -z "$drop_title$drop_lane$drop_size" ] || die "--title, --lane and --size go with --drop (office open takes them for a folder of its own)"
+  fi
   bundle_given="$bundle"
   if [ -n "$bundle" ]; then
     [ "${#packed_flags[@]}" -eq 0 ] || die "a bundle carries its own pack line (goal, forecast, brief), so it takes no ${packed_flags[*]}; give the folder and where the work lands, nothing else"
@@ -3443,6 +3714,10 @@ cmd_start() {
   require_current "$root"
   warn_if_unfounded "$root"
   command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office start runs bale pack"
+
+  # A dropped message, sent straight out: the folder minted and the page
+  # moved into it, and where, the goal and the brief set (start_drop).
+  [ -z "$drop" ] || start_drop
 
   # Which job.
   if [ -z "$want" ]; then
@@ -3506,7 +3781,13 @@ cmd_start() {
   # What the folder already says: its lane (project: paths) and class.
   lane="$(folder_fact "$md" lane)"; cls="$(folder_fact "$md" class)"
   lane_project=""; lane_paths=""
-  case "$lane" in *:*) lane_project="$(printf '%s' "${lane%%:*}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; lane_paths="${lane#*:}" ;; esac
+  # A lane is `project: paths`, or the project alone (as office start
+  # --drop writes it): a bare word that names one of the office's
+  # projects is that project with no paths.
+  case "$lane" in
+    *:*) lane_project="$(printf '%s' "${lane%%:*}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; lane_paths="${lane#*:}" ;;
+    *) lane_project="$(printf '%s' "$lane" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')" ;;
+  esac
   printf '%s\n' "$names" | grep -qxF -- "$lane_project" || lane_project=""
 
   # Where the work lands: two choices, the kind names behind the curtain.
@@ -5221,19 +5502,21 @@ probe_py() { python3 -B "$PROBE" "$@"; }
 # downloads. Asked once, on a terminal, the first time a verb needs it
 # (this machine's likely command offered, ? explaining it), kept, and
 # never asked again; piped, the verb refuses and names the key.
-# paste_setting WHY sets PASTE; WHY says what needs it.
+# paste_setting WHY [OTHERWISE] sets PASTE; WHY says what needs it, and
+# OTHERWISE how to give the text without the clipboard (office probe's
+# words when it is not given).
 PASTE=""
-PASTE_HELP="One command line whose output is the text on this machine's clipboard: office probe reads a worker's probe block from it when it is given no file. On WSL it is PowerShell's Get-Clipboard through powershell.exe (offered when it is on the PATH); on Linux, wl-paste or xclip -selection clipboard -o; on a Mac, pbpaste. The answer is kept as paste_command in this machine's machine.toml (the office's own settings, never bale's config) and is not asked again; edit that file to change it, and \"\" there turns reading the clipboard off."
+PASTE_HELP="One command line whose output is the text on this machine's clipboard: office probe reads a worker's probe block from it, and office drop a message, when either is given no file. On WSL it is PowerShell's Get-Clipboard through powershell.exe (offered when it is on the PATH); on Linux, wl-paste or xclip -selection clipboard -o; on a Mac, pbpaste. The answer is kept as paste_command in this machine's machine.toml (the office's own settings, never bale's config) and is not asked again; edit that file to change it, and \"\" there turns reading the clipboard off."
 paste_setting() {
-  local why="$1" out rc cand ans
+  local why="$1" otherwise="${2:-give the block as a file (office probe FOLDER FILE) or on stdin (office probe FOLDER -)}" out rc cand ans
   out="$(helper paste-command "$MACHINE_FILE")"; rc=$?
   case "$rc" in
-    0) [ -n "$out" ] || die "paste_command in $MACHINE_FILE is \"\", which turns reading the clipboard off: give the block as a file (office probe FOLDER FILE) or on stdin (office probe FOLDER -)"
+    0) [ -n "$out" ] || die "paste_command in $MACHINE_FILE is \"\", which turns reading the clipboard off: $otherwise"
        PASTE="$out"; return 0 ;;
     3) ;;
     *) die "paste_command in $MACHINE_FILE does not read (the line above says why); fix it there" ;;
   esac
-  can_ask || die "$why, so the office needs to know how this machine reads its clipboard: set paste_command in $MACHINE_FILE, one command line whose output is the clipboard's text (paste_command = \"pbpaste\"), or give the block as FILE or -; piped input is never asked"
+  can_ask || die "$why, so the office needs to know how this machine reads its clipboard: set paste_command in $MACHINE_FILE, one command line whose output is the clipboard's text (paste_command = \"pbpaste\"), or ${2:-give the block as FILE or -}; piped input is never asked"
   cand="$(helper paste-command "$MACHINE_FILE" --candidate 2>/dev/null)"
   printf 'How does this machine read its clipboard? %s; this is asked once and kept as paste_command in %s.\n' "$why" "$MACHINE_FILE" >&2
   [ -n "$cand" ] || printf '  (no clipboard reader found on this machine; give the command)\n' >&2
@@ -5570,6 +5853,9 @@ PY
   tour_office open build-a-shed --title "Build a shed" --candidate >/dev/null 2>>"$TOUR_DIR/furnish.log" || return 1
   tour_office note "bought bulbs; the porch light still flickers" >/dev/null 2>>"$TOUR_DIR/furnish.log" || return 1
   tour_office slip --about office "the tour should come with snacks" >/dev/null 2>>"$TOUR_DIR/furnish.log" || return 1
+  # A message for step 2 to drop, as a neighbour might send it.
+  printf 'Could you look at the gate latch this week?\nIt swings open in the wind and the dog gets out.\n' \
+    > "$TOUR_DIR/message.txt" || return 1
 }
 
 tour_end() {
@@ -5654,6 +5940,9 @@ STUB
   tour_show note "the electrician can come Thursday"
   tour_say "What it did: appended a timed line to today's notepad page and committed that page alone. office slip does the same for a friction slip, each its own page in the suggestion box."
   tour_say "Why you would type it: capture is instant and dumb. A phone call, a decision, a thought: one line, no session, and it works even in an office that is unfounded or out of date."
+  (cd "$TOUR_DIR" && tour_show drop message.txt --project "the garden")
+  tour_say "What it did: dropped a whole message in the in-tray as one page, unsorted, with the project in your own words, and committed it alone; the in-tray arrived with this first drop. With no file, on a terminal, office drop takes the message from the clipboard and asks the project."
+  tour_say "Why you would type it: a message asks for work, and nobody should have to read it, decide what it means and file it before it is safe. Every session office start sends out carries the unsorted drops and sorts what it can; office start --drop sends one straight out as its own job."
   tour_pause || { tour_end; return 0; }
 
   tour_step 3 "$total" "start a job"
@@ -5771,7 +6060,7 @@ walk_in() {
   if [ -n "$notes" ]; then printf '%s\n' "$notes" | sed 's/^/  /'; else printf '  nothing noted yet\n'; fi
   slips="$(find "$root/suggestion-box" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
   printf '\nSuggestion box: %s slip(s).\n' "$slips"
-  printf '\nFrom here: office start, office land, office note TEXT, office slip TEXT, office open, office close FOLDER, office desk, office week, office projects, office status. office help lists everything by what you want to do; office tour tries it all on a throwaway office.\n'
+  printf '\nFrom here: office start, office land, office note TEXT, office slip TEXT, office drop, office open, office close FOLDER, office desk, office week, office projects, office status. office help lists everything by what you want to do; office tour tries it all on a throwaway office.\n'
   printf '\n%s\n' "$next"
 }
 
@@ -5909,6 +6198,9 @@ Capture a thought or a friction
   office note TEXT          a timed line on today's notepad page
   office slip TEXT          a friction slip in the suggestion box (--about the office,
                             a tool or a project)
+  office drop [FILE]        a message or a thread, from the clipboard, a file or stdin,
+                            as one page in the in-tray (--project, in any words); the
+                            sessions start sends out carry it until it is sorted
 
 Start a job, and finish one
   office open               a numbered folder on the desk; asks for what it needs
@@ -5945,6 +6237,10 @@ Send a session out
   office start [FOLDER]     asks which job, where the work lands and the goal; packs
                             the session, records it in the folder, and puts every file
                             to attach in one out tray beside the opener
+  office start --drop in-tray/PAGE
+                            a dropped message straight out as a project session: a
+                            folder minted from the drop, the drop moved into it, and a
+                            brief that tells the session to sort it, then do it
 
 Bring one back
   office land [SID]         applies the response in the right repo, says how it ended,
@@ -6002,7 +6298,7 @@ EOF
 }
 
 # The verbs office help VERB explains, each through its own --help.
-HELP_VERBS=" init found survey status upgrade where default note slip open desk week close reopen sessions projects start land tour version moves blueprint rider riders agenda rulings evidence watches digest deliver letterhead relay probe "
+HELP_VERBS=" init found survey status upgrade where default note slip drop open desk week close reopen sessions projects start land tour version moves blueprint rider riders agenda rulings evidence watches digest deliver letterhead relay probe "
 # The two-word verbs, as office help VERB WORD (or VERB-WORD, the key
 # share/verbs.toml gives them) explains them.
 HELP_PAIRS=" blueprint-open blueprint-ratify blueprint-close rider-add rider-carry rider-consumed agenda-add watches-check letterhead-check "
@@ -6056,6 +6352,7 @@ main() {
     default) cmd_default "$@" ;;
     note) cmd_note "$@" ;;
     slip) cmd_slip "$@" ;;
+    drop) cmd_drop "$@" ;;
     open) cmd_open "$@" ;;
     desk) cmd_desk "$@" ;;
     week) cmd_week "$@" ;;

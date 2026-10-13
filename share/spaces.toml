@@ -1,8 +1,9 @@
 # The spaces an office can have. office init builds every space marked
 # base = true; the others arrive by renovation when real work asks for
 # them, except the drafting table, which arrives with the first verb that
-# writes it (its entry below is what that verb copies into the floor
-# plan). doctrine/OFFICE.md section 5 says what each space is for.
+# writes it, and the in-tray, which arrives with the first office drop
+# (each entry below is what that verb copies into the floor plan).
+# doctrine/OFFICE.md section 5 says what each space is for.
 #
 # path   where the space lives inside the office
 # base   built by office init
@@ -68,3 +69,9 @@ path = "letterhead"
 path = "drafting-table"
 filed = ["drafting-table/rulings.md", "drafting-table/evidence.md",
          "drafting-table/watch-log.md", "drafting-table/blueprints/*/close.md"]
+
+# Live: drops waiting to be sorted, one page each, moved out whole when
+# sorted. Not hung (office start carries the unsorted ones itself) and
+# not filed (a drop's status line changes, and the page leaves).
+[spaces.in-tray]
+path = "in-tray"

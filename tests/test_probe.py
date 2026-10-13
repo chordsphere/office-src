@@ -592,7 +592,9 @@ class TestTheRecord(unittest.TestCase):
         self.assertIn("`office probe` runs a worker's probe block", front)
 
     def test_the_release(self):
-        self.assertEqual((REPO / "VERSION").read_text().strip(), "0.18.0")
+        # 0.18.0 or a later release: a pin on the exact version would fail
+        # every release after this one (0.19.0 relaxed it).
+        self.assertGreaterEqual(h.compare_versions((REPO / "VERSION").read_text().strip(), "0.18.0"), 0)
         releases = (REPO / "RELEASES.md").read_text()
         self.assertLess(releases.index("## 0.18.0"), releases.index("## 0.17.2"))
         self.assertIn("office probe", releases.split("## 0.18.0", 1)[1].split("## 0.17.2", 1)[0])

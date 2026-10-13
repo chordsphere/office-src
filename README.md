@@ -76,6 +76,7 @@ its `FAILED` or `BROKEN` verdict as written, or a `RUNNING` one over an
 hour old, with the log to read), the sessions in flight in its projects
 and in the office itself with the folder each belongs to, how many
 folders are ready, parked and candidates and the first three ready ones,
+how many drops wait unsorted in the in-tray and how old the oldest is,
 this week and its gaps, the last notepad lines and the slips, and the
 verbs to reach for. It ends with one Next line: the one command to type
 now, with its arguments filled in, worked out from the office on every
@@ -87,6 +88,7 @@ walk-in and never written down. In the order they win:
 | scopes the install's source, which has moved past the install | `(cd SOURCE && ./install.sh)` (start and land run the install, so until it is level they run the old office) |
 | has a session out | `office land SID` (when its response is in your downloads, land finds it) |
 | has desk moves a sitting decided, not yet run | `office moves` (until they run, the desk is not in the order the sitting decided) |
+| has an unsorted drop in the in-tray | `office start --drop in-tray/PAGE` for the oldest whose project is one of the office's and has no session in flight on its lane; for the oldest whose project is none of them, the same with `--lane LANE` to fill (an office with no projects skips this) |
 | is unfounded | `office start FOLDER` for its founding folder (it goes out with the answers the folder keeps), or `office found` when no founding folder is on the desk |
 | has a ready folder | `office start FOLDER` (`--on PROJECT` when its lane names one) |
 | has an open folder no session is out for | `office start FOLDER` (or `office close` it when it is done) |
@@ -99,6 +101,8 @@ walk-in and never written down. In the order they win:
 
     office note called the bank; rate locks Friday   # a timed line on today's notepad page
     office slip --about bale pack needs too many flags  # a friction slip, its own page in the suggestion box
+    office drop --project alpha                      # the message on the clipboard, its own page in the in-tray
+    office drop thread.txt                           # ...or a file (- for stdin); asks the project on a terminal
 
 Each verb commits only the paths it touched. `office note` and `office
 slip` work in an unfounded office and in one that needs an upgrade; they
@@ -106,6 +110,20 @@ warn and write. `office note` commits a notepad page only when its
 committed bytes are untouched and the new lines are at its end. `office
 slip` asks on a terminal what the slip is about (the office, bale,
 office-src, or one of the office's projects) unless `--about` says so.
+
+`office drop` captures a message or a thread nobody has read for you:
+one page in the in-tray, `in-tray/DATE-SLUG.md`, committed on its own,
+with its first line as the heading, four field lines (`dropped`,
+`project`, `via`, `status: unsorted`) and the text verbatim under `##
+Text`. The text comes from a file, stdin, or, on a terminal with
+neither, the clipboard (machine.toml's `paste_command`, asked once). It
+asks one question, the project, in any words (`--project`); a plain
+return leaves it empty, and it never refuses a drop it can write. The
+in-tray arrives with the first drop. From then on every session `office
+start` sends out carries the unsorted drops, and a session that can
+judge one sorts it in its notes.md (doctrine section 4); `office start
+--drop in-tray/PAGE` sends one straight out on its own. Drop, start,
+land: a routine ask needs no planner.
 
 ### Start a job, and finish one
 
@@ -144,6 +162,7 @@ just before it packs one. The details are below.
 ### Send a session out
 
     office start                       # asks: which job, in the office or on a project, the goal
+    office start --drop in-tray/2026-10-14-login-error.md   # a dropped message, straight out
 
 It packs the session with bale where the work lands, records it in the
 folder, and puts every file to attach in one out tray, `~/out-tray/SID`,
@@ -473,6 +492,8 @@ the agenda are checked against their committed bytes before the commit
     office start fix-login --on office-src --goal "Fix it" --carry 3          # rider 3 rides in the folder
     office start new --on office-src 2026-10-05-fix-login.bale-bundle         # a new folder for a planner's bundle
     office start fix-api --on api --goal "Wire the health route" --write src  # api is on a host: packed there
+    office start --drop in-tray/2026-10-14-login-error.md                     # a drop, straight out on its project
+    office start --drop 2026-10-14-login-error --lane alpha --size medium     # ...naming the project it did not
 
 `office start` packs a session for a folder and gathers everything to
 attach into one out tray, `~/out-tray/SID`: the request, the doctrine,
@@ -611,6 +632,35 @@ reach is carried from one step to the next) and the reads it needs there
 share a connection: a pack makes about four connections, five with a
 brief, eight for a bundle (0.15.0 made seven, ten and eighteen in the
 suite's count).
+
+The in-tray rides too (0.19.0). Every session start sends out carries
+each drop in the in-tray whose status is `unsorted`: in the pack's
+includes for an office session, in the office's context tarball beside
+the request for a project session (made here, for a hosted project as
+for any other), and, for an office session from a bundle, as
+`context-in-tray.tar.gz` beside it, since the office adds nothing to a
+bundle. The out tray's listing says how many ride and where, and the
+opener ends with one line saying so. The goal is the session's own; what
+a carried drop asks of the session is the doctrine's (section 4).
+
+`office start --drop PAGE` sends one drop out on its own, as a project
+session. It mints the folder through `office open`'s code: the title is
+the drop's first line (`--title` overrides), the lane the drop's project
+when that is one of the office's (else asked on a terminal and refused by
+name when piped; `--lane` is the twin, the project alone or `project:
+paths`), the size asked with small as its default (`--size`), the source
+`drop`, the slug the drop's. It moves the page into the folder as
+`drops/NAME.md`, bytes as they are, and writes `- DATE dropped:
+drops/NAME.md, via ...` in its History before the `opened` line. Then it
+packs the session as `office start FOLDER` does for the lane's project,
+with the goal "Sort the dropped message and do what it asks" (`--goal`
+overrides) and a brief from the install's templates/drop-brief.md: sort
+first (what it means, which part of the project, whether it is one job,
+what you must be told), then do the work. While an open session in the
+office's registry forecasts the in-tray or the desk it refuses and names
+the session; every refusal comes before anything is written. If the
+session does not go out after the folder is minted, the last line is
+`office start FOLDER --drop NAME`, which finds the page in the folder.
 
 On WSL the out tray opens in Explorer and the opener goes on the
 clipboard. `~/.config/office-src/machine.toml` holds this machine's own
@@ -1051,11 +1101,12 @@ matches the floor plan.
 | share/profile-shape.toml | the profile's required sections |
 | share/bale-consumption.toml | every bale verb, flag and JSON key the office reads or runs, and the bale version they were written against |
 | share/verbs.toml | what each verb ships, where it lands, whether a person must be present and what may set it off; a session kind with no declared landing may not run unattended |
-| lib/office_drafting.py | the drafting table: its arrival in an office, the one reader of its pages (blueprints, riders, the agenda, the ledgers, desk moves), the citation grammar's resolver, and what the drafting-table verbs write |
+| lib/office_drafting.py | the drafting table: its arrival in an office (the steps take the space they arrive, so the in-tray arrives through them too), the one reader of its pages (blueprints, riders, the agenda, the ledgers, desk moves), the citation grammar's resolver, and what the drafting-table verbs write |
+| lib/office_drop.py | the in-tray: a drop's page, written and read; the in-tray's arrival with the first drop; the unsorted drops office start carries, the desk lists and the Next line reads; the brief office start --drop sends; office status's in-tray line |
 | lib/office_watches.py | the watches: the query catalog, the register and its log, the check and its fired records |
 | lib/office_digest.py | the digest: the sitting-open page, every section computed |
 | share/watch-queries.toml | every query a watch can evaluate: the bale surface it reads, the value, how it compares, or the datum bale does not stamp yet |
-| templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), each made into a page the first time a verb writes it; the folder's two pages, walkthrough.md and delivery.md, which ride with every build session |
+| templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), each made into a page the first time a verb writes it; the folder's two pages, walkthrough.md and delivery.md, which ride with every build session; the in-tray's front page (in-tray-README.md) and the brief office start --drop sends (drop-brief.md) |
 | migrations/ | one file per breaking release; format in migrations/README.md |
 | RELEASES.md | release notes |
 | tests/ | the test suite; run.sh (with runner.py) runs it side by side |
