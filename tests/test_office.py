@@ -1120,7 +1120,7 @@ class TestCatalogs(unittest.TestCase):
         lands the cabinet alone and reopen the desk alone. tour writes a
         throwaway office it deletes before it ends, so it lands nothing."""
         v = verbs_catalog()["verbs"]
-        prose = {"init", "found", "upgrade", "default", "start", "land", "tour", "deliver", "relay"}
+        prose = {"init", "found", "upgrade", "default", "start", "land", "tour", "deliver", "relay", "probe"}
         moves = {"close": ["filing-cabinet/{folder}"], "reopen": ["desk/{folder}"]}
         for name, verb in v.items():
             if verb["kind"] != "script" or name in DECLARED_KINDS:

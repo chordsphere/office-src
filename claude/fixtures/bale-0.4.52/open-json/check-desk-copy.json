@@ -1,0 +1,30 @@
+{
+ "argv": [
+  "open",
+  "--check",
+  "--json",
+  "TMP/dl/2026-10-13-office-probe-open (1).bale-bundle"
+ ],
+ "cwd": "TMP/repo",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"rehearsed\", \"sid\": null, \"tarball\": null, \"log\": null, \"session_dir\": null, \"context_files\": null, \"readme_path\": null, \"readme_heading\": null, \"readme_sha256\": null, \"checkpoint_file_path\": null, \"checkpoint_file_sha256\": null, \"branch\": null, \"applied_latest\": null, \"sweep\": null, \"include_group\": null, \"opener\": null, \"bundle\": {\"path\": \"TMP/dl/2026-10-13-office-probe-open (1).bale-bundle\", \"sha256\": \"184e72b69799e2796fcedb10a75ff91399592b85349b2e1ab7b8e62ff84fdd2e\", \"stem\": \"2026-10-13-office-probe-open (1)\"}, \"members\": {\"brief\": \"74c9611898b6a8c37fed8b3e8793580916f6e4ea1229a570a3cc531fb4dbc92d\", \"checkpoint\": null}, \"rehearsal\": \"check\", \"checkpoint_dry_run\": null, \"desk\": null, \"reason\": null, \"cause\": null}"
+ ],
+ "stdout_sha256": [
+  "eb8903dd8d0bf45bf530270b173f896da792d4161856bb1d42508fb79de0e374"
+ ],
+ "stderr": [
+  "[bale] bale open --check: rehearsing planner bundle TMP/dl/2026-10-13-office-probe-open (1).bale-bundle against the live tree \u2014 nothing will be written",
+  "[bale] second desk: this bundle opened session 2026-10-13-office-probe-open-001, which is still open; `bale open` would record desk-2 on it (no pre-flight, dry-run, sweep, or replay runs on that path)",
+  "",
+  "  rehearsal:    bale open --check",
+  "  project root: TMP/repo",
+  "  second desk:  would record desk-2 on open session 2026-10-13-office-probe-open-001 (2026-10-13-office-probe-open-001@desk-2)",
+  "  not run:      the desk's opened attempt, its sweep commit, and the opener \u2014 a second desk runs no gates or dry-run",
+  "  wrote:        nothing",
+  "",
+  "Rehearsal only: `bale open` with the same bundle joins the session as that desk."
+ ],
+ "captured": "probe of session 2026-10-13-office-probe-002, run on the machine office-src is built on (WSL2, bale 0.4.52) on 2026-10-13, in a throwaway repo under ./probe-output/office-probe-002 (a file-based fallback probe); the probe printed that directory as TMP, kept here as it printed it"
+}

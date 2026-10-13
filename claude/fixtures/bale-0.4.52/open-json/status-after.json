@@ -1,0 +1,17 @@
+{
+ "argv": [
+  "status",
+  "--json"
+ ],
+ "cwd": "TMP/repo",
+ "stdin": "closed",
+ "exit": 0,
+ "stdout": [
+  "{\"outcome\": \"status\", \"version\": \"0.4.52\", \"sid\": null, \"repo\": {\"root\": \"TMP/repo\", \"branch\": \"main\", \"tree_clean\": true, \"tree_change_count\": 0, \"bale_initialised\": true}, \"session\": {\"state\": \"idle\", \"goal\": null, \"expects_probe\": null, \"clarification\": null}, \"staging\": {\"present\": false, \"path\": \"TMP/repo/.bale/staging\", \"sessions\": {}, \"stale\": []}, \"outbox\": [\"request-2026-10-13-office-probe-open-001.tar.gz\"], \"applied\": {\"count\": 0, \"latest\": null}, \"sessions\": [], \"scopes\": {}, \"integration_lock\": null, \"config\": {\"project\": \"TMP/repo/bale.toml\", \"global\": \"/home/chordsphere/bale/user/bale.toml\", \"hooks_wired\": [\"post_pack\"], \"search_paths\": 1, \"baleignore\": false, \"summary_failed\": false}, \"clipboard\": {\"command\": null, \"source\": \"project\", \"key\": \"clipboard.command\", \"shadowed\": null, \"problem\": null}}"
+ ],
+ "stdout_sha256": [
+  "8952407bca0832696bf6e7343ec7ec5d8f4362c05408b555bbfd1c14157a4886"
+ ],
+ "stderr": [],
+ "captured": "probe of session 2026-10-13-office-probe-002, run on the machine office-src is built on (WSL2, bale 0.4.52) on 2026-10-13, in a throwaway repo under ./probe-output/office-probe-002 (a file-based fallback probe); the probe printed that directory as TMP, kept here as it printed it"
+}

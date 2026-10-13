@@ -3267,7 +3267,24 @@ check_start_bundle() {
   [ "$where" != project ] || [ "${START_CHECKED_HOST:-}" != "$project" ] || cargs+=(--checked)
   out="$(reader bundle-check "$root" "${cargs[@]}" --bundle "$bundle")" \
     || die "nothing else was written: no survey, no out tray, no session (the lines above are bale's own words, or the office's where it could read the bundle itself)"
-  [ -z "$out" ] || log "bale found it at $out, and every gate it runs before an open passed"
+  local found_at line over=() said=()
+  found_at="$(printf '%s\n' "$out" | head -n 1)"
+  while IFS= read -r line; do
+    case "$line" in
+      over$'\t'*) over+=("${line#over$'\t'}") ;;
+      bale$'\t'*) said+=("${line#bale$'\t'}") ;;
+    esac
+  done <<< "$(printf '%s\n' "$out" | tail -n +2)"
+  [ -z "$found_at" ] || log "bale found it at $found_at, and every gate it runs before an open passed"
+  # A second desk is bale's to recognize (0.18.0): the office's own
+  # overlap check caught this bundle, and bale's rehearsal passed it, so
+  # the office says what it saw and what bale said, and goes on.
+  if [ "${#over[@]}" -gt 0 ]; then
+    for line in "${over[@]}"; do log "$line"; done
+    for line in "${said[@]}"; do printf '%s\n' "$line" >&2; done
+    log "bale's own rehearsal passed it all the same (outcome rehearsed), so bale takes this bundle as it would open it: a bundle whose session is still open joins that session as a second desk, which is bale's to recognize; the office refuses an overlap only where bale would"
+    START_BALE_REHEARSED=1
+  fi
 }
 
 # resolve_hosted_bundle ROOT WHERE PROJECT: a bundle named by a bare name
@@ -3385,7 +3402,7 @@ cmd_start() {
   local leave_out=() no_rides=0 carry=() carry_none=0 bundle_given="" slug_flag=0
   local root name md status lane lane_project lane_paths names cls ans tz day out sid tray tray_root rel about="" args=() v
   local packed_flags=()
-  START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""
+  START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --in-office) [ -z "$where" ] || [ "$where" = office ] || die "--in-office and --on are two places; give one"; where=office; shift ;;
@@ -3592,6 +3609,7 @@ cmd_start() {
   for v in "${START_INSTALL_FILES[@]}"; do args+=(--install-file "$v"); done
   for r in "${leave_out[@]}"; do args+=(--leave-out "$r"); done
   [ "$where" != project ] || [ "$START_CHECKED_HOST" != "$project" ] || args+=(--checked)
+  [ "$START_BALE_REHEARSED" = 0 ] || args+=(--bale-rehearsed)
   tray_root="$(machine_setting out_tray "$HOME/out-tray")"
   case "$tray_root" in "~"|"~/"*) tray_root="$HOME${tray_root#\~}" ;; esac
 
@@ -5181,6 +5199,257 @@ if a is not None and b is not None and b > a:
   return 0
 }
 
+# --- a worker's probe, run where the project lives: office probe (0.18.0) --------------------
+#
+# A probe is a tool call whose courier is a role (TARBALL.md 4.6), and the
+# office is the occupant's hands at the terminal: office probe runs a
+# worker's probe block where the folder's project lives (its repo here,
+# through its shell on a host, the office root for the office itself), so
+# nobody opens a VPN, an ssh and a docker exec by hand to paste a block in
+# and the output back out. It shows the block's purpose header and asks
+# once before anything runs, refuses by name a block that is not a probe
+# or does not say it is read-only, puts the block that comes back on this
+# machine's clipboard, carries the fallback's probe-output/ to the out
+# tray, and writes one History line. The work is lib/office_probe.py's;
+# this is the wizard around it.
+
+PROBE="$OFFICE_SRC/lib/office_probe.py"
+probe_py() { python3 -B "$PROBE" "$@"; }
+
+# How this machine reads its clipboard: machine.toml's paste_command, the
+# office's own setting beside clipboard_command (which writes it) and
+# downloads. Asked once, on a terminal, the first time a verb needs it
+# (this machine's likely command offered, ? explaining it), kept, and
+# never asked again; piped, the verb refuses and names the key.
+# paste_setting WHY sets PASTE; WHY says what needs it.
+PASTE=""
+PASTE_HELP="One command line whose output is the text on this machine's clipboard: office probe reads a worker's probe block from it when it is given no file. On WSL it is PowerShell's Get-Clipboard through powershell.exe (offered when it is on the PATH); on Linux, wl-paste or xclip -selection clipboard -o; on a Mac, pbpaste. The answer is kept as paste_command in this machine's machine.toml (the office's own settings, never bale's config) and is not asked again; edit that file to change it, and \"\" there turns reading the clipboard off."
+paste_setting() {
+  local why="$1" out rc cand ans
+  out="$(helper paste-command "$MACHINE_FILE")"; rc=$?
+  case "$rc" in
+    0) [ -n "$out" ] || die "paste_command in $MACHINE_FILE is \"\", which turns reading the clipboard off: give the block as a file (office probe FOLDER FILE) or on stdin (office probe FOLDER -)"
+       PASTE="$out"; return 0 ;;
+    3) ;;
+    *) die "paste_command in $MACHINE_FILE does not read (the line above says why); fix it there" ;;
+  esac
+  can_ask || die "$why, so the office needs to know how this machine reads its clipboard: set paste_command in $MACHINE_FILE, one command line whose output is the clipboard's text (paste_command = \"pbpaste\"), or give the block as FILE or -; piped input is never asked"
+  cand="$(helper paste-command "$MACHINE_FILE" --candidate 2>/dev/null)"
+  printf 'How does this machine read its clipboard? %s; this is asked once and kept as paste_command in %s.\n' "$why" "$MACHINE_FILE" >&2
+  [ -n "$cand" ] || printf '  (no clipboard reader found on this machine; give the command)\n' >&2
+  ask ans "The command whose output is the clipboard's text (paste_command in machine.toml)" "$cand" 1 "$PASTE_HELP"
+  helper paste-command "$MACHINE_FILE" --set "$ans" >/dev/null \
+    || die "paste_command could not be written to $MACHINE_FILE (the line above says why)"
+  log "kept in $MACHINE_FILE: paste_command = $ans; it is not asked again (edit the file to change it)"
+  PASTE="$ans"
+}
+
+usage_probe() {
+  cat <<'USAGE'
+usage: office probe [FOLDER] [FILE | -] [--project NAME] [--sid SID] [--yes]
+Runs a worker's probe block where the folder's project lives and hands
+the output back. The block comes from FILE, from stdin (-), or, with
+neither, from the clipboard, read with paste_command in this machine's
+~/.config/office-src/machine.toml (asked once on a terminal, with this
+machine's likely command offered). Before anything runs it shows the
+block's purpose header (the comment lines before its first blank line)
+and asks once, default no. A block with no PROBE BEGIN line, or whose
+header does not say it is read-only, is refused by name and nothing runs.
+The block runs with stdin closed: in the project's repo for a project on
+this machine; through the project's shell, in its path, for a project on
+a host (the plain form, with no terminal: a probe never waits on one); in
+the office root for the office itself. One reach of the host, as every
+verb reaches. Its output, stdout and stderr, comes back whole; the lines
+from PROBE BEGIN to PROBE END go on this machine's clipboard
+(clipboard_command; on WSL clip.exe), since the block's own closing
+clipboard step runs where no clipboard is, and the office says how many
+lines came back and whether the integrity trailer's count matches them.
+A probe-output/ directory the run leaves (the file-based fallback) is
+carried to the session's out tray, ~/out-tray/SID/probe-output/, and
+removed where it ran. The folder's History gains `- DATE probe: SID, N
+lines`.
+  FOLDER         the job whose session asked for the probe: its name, a
+                 unique part of it, or folder N; asked on a terminal
+  FILE           the block as the worker returned it (a chat's code fence
+                 around it is fine); - reads it from stdin, which then
+                 cannot answer the question, so --yes goes with it
+  --project NAME where it runs: one of the office's projects, or office
+                 for the office itself. Default: the project the folder's
+                 lane names; asked on a terminal when the lane names none
+  --sid SID      the session the probe is for, when the folder has several
+                 open where it runs and the block's slug names none
+  --yes          run it without asking; piped, nothing runs without it
+The session is the folder's recorded session open where the project
+lives: a folder with none gets no probe run, since a probe is a session's
+and its output is kept under that session's out tray.
+Under the hood: bale status --json where the project lives (which sessions
+are open), then the block through bash -c there; OFFICE_DEBUG=1 shows every
+shell call, and OFFICE_PROBE_TIMEOUT=<seconds> (default 1800) stops a block
+that runs longer.
+Examples:
+  office probe 13                              (the block on the clipboard; asks where when the lane does not say)
+  office probe fix-login probe.sh --project web-api
+  office probe 13 - --project office-src --yes < probe.sh
+USAGE
+}
+
+# ask_probe_project VAR NAMES: where the probe runs, office or one of the
+# projects (NAMES, one per line), asked on a terminal; the flag twin is
+# --project.
+ask_probe_project() {
+  local __var="$1" known="$2" ans list
+  list="$(printf '%s' "$known" | paste -sd, - | sed 's/,/, /g')"
+  while :; do
+    ask ans "Where it runs: office, or the project ($list) (--project)" "" 1 \
+      "The project whose environment the worker asked about: the block runs in its repo, through its shell when it is on a host. office runs it in this office's root. The folder's lane names a project when it has one, and then this is not asked."
+    if [ "$ans" = office ] || printf '%s\n' "$known" | grep -qxF -- "$ans"; then printf -v "$__var" '%s' "$ans"; return 0; fi
+    printf '  office, or one of this office'"'"'s projects: %s\n' "$list" >&2
+  done
+}
+
+cmd_probe() {
+  local want="" file="" project="" sid="" yes=0 root name md tmp block_file plan_file result_file out rc ans
+  local names cands=() c tray_root tz day where block held
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help) usage_probe; return 0 ;;
+      --yes) yes=1; shift ;;
+      --project) [ $# -ge 2 ] || die "--project needs a project's name, or office for the office itself"; project="$2"; shift 2 ;;
+      --sid) [ $# -ge 2 ] || die "--sid needs the session's id"; sid="$2"; shift 2 ;;
+      -) [ -z "$file" ] || die "office probe takes one block"; file="-"; shift ;;
+      -*) usage_probe >&2; die "office probe does not know $1; the flags above are what it takes" ;;
+      *) if [ -z "$want" ]; then want="$1"; elif [ -z "$file" ]; then file="$1"
+         else die "office probe takes a folder and one block (FILE, or - for stdin)"; fi; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ -n "$sid" ]; then
+    [[ "$sid" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*-[0-9]{3}$ ]] || die "--sid $sid: not a session id (YYYY-MM-DD-slug-NNN)"
+  fi
+
+  # Which job.
+  if [ -z "$want" ]; then
+    can_ask || { usage_probe >&2; die "name the folder: office probe FOLDER; piped input is never asked"; }
+    ask_folder want "$root" desk probe
+  fi
+  name="$(find_folder "$root" desk "$want")" || exit 1
+  md="$root/desk/$name/folder.md"
+  [ -f "$md" ] || die "desk/$name has no folder.md"
+
+  # The block: a file, stdin, or the clipboard.
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/office-probe.XXXXXXXX")" || die "no temporary directory for the block"
+  TMP_PATHS+=("$tmp")
+  block_file="$tmp/block.sh"
+  if [ "$file" = "-" ]; then
+    [ ! -t 0 ] || die "office probe FOLDER - reads the block from stdin, and stdin is this terminal: pipe the block in, give it as a file, or leave it on the clipboard and give neither"
+    cat > "$block_file" || die "could not read the block from stdin"
+  elif [ -n "$file" ]; then
+    [ -f "$file" ] || die "$file: no such file (the block is a file, - for stdin, or neither for the clipboard)"
+    cp -- "$file" "$block_file" || die "could not read $file"
+  else
+    paste_setting "office probe reads the block from the clipboard when it is given no file"
+    log "reading the block from the clipboard ($PASTE)"
+    timeout 15 bash -c "$PASTE" < /dev/null > "$block_file" 2> "$tmp/paste.err"; rc=$?
+    [ "$rc" = 0 ] || die "the clipboard could not be read: $PASTE exited $rc ($(tail -n 1 "$tmp/paste.err")); paste_command in $MACHINE_FILE"
+    grep -q '[^[:space:]]' "$block_file" \
+      || die "the clipboard is empty ($PASTE printed nothing): copy the worker's probe block first, or give it as FILE or -"
+  fi
+  # A block the office does not run is refused by name before anything is
+  # reached: no PROBE BEGIN line, no purpose header, or a header that
+  # does not say it is read-only.
+  probe_py check "$block_file" > /dev/null || exit 1
+
+  # Where it runs: the folder's lane, --project, or asked.
+  if [ -z "$project" ]; then
+    project="$(probe_py lane "$root" "desk/$name")" || exit 1
+    if [ -n "$project" ]; then
+      log "desk/$name's lane names $project, so the probe runs where $project lives (--project says otherwise)"
+    else
+      names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+      can_ask || die "say where the probe runs: --project NAME ($(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')), or --project office for the office itself; desk/$name's lane names no project, and piped input is never asked"
+      ask_probe_project project "$names"
+    fi
+  fi
+
+  # The session it is for, and nothing at probe-output/ there already:
+  # one reach of a host.
+  plan_file="$tmp/plan.json"
+  while :; do
+    out="$(probe_py plan "$root" "desk/$name" --project "$project" --block "$block_file" ${sid:+--sid "$sid"})"; rc=$?
+    case "$rc" in
+      0) printf '%s\n' "$out" > "$plan_file"; break ;;
+      5) mapfile -t cands <<< "$out"
+         can_ask || die "desk/$name has ${#cands[@]} sessions open where the probe runs ($(printf '%s\n' "${cands[@]}" | paste -sd, - | sed 's/,/, /g')), and the block's slug names none of them: --sid SID says which; piped input is never asked"
+         printf 'Sessions desk/%s records that are open where the probe runs:\n' "$name" >&2
+         for c in "${cands[@]}"; do printf '  %s\n' "$c" >&2; done
+         while :; do
+           ask sid "Which session asked for this probe (--sid)" "" 1 \
+             "The probe's output belongs to the session whose worker returned the block: its id names the out tray a fallback probe's files go to, and the folder's History line counts the probe against it."
+           printf '%s\n' "${cands[@]}" | grep -qxF -- "$sid" && break
+           printf '  one of the sessions above\n' >&2
+         done ;;
+      *) exit 1 ;;
+    esac
+  done
+  probe_field() { python3 -c 'import json,sys
+v = json.load(open(sys.argv[1]))[sys.argv[2]]
+print("\n".join(v) if isinstance(v, list) else ("" if v is None else v))' "$1" "$2"; }
+  sid="$(probe_field "$plan_file" sid)"; where="$(probe_field "$plan_file" where)"
+
+  # The header, and one question before anything runs.
+  printf 'The probe block, as its purpose header says:\n' >&2
+  probe_field "$plan_file" header | sed 's/^/  /' >&2
+  printf 'It runs %s, stdin closed, for %s (desk/%s).\n' "$where" "$sid" "$name" >&2
+  if [ "$yes" = 0 ]; then
+    can_ask || die "a probe runs only once its header has been seen and said yes to: --yes says it, and piped input is never asked; nothing ran"
+    ask ans "Run it? y or N (--yes)" "N" 0 \
+      "y runs the block where it says above, with stdin closed, and hands its output back. N, or a plain return, runs nothing. A worker's probe is read-only (its header says so, or the office would have refused it); read the header before saying y."
+    case "$ans" in
+      y|Y|yes|Yes|YES) ;;
+      *) log "not run: nothing was written, and the block is not kept"; return 0 ;;
+    esac
+  fi
+
+  # The run: the output to this terminal whole, the fallback's directory
+  # to the out tray.
+  tray_root="$(machine_setting out_tray "$HOME/out-tray")"
+  case "$tray_root" in "~"|"~/"*) tray_root="$HOME${tray_root#\~}" ;; esac
+  result_file="$tmp/result.json"
+  probe_py run --plan "$plan_file" --block "$block_file" --tray-root "$tray_root" --result "$result_file" || exit 1
+  log "$(probe_field "$result_file" words)"
+  if [ "$(probe_field "$result_file" closed)" = True ]; then
+    block="$(probe_field "$result_file" block)"
+    if [ -t 1 ]; then
+      to_clipboard "$block" "the probe block (PROBE BEGIN to PROBE END)" \
+        || log "the block is not on the clipboard (no clipboard_command here); copy it from above, PROBE BEGIN to PROBE END"
+    else
+      log "not on a terminal, so the block was not copied to the clipboard; it is above, PROBE BEGIN to PROBE END"
+    fi
+  fi
+  if [ -n "$(probe_field "$result_file" carried)" ]; then
+    log "the run left probe-output/ $where (the file-based fallback): carried to $(probe_field "$result_file" carried) ($(probe_field "$result_file" carried_files) file(s)) and removed there; attach those files with the paste"
+  fi
+  [ -z "$(probe_field "$result_file" carry_problem)" ] || warn "$(probe_field "$result_file" carry_problem)"
+
+  # One History line, so a sitting can count a session's probes. The
+  # one-writer rule holds: an open session in the office's own registry
+  # whose forecast holds the folder keeps the line out, said.
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  local line="$sid, $(probe_field "$result_file" count) lines"
+  held="$(reader writers "$root" "desk/$name/folder.md" 2>/dev/null)"; rc=$?
+  if [ "$rc" = 3 ]; then
+    printf '%s\n' "$held" | sed 's/^/[office]   /' >&2
+    warn "the History line was not written, since an open session holds desk/$name/folder.md (the one-writer rule): - $day probe: $line"
+  else
+    [ "$rc" = 0 ] || warn "bale's registry in this office could not be read; the History line is written without the one-writer check"
+    folder_event "$md" "$day" probe "$line"
+    commit_paths "$root" "office probe: $sid in $name" "desk/$name/folder.md" || true
+  fi
+  [ "$(probe_field "$result_file" closed)" = True ] || return 1
+  return 0
+}
+
 # --- the toy drawer: office tour ----------------------------------------------------
 #
 # A throwaway office to play in before committing to real work (the
@@ -5685,6 +5954,10 @@ Bring one back
                             given a read-only sitting's id, ends the sitting
   office relay SID FILE     carries the planner's answer to a clarification back to the
                             session's repo (bale relay there), and hands you bale's block
+  office probe FOLDER [FILE]
+                            runs a worker's probe block where the folder's project lives
+                            (on its host, in its container), after showing its header and
+                            asking once; the output back whole and the block on the clipboard
 
 Deliver it to the audience
   office deliver [FOLDER]   the folder's landed work to its project's audience as
@@ -5729,7 +6002,7 @@ EOF
 }
 
 # The verbs office help VERB explains, each through its own --help.
-HELP_VERBS=" init found survey status upgrade where default note slip open desk week close reopen sessions projects start land tour version moves blueprint rider riders agenda rulings evidence watches digest deliver letterhead relay "
+HELP_VERBS=" init found survey status upgrade where default note slip open desk week close reopen sessions projects start land tour version moves blueprint rider riders agenda rulings evidence watches digest deliver letterhead relay probe "
 # The two-word verbs, as office help VERB WORD (or VERB-WORD, the key
 # share/verbs.toml gives them) explains them.
 HELP_PAIRS=" blueprint-open blueprint-ratify blueprint-close rider-add rider-carry rider-consumed agenda-add watches-check letterhead-check "
@@ -5807,6 +6080,7 @@ main() {
     deliver) cmd_deliver "$@" ;;
     letterhead) cmd_letterhead "$@" ;;
     relay) cmd_relay "$@" ;;
+    probe) cmd_probe "$@" ;;
     *) usage >&2; die "unknown verb: $verb" ;;
   esac
 }

@@ -166,6 +166,19 @@ fired. `office relay` carries a planner's answer to a clarification back
 to the session's repo, through the project's shell for a hosted one. The
 details are below.
 
+### Run a worker's probe
+
+    office probe 13                      # the block on the clipboard: run where folder 13's project lives
+
+When a worker returns a probe block (a fact it needs from your machine,
+or from the host and container a project lives in), `office probe` runs
+it there for you: in the project's repo, through its shell on a host, or
+in the office root. It shows the block's purpose header and asks once
+first, and refuses a block that is not a probe or does not say it is
+read-only. The output comes back to your terminal whole, the block goes
+on your clipboard to paste back, and the folder's History counts the
+probe. The details are below.
+
 ### Deliver it to the audience
 
     office deliver health-route          # the folder's landed work to its project's audience, as curated commits
@@ -512,11 +525,18 @@ Where the work lands defaults to the one place whose tree holds every
 path the bundle names, and the question's `?` says why; a bundle whose
 paths no one place holds, or one sent where its paths are not, is
 refused before bale runs, naming each path and where it is.
-When the bundle is a file the office can read, a forecast that overlaps
-an open session is refused before bale runs, in the office's words and
-naming the session, its folder and the overlap, as for a pack; given as a
-bare name bale's search finds, the bundle cannot be read first, and
-`bale open --check` says it in bale's words before anything is written.
+When the bundle is a file the office can read, the office checks its
+forecast against the open sessions too, and names the session, its
+folder and the overlap. A second desk is bale's to recognize, and the
+office refuses an overlap only where bale would. From bale 0.4.50 start
+asks `bale open --check --json`. Where bale's rehearsal refuses the
+bundle, the office refuses it in its own words with bale's reason beside
+them; where it passes (a bundle whose session is still open, which bale
+takes as one more desk on it), the office says what its check saw, prints
+bale's own second-desk line, and goes on. With an older bale the overlap
+is refused before bale runs, as for a pack. Given as a bare name bale's
+search finds, the bundle cannot be read first, and `bale open --check`
+says it in bale's words before anything is written.
 
 Which session the bundle is in is read from bale's registry: the
 sessions open after `bale open` that were not open before. A bundle
@@ -690,6 +710,67 @@ in the repo there, one connection each, attended on a terminal, and a
 failing one names the line that reruns it from here. A read-only sitting
 there ends with `bale unlock` there. A hosted land makes about four
 connections, plus one per after-land action.
+
+### Running a worker's probe: the details
+
+    office probe FOLDER                  # the block from the clipboard (paste_command, asked once)
+    office probe FOLDER probe.sh         # from a file
+    office probe FOLDER - --yes < probe.sh
+
+A probe is a worker's tool call whose courier is you (TARBALL.md 4.6);
+`office probe` carries it. The block comes from a file, from stdin (`-`),
+or, given neither, from the clipboard, read with `paste_command` in this
+machine's `~/.config/office-src/machine.toml`, beside `clipboard_command`
+and `downloads`. It is asked once, on a terminal, the first time a verb
+needs it, with this machine's likely command offered: on WSL, PowerShell's
+`Get-Clipboard` through `powershell.exe` (its output made UTF-8, the CR
+of each line dropped); elsewhere `wl-paste`, `xclip`, `xsel` or `pbpaste`,
+whichever is on the PATH. `?` explains it. Piped, a probe that needs it
+refuses and names the key; `""` turns it off. A chat's code fence around
+the block is fine.
+
+Before anything runs, the office reads the block. One with no `PROBE
+BEGIN` line is not a probe block, and one whose purpose header (the
+comment lines before its first blank line) does not say it is read-only
+is not run: both are refused by name, before any host is reached. Then
+it finds where the block runs: the project the folder's lane names, or
+`--project NAME` (asked on a terminal when the lane names none;
+`--project office` is the office itself). It finds the session the probe
+is for: the session the folder records that is open there, by bale
+status; with several, the one the block's slug names, else `--sid`. A
+folder with none gets no probe run, since a probe is a session's. A
+`probe-output/` already where it runs stops it too, since a fallback
+probe's output could not be told from it. On a host all of this is one
+connection, which is the reach. Then it shows the header and where the
+block runs, and asks once, `y` or `N`, default no; `--yes` is the flag
+twin, and piped, nothing runs without it.
+
+The block runs with its stdin closed: in the project's repo, or through
+the project's shell in its path, in the plain form with no terminal
+asked for (a probe never waits on one), or in the office root. Its
+stdout and stderr come back to your terminal whole, as they come. The
+lines from `PROBE BEGIN` to `PROBE END` go on your clipboard with the
+office's own `clipboard_command` (on WSL, `clip.exe`), since the block's
+closing `bale clipboard` step runs where no clipboard is; the office says
+how many lines came back between the sentinels and whether the integrity
+trailer's count matches them. A block that never closes is said, and
+nothing is copied. `OFFICE_PROBE_TIMEOUT` (seconds, default 1800) stops a
+block that runs past it.
+
+The file-based fallback (TARBALL.md 4.4) leaves `probe-output/` where it
+ran. The office carries it to the session's out tray,
+`~/out-tray/SID/probe-output/` (`probe-output-2/` beside an earlier one),
+and removes it where it ran, since the office leaves nothing on a host
+outside the project's repo and a probe's output is not the repo's; its
+files go back to the worker with the paste. On a host the directory
+travels as one tar stream through the shell, its file count held to the
+far side's; one that does not arrive whole is left where it is, and said.
+
+The folder's History gains one line per run, `- DATE probe: SID, N
+lines`, so a sitting can count a session's probes. An open session in
+the office's own registry whose forecast holds the folder keeps the line
+out (the one-writer rule), and the line it would have written is printed
+instead.
 
 ### Delivering to the audience: the details
 
@@ -960,6 +1041,7 @@ matches the floor plan.
 | lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library) |
 | lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after |
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard and a bundle carried back |
+| lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for, the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray |
 | lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check), its run (the commits, the push, the record) and what it abandons; office letterhead check --on PROJECT |
 | lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin) |
 | share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks, one list for office letterhead check and the suite's text rules |

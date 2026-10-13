@@ -1,0 +1,25 @@
+{
+ "argv": [
+  "open",
+  "--check",
+  "--json",
+  "TMP/dl/2026-10-13-office-probe-other.bale-bundle"
+ ],
+ "cwd": "TMP/repo",
+ "stdin": "closed",
+ "exit": 1,
+ "stdout": [
+  "{\"outcome\": \"open-refused\", \"sid\": null, \"tarball\": null, \"log\": null, \"session_dir\": null, \"context_files\": null, \"readme_path\": null, \"readme_heading\": null, \"readme_sha256\": null, \"checkpoint_file_path\": null, \"checkpoint_file_sha256\": null, \"branch\": null, \"applied_latest\": null, \"sweep\": null, \"include_group\": null, \"opener\": null, \"bundle\": {\"path\": \"TMP/dl/2026-10-13-office-probe-other.bale-bundle\", \"sha256\": \"9daf404616141a8bb72ded20b9d732f682aa9eb1cc80aa8fa30edc67b665949b\", \"stem\": \"2026-10-13-office-probe-other\"}, \"members\": {\"brief\": null, \"checkpoint\": null}, \"rehearsal\": null, \"checkpoint_dry_run\": null, \"desk\": null, \"reason\": \"gate-refused\", \"cause\": \"pack write forecast intersects 1 open session(s): 2026-10-13-office-probe-open-001 (notes ~ notes). Concurrent sessions require disjoint write forecasts (ADR-0015). Narrow this pack's forecast with --write paths disjoint from the open forecast(s), apply the open session's response first, run `bale unlock` if it was abandoned, or re-run with `--supersedes <sid>` if this pack splits and supersedes an open session (BALE.md \\u00a77.2). Note: a pack without --write forecasts its resolved include set \\u2014 the whole tree when --include is also absent \\u2014 and conflicts with every open session; a read-only pack (--read-only, empty forecast) conflicts with none. An open session packed before the separation reads its include set as its forecast (conservative) until it closes.\"}"
+ ],
+ "stdout_sha256": [
+  "c0ccd7e53fd371b2148617cd261b35637d683e582a8b952612407e7ad1fb2e81"
+ ],
+ "stderr": [
+  "[bale] bale open --check: rehearsing planner bundle TMP/dl/2026-10-13-office-probe-other.bale-bundle against the live tree \u2014 nothing will be written",
+  "[bale] member brief: explicit null (not shipped)",
+  "[bale] member checkpoint: explicit null (not shipped)",
+  "[bale] argv-only pack gates passed before any exchange (slug/goal, forecast existence, bundle-file naming, cap values, checkpoint blindness)",
+  "[bale] error: pack write forecast intersects 1 open session(s): 2026-10-13-office-probe-open-001 (notes ~ notes). Concurrent sessions require disjoint write forecasts (ADR-0015). Narrow this pack's forecast with --write paths disjoint from the open forecast(s), apply the open session's response first, run `bale unlock` if it was abandoned, or re-run with `--supersedes <sid>` if this pack splits and supersedes an open session (BALE.md \u00a77.2). Note: a pack without --write forecasts its resolved include set \u2014 the whole tree when --include is also absent \u2014 and conflicts with every open session; a read-only pack (--read-only, empty forecast) conflicts with none. An open session packed before the separation reads its include set as its forecast (conservative) until it closes."
+ ],
+ "captured": "probe of session 2026-10-13-office-probe-002, run on the machine office-src is built on (WSL2, bale 0.4.52) on 2026-10-13, in a throwaway repo under ./probe-output/office-probe-002 (a file-based fallback probe); the probe printed that directory as TMP, kept here as it printed it"
+}

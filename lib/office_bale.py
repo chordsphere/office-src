@@ -303,11 +303,13 @@ class Reader:
         text_runs = {surface: run for (surface, _), run in zip(texts, rest)}
         return text_runs, rest[len(texts):]
 
-    def invoke(self, surface, cwd=None, timeout=BALE_TIMEOUT, whole_why=False, also=None, **values):
+    def invoke(self, surface, cwd=None, timeout=BALE_TIMEOUT, whole_why=False, also=None, accept=(), **values):
         """Run one declared surface with stdin closed; (proc, shown, where).
         Refuses when bale exits non-zero, carrying bale's last words, or,
         with whole_why, everything from its error line on (a refusal that
-        lists what it searched, say). A hosted place runs it through the
+        lists what it searched, say); an exit code in accept (a surface
+        whose refusal is a JSON line the caller reads, since 0.18.0) is
+        handed back instead. A hosted place runs it through the
         project's shell, in the project's path. also (a hosted place only)
         is argvs that ride the same connection after bale, whatever bale
         said; their Runs are kept in self.also_runs, and what any of them
@@ -336,7 +338,7 @@ class Reader:
             except OSError as exc:
                 raise BaleError("missing", f"could not run {exe}: {exc}")
             debug(f"{shown} in {where}: exit {proc.returncode}, {len(proc.stdout)} bytes on stdout")
-        if proc.returncode != 0:
+        if proc.returncode != 0 and proc.returncode not in accept:
             err = [l for l in proc.stderr.splitlines() if l.strip()]
             why = err[-1] if err else "no message"
             if whole_why and err:
@@ -2362,26 +2364,37 @@ def overlap_lines(rd, office_root, pack_dir, where, project, forecast, bundle=No
     return lines
 
 
-def bundle_precheck(rd, office_root, where, project, bundle, checked=False):
+def bundle_precheck(rd, office_root, where, project, bundle, checked=False, defer_overlap=False):
     """For a bundle the office can read (a file here), the refusals office
     start says in its own words before bale is asked anything: a path the
     pack line names that is not in the tree it opens in, and an open
     session whose forecast overlaps the bundle's. A bundle it cannot read
-    is bale's to judge (check_bundle runs bale open --check next)."""
+    is bale's to judge (check_bundle runs bale open --check next).
+
+    With defer_overlap (a bale whose open --check speaks --json, 0.18.0)
+    the overlap is not refused here: its lines are returned, and
+    check_bundle refuses them only where bale's own rehearsal refuses
+    the bundle. A second desk is bale's to recognize (the ruling of
+    2026-10-12, ratified with session 2026-10-13-office-probe-002): a
+    bundle whose session is still open overlaps that session's forecast
+    by construction, and bale takes it as one more desk. Returns the
+    overlap's lines, or []."""
     argv = bundle_pack_argv(bundle)
     if argv is None:
-        return
+        return []
     pack_dir = pack_place(office_root, where, project, rd, checked)
     try:
         b_inc, b_wr, _ = bundle_paths(argv)
         forecast, supersedes = bundle_forecast(argv)
     except ValueError:
-        return
+        return []
     named = list(dict.fromkeys(b_inc + b_wr))
     label = "office" if where == "office" else project
     if rd.hosted(pack_dir):
-        # One connection: the open sessions and which paths are there.
-        hosted_round(rd, pack_dir, named)
+        # One connection: the open sessions, which paths are there, and
+        # (0.18.0) bale's version, which says whether its rehearsal
+        # speaks --json.
+        hosted_round(rd, pack_dir, named, version=True)
     places = bundle_places(office_root, named, rd)
     mine = next((m for lab, _, m in places if lab == label), None)
     if mine is None:
@@ -2391,11 +2404,18 @@ def bundle_precheck(rd, office_root, where, project, bundle, checked=False):
                           f"{place_words(label)}'s tree, so it cannot open there; nothing ran"]
                          + bundle_nowhere_lines(bundle, named, places, chosen=label))
     lines = overlap_lines(rd, office_root, pack_dir, where, project, forecast, bundle, supersedes)
-    if lines:
+    if lines and not defer_overlap:
         raise StartError(lines)
+    return lines
 
 
 def check_bundle(rd, office_root, where, project, bundle, checked=False):
+    """The path bale found the bundle at (None when its report does not
+    say), or StartError: check_bundle_report's found alone."""
+    return check_bundle_report(rd, office_root, where, project, bundle, checked)["found"]
+
+
+def check_bundle_report(rd, office_root, where, project, bundle, checked=False):
     """bale open --check for a bundle, where it would open, before office
     start opens a folder, commits a survey or fills a tray: bale resolves
     a bare name through its own search (cwd first, then its search
@@ -2403,12 +2423,34 @@ def check_bundle(rd, office_root, where, project, bundle, checked=False):
     an open, and writes nothing (the third-trip probe found it so on bale
     0.4.47: a missing name, a forecast path that does not exist and a
     forecast overlapping an open session each refuse, exit 1, with
-    nothing written). Returns the path bale found the bundle at (None when
-    its report does not say); raises StartError with bale's own words."""
+    nothing written).
+
+    From bale 0.4.50 on (open_json_ok) the rehearsal runs with --json
+    ([surfaces.open_check_json]), and its outcome is bale's verdict: a
+    bundle the office's own overlap check caught (bundle_precheck) goes
+    on when bale's rehearsal passes it, which is how bale takes a bundle
+    whose session is still open as a second desk, and is refused in the
+    office's words, with bale's reason beside them, when bale's
+    rehearsal refuses it too (session 2026-10-13-office-probe-002
+    captured both on bale 0.4.52). The rehearsal's `rehearsal` key says
+    only which rehearsal ran ("check"), never which bundle opened a
+    session; the session is in bale's own lines on stderr, which the
+    office passes on to the occupant and never reads for a decision.
+
+    Returns {found: the path bale found the bundle at, or None when its
+    report does not say; over: the office's overlap lines bale's
+    rehearsal passed, [] when there were none; bale: bale's own
+    second-desk lines from that rehearsal}. Raises StartError with
+    bale's own words, or the office's where it could read the bundle."""
     pack_dir = pack_place(office_root, where, project, rd, checked)
-    bundle_precheck(rd, office_root, where, project, bundle, checked)
-    spec = rd.consumption.surface("open_check")
+    over = bundle_precheck(rd, office_root, where, project, bundle, checked, defer_overlap=True)
+    as_json = open_json_ok(rd, pack_dir)
+    if over and not as_json:
+        raise StartError(over)
+    surface = "open_check_json" if as_json else "open_check"
+    spec = rd.consumption.surface(surface)
     hosted = rd.hosted(pack_dir)
+    place = "in the office" if where == "office" else f"on {project}"
     if hosted:
         local = hosted_bundle_file(bundle, pack_dir)
     try:
@@ -2420,23 +2462,55 @@ def check_bundle(rd, office_root, where, project, bundle, checked=False):
             asked = send_bundle(pack_dir, local, scratch) if hosted else bundle
             also = [scratch.removal_argv()] if hosted else None
             try:
-                proc, shown, _ = rd.invoke("open_check", pack_dir, timeout=PACK_TIMEOUT, whole_why=True, also=also,
-                                           bundle=asked)
+                proc, shown, _ = rd.invoke(surface, pack_dir, timeout=PACK_TIMEOUT, whole_why=True, also=also,
+                                           accept=(1,) if as_json else (), bundle=asked)
             finally:
                 if hosted and rd.also_runs:
                     scratch.removed_by_step()
     except (BaleError, ohost.HostError) as exc:
-        place = "in the office" if where == "office" else f"on {project}"
         raise StartError([f"bale cannot open the bundle {bundle} {place} ({pack_dir}), so start stopped before "
                           f"anything was written: {exc}"])
-    found = None
-    for line in proc.stdout.splitlines():
-        if line.startswith(spec["found_line"]):
-            found = line[len(spec["found_line"]):].split(" against ", 1)[0].strip()
+    found, said = None, []
+    if as_json:
+        try:
+            report = rd.parse(surface, proc, shown, str(pack_dir))
+            outcome = rd.key(report, "open_check_json", "outcome")
+            if outcome == spec["refused"] and proc.returncode == 1:
+                reason = rd.key(report, "open_check_json", "reason")
+                cause = rd.key(report, "open_check_json", "cause")
+            elif outcome == spec["outcome_passed"] and proc.returncode == 0:
+                kind = rd.key(report, "open_check_json", "rehearsal")
+                if kind != "check":
+                    raise BaleError("output", f"{shown} in {pack_dir} rehearsed {kind!r}, not the check it was asked")
+                b = rd.key(report, "open_check_json", "bundle")
+                found = rd.key(b, "open_check_json", "bundle.path") if isinstance(b, dict) else None
+            else:
+                raise BaleError("output", f"{shown} in {pack_dir} exited {proc.returncode} with outcome {outcome!r}, "
+                                          f"neither {spec['outcome_passed']!r} (exit 0) nor {spec['refused']!r} (exit 1)")
+        except BaleError as exc:
+            raise StartError([f"bale's rehearsal of the bundle {bundle} {place} ({pack_dir}) did not read, so start "
+                              f"stopped before anything was written: {exc}"])
+        if proc.returncode == 1:
+            # bale's whole refusal, from its error line on (a missing name
+            # lists every directory searched); the JSON's cause is its
+            # first line, for when stderr carried none.
+            err = [l for l in proc.stderr.splitlines() if l.strip()]
+            start_at = next((i for i, l in enumerate(err) if "error" in l.lower()), None)
+            words = "\n".join(err[start_at:]) if start_at is not None else cause
+            if over:
+                raise StartError(over + [f"bale's own rehearsal refuses it too ({reason}): {cause}"])
+            raise StartError([f"bale cannot open the bundle {bundle} {place} ({pack_dir}), so start stopped before "
+                              f"anything was written: {shown} refused it ({reason}): {words}"])
+        said = [l for l in proc.stderr.splitlines() if l.startswith(spec["second_desk_line"])]
+    else:
+        for line in proc.stdout.splitlines():
+            if line.startswith(spec["found_line"]):
+                found = line[len(spec["found_line"]):].split(" against ", 1)[0].strip()
     if hosted and found is not None:
         found = f"{local} (sent to {pack_dir.host} for the check)"
-    debug(f"{shown} in {pack_dir}: passed; bale found the bundle at {found or '(its report does not say)'}")
-    return found
+    debug(f"{shown} in {pack_dir}: passed; bale found the bundle at {found or '(its report does not say)'}"
+          + (f"; it passed over the office's overlap ({len(over)} line(s))" if over else ""))
+    return {"found": found, "over": over, "bale": said}
 
 
 def paths_missing_in(pack_dir, paths, rd=None):
@@ -2779,7 +2853,8 @@ def open_bundle(rd, pack_dir, bundle, scratch=None, as_json=False):
 
 
 def start(rd, office_root, folder, where, project, goal, slug, includes, writes, read_only,
-          brief, work_class, tray_root, bundle=None, leave_out=(), install_files=(), checked=False):
+          brief, work_class, tray_root, bundle=None, leave_out=(), install_files=(), checked=False,
+          bale_rehearsed=False):
     """Pack a session for a folder and fill its out tray. Returns a dict:
     sid, tray, files, opener (lines, or None), carried (what each file
     is), warnings. Raises StartError with lines to print when it cannot
@@ -2919,11 +2994,18 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             raise StartError([f"--include {p}: no such path in {pack_dir}"])
 
     # The predictable refusal, said plainly before bale is asked: two
-    # sessions whose forecasts overlap never run beside each other.
+    # sessions whose forecasts overlap never run beside each other. A
+    # bundle bale's own rehearsal passed this start (bale_rehearsed:
+    # office start's bundle check, which refuses the overlap itself
+    # wherever bale's rehearsal does) is bale's to judge: a bundle whose
+    # session is still open overlaps that session by construction, and
+    # bale takes it as a second desk (0.18.0).
     if not (bundle and argv is None):
         lines = overlap_lines(rd, office_root, pack_dir, where, project, forecast, bundle, bundle_supersedes)
-        if lines:
+        if lines and not (bundle and bale_rehearsed):
             raise StartError(lines)
+        if lines:
+            debug("the office's overlap check caught this bundle and bale's rehearsal passed it: bale's to judge")
 
     # Every check has passed: survey the machine again before anything
     # is packed, so the hung survey this session reads is current, and a
@@ -4196,6 +4278,9 @@ def main(argv=None):
                    help="an install-relative file that rides beside the request (repeatable)")
     p.add_argument("--checked", action="store_true",
                    help="bin/office has checked the project's host this start (start-check)")
+    p.add_argument("--bale-rehearsed", action="store_true",
+                   help="bale open --check --json passed this bundle this start, over the office's own overlap "
+                        "check (bundle-check printed `over` lines): bale's to judge, as a second desk")
     p = sub.add_parser("start-check", help="a project on a host answers, its bale is at the floor and its repo is "
                                            "bale's, before start writes anything: HOST<tab>VERSION, or nothing for a "
                                            "project on this machine")
@@ -4310,7 +4395,7 @@ def main(argv=None):
         return start_check_main(a)
     if a.cmd == "bundle-check":
         try:
-            found = check_bundle(Reader(), a.office, a.where, a.project, a.bundle, a.checked)
+            checked = check_bundle_report(Reader(), a.office, a.where, a.project, a.bundle, a.checked)
         except StartError as exc:
             for line in exc.lines:
                 log(f"error: {line}")
@@ -4318,7 +4403,15 @@ def main(argv=None):
         except (oh.HelperError, BaleError, ohost.HostError, OSError) as exc:
             log(f"error: {exc}")
             return 1
-        print(found or "")
+        # The first line is the path bale found; then, when bale's
+        # rehearsal passed a bundle the office's overlap check caught (a
+        # second desk, 0.18.0), one `over` line per line of the office's
+        # words and one `bale` line per line bale said about the desk.
+        print(checked["found"] or "")
+        for line in checked["over"]:
+            print(f"over\t{line}")
+        for line in checked["bale"]:
+            print(f"bale\t{line}")
         return 0
     if a.cmd == "start-riders":
         try:
@@ -4372,7 +4465,7 @@ def main(argv=None):
         try:
             result = start(Reader(), a.office, a.folder, a.where, a.project, a.goal, a.slug, a.include,
                            a.write, a.read_only, a.brief, a.work_class, a.tray_root, a.bundle, a.leave_out,
-                           a.install_file, a.checked)
+                           a.install_file, a.checked, a.bale_rehearsed)
         except StartError as exc:
             for line in exc.lines:
                 log(f"error: {line}")

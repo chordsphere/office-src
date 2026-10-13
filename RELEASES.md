@@ -4,6 +4,69 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.18.0
+
+Additive: no migration and nothing to do in any office. A new verb,
+`office probe`; `office start` lets bale judge a bundle it would take as
+a second desk; and bale 0.4.52's open --json lines are captured for the
+suite.
+
+`office probe FOLDER [FILE | -]` runs a worker's probe block where the
+folder's project lives and hands the output back, so nobody opens a VPN,
+an ssh and a docker exec by hand to paste a block into a container and
+the output back out.
+
+- The block comes from FILE, from stdin (`-`), or, given neither, from
+  the clipboard, read with machine.toml's new `paste_command`. It sits
+  beside `clipboard_command` and `downloads`, and is asked once on a
+  terminal with this machine's likely command offered (on WSL,
+  PowerShell's Get-Clipboard through powershell.exe). Piped, the verb
+  refuses and names the key.
+- The project is the folder's lane, or `--project NAME` (asked on a
+  terminal when the lane names none; `office` is the office root). The
+  session is the folder's recorded session open there; with several,
+  the one the block's slug names, else `--sid`.
+- A block with no PROBE BEGIN line, or whose purpose header does not
+  say it is read-only, is refused by name and nothing runs. Otherwise
+  the header is shown and the verb asks once, default no; `--yes` is
+  the flag twin, and piped, nothing runs without it.
+- The block runs with stdin closed, in the repo here, through the
+  project's shell (its plain form, no terminal) on a host, or in the
+  office root. One reach. Its output comes back whole; the lines from
+  PROBE BEGIN to PROBE END go on the clipboard here with the office's
+  own clipboard command, and the office says how many came back and
+  whether the integrity trailer's count matches them.
+- A `probe-output/` the run leaves (the file-based fallback) is carried
+  to the session's out tray, `~/out-tray/SID/probe-output/`, and removed
+  where it ran.
+- The folder's History gains `- DATE probe: SID, N lines`: `probe` joins
+  the closed set of History verbs and changes no status.
+
+`office start --bundle` follows the ruling ratified with this release:
+a second desk is bale's to recognize, and the office refuses an overlap
+only where bale would. For a bundle the office can read, its own overlap
+check still runs, and from bale 0.4.50 start asks `bale open --check
+--json` (a new surface, `open_check_json`). bale's `rehearsal` key says
+only which rehearsal ran ("check"), never which bundle opened a session,
+so the office reads the outcome. "rehearsed" passes a bundle whose
+session is still open: the office says what its check saw, prints
+bale's own second-desk line, and goes on to join the desk as 0.17.2
+does. "open-refused" stops it in the office's words with bale's reason
+beside them. Below bale 0.4.50 nothing changes: the overlap is refused
+before bale is asked.
+
+The development record gains `fixtures/bale-0.4.52/`: 13 live bale
+invocations from a fallback probe in a throwaway repo (open --check
+--json fresh, on a second desk and refused for an overlap; open --json
+opened and as desk 2 and desk 3; status; unlock), with
+`format_open_json`'s docstring. The suite's fake bale replays these
+lines for `open --json` and `open --check --json` in place of the lines
+0.17.2 built from the docstring.
+
+The doctrine names `office probe` in the front sheet's everyday verbs
+and in the verb table, and the walk-in's `Suite:` line under the install
+line.
+
 ## 0.17.2
 
 Additive: no migration, nothing to do in any office, and no verb gains a
