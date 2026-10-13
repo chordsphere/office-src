@@ -15,7 +15,7 @@ and everything else sits below it, its section numbers unchanged.
 
 | Kind of session | Reads |
 |---|---|
-| A build session on a project, the common case | this card and the front sheet below it; section 2, the audience line and its three boundaries; section 3, the principles, whose sixth is the two pages at the end of notes.md; section 4 to the end of its list, how a session is packed and what the doctrine tarball beside its request is; and section 9, the house rules |
+| A build session on a project, the common case | this card and the front sheet below it; section 2, the audience line and its three boundaries; section 3, the principles, whose sixth is the two pages at the end of notes.md; section 4 to the end of its list, how a session is packed, what the doctrine tarball beside its request is, and what it owes the drops it carries; and section 9, the house rules |
 | A work session in an office | the build row, then section 5 for the spaces it writes (the table, then those spaces' paragraphs), section 6, what every office session ships, and section 15, filed paper and its check |
 | The founding session | the work row, then section 12, the profile |
 | A sitting | the work row, the drafting table being the space it writes; then the rest of section 4, and sections 7, the verbs, and 8, when to open a session |
@@ -49,6 +49,8 @@ suggestion box, what you can do from here, and, last, the one command to
 type next. The
 everyday verbs take seconds and need no session: `office note` captures a
 line, `office slip` drops a friction slip in the suggestion box, `office
+drop` drops a message or a thread in the in-tray, to be sorted by a
+session that has the code in context, `office
 open` starts a numbered folder, `office desk` shows what is
 in flight, what is ready and in what order, and what waits on what,
 `office week` shows this week against what happened, `office close` and
@@ -169,6 +171,39 @@ A session is packed where it lands.
   writes on a host outside the project's repo is removed again, whether
   the start succeeded or not. One start reaches the host once, and the
   reads it needs there share a connection.
+- A session may carry drops: pages from the office's in-tray, each a
+  message or a thread the occupant dropped with `office drop`, waiting
+  to be sorted (section 5). Every session `office start` sends out
+  carries the unsorted ones, in its request or in the office's context
+  beside it, and the opener says how many. A session that carries drops
+  reads them before its work, and sorts the ones it can judge (its own
+  project's at least) in a `## Sort` section of its notes.md: one
+  `### DATE-SLUG.md` subsection per drop, named by the page's file name
+  wherever the page sits (the in-tray, or a folder's drops/), in the
+  format below. It leaves the rest to the office, and the drops change
+  nothing about its goal. A read-only sitting reads them and owes no
+  Sort. The office reads this format, so it is kept to the byte, every
+  key on its own line, in this order (values illustrative):
+
+  ```
+  ### 2026-10-14-login-error.md
+
+  - project: alpha
+  - folder: new
+  - goal: Fix the login page's error on narrow screens
+  - size: small
+  - tell: the sender, in reply: fixed in the next release
+  - facts: none
+
+  #### Brief
+
+  <the next session's brief, written from the thread>
+  ```
+
+  `folder:` is `new` or a folder number; `tell:` is `nobody` or who and
+  what; `facts:` is `none` or one or more lines for the project's
+  handbook chapter, each starting with `- `; `#### Brief` is present
+  when `folder:` is `new` and may be present otherwise.
 
 > Section 4 continues past the core banner, from "`office start`
 > does all of this", and sections 5 to 8 follow it there.
@@ -353,7 +388,8 @@ the `shell` that runs one command there and the `connect` line printed
 when the host does not answer. `office init` builds the base spaces. The others are added by a
 renovation session when real work asks for them, except the drafting
 table, whose pages hold no judgment until a sitting writes them: it
-arrives with the first verb that writes it. The install's catalog of
+arrives with the first verb that writes it; and the in-tray, which
+arrives with the first `office drop`. The install's catalog of
 spaces is share/spaces.toml.
 
 | path | what it does | base | hung | filed |
@@ -371,6 +407,7 @@ spaces is share/spaces.toml.
 | rolodex/ | how to deal with each person | renovation | no | no |
 | letterhead/ | how anything leaving the office must look and sound | renovation | no | no |
 | drafting-table/ | blueprints for work too big for one folder, and the ledgers around them: rulings, evidence, watches, riders, the agenda | renovation | no | a list |
+| in-tray/ | drops waiting to be sorted | no; arrives with the first drop | no | no |
 
 Folders, desk and filing cabinet. A folder is one job: a directory named
 by date and a short slug, holding folder.md (from the install's folder
@@ -537,6 +574,39 @@ the page says so. The digest is overwritten on every run and never
 edited by hand, and `office start` writes it again before it packs a
 sitting, which ships the drafting table.
 
+In-tray. Drops waiting to be sorted: a message or a thread, one page
+each, in-tray/DATE-SLUG.md. `office drop` captures one, instant and
+dumb: from the clipboard, a file or stdin, with one optional question,
+the project, in any words; it never refuses a drop it can write, and,
+like a note, it works in an unfounded office and in one out of step with
+the install, and only warns. The in-tray arrives with the first drop,
+as the drafting table arrives with the first verb that writes it: its
+front page from the install's template, the floor plan's entry as the
+catalog declares it and bale.toml's trigger, committed with that drop.
+It is neither hung nor filed: its pages are live. A drop's page is its
+first line as the heading, `# Drop: ...` (trimmed to 60 characters),
+four field lines, `- dropped: DATE TIME`, `- project:` (the free text
+as given, or `none given`), `- via:` (`clipboard`, `stdin` or `file
+NAME`) and `- status:` (`unsorted` when it lands, `sorted` once a Sort
+has been filed under it), and then `## Text`, the text verbatim, kept
+ASCII as a note is. Only the office command writes the field lines,
+never a hand, as with a folder's. Every session `office start` sends out
+carries the unsorted drops, and a session sorts what it can judge
+(section 4). A sorted drop leaves the in-tray whole, its bytes as they
+are, into the folder it became, as drops/DATE-SLUG.md. `office start
+--drop in-tray/PAGE` is the direct path for a drop whose job is plain:
+it mints the folder through `office open`'s own code (the title from the
+drop's first line, the lane from its project when that is one of the
+office's, else asked; the size asked, small by default; the source
+`drop`), moves the page into the folder, writes `- DATE dropped:
+drops/DATE-SLUG.md, via ...` in its History before the `opened` line,
+and sends a project session out on the lane's project, whose brief tells
+it to sort the drop first and do the work second. It holds the one-writer
+rule: while an open session in the office's registry forecasts the
+in-tray or the desk, it refuses and names the session. `office status`
+checks an in-tray that exists against the catalog and every page
+against this shape.
+
 Notepad. The occupant's words, verbatim and dated. Never edited.
 Structuring them into folders, cards and chapters is cleanup's job.
 `office note` appends a timed line to the day's page, notepad/DATE.md;
@@ -615,13 +685,14 @@ Kinds:
 | where, default | script: which office a command acts on | yes |
 | note | script: append a dated line to the notepad | yes |
 | slip | script: drop a friction slip in the suggestion box, saying what it is about | yes |
+| drop | script: capture a message or a thread as one in-tray page, with an optional free-text project | yes |
 | open | script: start a numbered folder on the desk, or a candidate, or one born done in the filing cabinet | yes |
 | desk | script: in flight, ready in order, parked under what each waits for, candidates | yes |
 | week | script: this week's calendar and its gaps | yes |
 | close, reopen | script: move a folder to the filing cabinet, done, absorbed, split or retired, and a done one back | yes |
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes |
 | projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace, a clone here brought there with --from), declare where it is, what rides with it and what runs after it lands, bring a host's bale level with this machine's (level-bale), render what bale records about them | yes |
-| start | script: pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
+| start | script: pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
 | land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, the folder's walkthrough and delivery pages filed from the response, the founding folder closed when the founding has landed, the watches that fired, and what became of each action; or end a read-only sitting the office sent out | yes |
 | relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes |
 | probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), stdin closed, once its purpose header has been shown and the occupant said yes; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes |
@@ -681,7 +752,10 @@ the Next line never names one, since nothing in the office knows when a
 sitting is over), how many folders are ready, parked and
 candidates, and the first three ready ones with their next moves, how
 many desk moves a sitting wrote are pending and which session wrote
-them, how many riders are orphaned, this week and its gaps, the last notepad lines, how many slips are in the
+them, how many riders are orphaned, when the in-tray holds unsorted
+drops how many and the oldest's age in days (`office desk` lists each
+after the candidates: its page's name, its project or `no project`, and
+its first line), this week and its gaps, the last notepad lines, how many slips are in the
 suggestion box, and the verbs to reach for. Where the office scopes the
 source the install came from, a `Suite:` line, under the install line,
 gives the latest detached run of that source's suite (`tests/run.sh
@@ -697,7 +771,13 @@ run the old office; placed here in 0.13.0, ahead of a session out); a
 session out (land it,
 or, when bale held it, land its corrected response); desk moves a sitting
 decided that have not run (run them: until then the desk is not in the
-order the sitting decided); an unfounded office (start its founding
+order the sitting decided); an unsorted drop (the oldest whose project
+is one of the office's, with no session in flight on a folder of that
+lane: `office start --drop in-tray/PAGE`; the oldest whose project is
+none of the office's, or that has none: the same line with `--lane
+LANE` for the occupant to fill; an office that scopes no project skips
+it; placed here in 0.19.0, since drop, start, land is a routine ask's
+whole count); an unfounded office (start its founding
 folder, which goes out through the founding door with the answers it
 keeps, or, with none on the desk, found it); the first ready folder
 (start it); an open folder no session is out for;

@@ -4,6 +4,104 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.19.0
+
+Additive: no migration and nothing to do in any office. A new verb,
+`office drop`, and a new space, the in-tray, which arrives with the first
+drop; every session `office start` sends out carries the unsorted drops;
+and `office start --drop` sends a dropped message straight out as a
+project session. A routine ask is three steps: drop, start, land.
+
+`office drop [FILE | -] [--project TEXT]` captures a message or a thread,
+instant and dumb, as one page, `in-tray/DATE-SLUG.md`, committed on its
+own.
+
+- The text comes from FILE, from stdin (`-`, or anything piped), or, on a
+  terminal with neither, from the clipboard through machine.toml's
+  `paste_command` (0.18.0's key, asked once). It says what it took: the
+  first line and how many lines.
+- It asks one question on a terminal, the project, as free text: the
+  office's project names are offered as hints, any words are taken, and a
+  plain return leaves it empty. `--project` is the flag twin. Piped, it
+  asks nothing. It never refuses a drop it can write.
+- The page: `# Drop: ` and the first line (trimmed to 60 characters),
+  then `- dropped: DATE TIME`, `- project:` (the words as given, or `none
+  given`), `- via:` (`clipboard`, `stdin` or `file NAME`), `- status:
+  unsorted`, and `## Text` with the text verbatim. Line ends become LF,
+  and anything outside ASCII is kept as a backslash escape, as a note
+  keeps it. The slug is made from the first line the way `office slip`
+  makes one, with a counter when the name is taken.
+- Like `office note` it works in an unfounded office and in one behind
+  or ahead of the install, and only warns.
+- The in-tray arrives with the first drop, the way the drafting table
+  arrives with the first verb that writes it: in-tray/README.md from the
+  new template templates/in-tray-README.md, the floor plan's
+  `[spaces.in-tray]` entry as share/spaces.toml declares it, and `in-tray`
+  added to bale.toml's include-group triggers, all in the drop's own
+  commit. It is neither hung nor filed. `office status` gains an
+  `in-tray:` line that checks it against the catalog and every page
+  against the shape.
+
+`office start` carries every unsorted drop with every session it sends
+out: in the pack's includes for an office session (a sitting included,
+which reads them and owes no Sort), in the office's context tarball
+beside the request for a project session (on a host too), and, for an
+office session from a bundle, which the office adds nothing to, as
+`context-in-tray.tar.gz` beside it. The out tray's listing says how many
+ride and where, and the opener gains one line saying so. The goal is
+unchanged.
+
+`office start --drop PAGE` sends one drop straight out as a project
+session. PAGE is the drop's page in the in-tray, by path or by name.
+
+- It mints the folder through `office open`'s own code: the title from
+  the drop's first line (`--title` overrides), the lane from the drop's
+  project when that names one of the office's projects (otherwise asked
+  on a terminal, `--lane` the twin, and refused by name when piped), the
+  size asked with small as the default (`--size`), and the source `drop`.
+  The folder's slug is the drop's.
+- It moves the page, bytes as they are, into the folder as
+  `drops/DATE-SLUG.md`, and the folder's History gains `- DATE dropped:
+  drops/DATE-SLUG.md, via ...` before the `opened` line. `dropped` joins
+  the closed set of History verbs and changes no status.
+- It packs the session on the lane's project, on its host when it has
+  one, with the goal "Sort the dropped message and do what it asks"
+  (`--goal` overrides) and a brief from the new templates/drop-brief.md:
+  the standing sort instructions, the drop's page between `--- DROP
+  BEGIN ... ---` and `--- DROP END ---`, and the Sort format.
+- It refuses, naming the session, while an open session in the office's
+  registry forecasts the in-tray or the desk, and every other refusal
+  comes before anything is written. When its session does not go out
+  after the folder is minted, its last line retries it: `office start
+  FOLDER --drop NAME`, which finds the page in the folder's drops/.
+- A lane may now be the project alone (`alpha`), as `--drop` writes it:
+  start, the desk and the Next line read it as that project with no
+  paths.
+
+The walk-in gains one line when the in-tray holds unsorted drops: how
+many, and the oldest's age in days. `office desk` lists them after the
+candidates, each with its project or `no project` and its first line.
+The Next line gains one rule, after the pending desk moves and before an
+unfounded office: the oldest unsorted drop whose project is one of the
+office's, with no session in flight on a folder of that lane, gives
+`office start --drop in-tray/PAGE`; the oldest whose project is none of
+them, or has none, gives the same line with `--lane LANE` to fill. An
+office with no projects skips it.
+
+The doctrine's core gains the paragraph a build session reads (section
+4's list): a session may carry drops, reads them before its work, and
+sorts the ones it can judge in a `## Sort` section of its notes.md, one
+`### DATE-SLUG.md` subsection per drop in a pinned format (project,
+folder, goal, size, tell, facts, and a `#### Brief`). Section 5 gains
+the in-tray's row and paragraph, section 7 the `drop` verb, `start`'s
+carry and `--drop`, the walk-in's line and the Next rule. share/verbs.toml
+declares `drop`. The drafting table's arrival helpers now take the space
+they arrive, so the in-tray arrives through the same code.
+
+Nothing reads a Sort section yet: `office land` filing it, `office moves`
+minting the folders sorted drops ask for, and the standalone sort session
+are the next release's.
+
 ## 0.18.0
 
 Additive: no migration and nothing to do in any office. A new verb,

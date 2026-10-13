@@ -17,7 +17,9 @@ brief (`office found` does the same for an office that is still
 unfounded). From then on the office is on its own, and office-src
 reaches it only through `office upgrade`. Every day: `office` to walk in
 (it ends with a Next line naming the one command to type), `office note`
-to capture a line, `office slip` to drop a friction slip, `office start` to send a
+to capture a line, `office slip` to drop a friction slip, `office drop`
+to drop a message or a thread in the in-tray (from the clipboard, a file
+or stdin, with the project in any words), `office start` to send a
 session out for a folder (it packs the session with bale, or opens a
 planner's bundle, records it in the folder and puts everything to attach
 in one out tray beside the opener; it surveys the machine first, asks
@@ -120,6 +122,34 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Recent changes
 
+- 0.19.0 (session 2026-10-13-office-drop-003): `office drop`, the in-tray,
+  and the drops riding with every session; `office start --drop`.
+  - `office drop` takes a message or a thread from the clipboard, a file
+    or stdin and keeps it as one page, `in-tray/DATE-SLUG.md`, committed
+    on its own. It says what it took, asks the project as free text on a
+    terminal (a plain return skips it), never refuses a drop it can
+    write, and only warns in an unfounded or out-of-step office. The
+    page: `# Drop: ` and the first line, then `dropped`, `project` (or
+    `none given`), `via` and `status: unsorted`, then `## Text`, verbatim
+    and ASCII. The in-tray arrives with the first drop: its front page,
+    the floor plan's entry and bale.toml's trigger, in that drop's commit.
+  - Every session `office start` sends out carries the unsorted drops:
+    in the request for an office session, in the office's context for a
+    project session, beside a bundle as `context-in-tray.tar.gz`. The out
+    tray and the opener say how many ride.
+  - `office start --drop in-tray/PAGE` mints the folder through `office
+    open`'s code (title from the drop, lane from its project or asked,
+    size small unless you say, source `drop`), moves the page into the
+    folder's `drops/` with a `dropped` History line, and sends a project
+    session out whose brief says: sort it first, then do the work. Drop,
+    start, land.
+  - The walk-in counts the unsorted drops and says how old the oldest
+    is; `office desk` lists them; the Next line names `office start
+    --drop` for the oldest it can send. `office status` checks the
+    in-tray.
+  - The doctrine's core tells a build session what it owes the drops it
+    carries: a `## Sort` section in its notes.md, in a pinned format.
+  - Additive: no migration.
 - 0.18.0 (session 2026-10-13-office-probe-002): `office probe`, the
   second-desk ruling, and bale 0.4.52's live open --json lines.
   - `office probe FOLDER` runs a worker's probe block where the folder's
@@ -449,6 +479,15 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Known problems
 
+- A Sort section a session writes is not filed yet: `office land` reads
+  nothing of it in 0.19.0, and a carried drop stays `unsorted` in the
+  in-tray until the next release files it (and `office moves` mints the
+  folders sorted drops ask for). Until then, a drop a session sorted
+  keeps riding with later sessions; `office start --drop` is the way to
+  take one out of the in-tray now.
+- A drop's heading is its first line, so a message that opens with a
+  greeting ("Hi,") is titled by the greeting, and so is the folder
+  `office start --drop` mints from it. `--title` names it better.
 - `office probe`'s WSL paste command, PowerShell's Get-Clipboard through
   powershell.exe with its output made UTF-8, is offered from memory, not
   from a probe that ran it: the first `office probe` there with the block
@@ -667,6 +706,13 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Questions likely to come up
 
+- *Where does a message I dropped go?* Into the in-tray, as its own page,
+  until a session sorts it. Every session you send out carries it;
+  `office start --drop in-tray/PAGE` sends it out on its own, and the
+  walk-in's Next line names that line for the oldest one it can send.
+- *Does dropping need a project?* No. The project helps the session that
+  sorts it, and lets `office start --drop` go without asking; with none,
+  start asks for the lane on a terminal.
 - *Does upgrading office-src change my offices?* Their tools at once.
   Their files only through `office upgrade`, and only for breaking
   releases.

@@ -1245,9 +1245,14 @@ STATUSES = DESK_STATUSES + CABINET_STATUSES
 # `probe` is the line office probe writes for each block it ran, `- DATE
 # probe: SID, N lines` (0.18.0), so a sitting can count the probes of a
 # session; it changes no status.
+# `dropped` is the line office start --drop writes when it moves a drop
+# from the in-tray into the folder it minted, `- DATE dropped:
+# drops/DATE-SLUG.md, via clipboard` (0.19.0), before the `opened` line;
+# it changes no status.
 HISTORY_VERBS = ("candidate", "queued", "opened", "ratified", "gated", "cleared", "grown",
                  "re-scoped", "corrected", "ruled", "carried", "consumed", "done",
-                 "absorbed", "split", "retired", "reopened", "note", "ended", "delivered", "probe")
+                 "absorbed", "split", "retired", "reopened", "note", "ended", "delivered", "probe",
+                 "dropped")
 # The state-changing verbs and the status each leaves the folder in:
 # candidate -> queued -> open -> done; any desk status -> absorbed,
 # split or retired; done -> reopened -> open.

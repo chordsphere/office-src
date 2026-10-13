@@ -125,6 +125,18 @@ lands = ["suggestion-box/{date}-{slug}.md"]
 attended = true
 trigger = ["manual"]
 
+# One new page per drop in the in-tray, committed on its own (0.19.0). The
+# in-tray arrives with the first drop, as the drafting table arrives with
+# the first verb that writes it: its front page, the floor plan's entry
+# and bale.toml's trigger, committed with that drop. Lands the page.
+[verbs.drop]
+kind = "script"
+built = true
+writes = ["in-tray/{date}-{slug}.md", "in-tray/README.md", "floor-plan/manifest.toml", "bale.toml"]
+lands = ["in-tray/{date}-{slug}.md"]
+attended = true
+trigger = ["manual"]
+
 # open writes one folder: on the desk, or in the filing cabinet when it
 # is born done (--filed); lands names both, one of which it lands.
 [verbs.open]
@@ -205,11 +217,14 @@ trigger = ["manual"]
 # again and commits the page, so the hung survey is never older than the
 # session that reads it. A bundle is checked with bale open --check where
 # it opens before anything is written. The riders the pack's forecast
-# carries are offered and carried into the folder before the pack.
+# carries are offered and carried into the folder before the pack. Every
+# session it sends out carries the in-tray's unsorted drops (0.19.0);
+# with --drop it mints the folder through office open's code and moves
+# the drop's page out of the in-tray into the folder's drops/.
 [verbs.start]
 kind = "script"
 built = true
-writes = ["desk/{folder}", "notepad/{date}-{slug}.md", "floor-plan/survey.md", "drafting-table/riders.md", "bale's registry where the session is packed", "the out tray"]
+writes = ["desk/{folder}", "in-tray/{date}-{slug}.md", "notepad/{date}-{slug}.md", "floor-plan/survey.md", "drafting-table/riders.md", "bale's registry where the session is packed", "the out tray"]
 lands = ["desk/{folder}/folder.md"]
 attended = true
 trigger = ["manual"]

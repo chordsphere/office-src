@@ -349,11 +349,15 @@ class TestTourPiped(TourCase):
             self.assertIn(f"== Step {n} of 6: {title} ==", out)
         for shown in ("  $ office\n", "  $ office note 'the electrician can come Thursday'",
                       "  $ office open fix-the-gate --title 'Fix the garden gate' --size small", "  $ office desk",
-                      "  $ office week", "  $ office land\n"):
+                      "  $ office week", "  $ office land\n",
+                      # 0.19.0: the capture step drops a message too.
+                      "  $ office drop message.txt --project 'the garden'"):
             self.assertIn(shown, out)
-        # Each step says what the command did and why you would type it.
-        self.assertEqual(out.count("What it did:"), 5)
-        self.assertEqual(out.count("Why you would type it:"), 5)
+        self.assertIn("the in-tray arrives in this office", out)
+        # Each step says what the command did and why you would type it,
+        # and the capture step says it for both of its commands.
+        self.assertEqual(out.count("What it did:"), 6)
+        self.assertEqual(out.count("Why you would type it:"), 6)
         self.assertEqual(out.count("(not run: the tour never runs bale)"), 2)
         # The commands acted on the tour office, never the real one.
         self.assertIn("    The tour office, ", out)

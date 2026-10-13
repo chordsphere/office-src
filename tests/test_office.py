@@ -1025,6 +1025,10 @@ DRAFTING_LANDS = {
     "riders": [], "agenda-add": ["drafting-table/agenda.md"], "rulings": [], "evidence": [],
     "watches": [], "watches-check": [], "digest": ["drafting-table/digest.md"],
 }
+# The scripts that bring a space with their first write, as the drafting
+# table's do (0.19.0): they write the space's arrival (its front page, the
+# floor plan, bale.toml) and land the page they were run for.
+ARRIVAL_LANDS = {"drop": ["in-tray/{date}-{slug}.md"]}
 # Blueprint section 3's attended and trigger columns for the drafting
 # table's scripts that are not attended and manual alone.
 DRAFTING_RUNS = {
@@ -1143,6 +1147,8 @@ class TestCatalogs(unittest.TestCase):
             if name in moves:
                 self.assertEqual(verb["lands"], moves[name], name)
                 self.assertEqual(sorted(verb["writes"]), ["desk/{folder}", "filing-cabinet/{folder}"], name)
+            elif name in ARRIVAL_LANDS:
+                self.assertEqual(verb["lands"], ARRIVAL_LANDS[name], name)
             elif name not in prose:
                 self.assertEqual(verb["lands"], verb["writes"], name)
         self.assertEqual(v["start"]["lands"], ["desk/{folder}/folder.md"])
@@ -1448,7 +1454,9 @@ class TestText(unittest.TestCase):
         catalog = tomllib.loads((REPO / "share/spaces.toml").read_text())["spaces"]
         doctrine = (REPO / "doctrine/OFFICE.md").read_text()
         spaces = doctrine.split("## 5. Spaces", 1)[1].split("## 6.", 1)[0]
-        rows = re.findall(r"^\| ([a-z.-]+/?) \| [^|]+ \| (yes|renovation) \|", spaces, re.M)
+        # The base column: yes, renovation, or (the in-tray, 0.19.0) no,
+        # with the verb that brings the space.
+        rows = re.findall(r"^\| ([a-z.-]+/?) \| [^|]+ \| (yes|renovation|no[^|]*) \|", spaces, re.M)
         table = {path.rstrip("/"): base == "yes" for path, base in rows}
         self.assertEqual(table, {s["path"]: bool(s.get("base")) for s in catalog.values()})
 

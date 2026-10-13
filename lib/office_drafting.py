@@ -186,28 +186,33 @@ def clean_title(text):
 
 # --- arrival -----------------------------------------------------------------------
 
-def catalog_entry(catalog=CATALOG):
+# The three arrival steps take the space they arrive (space=) so a space
+# that arrives the same way, the in-tray with the first office drop
+# (lib/office_drop.py, 0.19.0), runs this code rather than a copy of it.
+
+def catalog_entry(catalog=CATALOG, space=SPACE):
     spaces = oh.read_toml(catalog).get("spaces", {})
-    if SPACE not in spaces:
-        raise oh.HelperError(f"the install's catalog ({catalog}) declares no {SPACE} space")
-    return spaces[SPACE]
+    if space not in spaces:
+        raise oh.HelperError(f"the install's catalog ({catalog}) declares no {space} space")
+    return spaces[space]
 
 
-def floor_plan_block(entry):
-    return [f"[spaces.{SPACE}]", f'path = "{entry["path"]}"',
+def floor_plan_block(entry, space=SPACE):
+    return [f"[spaces.{space}]", f'path = "{entry["path"]}"',
             f"hung = {oh.render_flag_or_list(entry.get('hung', False))}",
             f"filed = {oh.render_flag_or_list(entry.get('filed', False))}"]
 
 
-def add_space_to_floor_plan(manifest, entry):
-    """Add [spaces.drafting-table] to the floor plan after its last space,
-    every other byte kept. Returns False when the floor plan already has
-    it. The result is parsed back: everything the floor plan said before
-    must read the same, and the new table must read as the catalog's."""
+def add_space_to_floor_plan(manifest, entry, space=SPACE):
+    """Add [spaces.SPACE] (the drafting table unless another space is
+    named) to the floor plan after its last space, every other byte kept.
+    Returns False when the floor plan already has it. The result is
+    parsed back: everything the floor plan said before must read the
+    same, and the new table must read as the catalog's."""
     path = pathlib.Path(manifest)
     text = path.read_text(encoding="ascii")
     before = tomllib.loads(text)
-    if SPACE in before.get("spaces", {}):
+    if space in before.get("spaces", {}):
         return False
     lines = text.splitlines()
     heads = [i for i, l in enumerate(lines) if re.match(r"^\[spaces\.[^\]]+\]\s*$", l)]
@@ -218,13 +223,13 @@ def add_space_to_floor_plan(manifest, entry):
             at -= 1
     else:
         at = len(lines)
-    new = lines[:at] + [""] + floor_plan_block(entry) + lines[at:]
+    new = lines[:at] + [""] + floor_plan_block(entry, space) + lines[at:]
     new_text = "\n".join(new) + "\n"
     after = tomllib.loads(new_text)
-    added = after.get("spaces", {}).pop(SPACE, None)
+    added = after.get("spaces", {}).pop(space, None)
     if after != before or added != {"path": entry["path"], "hung": entry.get("hung", False),
                                      "filed": entry.get("filed", False)}:
-        raise oh.HelperError(f"adding the {SPACE} space to {path} would change what else it says; nothing written")
+        raise oh.HelperError(f"adding the {space} space to {path} would change what else it says; nothing written")
     path.write_text(new_text, encoding="ascii")
     return True
 
