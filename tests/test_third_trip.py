@@ -74,6 +74,23 @@ def classes_driving_a_terminal():
     return out
 
 
+def tests_driving_a_terminal(cls_node, src):
+    """The test methods of one class that drive a terminal: those whose own
+    body calls a pty helper or pty itself, or calls (self.NAME) a method of
+    the class that does, however deep."""
+    pat = re.compile(r"(?<![\w.])(" + "|".join(TERMINAL_HELPERS) + r")\(|pty\.(fork|openpty|spawn)")
+    methods = {m.name: ast.get_source_segment(src, m) for m in cls_node.body if isinstance(m, ast.FunctionDef)}
+    driving = {name for name, body in methods.items() if pat.search(body)}
+    grew = True
+    while grew:
+        grew = False
+        for name, body in methods.items():
+            if name not in driving and any(re.search(rf"self\.{d}\(", body) for d in driving):
+                driving.add(name)
+                grew = True
+    return {name for name in driving if name.startswith("test")}
+
+
 def classes_marked_serial():
     out = {}
     for f in sorted((REPO / "tests").glob("test_*.py")):
@@ -93,6 +110,21 @@ class TestTheRunner(unittest.TestCase):
         # This module's own terminal classes are marked like everyone's.
         self.assertEqual(marked, driving)
         self.assertGreaterEqual(sum(len(v) for v in marked.values()), 12)
+
+    def test_every_test_in_the_serial_lane_drives_a_terminal(self):
+        """The lane is the floor of every whole run, so it carries nothing
+        that could run beside it (0.21.0): a class marked serial holds only
+        tests that drive a terminal, and a test that drives none goes in a
+        class of its own beside it."""
+        marked, idle = classes_marked_serial(), []
+        for f in sorted((REPO / "tests").glob("test_*.py")):
+            src = f.read_text(encoding="utf-8")
+            for node in ast.parse(src).body:
+                if isinstance(node, ast.ClassDef) and node.name in marked.get(f.stem, set()):
+                    tests = {m.name for m in node.body if isinstance(m, ast.FunctionDef) and m.name.startswith("test")}
+                    idle += [f"{f.stem}.{node.name}.{t}" for t in sorted(tests - tests_driving_a_terminal(node, src))]
+        self.assertEqual(idle, [], "these tests sit in the serial lane and drive no terminal; move each to a class "
+                                   "without serial_group beside its own")
 
     def test_the_plan_runs_what_discover_runs_once_each(self):
         jobs = runner.plan(runner.module_names())

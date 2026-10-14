@@ -718,6 +718,200 @@ def wait_for_gone(path, seconds=30):
     return False
 
 
+# --- the order jobs start in, and the run's bytecode cache (0.21.0) ----------------------------
+
+def finished_run(state, name, verdict, rows):
+    """A detached run directory under state as the runner leaves one: its
+    verdict line and its logs/times.tsv (test, seconds, job per row)."""
+    run = state / name
+    (run / "logs").mkdir(parents=True)
+    (run / "verdict").write_text(verdict + "\n")
+    if rows is not None:
+        (run / "logs" / "times.tsv").write_text("".join(f"{t}\t{s}\t{j}\n" for t, s, j in rows))
+    return run
+
+
+class TestTheOrderJobsStartIn(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+        self.state = self.e.tmp / "state" / "office-src" / "suite"
+        self.state.mkdir(parents=True)
+
+    def test_with_no_earlier_run_it_is_as_before(self):
+        self.assertEqual(runner.last_times(self.state), ({}, None))
+        self.assertEqual(runner.last_times(self.e.tmp / "no-such-state"), ({}, None))
+        jobs = {"test_office": ["a"], runner.SERIAL_JOB: ["b"], "test_filed_append_only": ["c"]}
+        self.assertEqual(runner.order(jobs, times={}), runner.order(jobs))
+        self.assertEqual(runner.order(jobs, times={})[0], runner.SERIAL_JOB)
+        self.assertIn("no earlier run's times here", runner.order_line(None))
+        self.assertIn("as before", runner.order_line(None))
+
+    def test_the_times_are_the_newest_finished_runs(self):
+        finished_run(self.state, "20261010T000000Z-1", "OK 2026-10-10T00:20:00Z: 2 tests passed in 9s, at x",
+                     [("t.A.a", 1.0, "t"), ("t.A.b", 2.0, "t")])
+        failed = finished_run(self.state, "20261011T000000Z-2", "FAILED 2026-10-11T00:20:00Z: 1 of 2 tests failed",
+                              [("t.A.a", 5.0, "t"), ("not a row", "x", "y"), ("t.A.b", "slow", "t"),
+                               ("s.B.c", 7.5, runner.SERIAL_JOB)])
+        finished_run(self.state, "20261012T000000Z-3", "BROKEN 2026-10-12T00:20:00Z: the runner could not run",
+                     [("t.A.a", 99.0, "t")])
+        finished_run(self.state, "20261013T000000Z-4", "RUNNING since 2026-10-13T00:00:00Z", None)
+        (self.state / "notes").mkdir()
+        times, source = runner.last_times(self.state)
+        self.assertEqual(source, failed)
+        self.assertEqual(times, {"t": {"t.A.a": 5.0}, runner.SERIAL_JOB: {"s.B.c": 7.5}})
+        self.assertEqual(runner.order_line(source),
+                         f"jobs start longest first, by the last run's times ({failed / 'logs' / 'times.tsv'})")
+
+    def test_longest_first_by_those_times(self):
+        times = {runner.SERIAL_JOB: {"s.T.a": 30.0, "s.T.b": 30.0},
+                 "test_x": {"test_x.T.a": 100.0},
+                 "test_y": {"test_y.T.a": 1.0, "test_y.T.b": 2.0}}
+        jobs = {runner.SERIAL_JOB: ["s.T.a"],               # one of its two tests moved out
+                "test_x": ["test_x.T.a"],
+                "test_y": ["test_y.T.a", "test_y.T.b", "test_y.T.new"],  # a test the last run never timed
+                "test_z": ["s.T.b"]}                         # the moved test, timed in the lane
+        weights = runner.job_weights(jobs, times)
+        self.assertEqual(weights, {runner.SERIAL_JOB: 30.0, "test_x": 100.0, "test_y": 1.0 + 2.0 + 30.0,
+                                   "test_z": 30.0})
+        self.assertEqual(runner.order(jobs, times=times), ["test_x", "test_y", runner.SERIAL_JOB, "test_z"])
+        # The serial lane is weighed like any job: it no longer goes first
+        # when the times say another job is longer.
+        self.assertNotEqual(runner.order(jobs, times=times)[0], runner.order(jobs)[0])
+
+    def test_run_sh_plans_and_runs_in_that_order_and_says_so(self):
+        root = tiny_repo(self.e.tmp / "repo")
+        # A second module, larger on disk but quick: by size it would go first.
+        (root / "tests" / "test_big.py").write_text("import unittest\n# " + "x" * 4000 + "\n"
+                                                    "class B(unittest.TestCase):\n    def test_b(self):\n"
+                                                    "        pass\n")
+        env = dict(self.e.env, XDG_STATE_HOME=str(self.e.tmp / "state"))
+
+        def run_sh(*args):
+            return subprocess.run([str(root / "tests" / "run.sh"), *args], cwd=root, env=env, capture_output=True,
+                                  text=True, timeout=120)
+        plan = run_sh("--plan")
+        self.assertEqual([l.split("\t")[0] for l in plan.stdout.splitlines()], ["test_big", "test_tiny"], plan.stderr)
+        run = finished_run(self.state, "20261013T000000Z-9", "OK 2026-10-13T00:10:00Z: 3 tests passed in 9s",
+                           [("test_tiny.T.test_quick", 40.0, "test_tiny"), ("test_big.B.test_b", 0.1, "test_big")])
+        plan = run_sh("--plan")
+        self.assertEqual([l.split("\t")[0] for l in plan.stdout.splitlines()], ["test_tiny", "test_big"], plan.stderr)
+        proc = run_sh("--jobs", "1", "--logs", str(self.e.tmp / "logs"))
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn(f"[run] jobs start longest first, by the last run's times ({run / 'logs' / 'times.tsv'})",
+                      proc.stdout)
+        started = [l.split()[-1] for l in proc.stdout.splitlines() if l.startswith("[run] started ")]
+        self.assertEqual(started, ["test_tiny", "test_big"])
+
+    def test_a_job_never_sees_the_times(self):
+        finished_run(self.state, "20261013T000000Z-9", "OK 2026-10-13T00:10:00Z: 1 tests passed in 9s",
+                     [("t.A.a", 1.0, "t")])
+        caller = dict(self.e.env, XDG_STATE_HOME=str(self.e.tmp / "state"))
+        self.assertEqual(runner.last_times(runner.state_dir(caller))[0], {"t": {"t.A.a": 1.0}})
+        job = runner.isolated_env(caller, self.e.tmp / "job")
+        self.assertEqual(runner.last_times(runner.state_dir(job)), ({}, None))
+        # This very test, when the runner runs it: its own state directory
+        # holds no run, whatever the machine's holds.
+        if os.environ.get("OFFICE_TESTS_UNDER_RUNNER"):
+            self.assertEqual(runner.last_times(runner.state_dir(os.environ)), ({}, None))
+
+
+    def test_the_readme_and_the_front_sheet_say_how(self):
+        readme = " ".join((REPO / "README.md").read_text().split())
+        tests = readme.split("## Tests", 1)[1].split(" ## ", 1)[0]
+        for words in ("longest first", "times.tsv", "as before", "bytecode cache", "PYTHONPYCACHEPREFIX",
+                      "OnATerminal", "drive a terminal"):
+            self.assertIn(words, tests)
+        sheet = (REPO / ("cla" + "ude") / "context" / "front-sheet.md").read_text()
+        clock = " ".join(sheet.split("## The suite's clock", 1)[1].split("\n## ", 1)[0].split())
+        for words in ("bytecode cache", "OnATerminal", "longest first", "pylib"):
+            self.assertIn(words, clock)
+
+
+class TestTheRunsBytecodeCache(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+        self.src = self.e.tmp / "src"
+        self.src.mkdir()
+        (self.src / "mod_a.py").write_text("WORD = 'compiled'\n")
+        (self.src / "broken.py").write_text("def (:\n")
+        self.prefix = self.e.tmp / "pycache"
+
+    def test_it_compiles_once_where_the_interpreter_looks_and_links_the_standard_library(self):
+        n = runner.seed_bytecode(self.prefix, [self.src])
+        self.assertEqual(n, 1)  # broken.py is skipped, and said
+        pyc = runner.cached_pyc(self.prefix, self.src / "mod_a.py")
+        self.assertTrue(pyc.is_file())
+        self.assertTrue(pyc.is_relative_to(self.prefix))
+        env = dict(self.e.env, PYTHONPYCACHEPREFIX=str(self.prefix))
+        where = subprocess.run([sys.executable, "-B", "-c", "import importlib.util, json, sys; "
+                                "print(importlib.util.cache_from_source(sys.argv[1])); print(json.__cached__)",
+                                str(self.src / "mod_a.py")], env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(where.returncode, 0, where.stderr)
+        mine, stdlib = where.stdout.splitlines()
+        self.assertEqual(pathlib.Path(mine), pyc)
+        # The standard library's own compiled code, linked into the cache,
+        # since the interpreter looks nowhere else once a prefix is set.
+        self.assertTrue(pathlib.Path(stdlib).is_relative_to(self.prefix), stdlib)
+        self.assertTrue(pathlib.Path(stdlib).is_symlink(), stdlib)
+
+    def test_the_cache_is_read_and_never_written_by_what_runs(self):
+        runner.seed_bytecode(self.prefix, [self.src])
+        before = sorted(str(p.relative_to(self.prefix)) for p in self.prefix.rglob("*"))
+        # Proof it is read: the source changed, same size and time, so the
+        # cache stands for it and its compiled word is what runs.
+        src = self.src / "mod_a.py"
+        stat = src.stat()
+        src.write_text("WORD = 'from src'\n")
+        os.utime(src, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        env = dict(self.e.env, PYTHONPYCACHEPREFIX=str(self.prefix), PYTHONDONTWRITEBYTECODE="1")
+        out = subprocess.run([sys.executable, "-B", "-c", "import sys; sys.path.insert(0, sys.argv[1]); "
+                              "import mod_a; print(mod_a.WORD)", str(self.src)], env=env, capture_output=True,
+                             text=True, timeout=60)
+        self.assertEqual(out.stdout, "compiled\n", out.stderr)
+        # And the office command, run under the cache, writes nothing to it.
+        office_cache = self.e.tmp / "office-cache"
+        runner.seed_bytecode(office_cache, [REPO / "lib"])
+        listed = sorted(str(p.relative_to(office_cache)) for p in office_cache.rglob("*"))
+        proc = subprocess.run([str(REPO / "bin" / "office"), "help"], env=dict(self.e.env, PYTHONPYCACHEPREFIX=str(
+            office_cache)), cwd=self.e.home, capture_output=True, text=True, timeout=60)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(sorted(str(p.relative_to(office_cache)) for p in office_cache.rglob("*")), listed)
+        self.assertEqual(sorted(str(p.relative_to(self.prefix)) for p in self.prefix.rglob("*")), before)
+
+    def test_every_job_gets_the_runs_cache_and_never_the_callers(self):
+        base = dict(self.e.env, PYTHONPYCACHEPREFIX=str(self.e.tmp / "callers"))
+        self.assertNotIn("PYTHONPYCACHEPREFIX", runner.isolated_env(base, self.e.tmp / "j1"))
+        self.assertEqual(runner.isolated_env(base, self.e.tmp / "j2", self.prefix)["PYTHONPYCACHEPREFIX"],
+                         str(self.prefix))
+        # Under the runner, every Env hands the run's cache to the commands
+        # its test runs; under plain unittest there is none to hand on.
+        if os.environ.get("OFFICE_TESTS_UNDER_RUNNER"):
+            self.assertEqual(self.e.env.get("PYTHONPYCACHEPREFIX"), os.environ.get("PYTHONPYCACHEPREFIX"))
+            self.assertIn("office-tests-scratch.", self.e.env.get("PYTHONPYCACHEPREFIX", ""))
+        else:
+            self.assertNotIn("PYTHONPYCACHEPREFIX", self.e.env)
+
+    def test_the_command_runs_a_module_as_its_script_would(self):
+        """bin/office's pylib: __name__ is __main__, sys.argv[0] the module's
+        path, the arguments as given, lib/ first on sys.path and no current
+        directory on it (a json.py there is not what json imports)."""
+        lib = self.e.tmp / "install" / "lib"
+        lib.mkdir(parents=True)
+        (lib / "office_probe_mod.py").write_text(
+            "import json, sys\n"
+            "print(__name__); print(sys.argv[0]); print(sys.argv[1:]); print(sys.path[0]); print(json.dumps(1))\n"
+            "sys.exit(3)\n")
+        cwd = self.e.tmp / "elsewhere"
+        cwd.mkdir()
+        (cwd / "json.py").write_text("raise SystemExit('the current directory was on sys.path')\n")
+        proc = subprocess.run(["bash", "-c", office_functions("pylib") + 'pylib "$OFFICE_SRC/lib/office_probe_mod.py" '
+                               '"a b" c'], env=dict(self.e.env, OFFICE_SRC=str(lib.parent)), cwd=cwd,
+                              capture_output=True, text=True, timeout=60)
+        self.assertEqual(proc.returncode, 3, proc.stderr)
+        self.assertEqual(proc.stdout.splitlines(), ["__main__", str(lib / "office_probe_mod.py"), "['a b', 'c']",
+                                                    str(lib), "1"])
+
+
 class TestTheRecord(unittest.TestCase):
     def test_the_version_the_releases_and_the_readme(self):
         version = (REPO / "VERSION").read_text().strip()

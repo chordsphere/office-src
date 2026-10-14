@@ -255,7 +255,7 @@ class RideCase(LandCase):
 
 
 class TestWhatRides(RideCase):
-    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
+    # No test here drives a terminal, so the class runs beside the other jobs, not in the serial lane (0.21.0).
     def test_piped_everything_declared_rides(self):
         proc = self.run_office("start", "fix-login", "--on", "alpha", "--goal", "g", check=0)
         self.assertIn(f"rides with alpha ({self.notes}: blueprints)", proc.stdout)
@@ -284,6 +284,9 @@ class TestWhatRides(RideCase):
         proc = self.run_office("start", "fix-login", "--on", "alpha", "--bundle", str(bundle), "--no-rides", check=0)
         self.assertIn("left out of this session", proc.stdout)
 
+
+class TestWhatRidesOnATerminal(RideCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def test_on_a_terminal_it_shows_what_rides_and_asks(self):
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start", "fix-login", "--on", "alpha",
                                           "--goal", "g"], self.root, self.e.env, [
@@ -393,13 +396,15 @@ class TestSurveyBeforeEveryPack(LandCase):
 
 # --- 4. where, from the bundle ---------------------------------------------------------------
 
-class TestWhereFromTheBundle(LandCase):
-    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
+class WhereFromTheBundleCase(LandCase):
     def office_bundle(self):
         return bundle_file(self.e.tmp / "b", "2026-10-05-plan", ["Plan from a bundle", "--slug", "plan-b",
                                                                  "--include", "desk", "--include", "notepad",
                                                                  "--read-only"])
 
+
+class TestWhereFromTheBundle(WhereFromTheBundleCase):
+    # No test here drives a terminal, so the class runs beside the other jobs, not in the serial lane (0.21.0).
     def test_the_default_is_the_place_holding_every_path(self):
         where, why = ob.bundle_where(self.root, self.office_bundle(), "alpha")
         self.assertEqual(where, "office")
@@ -436,6 +441,9 @@ class TestWhereFromTheBundle(LandCase):
         self.assertNotIn("\n- 20", (self.root / self.folder / "folder.md").read_text().split("## Sessions")[1]
                          .split("## ")[0])
 
+
+class TestWhereFromTheBundleOnATerminal(WhereFromTheBundleCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def test_on_a_terminal_a_plain_return_opens_it_where_its_paths_are(self):
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start", "fix-login", "--bundle",
                                           str(self.office_bundle())], self.root, self.e.env, [

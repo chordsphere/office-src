@@ -215,8 +215,7 @@ class TestArrival(unittest.TestCase):
 
 # --- riders ---------------------------------------------------------------------------
 
-class TestRiders(unittest.TestCase):
-    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
+class RidersCase(unittest.TestCase):
     def setUp(self):
         self.o = Office(self)
         self.o.open("one", "--size", "small")
@@ -225,6 +224,9 @@ class TestRiders(unittest.TestCase):
     def riders(self, *args):
         return self.o.run("riders", *args).stdout
 
+
+class TestRiders(RidersCase):
+    # No test here drives a terminal, so the class runs beside the other jobs, not in the serial lane (0.21.0).
     def test_add_carry_consumed_and_numbers_across_page_and_folders(self):
         o = self.o
         proposal = "- **What:** keep the sweep commit's name\n- **Why:** it is cited\n- **Scope hints:** bin/\n"
@@ -301,6 +303,20 @@ class TestRiders(unittest.TestCase):
         self.assertIn("folders:    ", o.run("status").stdout)
         self.assertNotIn("problem", o.run("status").stdout.split("folders:", 1)[1].split("\n", 1)[0])
 
+    def test_forecast_lists_the_queued_riders_a_pack_carries(self):
+        o = self.o
+        o.run("rider", "add", "Pack", "--source", "x", "--rides", "bin/bale_pack.py")
+        o.run("rider", "add", "Docs", "--source", "x", "--rides", "docs/*.md")
+        o.run("rider", "add", "Named", "--source", "x", "--carrier", "folder 1")
+        out = self.riders("--forecast", "bin/", "lib/x.py")
+        self.assertIn("rider 1  Pack  (rides bin/bale_pack.py; the forecast's bin/)", out)
+        self.assertNotIn("Docs", out)
+        self.assertNotIn("Named", out)
+        self.assertIn("none: no queued rider", self.riders("--forecast", "share"))
+
+
+class TestRidersOnATerminal(RidersCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def test_on_a_terminal_rider_add_asks_and_explains(self):
         o = self.o
         env = dict(o.e.env)
@@ -314,17 +330,6 @@ class TestRiders(unittest.TestCase):
         self.assertIn("a rider is small work with a named carrier", " ".join(screen.lower().split()))
         page = (o.root / DT / "riders.md").read_text()
         self.assertIn("### rider 1 - Name the sweep\n\n- source: notepad/2026-10-05.md\n- rides: folder 2\n", page)
-
-    def test_forecast_lists_the_queued_riders_a_pack_carries(self):
-        o = self.o
-        o.run("rider", "add", "Pack", "--source", "x", "--rides", "bin/bale_pack.py")
-        o.run("rider", "add", "Docs", "--source", "x", "--rides", "docs/*.md")
-        o.run("rider", "add", "Named", "--source", "x", "--carrier", "folder 1")
-        out = self.riders("--forecast", "bin/", "lib/x.py")
-        self.assertIn("rider 1  Pack  (rides bin/bale_pack.py; the forecast's bin/)", out)
-        self.assertNotIn("Docs", out)
-        self.assertNotIn("Named", out)
-        self.assertIn("none: no queued rider", self.riders("--forecast", "share"))
 
 
 # --- the agenda ---------------------------------------------------------------------------

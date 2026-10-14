@@ -1315,5 +1315,85 @@ class TestStartABundle(LandCase):
         self.assertEqual(cwd, os.path.realpath(self.root))
 
 
+# --- a sitting from a bundle opens on the digest (0.21.0) ----------------------------------
+#
+# The live case (2026-10-13, read from an office's git log and bale
+# status): office start sent out one read-only sitting from a bundle and
+# committed "office start: digest" before its pack, then sent out another
+# and committed none, with no open session holding the drafting table.
+# The one path that skipped it without a word, and so the likely cause: a
+# bundle named by a bare name is bale's to find (its search, the
+# downloads), so the office could not read its pack line, could not tell
+# it was read-only, and left the digest alone.
+
+class TestABundledSittingOpensOnTheDigest(LandCase):
+    def sitting_argv(self, slug="plan-wave", *extra):
+        return ["Plan the next wave", "--slug", slug, "--read-only", *extra]
+
+    def digest_commits(self):
+        return [s for s in self.e.git(self.root, "log", "--format=%s").splitlines() if s == "office start: digest"]
+
+    def test_named_by_its_path(self):
+        bundle = bundle_file(self.e.tmp / "b", "2026-10-13-plan-wave", self.sitting_argv(), brief_with_page())
+        proc = self.run_office("start", "fix-login", "--in-office", "--bundle", str(bundle), check=0)
+        self.assertEqual(len(self.digest_commits()), 1, self.subjects(8))
+        self.assertIn("wrote the digest for the sitting (drafting-table/digest.md)", proc.stderr)
+        self.assertTrue((self.root / "drafting-table" / "digest.md").is_file())
+
+    def test_named_by_a_bare_name_bales_search_finds(self):
+        bundle_file(self.downloads, "2026-10-13-plan-wave", self.sitting_argv(), brief_with_page())
+        proc = self.run_office("start", "fix-login", "--in-office", "2026-10-13-plan-wave.bale-bundle", check=0)
+        # bale was asked by the name it was given, as before; the office read
+        # the pack line where bale's rehearsal found the bundle.
+        (_, argv, _), = self.fake.calls_of("open")
+        self.assertEqual(argv, ["open", "2026-10-13-plan-wave.bale-bundle"])
+        self.assertIn(f"bale found it at {self.downloads / '2026-10-13-plan-wave.bale-bundle'}", proc.stderr)
+        self.assertEqual(len(self.digest_commits()), 1, self.subjects(8))
+        self.assertIn("wrote the digest for the sitting (drafting-table/digest.md)", proc.stderr)
+        subjects = self.subjects(8)
+        sid = re.search(r"^Packed (\S+) for ", proc.stdout, re.M).group(1)
+        self.assertLess(subjects.index(f"office sessions: {sid} in {self.name}"),
+                        subjects.index("office start: digest"), "the digest is written before the pack")
+        self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
+
+    def test_a_pack_line_the_office_cannot_read_is_said_in_one_line(self):
+        # A line the office's reading of bale's flags does not take (an
+        # abbreviated flag) leaves it unable to tell a sitting: it says so,
+        # names the page it left and its time, and the start goes on.
+        self.run_office("digest", check=None)
+        written = re.search(r"^- written_at: (\S+) \(", (self.root / "drafting-table" / "digest.md").read_text(),
+                            re.M).group(1)
+        before = len(self.digest_commits())
+        bundle_file(self.downloads, "2026-10-13-plan-odd", ["Plan the next wave", "--slug", "plan-odd", "--read-o"],
+                    brief_with_page())
+        proc = self.run_office("start", "fix-login", "--in-office", "2026-10-13-plan-odd.bale-bundle", check=0)
+        self.assertRegex(proc.stdout, r"^Packed \S+ for ", proc.stderr)
+        lines = [l for l in proc.stderr.splitlines() if "it leaves drafting-table/digest.md" in l]
+        self.assertEqual(lines, [f"[office] the office cannot read the pack line of the bundle "
+                                 f"2026-10-13-plan-odd.bale-bundle (bale found it at "
+                                 f"{self.downloads / '2026-10-13-plan-odd.bale-bundle'}, and its pack line there "
+                                 f"does not read), so it cannot tell whether it sends out a sitting: it leaves "
+                                 f"drafting-table/digest.md as it was, written {written}; office digest writes it"])
+        self.assertEqual(len(self.digest_commits()), before)
+
+    def test_a_bundle_that_is_no_sitting_gets_no_digest_and_no_line(self):
+        bundle_file(self.downloads, "2026-10-13-office-work", ["Write it", "--slug", "office-work", "--write",
+                                                                self.folder, "--write", "notepad"], brief_with_page())
+        proc = self.run_office("start", "fix-login", "--in-office", "2026-10-13-office-work.bale-bundle", check=0)
+        self.assertRegex(proc.stdout, r"^Packed \S+ for ", proc.stderr)
+        self.assertEqual(self.digest_commits(), [])
+        self.assertNotIn("digest", proc.stderr)
+
+    def test_the_units(self):
+        ro = bundle_file(self.e.tmp / "u", "ro", self.sitting_argv())
+        rw = bundle_file(self.e.tmp / "u", "rw", ["Fix", "--slug", "fix", "--write", "src"])
+        odd = bundle_file(self.e.tmp / "u", "odd", ["Fix", "--slug", "fix", "--read-o"])
+        self.assertEqual([ob.bundle_read_only(b) for b in (ro, rw, odd, self.e.tmp / "u" / "none.bale-bundle", None)],
+                         [True, False, None, None, None])
+        self.assertIsNone(ob.digest_written_at(self.root))
+        self.assertIn("it leaves drafting-table/digest.md unwritten, as it was; office digest writes it",
+                      ob.digest_left_line(self.root, "x.bale-bundle", "why"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -115,6 +115,13 @@ class Env:
             "OFFICE_PROC_VERSION": "",
             "OFFICE_DESKTOP_PATH": str(self.desktop),
         }
+        # The runner's bytecode cache for this run (tests/runner.py,
+        # seed_bytecode), when the runner made one: compiled code of the
+        # office's modules, read by every command the test runs, written by
+        # none of them. It is the runner's, in its scratch directory, never
+        # the machine's; under plain unittest there is none.
+        if os.environ.get("PYTHONPYCACHEPREFIX") and os.environ.get("OFFICE_TESTS_UNDER_RUNNER"):
+            self.env["PYTHONPYCACHEPREFIX"] = os.environ["PYTHONPYCACHEPREFIX"]
         (self.home / ".gitconfig-empty").write_text("")
         self.office_bin = REPO / "bin" / "office"
 

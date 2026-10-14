@@ -478,13 +478,15 @@ class TestProjectsTable(unittest.TestCase):
         self.assertEqual(h.read_projects(h.read_toml(self.manifest))[0]["path"], str(proj))
 
 
-class TestProjectsVerb(unittest.TestCase):
-    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
+class ProjectsVerbCase(unittest.TestCase):
     def setUp(self):
         self.e = Env(self)
         self.root = self.e.init()
         self.proj = make_project(self.e.tmp, "office-src")
 
+
+class TestProjectsVerb(ProjectsVerbCase):
+    # No test here drives a terminal, so the class runs beside the other jobs, not in the serial lane (0.21.0).
     def test_listing_with_no_table_says_so(self):
         out = self.e.run("projects", cwd=self.root, check=0).stdout
         self.assertIn("no [projects] table", out)
@@ -518,6 +520,24 @@ class TestProjectsVerb(unittest.TestCase):
         self.assertIn("usage: office projects", proc.stderr)
         self.assertIn("does not know --force", proc.stderr)
 
+    def test_a_missing_project_is_reported_not_dropped(self):
+        self.e.run("projects", "add", "office-src", str(self.proj), cwd=self.root, check=0)
+        shutil.rmtree(self.proj)
+        proc = self.e.run("projects", cwd=self.root)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("office-src", proc.stdout)
+        self.assertIn("CANNOT BE READ: no such directory on this machine", proc.stdout)
+
+    def test_a_name_narrows_only_a_rendering(self):
+        proc = self.e.run("projects", "office-src", cwd=self.root)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("--ledger", proc.stderr)
+        proc = self.e.run("projects", "--ledger", "--versions", cwd=self.root)
+        self.assertEqual(proc.returncode, 1)
+
+
+class TestProjectsVerbOnATerminal(ProjectsVerbCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def test_the_wizard_asks_on_a_terminal(self):
         env = dict(self.e.env)
         pid, fd = pty.fork()
@@ -566,21 +586,6 @@ class TestProjectsVerb(unittest.TestCase):
         self.assertIn(b"added office-src", seen)
         self.assertEqual(os.waitstatus_to_exitcode(status), 0, seen)
         self.assertIn("[projects.office-src]", (self.root / "floor-plan/manifest.toml").read_text())
-
-    def test_a_missing_project_is_reported_not_dropped(self):
-        self.e.run("projects", "add", "office-src", str(self.proj), cwd=self.root, check=0)
-        shutil.rmtree(self.proj)
-        proc = self.e.run("projects", cwd=self.root)
-        self.assertEqual(proc.returncode, 1)
-        self.assertIn("office-src", proc.stdout)
-        self.assertIn("CANNOT BE READ: no such directory on this machine", proc.stdout)
-
-    def test_a_name_narrows_only_a_rendering(self):
-        proc = self.e.run("projects", "office-src", cwd=self.root)
-        self.assertEqual(proc.returncode, 1)
-        self.assertIn("--ledger", proc.stderr)
-        proc = self.e.run("projects", "--ledger", "--versions", cwd=self.root)
-        self.assertEqual(proc.returncode, 1)
 
 
 # --- the renderings ------------------------------------------------------------------------

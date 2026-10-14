@@ -528,7 +528,11 @@ packs a sitting (`--read-only` in the office, or a bundle that forecasts
 nothing), it writes the digest again and commits it, and the drafting
 table rides inside the sitting's request; an open session holding the
 drafting table leaves the digest as it was and never stops the start. A
-scoped office session gets no digest. The forecast of a project session comes from the
+bundle named by a bare name, which bale's search finds, is read where
+bale's rehearsal found it, so a sitting sent out that way gets its digest
+too (since 0.21.0); when start cannot read a bundle's pack line at all, it
+cannot tell a sitting, and it says so in one line, with the time the
+digest it left was written. A scoped office session gets no digest. The forecast of a project session comes from the
 folder's lane, the work class from its class, the slug from its name;
 the goal is the one thing asked. It records the session in the folder
 and prints the opener: attach the tray's files to a fresh chat and paste
@@ -1278,6 +1282,27 @@ summary carries what a failure said). It exits 0
 when every test passed, 1 when one failed, 2 when it could not run.
 `--serial` is today's single process, `python3 -m unittest discover -s
 tests -v`, which still works as it always did.
+
+Since 0.21.0 the suite waits less, and no test checks less. The serial
+lane holds only tests that drive a terminal: a class whose other tests
+drive none was split in two, the terminal tests in a class of their own
+(`...OnATerminal`) that keeps `serial_group`, the rest beside the other
+modules, every test's body as it was. When the runner knows the last
+run's times, the jobs start longest first: each job weighs the sum of its
+tests' times in the newest finished detached run (its `times.tsv`, kept
+with its verdict under the state directory), so the longest job is never
+the run's tail. With none (a first run, a fresh HOME, bale's sandbox) it
+runs as before, the serial lane first and then the modules by size, and
+the run says which in one line. No job can read those times, since each
+has a state directory of its own. And each run compiles the office's
+modules and the tests once, into a bytecode cache in its scratch
+directory (`PYTHONPYCACHEPREFIX`, handed to every job and, through each
+`Env`, to every command a test runs): the command runs its Python with
+`-B` so nothing is ever written beside an install, and before 0.21.0 it
+compiled every module again on every call, which was most of the suite's
+time. The cache is checked against each source as always, nothing but
+the runner writes it, and it goes with the scratch directory; in everyday
+use there is none and nothing changes.
 
 Run the suite in the foreground, or with `--detach`. A background job
 started from a non-interactive shell (`nohup tests/run.sh &`) inherits SIGINT ignored,
