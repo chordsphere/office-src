@@ -1,0 +1,322 @@
+{
+  "record_version": 1,
+  "session_id": "2026-10-13-suite-lane-waits-006",
+  "created_at": "2026-10-13T22:30:59+00:00",
+  "attempts": [
+    {
+      "at": "2026-10-13T22:30:59+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "doctrine",
+        "lib",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-10-13-suite-lane-waits-006.log",
+      "bundle": {
+        "stem": "2026-10-13-suite-lane-waits",
+        "brief_sha256": "a4adb172e0057c8d60ae1f9ce25d7f0dd0b66d36cb40263bfe92bd0805ccd2d0",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "512bbb8e49b0d2513906c86dc8379df82e97e700d08de9a12ffc4156f013340e"
+      },
+      "provenance": {
+        "work_class": "code",
+        "packer": "chordsphere",
+        "packed_at": "2026-10-13T22:30:59+00:00"
+      }
+    },
+    {
+      "at": "2026-10-14T00:27:10+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-10-13-suite-lane-waits-006.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "tests/run.sh --fast test_land.TestABundledSittingOpensOnTheDigest": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "every test the request carried survives byte for byte": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "the serial lane holds only the 52 tests that drive a terminal": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "bin/office runs its lib modules through pylib": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "office start reads a bare-named bundle where bale found it": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "the record says 0.21.0": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "bin/office is executable": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "the whole suite (tests/run.sh)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "tests/run.sh --fast test_land.TestABundledSittingOpensOnTheDigest": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "every test the request carried survives byte for byte": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "the serial lane holds only the 52 tests that drive a terminal": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "bin/office runs its lib modules through pylib": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "office start reads a bare-named bundle where bale found it": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "the record says 0.21.0": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "bin/office is executable": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "the whole suite (tests/run.sh)": {
+            "claim": "pass",
+            "verdict": "skip",
+            "agreement": "n/a"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "file syntax (bash -n, python ast)",
+          "tests/run.sh --fast test_land.TestABundledSittingOpensOnTheDigest",
+          "every test the request carried survives byte for byte",
+          "the serial lane holds only the 52 tests that drive a terminal",
+          "bin/office runs its lib modules through pylib",
+          "office start reads a bare-named bundle where bale found it",
+          "the record says 0.21.0",
+          "bin/office is executable",
+          "the whole suite (tests/run.sh)"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "doctrine",
+        "lib",
+        "tests"
+      ],
+      "overridden_paths": [
+        "claude/context/front-sheet.md"
+      ],
+      "overridden_path_sources": {
+        "claude/context/front-sheet.md": "prompt"
+      },
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib/office_bale.py",
+        "tests/runner.py",
+        "tests/test_drafting_table.py",
+        "tests/test_front_door.py",
+        "tests/test_land.py",
+        "tests/test_office.py",
+        "tests/test_read_side.py",
+        "tests/test_second_trip.py",
+        "tests/test_start.py",
+        "tests/test_suite_clock.py",
+        "tests/test_third_trip.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.54",
+            "contract_docs": {
+              "AGENT.md": "31dcdded2a8fd175f7778c2bd1be09688e89e76b8fd4cd62b7646aacfa2782c4",
+              "TARBALL.md": "3037b905ee561af44f27cc83ec45d832feb7d429a98d4e07b4482a518cda6e94",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "a8e5714e51049768e52bb5bc0ede9338db1175e7095d9b2bdd0d314ab3e01078"
+            },
+            "packer": "chordsphere",
+            "work_class": "code",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-10-13T22:30:59+00:00",
+            "base_files": {
+              "README.md": "07379f3a5680db26d9c5610cc862d2165e27b8501e8fb040080d0033eb437a64",
+              "RELEASES.md": "eb1334db1afacbe3a914f6994b64bbff056b180eb7582c2316d341c3eba1de9d",
+              "VERSION": "356c9c9f099da7f9b380c6fedc51077ee98de22402b378bc0f431fdc57aac757",
+              "bin/office": "e0bb3ce4b5ea35817f742ee13d675f4825bba3c1afa1397a17ac53b5863e69ec",
+              "doctrine/OFFICE.md": "7762d7fbaccbd013da9ce65a989997f21b3cebf340aceb135e0aa9c7b271a856",
+              "doctrine/checks/filed-append-only.sh": "0f52ed5870f32c3d985e032fc99df071e256f7cad2e343d9dba8b6a2e7099e95",
+              "lib/office_bale.py": "508d4966283c4b1b1780c90b8bc51e2b8f72afcf552f5b120371b0e6d4e52660",
+              "lib/office_deliver.py": "ab46e57647f381843ebfba6ce5cd3a86b7c85d613d87f6de14afc426e95eb193",
+              "lib/office_digest.py": "a23ba2f30375d2d753961b77395d2b3caab2eb8d590f6cee89a91f5cad022702",
+              "lib/office_door.py": "31b9b4d4ade8f93d52caf5cc1452b5f2f14f947c7b4b54cdd1ddb9b88a273715",
+              "lib/office_drafting.py": "cec1803f280dcc9ce2c7c4538b38e381c53dd5c047d12ed3d7b23cabec47ed42",
+              "lib/office_drop.py": "68ab3732e16ee5b8ca325f39b00ace648b63d2d837f475a52ee7b499e881dfef",
+              "lib/office_helper.py": "edc426865d3884e8599251fe36f221dad088bc1c2fdb73360131cf8b67bdd84b",
+              "lib/office_host.py": "f961d5dd69a8384a76b17bd654e65dffc79b42af8493d5b1eed7dc49a98f9a97",
+              "lib/office_letterhead.py": "55f278d6d6eac285936fbc9f4ffd1578c19621a2fcd2699ec295d4f852f21060",
+              "lib/office_probe.py": "66722a8d2861fc67bb47b6d8219f00eb9203916ebfcc80f83d4d7006773bf1bf",
+              "lib/office_sort.py": "73dd15f5b2f9e3390c450fcdb601410c3ab878304290a4bf1e4c77b7af30e046",
+              "lib/office_watches.py": "fbb0d04fe0795403eb068ba42a0b9d6b2773dfb8dd90678c0f7dffd6b5d6d95f",
+              "tests/fast-tier.toml": "a429e9c4ae61a766c80fa1a40f6bcb25d131c92cde9165ed83734ad88c0eb919",
+              "tests/run.sh": "35b3954b5bf5d4e975ba58026bc8c313e11e94f1e97bd5f2140aa963f40829cf",
+              "tests/runner.py": "bf4c81012c492b04f4f3961ee4ce162387ef9421017b1eb7409dc9abdb9d0a4f",
+              "tests/test_audience_line.py": "a3b0b85df917b782661f8407cceddb15ab8b83d9c41c128001a1fc96fb65599b",
+              "tests/test_desk_verbs.py": "843ec5a431c22f6dd96e61b53a00daa372fbe9535238a5037a9447a747fb3a70",
+              "tests/test_drafting_table.py": "d76a7b8c2f05bf665f1b73701f964aca540eb17d49229baad38fec307d3a068a",
+              "tests/test_drop.py": "34e9cb2ea09a6c0ce7c43d7863b04e7a5f003a5cc84368b807e0383ab806239a",
+              "tests/test_filed_append_only.py": "9daf033c18db0969190168fb2276dd835c3abd71a56f5bd01d0d6f0edd76d45b",
+              "tests/test_founding_door.py": "8b65f958aecc070bb88fede0c7c27fae82cb1a2c8892c88c665e3ca4359a970a",
+              "tests/test_front_door.py": "e10ffcbf3ffc630b530d5eddf6798e7093a5c38ce2216ebd59ece52f49a8f0d5",
+              "tests/test_land.py": "3623d24605d16a17b9ec2e07abeab61ebcdd2105be04950db28cdcfb61e572fb",
+              "tests/test_office.py": "c60685e26c9b898d9b03a2aa53863bc27985f94eb512f76e0e11b26d5fe318a4",
+              "tests/test_out_trip_to_host.py": "cbd15fd98fec1506172d822f231b5b69fdf30390782341a65169dbfd55a0d87b",
+              "tests/test_probe.py": "03faf950ba5cd5aacfdf03e7f20951bd56e59d9250a1fc68e1fce9d18e4db80f",
+              "tests/test_project_on_host.py": "121c1cef2534f2605a90dcaa400543500f71fa16aa0c5f23dbbb63719b09dba6",
+              "tests/test_read_side.py": "3306eb7ddbe474dae93ff3d45db4ebbea96daa6916740f85b94db90b3f5c1235",
+              "tests/test_return_trip.py": "9e3109427031691fa5a88702b386e9556eea9febf54d1009b2049ab164b6355a",
+              "tests/test_second_trip.py": "321495882110902b927dd90004169ad7a2946456cbfde445fc3b3b54f282edce",
+              "tests/test_sort.py": "f6a355ccea8994e040553c86a5b22682594f61243fc984ffc6c14660da6c24c0",
+              "tests/test_start.py": "83d9384c3f7cb202ff4cae07f8f50346e0ceaac64a6acf726d9af5e53c422b34",
+              "tests/test_suite_clock.py": "4a5b05337eae64270177481bc5c369c123e34af6fa2d145365bc21a4f085609e",
+              "tests/test_third_trip.py": "9ce22978b176788f0c91256b1c5d0968e31e86eb72bb0667e1675616e0eac240",
+              "tests/test_watches_digest.py": "e0c1ae686cd33ad1716baa43616aa867b190663857c6f99be3bfd3dd3f01a67c"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "the digest the 2026-10-13 sitting went out without was skipped by the bare-name path, the only silent one in the code; not confirmed on the occupant's machine, where the start's own lines would say (the hand test covers it)",
+            "bale's validation sandbox gives the runner a TMPDIR where it can make symlinks and a few megabytes of bytecode cache, as it already makes each job's HOME there"
+          ],
+          "judgment_calls": [
+            "cut the suite's CPU with a per-run bytecode cache (PYTHONPYCACHEPREFIX in the runner's scratch, the interpreter's stdlib pycs linked in) and pylib in bin/office, since every pty test and every module job was CPU-bound, not waiting",
+            "split each serial class holding non-terminal tests into a class of its own beside it rather than marking serial per method, so the existing class-level rule and every test body stay as they were",
+            "keep the last run's times where the detached runs already keep them (the newest finished run's logs/times.tsv) instead of a new file, and weigh the serial lane like any job once times are known",
+            "for an office bundle whose pack line cannot be read at all, say one line and leave the digest rather than write it for a session that may be no sitting",
+            "version 0.21.0, not 0.20.2: the runner's behaviour and office start's output change",
+            "keep the deliberate three-second wait of the imitated-WSL terminal test: shortening it would shorten what the test observes"
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [],
+          "compaction_occurred": {
+            "occurred": false,
+            "disclosure_ref": null
+          },
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md META through section 11.2",
+            "README.md (the brief)",
+            "TARBALL.md sections 1, 2, 5, 6, 7, 8, 9, 10",
+            "BALE_HELP.md bale help pack and bale help open",
+            "doctrine/OFFICE.md, whole",
+            "claude/context/front-sheet.md: the suite's clock, recent changes, known problems",
+            "claude/responses/2026-10-13-suite-machine-reads-005/notes.md",
+            "tools/craft_response.py and tools/response_lint.py"
+          ],
+          "forecast_departures": [
+            {
+              "path": "claude/context/front-sheet.md",
+              "why": "the suite's own record test (test_suite_clock.TestTheRecord) requires a '- VERSION (session' line on the front sheet, so moving VERSION to 0.21.0 requires it, and the sheet's suite's-clock section is where the next worker reads how the suite runs"
+            }
+          ],
+          "light_blocks": 0
+        }
+      },
+      "log": ".bale/logs/2026-10-13-suite-lane-waits-006.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-10-14T00:27:10+00:00",
+  "outcome": "applied"
+}
