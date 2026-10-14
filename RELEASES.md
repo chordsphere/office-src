@@ -4,6 +4,56 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.21.0
+
+Additive: no migration, nothing to do in any office, and no verb gains a
+flag or a question. The test suite waits less, and no test checks less;
+and `office start` no longer sends a sitting out on a stale digest
+without a word.
+
+The suite's time was mostly Python compiling the office's own modules
+again on every helper call: the command runs its Python with `-B`, so
+nothing is ever written beside an install, and nothing compiled was ever
+read back either. The runner now compiles `lib/` and `tests/` once per
+run into a bytecode cache in its scratch directory and hands it to every
+job (`PYTHONPYCACHEPREFIX`), each test's `Env` hands it to the commands
+the test runs, and the command runs each of its Python modules as a
+module, so even the one it starts with is read from the cache when there
+is one. The cache is checked against each source's size and time as
+always, nothing but the runner writes it, and it goes with the scratch
+directory. In everyday use there is none, and the command behaves as
+before.
+
+The serial lane, the one job that runs its tests one after another,
+holds only tests that drive a terminal. Seven classes held terminal tests
+and others side by side; each is split in two, the terminal tests in a
+class of their own named `...OnATerminal` that keeps `serial_group`, the
+other 33 tests beside the other modules' jobs. Every test's body is as it
+was.
+
+The runner starts the longest jobs first when it knows the last run's
+times: each job weighs the sum of its tests' times in the newest finished
+detached run under the state directory (that run's `times.tsv`, kept
+with its verdict). With none (a first run, a fresh HOME, bale's sandbox)
+it runs as before. The run says which order it took in one line, and
+`--plan` lists the jobs in that order. No job can read those times: each
+has a state directory of its own, so the suite's rule against reading
+the machine holds.
+
+In the worker's two-core sandbox the fast tier went from 95 seconds to
+about 67 with no earlier run's times and about 61 with them, the serial
+lane from 85 tests in 956 seconds to 52 in 384, and the whole suite from
+1712 seconds to 1051.
+
+`office start` writes the digest before every sitting it sends out,
+bundles included. A bundle named by a bare name is bale's to find (its
+search, the downloads), so the office could not read its pack line, could
+not tell a read-only sitting, and skipped the digest without saying so:
+on 2026-10-13 a sitting went out on a page that predated three landings.
+The office now reads the pack line where bale's rehearsal found the
+bundle. When it cannot read a bundle's pack line at all, it says so in
+one line, naming the digest it left and when that page was written.
+
 ## 0.20.1
 
 Additive: no migration, nothing to do in any office, and no verb gains a

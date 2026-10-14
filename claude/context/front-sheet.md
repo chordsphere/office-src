@@ -129,6 +129,17 @@ For the worker first. bale gives a session's validation two minutes
   `DECLARED_TOOLS`, not the suite's fake bale, and not found through
   `desktop_tool` / `desktop_which`; SOURCE_ALLOWED holds the lookups by a
   variable (the survey's tools), each with its reason.
+- Since 0.21.0 the suite waits less without checking less. Each run
+  compiles `lib/` and `tests/` once into a bytecode cache in its scratch
+  directory (`PYTHONPYCACHEPREFIX`, handed to every job and, through
+  `Env`, to every command a test runs); `bin/office` runs its Python
+  modules as modules (`pylib`), so even the first is read from the cache.
+  The serial lane holds only tests that drive a terminal: a class with
+  both kinds is two classes, the terminal one named `...OnATerminal`
+  and marked `serial_group`. A new test that drives no terminal goes in
+  the class without the mark. When the runner knows the last detached
+  run's times (its `times.tsv` under the state directory), jobs start
+  longest first; with none, as before, and the run says which.
 - After every landing, office-src's after-land actions start the whole
   suite detached (`tests/run.sh --detach`): one line naming the verdict
   file under `~/.local/state/office-src/suite/`, and nobody waits.
@@ -141,6 +152,25 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Recent changes
 
+- 0.21.0 (session 2026-10-13-suite-lane-waits-006): the suite waits less,
+  and a sitting never goes out on a stale digest without a word.
+  - Most of the suite's time was Python compiling the office's modules
+    again on every call. The runner now compiles them once per run into
+    a cache in its scratch directory, and the command reads them from
+    it. Nothing changes in your everyday use: there is no cache there.
+  - The serial lane, the one job whose tests run one after another,
+    holds only the 52 tests that drive a terminal; the other 33 that sat
+    in its classes run beside the other jobs. No test changed.
+  - When the last detached run's times are there, the runner starts the
+    longest jobs first; without them it runs as before, and says which.
+  - The fast tier: 95 seconds before, about 61 to 69 after, in the
+    worker's two-core sandbox; the whole suite there, 1712 seconds before
+    and 1051 after. Expect less on your machine.
+  - `office start` now writes the digest before a sitting sent out from a
+    bundle named by a bare name (the one on 2026-10-13 went out without
+    it), and when it cannot read a bundle's pack line at all it says so
+    in one line instead of skipping silently.
+  - Additive: no migration.
 - 0.20.1 (session 2026-10-13-suite-machine-reads-005): the suite keeps
   off the machine it runs on.
   - The detached suite wrote two session openers to your clipboard on

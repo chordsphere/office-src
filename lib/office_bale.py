@@ -2372,6 +2372,48 @@ def digest_before_pack(office_root):
         log(f"warning: the digest before the pack exited {proc.returncode}; the sitting reads the page as it was")
 
 
+def bundle_read_only(bundle):
+    """Whether a planner bundle's stored pack line packs a read-only
+    session (bale pack --read-only): True or False when the office can read
+    the line from the file, None when it cannot (no file named, no such
+    file here, or a line that does not read as bale's)."""
+    if not bundle:
+        return None
+    argv = bundle_pack_argv(bundle)
+    if argv is None:
+        return None
+    try:
+        forecast, _ = bundle_forecast(argv)
+    except ValueError as exc:
+        debug(f"the pack line of {bundle} does not read as bale's: {exc}")
+        return None
+    return forecast == []
+
+
+def digest_written_at(office_root):
+    """The written_at line of the office's digest page (UTC, as office
+    digest stamps it), or None when there is no page or no such line."""
+    page = pathlib.Path(office_root) / od.SPACE / "digest.md"
+    try:
+        text = page.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    m = re.search(r"^- written_at: (\S+)", text, re.M)
+    return m.group(1) if m else None
+
+
+def digest_left_line(office_root, name, why):
+    """The one line office start says when it sends out an office bundle
+    whose pack line it cannot read (why: the reason), so it cannot tell
+    whether the bundle is a sitting and leaves the digest as it was: never
+    a silent skip (doctrine section 4)."""
+    at = digest_written_at(office_root)
+    page = (f"{od.SPACE}/digest.md as it was, written {at}" if at
+            else f"{od.SPACE}/digest.md unwritten, as it was")
+    return (f"the office cannot read the pack line of the bundle {name} ({why}), so it cannot tell whether it "
+            f"sends out a sitting: it leaves {page}; office digest writes it")
+
+
 def level_step(name):
     """The office step that brings a host's bale level with this
     machine's, as a command line."""
@@ -2996,7 +3038,7 @@ def open_bundle(rd, pack_dir, bundle, scratch=None, as_json=False):
 
 def start(rd, office_root, folder, where, project, goal, slug, includes, writes, read_only,
           brief, work_class, tray_root, bundle=None, leave_out=(), install_files=(), checked=False,
-          bale_rehearsed=False):
+          bale_rehearsed=False, bundle_found=None):
     """Pack a session for a folder and fill its out tray. Returns a dict:
     sid, tray, files, opener (lines, or None), carried (what each file
     is), warnings. Raises StartError with lines to print when it cannot
@@ -3019,7 +3061,15 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     office removes on success and on failure. The context tarballs and
     the doctrine are made on this machine, as for any project. checked
     says bin/office has already checked the host this start (reach, the
-    bale floor, the repo)."""
+    bale floor, the repo).
+
+    bundle_found is the file bale's rehearsal found a bundle at (bale
+    open --check, earlier in the same start). A bundle named by a bare
+    name is bale's to find, so the office cannot read its pack line where
+    it was named; it reads it there instead, and only to tell whether the
+    bundle sends out a sitting, so the digest is written before it as
+    before any other sitting (0.21.0). Every other check keeps reading
+    the bundle where it was named, as before."""
     office_root = pathlib.Path(office_root).resolve()
     manifest = oh.read_toml(office_root / "floor-plan" / "manifest.toml")
     projects = {p["name"]: p for p in oh.read_projects(manifest) or []}
@@ -3171,10 +3221,27 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     # line is the planner's, so the office adds no include to it; the
     # digest is still written, and rides if the bundle includes the table.
     sitting = where == "office" and forecast == []
+    unknown = None
+    if where == "office" and bundle and argv is None:
+        # The office could not read the bundle's pack line where it was
+        # named, so its forecast is unknown here. Until 0.21.0 that left
+        # a bare-named sitting without its digest, and said nothing. The
+        # line is read where bale's rehearsal found the bundle; when even
+        # that cannot be read, the start says why it left the page.
+        found_read_only = bundle_read_only(bundle_found)
+        if found_read_only is True:
+            sitting = True
+            debug(f"the bundle {pathlib.Path(bundle).name} is read-only by its pack line at {bundle_found}: "
+                  "a sitting, so the digest is written before it")
+        elif found_read_only is None:
+            unknown = (f"bale found it at {bundle_found}, and its pack line there does not read" if bundle_found
+                       else "bale's rehearsal did not say where it found it")
     if sitting:
         digest_before_pack(office_root)
         if not bundle and (office_root / od.SPACE).is_dir() and od.SPACE not in includes:
             includes = [*includes, od.SPACE]
+    elif unknown:
+        log(digest_left_line(office_root, pathlib.Path(bundle).name, unknown))
 
     # The ride-along (0.19.0): every unsorted drop in the in-tray rides
     # with every session the office sends out, so a session that can
@@ -4502,6 +4569,9 @@ def main(argv=None):
     p.add_argument("--bale-rehearsed", action="store_true",
                    help="bale open --check --json passed this bundle this start, over the office's own overlap "
                         "check (bundle-check printed `over` lines): bale's to judge, as a second desk")
+    p.add_argument("--bundle-found", default=None,
+                   help="the file bale's rehearsal found the bundle at this start (bundle-check's first line), "
+                        "read only to tell whether a bundle named by a bare name sends out a sitting")
     p = sub.add_parser("start-check", help="a project on a host answers, its bale is at the floor and its repo is "
                                            "bale's, before start writes anything: HOST<tab>VERSION, or nothing for a "
                                            "project on this machine")
@@ -4687,7 +4757,7 @@ def main(argv=None):
             result = start(Reader(), a.office, None if a.folder == "-" else a.folder, a.where, a.project, a.goal,
                            a.slug, a.include,
                            a.write, a.read_only, a.brief, a.work_class, a.tray_root, a.bundle, a.leave_out,
-                           a.install_file, a.checked, a.bale_rehearsed)
+                           a.install_file, a.checked, a.bale_rehearsed, a.bundle_found)
         except StartError as exc:
             for line in exc.lines:
                 log(f"error: {line}")

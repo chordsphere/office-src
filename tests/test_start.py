@@ -434,8 +434,7 @@ class TestForecastOverlap(unittest.TestCase):
 
 # --- office slip -------------------------------------------------------------------------
 
-class TestSlip(unittest.TestCase):
-    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
+class SlipCase(unittest.TestCase):
     def setUp(self):
         self.e = Env(self)
         self.root = self.e.init()
@@ -443,6 +442,9 @@ class TestSlip(unittest.TestCase):
     def slips(self):
         return sorted((self.root / "suggestion-box").glob("*.md"))
 
+
+class TestSlip(SlipCase):
+    # No test here drives a terminal, so the class runs beside the other jobs, not in the serial lane (0.21.0).
     def test_a_slip_is_its_own_page_committed_alone(self):
         (self.root / "notepad" / "draft.md").write_text("uncommitted\n")
         proc = self.e.run("slip", "--about", "bale", "pack", "needs", "too", "many", "flags", cwd=self.root, check=0)
@@ -496,6 +498,9 @@ class TestSlip(unittest.TestCase):
         self.assertEqual(self.e.run("slip", "--loud", "x", cwd=self.root).returncode, 1)
         self.assertEqual(self.slips(), [])
 
+
+class TestSlipOnATerminal(SlipCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def test_on_a_terminal_it_asks_what_it_is_about(self):
         proj = git_repo(self.e.tmp / "alpha")
         self.e.run("projects", "add", "alpha", str(proj), cwd=self.root, check=0)
@@ -552,8 +557,7 @@ class TestNoteChecksTheFiledPage(unittest.TestCase):
 
 # --- what rides with a project, and what runs after it lands ------------------------------------
 
-class TestDeclarations(unittest.TestCase):
-    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
+class DeclarationsCase(unittest.TestCase):
     def setUp(self):
         self.e = Env(self)
         self.root = self.e.init()
@@ -563,6 +567,9 @@ class TestDeclarations(unittest.TestCase):
         self.e.run("projects", "add", "alpha", str(self.proj), cwd=self.root, check=0)
         self.e.run("projects", "add", "beta", str(git_repo(self.e.tmp / "beta")), cwd=self.root, check=0)
 
+
+class TestDeclarations(DeclarationsCase):
+    # No test here drives a terminal, so the class runs beside the other jobs, not in the serial lane (0.21.0).
     def test_set_and_clear_keep_every_other_byte(self):
         before = self.manifest.read_text()
         ride = str(self.other / "blueprints")
@@ -639,6 +646,9 @@ class TestDeclarations(unittest.TestCase):
             self.assertEqual(proc.returncode, 1, args)
             self.assertIn(words, proc.stderr, args)
 
+
+class TestDeclarationsOnATerminal(DeclarationsCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def test_the_wizard_asks_on_a_terminal(self):
         h.set_declarations(self.manifest, "alpha", None, ["./install.sh"])
         self.e.git(self.root, "commit", "-qam", "seed")

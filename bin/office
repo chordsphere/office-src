@@ -35,8 +35,22 @@ debug() { [ "${OFFICE_DEBUG:-0}" = "1" ] && printf '[office] debug: %s\n' "$*" >
 
 # -B throughout: the helper imports office_host, the reader imports the
 # helper, and an install is never written to.
-helper() { python3 -B "$HELPER" "$@"; }
-reader() { python3 -B "$READER" "$@"; }
+#
+# pylib FILE ARGS...: run one of lib/'s modules as its script would run
+# (__name__ "__main__", sys.argv[0] its path, lib/ first on sys.path, and
+# with -P no current directory on it), but loaded as a module, so its
+# compiled code is read from a bytecode cache when one is there: the test
+# runner's (tests/runner.py, PYTHONPYCACHEPREFIX, 0.21.0), where compiling
+# the office's modules again on every call was most of the suite's time.
+# With no cache, as in everyday use, nothing changes: the modules compile
+# as they load, and -B still writes nothing.
+pylib() {
+  local mod="${1##*/}"; shift
+  python3 -B -P -c 'import runpy, sys; sys.path.insert(0, sys.argv.pop(1)); runpy.run_module(sys.argv.pop(1), run_name="__main__", alter_sys=True)' \
+    "$OFFICE_SRC/lib" "${mod%.py}" "$@"
+}
+helper() { pylib "$HELPER" "$@"; }
+reader() { pylib "$READER" "$@"; }
 
 # Single-quote a word for a printed command line.
 shq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
@@ -302,7 +316,7 @@ write_survey() {
 # it does for every session, so nothing here ever writes into the install.
 
 DOOR="$OFFICE_SRC/lib/office_door.py"
-door() { python3 -B "$DOOR" "$@"; }
+door() { pylib "$DOOR" "$@"; }
 
 slugify() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/--*/-/g; s/^-//; s/-$//'; }
 
@@ -1451,7 +1465,7 @@ cmd_slip() {
 # reads the pages; this is the wizard around it.
 
 DROP_PY="$OFFICE_SRC/lib/office_drop.py"
-dropx() { python3 -B "$DROP_PY" "$@"; }
+dropx() { pylib "$DROP_PY" "$@"; }
 
 usage_drop() {
   cat <<'USAGE'
@@ -2191,7 +2205,7 @@ cmd_sessions() {
 # exactly what they touched.
 
 DRAFTING="$OFFICE_SRC/lib/office_drafting.py"
-drafting() { python3 -B "$DRAFTING" "$@"; }
+drafting() { pylib "$DRAFTING" "$@"; }
 
 # one_writer ROOT VERB TARGET...: a script that mints a number or appends
 # to a page refuses while an open session in the office's own registry
@@ -2496,7 +2510,7 @@ USAGE
 }
 
 SORT_PY="$OFFICE_SRC/lib/office_sort.py"
-sortx() { python3 -B "$SORT_PY" "$@"; }
+sortx() { pylib "$SORT_PY" "$@"; }
 
 # held ROOT TARGET...: 0 when no open session in the office's registry
 # holds a target (or there is no registry), 1 when one does, with
@@ -3044,8 +3058,8 @@ cmd_evidence() {
 
 WATCHES="$OFFICE_SRC/lib/office_watches.py"
 DIGEST="$OFFICE_SRC/lib/office_digest.py"
-watches_py() { python3 -B "$WATCHES" "$@"; }
-digest_py() { python3 -B "$DIGEST" "$@"; }
+watches_py() { pylib "$WATCHES" "$@"; }
+digest_py() { pylib "$DIGEST" "$@"; }
 
 usage_watches() {
   cat <<'USAGE'
@@ -3616,6 +3630,11 @@ check_start_bundle() {
     esac
   done <<< "$(printf '%s\n' "$out" | tail -n +2)"
   [ -z "$found_at" ] || log "bale found it at $found_at, and every gate it runs before an open passed"
+  # Where bale found it, for start to read a bare-named bundle's pack line
+  # there (whether it is a sitting, so the digest goes before it): a file
+  # on this machine only, never a hosted bundle's words.
+  START_BUNDLE_FOUND=""
+  [ -z "$found_at" ] || [ ! -f "$found_at" ] || START_BUNDLE_FOUND="$found_at"
   # A second desk is bale's to recognize (0.18.0): the office's own
   # overlap check caught this bundle, and bale's rehearsal passed it, so
   # the office says what it saw and what bale said, and goes on.
@@ -3944,7 +3963,7 @@ cmd_start() {
   local leave_out=() no_rides=0 carry=() carry_none=0 bundle_given="" slug_flag=0
   local root name md status lane lane_project lane_paths names cls ans tz day out sid tray tray_root rel about="" args=() v
   local packed_flags=() drop="" drop_title="" drop_lane="" drop_size="" drop_title_given="" sort=0 others=()
-  START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_DROP_PAGE=""
+  START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_BUNDLE_FOUND=""; START_DROP_PAGE=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --in-office) [ -z "$where" ] || [ "$where" = office ] || die "--in-office and --on are two places; give one"; where=office; shift ;;
@@ -4211,6 +4230,7 @@ cmd_start() {
   for r in "${leave_out[@]}"; do args+=(--leave-out "$r"); done
   [ "$where" != project ] || [ "$START_CHECKED_HOST" != "$project" ] || args+=(--checked)
   [ "$START_BALE_REHEARSED" = 0 ] || args+=(--bale-rehearsed)
+  [ -z "$START_BUNDLE_FOUND" ] || args+=(--bundle-found "$START_BUNDLE_FOUND")
   tray_root="$(machine_setting out_tray "$HOME/out-tray")"
   case "$tray_root" in "~"|"~/"*) tray_root="$HOME${tray_root#\~}" ;; esac
 
@@ -5572,7 +5592,7 @@ cmd_projects() {
 DELIVER="$OFFICE_SRC/lib/office_deliver.py"
 LETTERHEAD="$OFFICE_SRC/lib/office_letterhead.py"
 RULES="$OFFICE_SRC/share/letterhead.toml"
-deliver_py() { python3 -B "$DELIVER" "$@"; }
+deliver_py() { pylib "$DELIVER" "$@"; }
 
 usage_deliver() {
   cat <<'USAGE'
@@ -5771,7 +5791,7 @@ cmd_letterhead_check() {
   fi
   path="${path:-.}"
   [ -d "$path" ] || die "no such directory: $path"
-  python3 -B "$LETTERHEAD" --rules "$RULES" "${forbidden[@]}" "${args[@]}" "$path"
+  pylib "$LETTERHEAD" --rules "$RULES" "${forbidden[@]}" "${args[@]}" "$path"
 }
 
 cmd_letterhead() {
@@ -5862,7 +5882,7 @@ if a is not None and b is not None and b > a:
 # this is the wizard around it.
 
 PROBE="$OFFICE_SRC/lib/office_probe.py"
-probe_py() { python3 -B "$PROBE" "$@"; }
+probe_py() { pylib "$PROBE" "$@"; }
 
 # How this machine reads its clipboard: machine.toml's paste_command, the
 # office's own setting beside clipboard_command (which writes it) and

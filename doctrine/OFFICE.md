@@ -282,7 +282,11 @@ nothing. Before it packs a sitting, `office start` writes the digest
 again (section 5), committed alone, and the drafting table rides inside
 the sitting's request, the digest first among its pages; an open session
 holding the drafting table, or a digest that cannot be written, leaves
-the page as it was and never stops the start. A session whose forecast overlaps one already open is refused
+the page as it was and never stops the start. A bundle named by a bare
+name is read where bale's rehearsal found it, to tell whether it is a
+sitting; one whose pack line the office cannot read at all leaves the
+page as it was, said in one line with the time the page was written,
+since a silent skip would send a sitting out on a stale page. A session whose forecast overlaps one already open is refused
 before bale is asked, and the open session, its folder and the overlap are
 named; a bundle is refused the same way whenever the office can read its
 pack line, and where it cannot (a bare name bale's search finds), the

@@ -433,8 +433,7 @@ class TestTourOnATerminal(TourCase):
 
 # --- office init asks which projects the office watches ---------------------------------
 
-class TestInitProjects(unittest.TestCase):
-    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
+class InitProjectsCase(unittest.TestCase):
     def setUp(self):
         self.e = Env(self)
         self.alpha = git_repo(self.e.home / "alpha")
@@ -443,6 +442,9 @@ class TestInitProjects(unittest.TestCase):
     def projects(self, root):
         return tomllib.loads((root / "floor-plan/manifest.toml").read_text()).get("projects")
 
+
+class TestInitProjects(InitProjectsCase):
+    # No test here drives a terminal, so the class runs beside the other jobs, not in the serial lane (0.21.0).
     def test_the_flag_twin_adds_each_and_stdout_stays_the_next_line(self):
         root = self.e.home / "home"
         proc = self.e.run("init", str(root), "--project", str(self.alpha), "--project", f"tools={self.beta}",
@@ -473,6 +475,9 @@ class TestInitProjects(unittest.TestCase):
         root = self.e.init("piped")
         self.assertIsNone(self.projects(root))
 
+
+class TestInitProjectsOnATerminal(InitProjectsCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def test_on_a_terminal_it_asks_until_a_plain_return(self):
         root = self.e.home / "asked"
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "init", str(root), "--no-founding"],
