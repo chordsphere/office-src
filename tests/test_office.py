@@ -1523,13 +1523,29 @@ class TestText(unittest.TestCase):
             self.assertIn(name, verbs, f"the doctrine's verb table names {name}, which the catalog does not declare")
 
     def test_help_lists_every_built_script_verb(self):
+        """office help --all lists every built script verb; office help
+        lists the occupant's own and none of the plumbing (0.22.0)."""
         verbs = verbs_catalog()["verbs"]
-        usage = subprocess.run([str(REPO / "bin/office"), "help"], capture_output=True, text=True).stdout
+        usage = subprocess.run([str(REPO / "bin/office"), "help", "--all"], capture_output=True, text=True).stdout
         for name, v in verbs.items():
             if v["kind"] == "script" and v["built"]:
                 self.assertIn(name.replace("-", " "), usage, name)
         # A kind declared ahead of the command is not in the help.
         self.assertNotIn("office sitting", usage)
+        his = subprocess.run([str(REPO / "bin/office"), "help"], capture_output=True, text=True).stdout
+        listed = set(re.findall(r"^  office ([a-z]+(?: [a-z]+)?)", his, re.M))
+        words = {n.split(" ")[0] for n in listed} | {n.replace(" ", "-") for n in listed}
+        for name, v in verbs.items():
+            if v["kind"] != "script" or not v["built"]:
+                continue
+            self.assertIn(v.get("surface"), ("occupant", "plumbing"), name)
+            if v["surface"] == "occupant":
+                self.assertIn(name, words, f"{name} is the occupant's, and office help does not list it")
+            else:
+                self.assertNotIn(name, words, f"{name} is plumbing, and office help lists it")
+        self.assertIn("office help --all lists every verb", his)
+        for meaning in ("A folder is one job", "A project is a repo"):
+            self.assertIn(meaning, his)
 
     def test_bale_office_line_is_verbatim(self):
         line = ("The line between bale and office. Test: is this about a session or about a job? "

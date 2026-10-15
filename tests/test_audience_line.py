@@ -1075,9 +1075,13 @@ class TestTheRecord(unittest.TestCase):
             self.assertTrue(verbs[name]["built"], name)
         self.assertIn("desk/{folder}/delivery.md", verbs["build"]["lands"])
         self.assertIn("delivered", h.HISTORY_VERBS)
-        proc = subprocess.run([str(REPO / "bin/office"), "help"], capture_output=True, text=True)
+        # deliver is the occupant's (office help); the other two are
+        # plumbing, listed with every verb (office help --all, 0.22.0).
+        proc = subprocess.run([str(REPO / "bin/office"), "help", "--all"], capture_output=True, text=True)
         for words in ("office deliver", "office letterhead check", "office relay"):
             self.assertIn(words, proc.stdout, words)
+        self.assertIn("office deliver", subprocess.run([str(REPO / "bin/office"), "help"], capture_output=True,
+                                                       text=True).stdout)
 
     def test_no_name_from_the_brief_is_in_the_tool(self):
         """The brief's hosts, people and projects are probe targets only;

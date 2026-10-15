@@ -156,6 +156,7 @@ def attempt(sid, command, outcome, paths, vstate):
     if outcome == "applied":
         r = s["repos"][cwd]
         r["sessions"].remove(sid); r["scopes"].pop(sid, None)
+        r.setdefault("applied", []).append(sid)
         if sid in s["land"]["held"]:
             s["land"]["held"].remove(sid)
     save(s)
@@ -294,6 +295,10 @@ if argv[:2] == ["stats", "--sid"] and argv[3:] == ["--json"]:
         rec.update(outcome="unlocked", in_flight=False, read_only=True,
                    closure={{"category": "unlocked", "unlock_reason": "closed-read-only"}})
     attempts = [dict(pack_a)]
+    stem = L.get("stems", {{}}).get(sid)
+    if stem is not None:
+        attempts[0]["bundle"] = {{"stem": stem, "brief_sha256": None, "checkpoint_sha256": None,
+                                 "manifest_sha256": None}}
     for t in tries:
         a = dict(apply_a)
         a.update(command=t["command"], outcome=t["outcome"], change_paths=t["change_paths"],
@@ -491,7 +496,10 @@ if argv[0] == "open":
         sys.stderr.write(p.stderr); sys.exit(p.returncode)
     report = json.loads(p.stdout.splitlines()[-1])
     sid, tarball = report["sid"], report["tarball"]
-    s = load(); s["land"].setdefault("opened_from", {{}})[sid] = identity; save(s)
+    s = load(); s["land"].setdefault("opened_from", {{}})[sid] = identity
+    # The bundle's stem, as bale's records keep it on the pack attempt
+    # (attempts[].bundle.stem; the home screen reads it, 0.22.0).
+    s["land"].setdefault("stems", {{}})[sid] = shown["stem"]; save(s)
     label = "open-brief" if brief is not None else "open-ro-bare"
     cap = fx(label)
     old_sid = "2026-10-03-probe-open-brief-001" if brief is not None else "2026-10-03-probe-open-ro-001"
@@ -1106,11 +1114,14 @@ class TestLandOnATerminal(LandCase):
         b = self.start(other.split("/")[1], "--on", "alpha", "--goal", "g")
         response_tarball(self.downloads, b, {"docs/d.md": "new\n"})
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "land", "--not-now"], self.root, self.e.env, [
-            (b"Which session lands (office land SID)", "nope"),
-            (b"one of the ids above", b),
+            (b"Which session lands, by its key (office land SID)", "nope"),
+            (b"a key from the list above (1 to 2)", "2"),
             (b"merge into origin (default)", ""),
         ])
         self.assertEqual(code, 0, seen)
+        # 0.22.0: each named by its folder, never typed by its id.
+        self.assertIn(f"[1] folder 1, fix-login (alpha)", seen)
+        self.assertIn(f"[2] folder 2, docs-job (alpha)", seen)
         self.assertIn(f"Landed: {b}", seen)
         self.assertTrue(self.fake.is_open(self.proj, a))
 

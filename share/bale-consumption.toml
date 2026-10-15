@@ -66,6 +66,8 @@ keys = [
   "sessions",   # every open sid, oldest first
   "scopes",     # open sid -> its write forecast; [] marks a read-only session
   "outbox",     # every request tarball name: the fullest list of a repo's sids a surface carries
+  "applied",          # the light pointer at applied history (0.22.0, the home screen)
+  "applied.latest",   # the latest session applied here, or null: what last landed on a project
 ]
 
 # The aggregate. --since DATE (ISO date, YYYY-MM-DD, inclusive, against
@@ -152,6 +154,8 @@ keys = [
   "attempts[].linkage",
   "attempts[].linkage.kind",
   "attempts[].linkage.point",
+  "attempts[].bundle",         # the planner bundle an attempt was opened from, or null (0.22.0)
+  "attempts[].bundle.stem",    # its file name without .bale-bundle: whether a bundle was opened is read here
   "lineage",
   "lineage.superseded_by",
 ]

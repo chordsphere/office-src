@@ -397,7 +397,7 @@ class TestProbeOnATerminal(ProbeCase):
         self.assertIn("not run: nothing was written", screen)
         self.assertEqual(self.history(), [])
 
-    def test_the_paste_command_is_asked_once_with_this_machines_reader_offered(self):
+    def test_the_paste_command_is_this_machines_reader_taken_once_and_kept(self):
         # The machine's reader is the one this test's Env holds: a fake
         # wl-paste in its desktop, the only place the office looks for one
         # (on a WSL machine the running machine's powershell.exe was
@@ -407,12 +407,14 @@ class TestProbeOnATerminal(ProbeCase):
         (self.e.desktop / "wl-paste").write_text(f'#!/bin/sh\n[ "$1" = --no-newline ] || exit 9\ncat {clip}\n')
         (self.e.desktop / "wl-paste").chmod(0o755)
         env = self.e.env
+        # 0.22.0: the machine's own reader is a fact the office finds, not a
+        # judgment it asks for: taken, said and kept.
         code, screen = on_a_terminal(self, [str(self.e.office_bin), "probe", "fix-login"], self.root, env, [
-            (b"(paste_command in machine.toml) [wl-paste --no-newline]:", "?"),
-            (b"Get-Clipboard", ""),
             (b"Run it? y or N (--yes) [N]:", "y")])
         self.assertEqual(code, 0, screen)
         self.assertEqual(tomllib.loads(self.machine.read_text())["paste_command"], "wl-paste --no-newline")
+        self.assertIn("this machine reads its clipboard with wl-paste --no-newline", screen)
+        self.assertNotIn("(paste_command in machine.toml)", screen)
         self.assertIn("is not asked again", screen)
         # Asked once: the second run takes it from machine.toml.
         code, screen = on_a_terminal(self, [str(self.e.office_bin), "probe", "fix-login"], self.root, env,
@@ -433,7 +435,7 @@ class TestProbeOnATerminal(ProbeCase):
         (self.e.desktop / "wl-paste").chmod(0o755)
         code, screen = on_a_terminal(self, [str(self.e.office_bin), "probe", "fix-login"], self.root,
                                      imitate_wsl(self.e, windows), [
-            (b"(paste_command in machine.toml) [wl-paste --no-newline]:", ""),
+            (b"this machine reads its clipboard with wl-paste --no-newline", None),
             (b"Run it? y or N (--yes) [N]:", "y")])
         self.assertEqual(code, 0, screen)
         self.assertEqual(tomllib.loads(self.machine.read_text())["paste_command"], "wl-paste --no-newline")
@@ -444,7 +446,7 @@ class TestProbeOnATerminal(ProbeCase):
         windows, calls = recording_windows(self.e.tmp / "windows", probe_block())
         env = dict(imitate_wsl(self.e, windows), OFFICE_DESKTOP_PATH=str(windows))
         code, screen = on_a_terminal(self, [str(self.e.office_bin), "probe", "fix-login"], self.root, env, [
-            (f"(paste_command in machine.toml) [{h.WSL_PASTE}]:".encode(), ""),
+            (f"this machine reads its clipboard with {h.WSL_PASTE}".encode(), None),
             (b"Run it? y or N (--yes) [N]:", "y")])
         self.assertEqual(code, 0, screen)
         self.assertEqual(tomllib.loads(self.machine.read_text())["paste_command"], h.WSL_PASTE)
@@ -606,7 +608,9 @@ class TestTheCaptures(unittest.TestCase):
 class TestTheRecord(unittest.TestCase):
     def test_help_lists_it_and_its_help_has_an_example(self):
         import subprocess
-        usage = subprocess.run([str(REPO / "bin/office"), "help"], capture_output=True, text=True).stdout
+        # Plumbing since 0.22.0: a session names the line when it needs it,
+        # and office help --all lists it with every verb.
+        usage = subprocess.run([str(REPO / "bin/office"), "help", "--all"], capture_output=True, text=True).stdout
         self.assertIn("office probe FOLDER [FILE]", usage)
         send = usage.split("Send a session out", 1)[1].split("Deliver it to the audience", 1)[0]
         self.assertIn("office probe", send)

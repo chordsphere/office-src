@@ -210,7 +210,9 @@ class TestHelpByTask(unittest.TestCase):
         return self.e.run(*args, check=0).stdout
 
     def test_help_groups_the_verbs_by_what_you_want_to_do(self):
-        out = self.help("help")
+        # office help --all, every verb by task (0.22.0: office help alone
+        # is the occupant's own, test_office.TestText holds it).
+        out = self.help("help", "--all")
         at = [out.index(t) for t in TASKS]
         self.assertEqual(at, sorted(at), "the task groups are out of order")
         self.assertIn("New here? office tour", out)
@@ -221,7 +223,10 @@ class TestHelpByTask(unittest.TestCase):
         # Each verb sits under its task.
         send, back, care = (out.index(t) for t in ("Send a session out", "Bring one back", "Look after the office"))
         self.assertTrue(send < out.index("office start [FOLDER]") < back < out.index("office land [SID]") < care)
-        self.assertEqual(self.help("--help"), out)
+        self.assertEqual(self.help("--help"), self.help("help"))
+        proc = self.e.run("help", "--all", "x")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("office help --all takes nothing else", proc.stderr)
 
     def test_every_built_verb_explains_itself_with_an_example_and_needs_no_office(self):
         verbs = [n for n, v in verbs_catalog()["verbs"].items() if v["kind"] == "script" and v["built"]]

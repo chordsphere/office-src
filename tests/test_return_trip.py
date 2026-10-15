@@ -415,8 +415,10 @@ class TestLandOnAHostOnATerminal(ReturnTripCase):
             (b"Where this machine's browser saves", str(mine)),
             (b"merge into origin (default)", ""),
             (b"(--ratified, --except TEXT, --not-now) [not now]:", "yes"),
-            (b"close the folder, done, or leave it open (--close, --leave-open) [close]:", ""),
         ])
+        # 0.22.0: a finished job's folder is closed without a question.
+        self.assertIn("the job is finished, so the folder is closed", seen)
+        self.assertNotIn("close the folder, done, or leave it open", seen)
         self.assertEqual(code, 0, seen)
         self.assertIn("Where do downloads land on this machine?", seen)
         self.assertIn(f"1. {users / 'someone' / 'Downloads'}", seen)

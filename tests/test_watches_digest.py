@@ -655,8 +655,8 @@ class TestWatchesVerb(WatchCase):
             proc = self.e.run(*words, check=0)
             self.assertIn("Examples:", proc.stdout, words)
         self.assertIn("office watches check --record", self.e.run("help", "watches-check", check=0).stdout)
-        self.assertIn("office watches check", self.e.run("help", check=0).stdout)
-        self.assertIn("office digest", self.e.run("help", check=0).stdout)
+        self.assertIn("office watches check", self.e.run("help", "--all", check=0).stdout)
+        self.assertIn("office digest", self.e.run("help", "--all", check=0).stdout)
         self.assertIn("does not know --loud", self.o.run("watches", "check", "--loud", check=1).stderr)
 
 
