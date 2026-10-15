@@ -266,7 +266,6 @@ class TestTheHomeScreenOnATerminal(LandCase):
         code, seen = on_a_terminal(self, [str(self.e.office_bin)], self.root, self.e.env, [
             (b"Your key: ", "1"),
             (b"merge into origin (default)", ""),
-            (b"(--ratified, --except TEXT, --not-now) [not now]:", ""),
             (b"Return brings your home screen back; q leaves: ", ""),
             (b"last landed: folder 1, fix-login", None),
             (b"Your key: ", "q"),

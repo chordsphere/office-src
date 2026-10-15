@@ -4,6 +4,57 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.23.0
+
+Additive: no migration, nothing to do in any office. New work comes in
+through one door, a new folder's structure comes back from its session,
+the landing asks nothing about ratification, and every clipboard copy the
+office claims is true. Every flag sets its field as before, and piped
+input is never asked anything.
+
+One door for new work. `office start new` takes the job in your words
+(asked on a terminal; `--words TEXT` gives them, piped too), names the
+project only when your words name none of the office's, mints the folder
+through `office open`'s own code, and sends the session out with its out
+tray and opener, in one motion. The home screen's `o` key runs it, and
+the Next line names it when nothing else waits. `office open` is plumbing
+now (`office help --all` lists it, with every flag it took); `office help`
+lists `office start new` in its place. A drop is still a door into the
+same path: drop, start, land.
+
+The folder's structure, returned by its session. The title, size and goal
+the office works out from your words (and the title and size of a folder
+minted for a drop) are named on a new field line, `- provisional: title,
+size, goal`; a flag you give is yours and never provisional. Every
+session that works a folder writes `## Structure` at the end of its
+notes.md, three lines in a pinned form (doctrine sections 3 and 4), and
+`office land` files each value over a provisional one, says in one line
+what changed, and leaves your words in the Asked section as they are.
+`office status` names a provisional line that does not read.
+
+Ratification leaves the landing. `office land` asks nothing about it, on
+any path, and a folder is finished when its one session landed applied:
+on a terminal land closes it and names the line that reopens it. The
+planner's ratification travels in the next brief it writes, one line per
+session, `--- RATIFIED SID ---` or `--- RATIFIED SID, except: TEXT ---`,
+and `office start` files each in the folder that records the session, on
+the desk or in the filing cabinet, as the last line of its Sessions
+section, and says so; a session no folder records is said and skipped.
+`office land --ratified` and `office sessions --ratified` still record
+one by hand; `--not-now` is taken and changes nothing.
+
+A copy the office claims is a copy. On WSL clip.exe is fed UTF-16LE, so
+an em dash survives; the office copies after bale has (the opener once
+the pack has ended, the relay as land's very last step, after the
+after-land actions, a probe's output after the probe's own step), reads
+the clipboard back with the machine's paste command, copies once more if
+something copied over it, and says the copy is on the clipboard only when
+it reads back. Every other outcome (no clipboard command, off a terminal,
+no way to read it back, a copy that reads back otherwise) is one line
+pointing at the block on the screen, and land prints the block again.
+bale's own copy feeds clip.exe UTF-8, which Windows reads in the
+console's code page: that half is bale's.
+
 ## 0.22.0
 
 Additive: no migration, nothing to do in any office. On a terminal,

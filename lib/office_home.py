@@ -412,10 +412,10 @@ def home_items(skew, founded, out, groups, projects, slips, behind, bundles, nam
     items += [item(f"End the sitting {names.of(s['sid'])} ({'the office' if s['label'] == ob.OFFICE_LABEL else s['label']}), "
                    "once it is over", ["land", s["sid"]]) for s in sittings]
     # The Next line's move, first: an item above when it is one, else its
-    # own line in the Next line's words. "office open" and "office desk"
-    # are the keys every screen has, so they are not repeated.
+    # own line in the Next line's words. "office start new" and "office
+    # desk" are the keys every screen has, so they are not repeated.
     nxt = next((i for i in items if i["argv"] == argv), None)
-    if nxt is None and argv not in (["open"], ["desk"]):
+    if nxt is None and argv not in (["start", "new"], ["desk"]):
         if argv and argv[0] == "land":
             sid = argv[1] if len(argv) > 1 else ""
             label = f"Land {names.of(sid)}: {why}" if sid else f"Land: {why}"
@@ -438,7 +438,7 @@ def home_items(skew, founded, out, groups, projects, slips, behind, bundles, nam
 # --- the page ---------------------------------------------------------------------------
 
 FIXED_KEYS = (
-    ("o", "a new job", "office", ["open"]),
+    ("o", "a new job, in your words", "office", ["start", "new"]),
     ("s", "send a session out", "office", ["start"]),
     ("l", "bring one back", "office", ["land"]),
     ("n", "note a line", "note", []),

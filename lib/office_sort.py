@@ -70,6 +70,9 @@ SORT_BRIEF_TEMPLATE = "sort-brief.md"
 SORT_FIELDS = ("project", "folder", "goal", "size", "tell", "facts")
 SORT_KEY_RE = re.compile(r"^- ([a-z]+):(?: (.*))?$")
 QA_LINE_RE = re.compile(r"^- \d{4}-\d{2}-\d{2} \S.*$")
+# A Structure line (0.23.0): `- KEY: VALUE`, the key one of the fields a
+# folder may mark provisional.
+STRUCTURE_LINE_RE = re.compile(r"^- ([a-z]+): ?(.*)$")
 HEADING_RE = re.compile(r"^(#{1,6}) (.+?)\s*$")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
@@ -230,11 +233,35 @@ def parse_handbook(body):
     return out
 
 
+def parse_structure(body):
+    """A Structure section's body (0.23.0) as {pairs, problems}: one
+    `- KEY: VALUE` line for each of title, size and goal, in that order,
+    and nothing else but blank lines; the office reads this format, so it
+    is kept to the byte (doctrine section 4), and a section with problems
+    is said and never filed."""
+    out = {"pairs": [], "problems": []}
+    lines = [line for line in body if line.strip()]
+    keys = []
+    for line in lines:
+        m = STRUCTURE_LINE_RE.match(line)
+        if not m:
+            out["problems"].append(f"a line that is not `- KEY: VALUE`: {line.strip()}")
+            continue
+        keys.append(m.group(1))
+        out["pairs"].append((m.group(1), m.group(2).strip()))
+    if not out["problems"] and tuple(keys) != oh.PROVISIONAL_FIELDS:
+        out["problems"].append(f"its lines are not {', '.join(oh.PROVISIONAL_FIELDS)}, one each and in that order")
+    for key, value in out["pairs"]:
+        if not value:
+            out["problems"].append(f"its {key}: line is empty")
+    return out
+
+
 def parse_notes(text):
     """What office land files from a notes.md: {sorts, qa, qa_other,
-    handbook}, each None when the notes carry no such section."""
+    handbook, structure}, each None when the notes carry no such section."""
     lines = text.splitlines()
-    out = {"sorts": None, "qa": None, "qa_other": 0, "handbook": None}
+    out = {"sorts": None, "qa": None, "qa_other": 0, "handbook": None, "structure": None}
     body = section(lines, "Sort")
     if body is not None:
         out["sorts"] = [parse_sort(name.strip(), sub) for name, sub in subsections(body, 3)]
@@ -247,6 +274,9 @@ def parse_notes(text):
     body = section(lines, "Handbook")
     if body is not None:
         out["handbook"] = parse_handbook(body)
+    body = section(lines, "Structure")
+    if body is not None:
+        out["structure"] = parse_structure(body)
     return out
 
 
@@ -582,6 +612,19 @@ def file_notes(root, notes_text, sid, day, folder=None, project_names=()):
         note(paths, [f"Handbook: {w}" for w in words])
     if notes["handbook"] is not None and not any(facts_by.values()) and not fronts:
         said.append("Handbook: nothing in it to file")
+    structure = notes["structure"]
+    if structure is not None:
+        if structure["problems"]:
+            said.append(f"Structure: not filed, since its lines do not read: {'; '.join(structure['problems'])}")
+        elif not folder:
+            said.append(f"Structure: no folder records {sid}, so it is not filed")
+        elif not folder.startswith("desk/"):
+            said.append(f"Structure: not filed, since {folder} is in the filing cabinet, whose folders move whole")
+        else:
+            wrote, words = oh.file_structure(root / folder / "folder.md", structure["pairs"])
+            if wrote:
+                note([f"{folder}/folder.md"], [])
+            said.append(f"Structure: {folder}: " + "; ".join(words))
     return said, changed
 
 

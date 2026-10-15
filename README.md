@@ -19,8 +19,8 @@ which ships with every office session.
 | capture a thought | `office note TEXT` |
 | drop a message or a thread someone gave you, to sort out later | `office drop` |
 | drop a friction slip | `office slip TEXT` |
-| start a job, in your own words | `office open` |
-| send a session out for it, or a planner's bundle from your downloads | `office start` |
+| start a job, in your own words, and send its session out | `office start new` |
+| send a session out for a job on the desk, or a planner's bundle from your downloads | `office start` |
 | bring the session back | `office land` |
 | deliver a folder's landed work to the project's audience | `office deliver FOLDER` |
 | build an office | `office init` |
@@ -44,9 +44,9 @@ help VERB`) explains one verb, with examples.
 ### Your verbs and the plumbing
 
 `office help` lists your own verbs, one line each in plain words: the
-home screen, `note` and `drop` (the instant captures), `slip`, `open`,
-`start`, `land`, `desk`, `close`, `deliver`, `projects add`, `tour` and
-`init`, with what a folder is (one job, what was asked in your words and
+home screen, `note` and `drop` (the instant captures), `slip`, `start`
+(with `start new`, the one door for new work), `land`, `desk`, `close`,
+`deliver`, `projects add`, `tour` and `init`, with what a folder is (one job, what was asked in your words and
 the sessions that worked on it) and what a project is (a repo whose
 audience may read it, with the office holding what is around it). The
 rest is the plumbing the office and its sessions use: a session names
@@ -180,7 +180,9 @@ a folder (a new one, or folder N) moves there with its brief: the next
 
 ### Start a job, and finish one
 
-    office open                                      # a folder on the desk, from the job in your words
+    office start new                                 # a new job in your words: its folder, and its session out
+    office start new --words "Fix the login on narrow screens" --on alpha   # ...typed in full
+    office open                                      # (plumbing) a folder on the desk, and no session yet
     office open house-hunt --thread < thread.txt     # ...seeded with the thread that started it
     office open fix-login --goal "Fix the login redirect"   # ...with the goal office start offers
     office desk                                      # in flight, ready in order, parked, candidates
@@ -188,15 +190,21 @@ a folder (a new one, or folder N) moves there with its brief: the next
     office close fix-login                           # to the filing cabinet, done
     office reopen fix-login                          # back to the desk, history and all
 
-On a terminal `office open` asks for the job in your own words, as many
-lines as you like (a blank line ends them). The first line is the
-folder's title and its slug comes from it; the words are kept, word for
-word, in the folder's Asked section, and as one line they are the goal
-`office start` sends. It asks which project the job is on, by key, only
-when your words name none of the office's projects. The size is small
-and the source is you, until a session says otherwise; every flag still
-sets its field. A title another folder took today gets a name of its
-own.
+New work comes in through one door: `office start new` (the home
+screen's `o` key) asks for the job in your own words, as many lines as
+you like (a blank line ends them), and sends its session out in the same
+motion. The first line is the folder's title and its slug comes from it;
+the words are kept, word for word, in the folder's Asked section, and as
+one line they are the goal the session goes out with. It asks which
+project the job is on, by key, only when your words name none of the
+office's projects. The title, the size (small) and the goal are
+provisional: the folder says so on a `provisional:` line, and the
+session that works the job sends back its own in its notes.md's
+Structure section, which `office land` files over them (your words in
+Asked are never touched). Every flag still sets its field, and a field a
+flag sets is yours. A title another folder took today gets a name of its
+own. `office open` is the same code without the session: plumbing now,
+for a folder that should wait on the desk.
 
 A folder is named by the date and a slug, and can be named by any unique
 part of that name or by its number, `folder 12`; asked for one, a verb
@@ -226,6 +234,7 @@ just before it packs one. The details are below.
 
 ### Send a session out
 
+    office start new                   # a new job, in your words, out in one motion
     office start                       # your downloads' new bundles by key, then which job by key
     office start --drop in-tray/2026-10-14-login-error.md   # a dropped message, straight out
     office start --sort                # the drops nothing carried, to a session of their own
@@ -240,7 +249,12 @@ rides with a project rides as declared; each is said, not asked. It
 packs the session with bale where the work lands, records it in the
 folder, and puts every file to attach in one out tray, `~/out-tray/SID`,
 beside the opener it prints: attach the tray's files to a fresh chat and
-paste the opener. The details are below.
+paste the opener. When the brief carries the planner's ratification of
+earlier sessions (`--- RATIFIED SID ---` lines), start files each in the
+folder that records that session, wherever it is, and says so. On WSL
+the opener goes on the clipboard as start's last copy, read back to
+check: the office says it is there only when it is. The details are
+below.
 
 ### Bring it back
 
@@ -249,15 +263,17 @@ paste the opener. The details are below.
 
 It finds the session the response answers, runs bale apply in the repo it
 belongs to (on its host, for a project on another machine), says how it
-ended, hands you the relay to carry, runs the project's after-land
-actions, records the planner's ratification, files the folder's
-walkthrough and delivery pages from the response, then its Sort on each
-drop's page, its questions and answers in the folder and its facts in the
-handbook, runs `office moves` when a drop was sorted (naming each folder
-it minted), closes a folder whose one session has landed and been
-ratified (saying so, with the line that reopens it), closes the
-founding folder when the founding has landed, and names any watch that
-fired. `office relay` carries a planner's answer to a clarification back
+ended, files the folder's walkthrough and delivery pages from the
+response, then its Sort on each drop's page, its questions and answers in
+the folder, its facts in the handbook and its Structure over the folder's
+provisional fields, runs `office moves` when a drop was sorted (naming
+each folder it minted), runs the project's after-land actions, closes a
+folder whose one session has landed (saying so, with the line that
+reopens it), closes the founding folder when the founding has landed,
+names any watch that fired, and, last, puts the relay to carry on the
+clipboard, read back to check. It asks nothing about ratification: the
+planner ratifies in the next brief it writes, and `office start` files
+it. `office relay` carries a planner's answer to a clarification back
 to the session's repo, through the project's shell for a hosted one. The
 details are below.
 
@@ -380,7 +396,13 @@ works out the rest (0.22.0): the title is the words' first line, the slug
 comes from it, the words go in the Asked section and become the goal, the
 size is small and the source is you. It asks the project, by key, only
 when your words name none of the office's projects. A name another folder
-took today gets one of its own (`-2`). Type `?` at a question to have it
+took today gets one of its own (`-2`). What it worked out (the title, the
+size and the goal) is named on a `- provisional: title, size, goal` line
+(0.23.0) until the session that works the job sends back its own, as
+`## Structure` in its notes.md, and `office land` files it; a field a flag
+sets is yours and never provisional, and `office status` names a
+provisional line that does not read. `office start new` runs this same
+code and sends the session out with it. Type `?` at a question to have it
 explained. Every field has a flag, which sets it as given, so the same
 folder opens in one line, and piped input is never asked anything:
 
@@ -807,8 +829,8 @@ outside every office:
 
     office land                          # the session out: bale apply, how it ended, the relay
     office land fix-login                # the session out for a folder
-    office land response-2026-10-05-fix-login-001.tar.gz --ratified
-    office land fix-login --ratified --close   # and close the finished folder
+    office land response-2026-10-05-fix-login-001.tar.gz
+    office land fix-login --close        # piped: close the finished folder with the landing
 
 `office land` finds the session a response answers (the one the office
 has out, asked for when there are several; a session id, a folder or a
@@ -834,7 +856,10 @@ subsection naming a page that is nowhere is said and skipped); its `##
 Questions and answers` lines in the folder, after a line naming the
 session; and its `## Handbook` facts, each as `- DATE: fact (SID)` at the
 end of the project's chapter, with a Sort's `facts:` lines, and a `####
-Front sheet` in place of the chapter's, whole. The handbook arrives with
+Front sheet` in place of the chapter's, whole; and its `## Structure`,
+the folder's title, size and goal as the session judged them, each filed
+over a field the folder marks provisional, the rest kept as they are, in
+one line saying what changed. The handbook arrives with
 the first fact: handbook/README.md from the install's template, the floor
 plan's entry with the front page hung, and bale.toml's trigger and pull.
 Then, when a sorted drop waits in the in-tray (or the session was the
@@ -861,26 +886,32 @@ A path you give always wins. How it ended is read from
 bale's records and said in a line. Whatever bale prints for you to carry
 (the relay for the planner, and on a HOLD the worker's block first) is
 printed whole and, on WSL, put on the clipboard; a clarification's block
-for the planner comes from `bale relay` and is printed too.
+for the planner comes from `bale relay` and is printed too. After an
+applied landing the copy is land's very last step, after the after-land
+actions, so it is the last copy made (bale copies the same block, earlier,
+and its copy loses every non-ASCII character on WSL). The office reads the
+clipboard back and says the block is there only when it is; a copy it
+cannot make, cannot confirm, or that reads back otherwise is said in a
+line, and the block is printed again, whole.
 
 After an applied landing it runs the project's after-land actions in
 its repo, in order (`office projects set NAME --after-land ./install.sh`
 declares them), stopping loudly at the first that fails with the lines
-that rerun it and the rest. Then it asks whether the planner ratified the
-session's judgment calls: yes, yes except TEXT, or not now
-(`--ratified`, `--except TEXT`, `--not-now`), and records the answer in
-the folder. Its last lines say what became of each action (ran, failed,
+that rerun it and the rest. It asks nothing about ratification (0.23.0):
+the planner ratifies in the next brief it writes, a `--- RATIFIED SID ---`
+line that `office start` files in the folder. `--ratified` (with
+`--except TEXT`) still records one by hand; `--not-now` changes nothing.
+Its last lines say what became of each action (ran, failed,
 not run), or that the project declares none. Before those last lines it
 runs `office watches check` (it records nothing) and prints the watches
 that fired, since a landing is what changes the counts a watch reads; an
 office with no watches register prints nothing for it, and the check
 never fails a landing. When the session was the founding session and the
 profile is now complete, it closes the founding folder, done. When the
-folder records that session alone and the planner ratified it with no
-exception, the job is finished, and land offers to close the folder,
-done, right after the ratification (default close; `--close` and
-`--leave-open` answer it without asking; piped with neither, the folder
-stays open and land says so). The actions run only
+folder records that session alone and it landed applied, the job is
+finished, and on a terminal land closes the folder, done, naming the line
+that reopens it (`--close` and `--leave-open` answer it without asking;
+piped with neither, the folder stays open and land says so). The actions run only
 through `office land`: a session applied by hand with `bale apply` runs
 none, so office-src's own `./install.sh` does not run, and `office
 status`'s `source:` line then says the install is behind its working
@@ -892,7 +923,7 @@ A read-only sitting the office sent out lands nothing; when it is over,
 and an `ended` line in the folder's History. The folder stays as it is,
 since a planning folder may outlive one sitting; `office close` is
 yours. A HOLD, a refusal or a clarification lands nothing: nothing
-is ratified, nothing runs after, and the next line is named. An office
+runs after, and the next line is named. An office
 session's folder changed after its pack, when `office start` recorded the
 session; `office land` puts it back as it was packed while bale lands, so
 bale never refuses the response over it, and records the session again

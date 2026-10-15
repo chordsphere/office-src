@@ -32,16 +32,18 @@ which of the project's ride-alongs go this time, offers the riders the
 pack carries, and asks bale whether a bundle can open before it writes
 anything), `office land` to bring
 it back (bale applies it in its repo, the office says how it ended, hands
-over the relay to carry, runs the project's after-land actions, records
-the planner's ratification, files the folder's walkthrough and delivery
+over the relay to carry, runs the project's after-land actions, asks
+nothing about ratification (the planner's next brief carries it, and
+`office start` files it), files the folder's walkthrough and delivery
 pages from the response, files its Sort on each drop's page, its
 questions and answers in the folder and its facts in the handbook, runs
 `office moves` when a drop was sorted, closes the founding folder once
 the founding has landed, names any watch that fired, and ends saying how each action
 went; given a read-only sitting, it ends the sitting; for a project on
 another machine it does all of this there, the response carried over;
-and it offers to close a folder whose one session landed and was
-ratified), `office relay` to carry a planner's answer to a clarification
+and it closes a folder whose one session landed applied), `office
+start new` to take a new job in your words and send its session out in
+one motion (the one door; `office open` is plumbing now), `office relay` to carry a planner's answer to a clarification
 back to the session's repo, `office probe` to run a worker's probe block
 where a folder's project lives (on its host, in its container), after
 showing its header and asking once, with the output back on your
@@ -160,6 +162,26 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Recent changes
 
+- 0.23.0 (session 2026-10-15-one-door-002): one door, the first half of
+  the front-door arc's second session.
+  - `office start new` is the one door for new work: your words (asked,
+    or `--words TEXT`), the project only when your words name none, the
+    folder minted and the session out in one motion. The home screen's
+    `o` key and the Next line name it; `office open` is plumbing.
+  - The title, size and goal the office works out are marked on the
+    folder, `- provisional: title, size, goal`. A session sends back its
+    own as `## Structure` in its notes.md (doctrine sections 3 and 4),
+    and `office land` files them over the provisional ones, saying what
+    changed; your words in Asked are never touched.
+  - `office land` asks nothing about ratification, and a folder is
+    finished when its one session landed applied. The planner ratifies
+    in the next brief, `--- RATIFIED SID ---` (or `, except: TEXT`), and
+    `office start` files it in the folder that records the session,
+    wherever it is.
+  - A clipboard copy the office claims is true: fed to clip.exe as
+    UTF-16LE, made after bale's own, read back and held to the block,
+    and every other outcome said in a line pointing at the screen.
+  - Additive: no migration.
 - 0.22.0 (session 2026-10-15-home-screen-001): the home screen, the first
   of the front-door arc's four sessions.
   - `office` on a terminal is your home screen: each project one line
@@ -617,10 +639,16 @@ For the worker first. bale gives a session's validation two minutes
   on none of its --json surfaces (a slip for bale-src already), and the
   office never reads bale's config. A bundle saved somewhere else is
   started by its path, `office start --bundle FILE`.
-- On a terminal, `office open`'s title is the first line of your words,
-  and `office start` sends the words as one line for the goal, while the
-  size is small and the paths whole: provisional until session 2 of the
-  front-door arc lets a session send back the real title, size and goal.
+- A new folder's title, size and goal are provisional until the session
+  that works the job lands with its Structure section; a session that
+  writes none (every session before 0.23.0 among them) leaves them as the
+  office worked them out, and `office status` shows the provisional line.
+- bale copies every paste block itself (pack's opener, apply's relay)
+  when its bale.toml names a clipboard command, and on WSL its copy
+  feeds clip.exe UTF-8, which Windows reads in the console's code page:
+  the office's copy, made after it, is the one that stays, but a bale
+  command run by hand still leaves bale's mangled copy (bale's half, a
+  slip for bale-src).
 - The paste command the office now takes without asking is the one it
   finds on this machine. On WSL that is still PowerShell's Get-Clipboard,
   offered from memory (below), and no longer shown as a question first:

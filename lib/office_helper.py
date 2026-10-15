@@ -1238,8 +1238,14 @@ FIELD_KEYS = ("number", "status", "queued", "class", "size", "lane", "source",
 # The fields the command writes after the template's block, in the place
 # FIELD_ORDER gives them: the template shows FIELD_KEYS and is never
 # touched for these (0.20.0). goal is office open --goal's, the one
-# sentence office start N offers as the session's goal.
-LATE_FIELDS = ("goal",)
+# sentence office start N offers as the session's goal. provisional
+# (0.23.0) names the fields the office worked out from the occupant's
+# words rather than heard from him, for the session that works the job
+# to set: its notes.md's Structure section, which office land files.
+LATE_FIELDS = ("goal", "provisional")
+# The fields a folder may mark provisional, and the keys of a session's
+# Structure section, in the order both are written (doctrine section 4).
+PROVISIONAL_FIELDS = ("title", "size", "goal")
 # Every field line a folder may carry, in the order the block holds them.
 FIELD_ORDER = FIELD_KEYS[:FIELD_KEYS.index("source") + 1] + LATE_FIELDS + \
     FIELD_KEYS[FIELD_KEYS.index("source") + 1:]
@@ -1305,6 +1311,9 @@ FIELD_HELP = {
     "goal": "the job's goal in one sentence: office start N offers it as the session's goal (a return "
             "takes it, --goal overrides). Written by office open --goal, or by office moves from a sorted "
             "drop.",
+    "provisional": "the fields the office worked out rather than heard from the occupant (title, size, goal), "
+                   "for the session that works the job to set in its notes.md's Structure section; office land "
+                   "files them and takes each off this line. Written by the office, never given.",
     "blueprint": "the blueprint the folder belongs to, by its id, YYYY-MM-DD-slug.",
     "linked": "a folder this one relates to without waiting for it: `folder N`.",
     "after": "do not open this before X is done. X is `folder N` (a bare number means a folder), "
@@ -1376,7 +1385,29 @@ def normalize_field(key, value):
         raise HelperError(f"not a session id (YYYY-MM-DD-slug-NNN): {text!r}")
     if key in ("title", "lane", "source", "goal"):
         return one_line(text, key)
+    if key == "provisional":
+        return provisional_value(text)
     raise HelperError(f"no field named {key!r}")
+
+
+def provisional_list(text):
+    """The field names a `provisional:` value lists, in PROVISIONAL_FIELDS
+    order, or HelperError naming what does not read: a name outside
+    title, size and goal, or one named twice."""
+    names = [n.strip().lower() for n in str(text).split(",") if n.strip()]
+    if not names:
+        raise HelperError("provisional names at least one of " + ", ".join(PROVISIONAL_FIELDS))
+    bad = [n for n in names if n not in PROVISIONAL_FIELDS]
+    if bad:
+        raise HelperError(f"provisional names fields from {', '.join(PROVISIONAL_FIELDS)}, not "
+                          + ", ".join(repr(b) for b in bad))
+    if len(set(names)) != len(names):
+        raise HelperError(f"provisional names a field twice: {text!r}")
+    return [n for n in PROVISIONAL_FIELDS if n in names]
+
+
+def provisional_value(text):
+    return ", ".join(provisional_list(text))
 
 
 def parse_folder(text):
@@ -1625,10 +1656,18 @@ def record_session_opening(folder_md, sid, day, words=None):
     return True, f"status {status} -> open; History: {day} opened: {sid}"
 
 
-def ratify_session(folder_md, sid, day, except_text=None):
-    """Write `- SID ratified DAY[, except: TEXT]` right under the sid's
-    line in Sessions: the planner's half of a session whose worker
-    flagged judgment calls, one line per session."""
+class AlreadyRatified(HelperError):
+    """The folder holds a ratification of the session already."""
+
+
+def ratify_session(folder_md, sid, day, except_text=None, at_end=False):
+    """Write `- SID ratified DAY[, except: TEXT]` in Sessions: the
+    planner's half of a session whose worker flagged judgment calls, one
+    line per session. Right under the sid's line (office sessions
+    --ratified), or, with at_end, as the section's last line (0.23.0: a
+    brief's ratification, which office start files in the folder wherever
+    it is, and filed paper grows at its end). A session the folder already
+    holds a ratification of raises AlreadyRatified, and nothing changes."""
     if not SID_RE.match(sid):
         raise HelperError(f"not a session id: {sid!r}")
     dt.date.fromisoformat(day)
@@ -1641,7 +1680,7 @@ def ratify_session(folder_md, sid, day, except_text=None):
     for i in range(start + 1, end):
         m = RATIFIED_RE.match(lines[i])
         if m and m.group(1) == sid:
-            raise HelperError(f"{sid} is already ratified in this folder: {lines[i][2:]}")
+            raise AlreadyRatified(f"{sid} is already ratified in this folder: {lines[i][2:]}")
         if lines[i].startswith("- ") and lines[i][2:].partition(":")[0].strip() == sid:
             at = i
     if at is None:
@@ -1649,9 +1688,165 @@ def ratify_session(folder_md, sid, day, except_text=None):
     entry = f"- {sid} ratified {day}"
     if except_text is not None:
         entry += f", except: {one_line(except_text, '--except')}"
-    lines.insert(at + 1, entry)
+    if at_end:
+        lines = append_line_to_section(lines, "Sessions", entry)
+    else:
+        lines.insert(at + 1, entry)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return entry[2:]
+
+
+# --- a folder's structure, returned by its session (0.23.0) ---------------------------
+#
+# office open works a new folder's title, size and goal out of the
+# occupant's words and marks them provisional; the session that works the
+# job sends back the ones it judged in its notes.md's Structure section,
+# and office land files them (doctrine section 4). His own words, the
+# folder's Asked section, are never touched.
+
+def file_structure(folder_md, pairs):
+    """File a session's Structure, [(key, value)] in PROVISIONAL_FIELDS
+    order, into a desk folder: a field the folder marks provisional takes
+    the session's value and leaves the provisional line; every other
+    field stays as it is, a field the occupant gave (or a flag set) and a
+    field the folder does not carry alike (a folder older than 0.23.0, or
+    one many sessions share, is never given a goal it did not have).
+    Returns (changed, [what became of each key, in words])."""
+    path = pathlib.Path(folder_md)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    f = parse_folder("\n".join(lines))
+    if not f["has_status_line"]:
+        return False, ["nothing filed: the folder is from before the field block"]
+    marked = f["fields"].get("provisional") or []
+    try:
+        provisional = provisional_list(marked[0]) if marked else []
+    except HelperError as exc:
+        return False, [f"nothing filed: the folder's provisional line does not read ({exc}); office status names it"]
+    if len(marked) > 1:
+        return False, ["nothing filed: the folder carries more than one provisional line; office status names it"]
+    said, changed = [], False
+    for key, value in pairs:
+        try:
+            value = normalize_field(key, value)
+        except HelperError as exc:
+            said.append(f"{key} kept: the session's value does not read ({exc})")
+            continue
+        current = f["title"] if key == "title" else (f["fields"].get(key) or [None])[0]
+        if key not in provisional:
+            if current is None:
+                said.append(f"{key} not filed: the folder carries none, and only a provisional field is filed")
+            else:
+                said.append(f"{key} kept: {current!r} is the folder's own" if current != value
+                            else f"{key} {value!r}, as it was")
+            continue
+        provisional.remove(key)
+        changed = True
+        if current == value:
+            said.append(f"{key} {value!r}, as judged")
+            continue
+        if key == "title":
+            lines[0] = f"# {value}"
+        else:
+            at = next((i for i, l in enumerate(lines[1:], 1) if l.startswith("## ")), len(lines))
+            idx = next((i for i in range(1, at) if FIELD_LINE_RE.match(lines[i])
+                        and FIELD_LINE_RE.match(lines[i]).group(1) == key), None)
+            if idx is None:
+                lines.insert(field_position(lines, key), f"- {key}: {value}")
+            else:
+                lines[idx] = f"- {key}: {value}"
+        said.append(f"{key} {current!r} -> {value!r}" if current is not None else f"{key} set: {value!r}")
+    if changed:
+        at = next((i for i, l in enumerate(lines[1:], 1) if l.startswith("## ")), len(lines))
+        idx = next((i for i in range(1, at) if FIELD_LINE_RE.match(lines[i])
+                    and FIELD_LINE_RE.match(lines[i]).group(1) == "provisional"), None)
+        if idx is not None:
+            if provisional:
+                lines[idx] = f"- provisional: {', '.join(provisional)}"
+            else:
+                del lines[idx]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if provisional:
+        said.append("still provisional: " + ", ".join(provisional))
+    return changed, said
+
+
+# --- a planner's ratification, carried in a brief (0.23.0) ---------------------------
+#
+# Ratification left the landing: office land asks nothing about it, since
+# the planner has not read the relay when land ends. The planner's
+# ratification of earlier sessions travels in the next brief it authors,
+# one line per session, kept to the byte as the NOTEPAD PAGE markers are,
+# and office start files each in the folder that records the session, on
+# the desk or in the filing cabinet (doctrine section 4). A marker inside a
+# fenced block or inside a notepad page the brief carries is quoted text,
+# never a ratification.
+
+RATIFIED_MARK_RE = re.compile(r"^--- RATIFIED (\S+?)(?:, except: (.*\S))? ---$")
+RATIFIED_MARK_PREFIX = "--- RATIFIED "
+
+
+def brief_ratifications(text):
+    """([(sid, except text or None)], problems) from a brief's text: one
+    per `--- RATIFIED SID ---` or `--- RATIFIED SID, except: TEXT ---`
+    line outside fenced blocks and notepad pages, in order, a session named
+    twice taken once; problems names every line that begins like a marker
+    and does not read as one."""
+    out, problems, seen = [], [], set()
+    in_fence = in_page = False
+    for n, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
+        if re.match(r"^\s*(```|~~~)", line) and not in_page:
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if NOTEPAD_PAGE_BEGIN_RE.match(line):
+            in_page = True
+            continue
+        if line == NOTEPAD_PAGE_END:
+            in_page = False
+            continue
+        if in_page or not line.startswith(RATIFIED_MARK_PREFIX):
+            continue
+        m = RATIFIED_MARK_RE.match(line)
+        if not m or not SID_RE.match(m.group(1)):
+            problems.append(f"line {n}: not `--- RATIFIED SID ---` or `--- RATIFIED SID, except: TEXT ---`: {line}")
+            continue
+        if m.group(1) in seen:
+            problems.append(f"line {n}: {m.group(1)} is ratified twice in the brief; the first line is taken")
+            continue
+        seen.add(m.group(1))
+        out.append((m.group(1), m.group(2)))
+    return out, problems
+
+
+def folders_recording(root, sid):
+    """The folders (space/name) whose Sessions record sid, desk first."""
+    out = []
+    for f in read_folders(root):
+        if f["problem"] is None and sid in f["sids"]:
+            out.append(f["rel"])
+    return out
+
+
+def cmd_ratifications(a):
+    """One line per ratification a request's brief carries, tab-separated:
+    `file SID FOLDER [EXCEPT]` for each folder that records the session,
+    `nowhere SID` when no folder does, `malformed - WHY` for a line that
+    does not read. Nothing is written."""
+    text = brief_from_request(a.request) if a.request else \
+        pathlib.Path(a.brief).read_bytes().decode("utf-8", "backslashreplace")
+    if text is None:
+        return 0
+    marks, problems = brief_ratifications(text)
+    for why in problems:
+        print(f"malformed\t-\t{why}")
+    for sid, except_text in marks:
+        rels = folders_recording(a.root, sid)
+        if not rels:
+            print(f"nowhere\t{sid}")
+        for rel in rels:
+            print("\t".join(["file", sid, rel] + ([except_text] if except_text is not None else [])))
+    return 0
 
 
 # --- the audience line: a folder's lane, its two pages and its deliveries ------
@@ -1919,6 +2114,7 @@ def folder_check(root):
                 problems.append(f"{f['rel']}: History verb {verb!r} ({day}) is not one of the set")
         if len(f["fields"].get("status", [])) > 1:
             problems.append(f"{f['rel']}: {len(f['fields']['status'])} status lines")
+        problems.extend(f"{f['rel']}: {p}" for p in provisional_problems(f))
         status = f["status"]
         if status is None:
             counts["no_status"] += 1
@@ -1936,6 +2132,23 @@ def folder_check(root):
             problems.append(f"{f['rel']}: status {status}, but its History's last state-changing line is "
                             f"`{last[0]} {last[1]}` ({STATE_VERBS[last[1]]})")
     return problems, counts
+
+
+def provisional_problems(f):
+    """What does not read in a parsed folder's `provisional:` line: more
+    than one line, a name outside title, size and goal, or a field it
+    marks that the folder does not carry (a title is always carried)."""
+    lines = f["fields"].get("provisional") or []
+    if not lines:
+        return []
+    if len(lines) > 1:
+        return [f"{len(lines)} provisional lines; a folder carries one"]
+    try:
+        names = provisional_list(lines[0])
+    except HelperError as exc:
+        return [f"the provisional line does not read: {exc}"]
+    return [f"provisional marks {n}, and the folder carries no {n} line" for n in names
+            if n != "title" and not f["fields"].get(n)]
 
 
 def filed_pages(manifest):
@@ -2750,16 +2963,22 @@ def cmd_folder_set_field(a):
 
 
 def cmd_ratify(a):
-    print(ratify_session(a.folder_md, a.sid, a.day, a.except_text))
+    try:
+        print(ratify_session(a.folder_md, a.sid, a.day, a.except_text, at_end=a.at_end))
+    except AlreadyRatified as exc:
+        print(str(exc))
+        return 4
 
 
 # --- a finished folder (0.16.0) ----------------------------------------------------
 
 def finished_folder(folder_md, sid):
-    """(finished, why not): whether office land offers to close a folder
-    after sid landed applied: the folder records sid and no other
-    session, and the planner ratified sid with no exception. why names
-    what holds it open, for land to say."""
+    """(finished, why not): whether office land closes a folder after sid
+    landed applied: the folder records sid and no other session (0.23.0:
+    a folder is finished when its session landed applied; the planner's
+    ratification comes later, in the next brief, and an exception is fixed
+    or queued there, never answered at the terminal). why names what holds
+    it open, for land to say."""
     path = pathlib.Path(folder_md)
     sessions = [s for s, _ in folder_session_lines(path)]
     if sessions != [sid]:
@@ -2767,14 +2986,6 @@ def finished_folder(folder_md, sid):
         if sid not in sessions:
             return False, f"it does not record {sid}"
         return False, f"it records {len(others)} other session(s) as well ({', '.join(others)})"
-    lines = path.read_text(encoding="utf-8").splitlines()
-    start, end = section_bounds(lines, "Sessions")
-    marks = [RATIFIED_RE.match(l) for l in lines[start + 1:end]]
-    marks = [m for m in marks if m and m.group(1) == sid]
-    if not marks:
-        return False, f"{sid} is not ratified in it"
-    if marks[-1].group(3) is not None:
-        return False, f"{sid} was ratified with an exception ({marks[-1].group(3)})"
     return True, None
 
 
@@ -3251,7 +3462,15 @@ def main(argv=None):
     p.set_defaults(fn=cmd_paste_command)
     p = sub.add_parser("ratify"); p.add_argument("folder_md"); p.add_argument("sid")
     p.add_argument("--day", required=True); p.add_argument("--except", dest="except_text")
+    p.add_argument("--at-end", action="store_true", help="as the Sessions section's last line (a brief's ratification)")
     p.set_defaults(fn=cmd_ratify)
+    p = sub.add_parser("ratifications", help="the ratifications a brief carries, and the folders that record each "
+                                             "session: file SID FOLDER [EXCEPT], nowhere SID, or malformed - WHY")
+    p.add_argument("root")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--request", help="a request tarball: the ratifications its README.md carries")
+    g.add_argument("--brief", help="a brief file")
+    p.set_defaults(fn=cmd_ratifications)
     p = sub.add_parser("folder-check"); p.add_argument("root"); p.set_defaults(fn=cmd_folder_check)
     p = sub.add_parser("filed-check"); p.add_argument("root"); p.set_defaults(fn=cmd_filed_check)
     p = sub.add_parser("folder-summary"); p.add_argument("folder_md"); p.add_argument("template")

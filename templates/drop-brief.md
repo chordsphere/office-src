@@ -24,7 +24,10 @@ Write what you decided as the Sort section of your notes.md, `## Sort`,
 with one subsection for this drop, `### {{name}}`, in the format below:
 `folder:` is {{number}}, this folder, and `#### Brief` may be left out.
 Then do the work, and end notes.md with the Walkthrough and Delivery
-sections, as every build session does.
+sections, as every build session does, and the Structure section: the
+folder's title and size were worked out from the drop, not judged, so
+send back the title, size and goal you judged, in the form the doctrine's
+section 4 pins.
 
 Other unsorted drops from the in-tray may ride beside this session, in
 the office's context; the doctrine's section 4 says what you owe them.

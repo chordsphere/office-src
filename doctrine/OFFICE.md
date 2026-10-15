@@ -15,7 +15,7 @@ and everything else sits below it, its section numbers unchanged.
 
 | Kind of session | Reads |
 |---|---|
-| A build session on a project, the common case | this card and the front sheet below it; section 2, the audience line and its three boundaries; section 3, the principles, whose sixth is the two pages at the end of notes.md; section 4 to the end of its list, how a session is packed, what the doctrine tarball beside its request is, and what it owes the drops it carries; and section 9, the house rules |
+| A build session on a project, the common case | this card and the front sheet below it; section 2, the audience line and its three boundaries; section 3, the principles, whose sixth is the pages at the end of notes.md (the walkthrough, the delivery and the folder's structure); section 4 to the end of its list, how a session is packed, what the doctrine tarball beside its request is, and what it owes the drops it carries; and section 9, the house rules |
 | A work session in an office | the build row, then section 5 for the spaces it writes (the table, then those spaces' paragraphs), section 6, what every office session ships, and section 15, filed paper and its check |
 | The founding session | the work row, then section 12, the profile |
 | A sitting | the work row, the drafting table being the space it writes; then the rest of section 4, and sections 7, the verbs, and 8, when to open a session |
@@ -53,8 +53,7 @@ command to type next. The
 everyday verbs take seconds and need no session: `office note` captures a
 line, `office slip` drops a friction slip in the suggestion box, `office
 drop` drops a message or a thread in the in-tray, to be sorted by a
-session that has the code in context, `office
-open` starts a numbered folder, `office desk` shows what is
+session that has the code in context, `office desk` shows what is
 in flight, what is ready and in what order, and what waits on what,
 `office week` shows this week against what happened, `office close` and
 `office reopen` move a folder to the filing cabinet and back. `office
@@ -67,18 +66,24 @@ runs after its sessions land, and renders what bale records about them.
 on its host when it has one, after showing the block's header and asking
 once, and hands the output back with the block on the clipboard.
 
-`office start` sends a session out: it offers the planner's bundles in the
-downloads that no session has opened, asks which job, works out where the
-work lands from the folder (asking only when it cannot tell) and takes the
-folder's goal or asks for one in the occupant's words, then runs bale's
-pack (or opens a planner's bundle), records the session in the folder, and
-puts every file to attach in one out tray beside the opener to paste.
-`office land` brings it back: it runs bale's apply in the repo the session
-belongs to, says how it ended, hands you whatever bale printed for you to
-carry, and after an applied landing runs the project's after-land actions,
-asks whether the planner ratified the session's judgment calls, and ends
-by saying what became of each action; given a read-only sitting it sent
-out, it ends the sitting with bale's unlock instead. The
+`office start` sends a session out, and it is the one door for new work:
+`office start new` takes the job in the occupant's words, names the
+project only when his words do not, mints the folder (`office open`'s own
+code, now plumbing) and sends its session out in one motion. Given a job
+on the desk, it offers the planner's bundles in the downloads that no
+session has opened, asks which job, works out where the work lands from
+the folder (asking only when it cannot tell) and takes the folder's goal
+or asks for one in his words, then runs bale's pack (or opens a planner's
+bundle), records the session in the folder, files the planner's
+ratifications the brief carries, and puts every file to attach in one out
+tray beside the opener to paste. `office land` brings it back: it runs
+bale's apply in the repo the session belongs to, says how it ended, files
+what the session's notes.md sends back (the folder's structure among it),
+after an applied landing runs the project's after-land actions and closes
+a folder whose one session landed, ends by saying what became of each
+action, and puts what bale printed for you to carry on the clipboard last
+of all; it asks nothing about ratification. Given a read-only sitting it
+sent out, it ends the sitting with bale's unlock instead. The
 office runs bale when you ask, as your hands at the terminal; bale asks its
 own questions and only you answer them. It never schedules a session,
 never hands one to a model and never carries pastes. bale carries the
@@ -145,6 +150,11 @@ Three boundaries hold that line, each with a guard.
    only eyes can check, which stays in the office; and delivery.md, the
    words the work leaves with, the commit and the review request in the
    occupant's voice and whom to send it to, which `office deliver` reads.
+   In the same place a session writes a third section for the folder
+   itself, `## Structure`: the folder's title, size and goal as the
+   session judged them once it knew the job, in the form section 4
+   pins, which `office land` files over the values the office worked out
+   and marked provisional. The occupant's own words are never touched.
 
 ## 4. How a session is packed
 
@@ -219,6 +229,25 @@ A session is packed where it lands.
   changed. It reads the handbook chapter it carries before it asks
   anything, so nothing is asked twice. A Sort's `tell:` lands on its
   folder's Next.
+- Every session that works a folder writes `## Structure` at the end of
+  its notes.md (principle 6): the folder's title, size and goal as it
+  judged them, three lines, each key on its own line, in this order and
+  nothing else (values illustrative):
+
+  ```
+  ## Structure
+
+  - title: Fix the login page on narrow screens
+  - size: small
+  - goal: Fix the login page's layout on narrow screens
+  ```
+
+  `size:` is small, medium or high; each value is one line. `office land`
+  files a value over a field the folder marks provisional (the office
+  worked it out from the occupant's words, it did not hear it) and keeps
+  every other: a field he gave, or a flag set, is his, and a field the
+  folder does not carry stays absent. It says in one line what changed. A section off this
+  shape is said and nothing of it is filed.
 
 > Section 4 continues past the core banner, from "`office start`
 > does all of this", and sections 5 to 8 follow it there.
@@ -326,10 +355,32 @@ hook) reaches the occupant as bale asks it; the office answers none. It
 reads how the landing ended from bale's records, not from bale's words,
 and hands the occupant whatever bale printed to carry (the relay), whole.
 Only after bale has applied the session does it run the project's
-after-land actions (section 10) and ask whether the planner ratified the
-session's judgment calls, recording the answer in the folder. A HOLD, a
-refusal or a clarification lands nothing: it records nothing as ratified,
-runs nothing after, and names the next line. An office session's folder
+after-land actions (section 10). It asks nothing about ratification, on
+any path: when land ends, the planner has not read the relay, so an
+answer there would record nothing. A HOLD, a refusal or a clarification
+lands nothing: it runs nothing after, and names the next line.
+
+The planner's ratification travels in the next brief it authors, one line
+per session it ratifies, kept to the byte as the NOTEPAD PAGE markers are,
+anywhere in the brief outside a fenced block and outside a notepad page
+(values illustrative):
+
+  ```
+  --- RATIFIED 2026-10-14-alpha-login-error-001 ---
+  --- RATIFIED 2026-10-14-alpha-docs-002, except: the slug rule; fixed in this session ---
+  ```
+
+`office start` files each, when it sends that brief's session out, in the
+folder that records the session it names, on the desk or in the filing
+cabinet: `- SID ratified DATE` (with `, except: TEXT` as given) as the
+last line of the folder's Sessions section, which adds a line and
+rewrites none, and says so in a line. A session no folder records is said
+and skipped; a folder that holds the session's ratification already is
+said and left as it is; a folder an open session's forecast holds (the
+one-writer rule) is said, with the `office sessions FOLDER SID
+--ratified` line that files it once that session is in. An exception is
+fixed in the next session or queued there, never answered by the
+occupant at the terminal. An office session's folder
 moved after the pack, because `office start` recorded the session in it;
 `office land` puts the folder back as it was packed while bale lands, so
 bale never has to refuse the response, and records the session again
@@ -345,10 +396,11 @@ apply` or `bale retry` runs in the project's repo there through the
 project's shell, attended, so bale's questions reach the occupant
 through every layer and only he answers them. How it ended is read from
 bale's records there; whatever bale prints to carry comes back to the
-occupant's screen whole (and, on WSL, to the clipboard on his machine);
+occupant's screen whole (and, on WSL, to the clipboard on his machine, as
+section 10 says);
 a clarification's block comes from `bale relay` run there; the
-after-land actions run in the repo there; the ratification, the watches
-and the last lines are as for any landing; a sitting there ends with
+after-land actions run in the repo there; the closing, the watches and
+the last lines are as for any landing; a sitting there ends with
 `bale unlock` there. Whatever the office writes on the host outside the
 project's repo is removed again, whether the landing succeeded or not.
 
@@ -376,13 +428,13 @@ name; then land passes bale the newest by its path and says so, since
 bale's search takes the plain name first and a corrected response after
 a HOLD is usually the `(1)`.
 
-A folder is finished when its only recorded session landed applied and
-the planner ratified it with no exception: on a terminal `office land`
-then closes it, done, in the same breath, and says so with the line that
-reopens it, since a close can be undone and nothing is left to judge
-(`--leave-open` keeps it on the desk, `--close` closes it piped; piped
-with neither, it leaves the folder open and says so). The founding
-folder keeps its own rule.
+A folder is finished when its only recorded session landed applied: on a
+terminal `office land` then closes it, done, in the same breath, and says
+so with the line that reopens it, since a close can be undone and nothing
+is left to judge; the planner's ratification, and any exception, arrive
+later in the next brief (`--leave-open` keeps it on the desk, `--close`
+closes it piped; piped with neither, it leaves the folder open and says
+so). The founding folder keeps its own rule.
 
 After a project session lands, the office side (the folder, and the
 front sheet of any handbook chapter the change touched) is brought up to
@@ -391,7 +443,7 @@ office: `office land` files the folder's walkthrough.md and delivery.md
 from the Walkthrough and Delivery sections of the response's notes.md
 (principle 6), when it found the response on the occupant's machine;
 `office sessions FOLDER SID --pages RESPONSE` files them from a response
-bale found on its own. Both then file three more sections of any
+bale found on its own. Both then file four more sections of any
 session's notes.md, in this order, each only when present and each said
 in a line. The Sort: each `### NAME.md` subsection on the drop's page,
 found in the in-tray or in the landed folder's drops/, as a `## Sort`
@@ -401,11 +453,14 @@ nowhere is said and skipped. The Questions and answers: each line as it
 is, in the folder's Questions and answers section, after a line naming
 the session. The Handbook: each fact as `- DATE: fact (SID)` at the end
 of its project's chapter, with a Sort's `facts:` lines, and a Front sheet
-in place of the chapter's, whole. Then, when a sorted drop waits in the
-in-tray, or the session was a standalone sort whose moves page holds
-pending lines, `office land` runs `office moves` and names each folder it
-minted, before the after-land actions and the ratification question. A
-HOLD, a refusal or a clarification files nothing. A standalone sort, which
+in place of the chapter's, whole. The Structure: over the provisional
+fields of the folder that records the session, when that folder is on the
+desk (a folder in the filing cabinet moves whole, and a session no folder
+records has none), as the bullet in section 4 pins it. Then, when a
+sorted drop waits in the in-tray, or the session was a standalone sort
+whose moves page holds pending lines, `office land` runs `office moves`
+and names each folder it minted, before the after-land actions. A HOLD, a
+refusal or a clarification files nothing. A standalone sort, which
 no folder records, is filed by `office sessions --in-tray SID --pages
 RESPONSE` when only bale found its response.
 
@@ -426,8 +481,7 @@ folders whole), every handbook chapter, the hung items and the doctrine,
 and forecasts the notepad and, where the office has a drafting table, its
 moves page (which arrives first when it must), and nothing else: like
 every session it writes its Sort, Questions and answers and Handbook in
-notes.md, and `office land SID` files them, runs the moves and ends with
-the ratification question. The walk-in and `office desk` show it in flight
+notes.md, and `office land SID` files them and runs the moves. The walk-in and `office desk` show it in flight
 as the in-tray's session. It is refused while another sort is out, while
 an open session in the office's registry forecasts the in-tray, and when
 no drop is unsorted.
@@ -495,7 +549,16 @@ it was queued, and whichever of class, size, lane, source, goal,
 blueprint, links and gates it was given (goal, one sentence, is written
 by `office open --goal` and by `office moves` from a sorted drop, and
 `office start N` offers it). A field the command cannot fill is left
-out rather than left blank. The number is the folder's citation, folder
+out rather than left blank. A field the office worked out from the
+occupant's words rather than heard from him (the title, the size and the
+goal of a folder opened from his words; the title and the size of one
+minted for a drop) is named on one more field line, `- provisional:
+title, size, goal`, after the goal: the session that works the job sends
+back its own in its Structure (section 4), `office land` files each over
+the provisional value and takes it off the line, and the line goes when
+it names nothing. A field a flag set is his, never provisional. `office
+status` names a provisional line that does not read or marks a field the
+folder does not carry. The number is the folder's citation, folder
 N: `office open` mints it as one more than the highest number on the
 desk and in the filing cabinet, and it is never reused or renumbered. A
 folder from before numbers keeps none and is cited by its name; nothing
@@ -520,7 +583,8 @@ set of verbs, appended and never rewritten, and the status line always
 agrees with the last line that changed it (`ended`, which `office land`
 writes when it ends a read-only sitting, changes nothing). `office sessions FOLDER SID
 --ratified` records that the planner ratified a session's judgment
-calls, with `--except` for what was corrected and where it went.
+calls, with `--except` for what was corrected and where it went; a
+brief's RATIFIED line does the same through `office start` (section 4).
 
 Gates are data on the folder that waits: `after` (do not open this
 before folder N is done, a blueprint closes (its close report exists),
@@ -826,15 +890,15 @@ Kinds:
 | note | script: append a dated line to the notepad | yes | occupant |
 | slip | script: drop a friction slip in the suggestion box, saying what it is about | yes | occupant |
 | drop | script: capture a message or a thread as one in-tray page, with an optional free-text project | yes | occupant |
-| open | script: start a numbered folder on the desk, or a candidate, or one born done in the filing cabinet; on a terminal, from the occupant's words (the title, the Asked section and the goal office start takes); with --goal, the goal | yes | occupant |
+| open | script: start a numbered folder on the desk, or a candidate, or one born done in the filing cabinet; on a terminal, from the occupant's words (the title, the Asked section and the goal office start takes, each worked-out field marked provisional); with --goal, the goal; the code office start new mints a folder through | yes | plumbing |
 | desk | script: in flight, ready in order, parked under what each waits for, candidates | yes | occupant |
 | week | script: this week's calendar and its gaps | yes | plumbing |
 | close | script: move a folder to the filing cabinet, done, absorbed, split or retired | yes | occupant |
 | reopen | script: move a done folder back to the desk | yes | plumbing |
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes | plumbing |
 | projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace, a clone here brought there with --from), declare where it is, what rides with it and what runs after it lands, bring a host's bale level with this machine's (level-bale), render what bale records about them | yes | occupant |
-| start | script: bare on a terminal, offer the planner's bundles in the downloads no session has opened, by key; pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; with --sort, send the standalone sort; send a folder out with its goal and brief.md when it has them; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes | occupant |
-| land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, the folder's walkthrough and delivery pages filed from the response, then its Sort on each drop's page, its questions and answers in the folder and its facts in the handbook, and office moves when a drop was sorted, the founding folder closed when the founding has landed, the watches that fired, and what became of each action; or end a read-only sitting the office sent out | yes | occupant |
+| start | script: the one door for new work: with new, a job from the occupant's words (--words the twin), its folder minted through open's code and its session sent out in one motion; bare on a terminal, offer the planner's bundles in the downloads no session has opened, by key; pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; with --sort, send the standalone sort; send a folder out with its goal and brief.md when it has them; record it in the folder, file the sitting's page and the planner's ratifications its brief carries, gather what to attach in one out tray, and put the opener on the clipboard last | yes | occupant |
+| land | script: bring a session back: bale's apply in its repo, how it ended, the folder's walkthrough and delivery pages filed from the response, then its Sort on each drop's page, its questions and answers in the folder, its facts in the handbook and its Structure over the folder's provisional fields, and office moves when a drop was sorted, the project's after-land actions, the folder closed when its one session landed and the founding folder when the founding has, the watches that fired, what became of each action, and last the relay to carry on the clipboard; it asks nothing about ratification; or end a read-only sitting the office sent out | yes | occupant |
 | relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes | plumbing |
 | probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), stdin closed, once its purpose header has been shown and the occupant said yes; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes | plumbing |
 | deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, checked by the letterhead, asked once, recorded in the folder | yes | occupant |
@@ -873,8 +937,9 @@ opened from his words: its title is their first line, trimmed as a
 drop's heading is, its slug comes from the title, the words are kept in
 the folder's Asked section and, as one line, are the goal `office start`
 takes; the size is small and the source is where the words came from
-(the occupant, a drop, a planner's bundle), until a session says
-otherwise. Where a session's work lands is the folder's lane, what it
+(the occupant, a drop, a planner's bundle); the title, size and goal it
+worked out are marked provisional on the folder, and the session that
+works the job sends back its own (section 4, the Structure). Where a session's work lands is the folder's lane, what it
 will change is the session's to forecast, what rides with a project
 rides as declared, and a rider whose path the forecast touches is
 carried; each is said, never asked. A choice among things the office
@@ -893,8 +958,9 @@ may be skipped.
 The verbs are on two surfaces, which the table above names and
 share/verbs.toml declares. The occupant's own (`occupant`) are the home
 screen and what he uses: the two instant captures (`office note`,
-`office drop`), the friction slip, a new job (`office open`), sending a
-session out and bringing it back (`office start`, `office land`), the
+`office drop`), the friction slip, a new job from his words with its
+session out (`office start new`, the one door), sending a job on the desk
+out and bringing a session back (`office start`, `office land`), the
 desk, closing a job, delivering it, adding a project, the tour and a new
 office. `office help` lists them, one line each in plain words, with a
 line on what a folder is and what a project is. Everything else is the
@@ -1164,6 +1230,24 @@ relay in the repo the session is open in, through the project's shell
 for a hosted one, the answer file on this machine piped to it, and the
 block bale prints for the worker printed whole and, on WSL, put on the
 clipboard, as `office land` hands over a relay.
+
+A copy the office claims is a copy (0.23.0). Every block the office says
+it put on the clipboard is on it, whole, its non-ASCII intact, and it is
+the last copy made. On WSL clip.exe is fed UTF-16LE, which it reads
+whole; fed UTF-8 it reads the console's code page, which is how bale's
+own copy of the same blocks arrives mangled (bale's half, a slip for
+bale-src). bale copies first, while it packs or applies, so the office
+copies after it: `office start` the opener once the pack has ended,
+`office land` the relay as its last step, after the after-land actions,
+`office probe` the output once the probe's own closing step has run. The
+office then reads the clipboard back with the machine's paste command
+(machine.toml's paste_command, or the reader the machine has) and holds
+it to the block, copying once more when another program copied after it;
+only a copy that reads back is claimed. A copy it cannot confirm (no way
+to read the clipboard), cannot make (no clipboard command, or off a
+terminal) or that reads back otherwise is said in one line that points at
+the block on the screen, and land prints the block again, whole. The
+suite writes no clipboard and opens no file manager on any machine.
 
 The office scales with whatever carries sessions by staying on its side
 of that line. It supplies what a carrier lacks (which job, what context,

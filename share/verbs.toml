@@ -159,7 +159,7 @@ trigger = ["manual"]
 [verbs.open]
 kind = "script"
 built = true
-surface = "occupant"
+surface = "plumbing"
 writes = ["desk/{folder}", "filing-cabinet/{folder}"]
 lands = ["desk/{folder}", "filing-cabinet/{folder}"]
 attended = true

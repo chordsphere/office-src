@@ -1642,6 +1642,8 @@ usage: office open [SLUG] [--title TITLE] [--size SIZE] [--lane LANE] [--source 
                    [--goal TEXT] [--class CLASS] [--blueprint ID] [--linked GATE]... [--after GATE]...
                    [--serializes-after GATE]... [--consumer GATE]...
                    [--candidate | --filed --sid SID] [--thread < pasted-thread]
+Plumbing since 0.23.0: office start new is the occupant's one door for new
+work, which opens the folder through this code and sends its session out.
 Starts a folder on the desk: numbered one more than the highest number on
 the desk and in the filing cabinet, status queued, the day it was queued,
 and every field it is given. --candidate opens it as a candidate; --filed
@@ -1653,8 +1655,10 @@ words are kept in the folder's Asked section, and, as one line, they are
 the goal office start takes. It asks which project the job is on, by key,
 only when your words name none of the office's projects and the office
 scopes some. The size is small and the source is where the words came
-from, until a session says otherwise; each flag twin still sets its
-field. A title another folder took today gets a name of its own (-2);
+from; the title, size and goal it worked out are marked provisional on
+the folder until the session that works the job sends back its own; each
+flag twin still sets its field (and a field a flag set is his, never
+provisional). A title another folder took today gets a name of its own (-2);
 office start new offers a folder of that name on the desk as the one to
 start. Piped, it never asks.
 Examples:
@@ -1667,7 +1671,7 @@ Examples:
   office open build-a-shed --candidate         (an idea on the desk, not queued yet)
 The fields, and what each takes:
 USAGE
-  helper field-help all | grep -v -e '^status:' -e '^queued:' -e '^number:' -e '^sid:' | fold -s -w 76 | sed 's/^/  /'
+  helper field-help all | grep -v -e '^status:' -e '^queued:' -e '^number:' -e '^sid:' -e '^provisional:' | fold -s -w 76 | sed 's/^/  /'
 }
 
 # The one-writer rule: a verb that mints a folder number refuses while
@@ -1741,7 +1745,15 @@ cmd_open() {
 
   tz="$(office_tz "$root")"; day="$(office_date "$tz")"
   local words_file="" by=""
-  if can_ask && [ "$thread" = 0 ]; then
+  # The fields the office works out rather than hears from him (0.23.0):
+  # marked provisional on the folder, for the session that works the job
+  # to set in its notes.md's Structure section, which office land files.
+  # office start --drop names the ones it worked out (OPEN_PROVISIONAL).
+  local provisional=() given_goal="$goal" given_size="$size"
+  if [ -n "${OPEN_PROVISIONAL:-}" ]; then IFS=', ' read -r -a provisional <<< "$OPEN_PROVISIONAL"; fi
+  # The words office start new was given (--words, or his answer there)
+  # open a folder piped too: they are given, so nothing is asked.
+  if { can_ask || [ -n "${OPEN_WORDS_FILE:-}" ]; } && [ "$thread" = 0 ]; then
     # The wizard (0.22.0): the occupant supplies words, the office supplies
     # structure. It asks for the job in his own words, and for the project
     # only when the office cannot tell; everything else it works out and
@@ -1773,7 +1785,11 @@ cmd_open() {
       title="$(printf '%s\n' "$reading" | sed -n 's/^title\t//p')"
       raw_title="$(printf '%s\n' "$reading" | sed -n 's/^slug-from\t//p')"
       [ -n "$goal" ] || goal="$(printf '%s\n' "$reading" | sed -n 's/^goal\t//p')"
-      if [ -z "$lane" ]; then
+      provisional+=(title)
+      [ -n "$given_goal" ] || provisional+=(goal)
+      # Where office start new was told the work lands (OPEN_LANE) wins
+      # over a project his words happen to name.
+      if [ -z "$lane" ] && [ -z "${OPEN_LANE:-}" ]; then
         lane="$(printf '%s\n' "$reading" | sed -n 's/^project\t//p')"
         [ -z "$lane" ] || log "your words name $lane, one of this office's projects: the folder's lane (--lane says otherwise)"
       fi
@@ -1789,7 +1805,7 @@ cmd_open() {
       [ ! -e "$root/desk/$day-$want_slug" ] || taken=desk
       [ ! -e "$root/filing-cabinet/$day-$want_slug" ] || taken=filing-cabinet
       [ -n "$taken" ] || break
-      if [ "$taken" = desk ] && [ "${OPEN_FOR_START:-0}" = 1 ] && [ "$filed" = 0 ] && [ "$n" = 1 ]; then
+      if [ "$taken" = desk ] && [ "${OPEN_FOR_START:-0}" = 1 ] && [ "$filed" = 0 ] && [ "$n" = 1 ] && can_ask; then
         ask ans "desk/$day-$want_slug is already on the desk: start it, rather than open another (office start $day-$want_slug)" "yes" 1 \
           "A folder with this title was opened today, perhaps by a start that did not get its session out. yes starts that folder as it is; no opens another beside it."
         case "$ans" in
@@ -1815,7 +1831,7 @@ cmd_open() {
       [ "$OPEN_LANE" = - ] || lane="$OPEN_LANE"
       lane_known=1
     fi
-    if [ -z "$lane" ] && [ "$lane_known" = 0 ] && [ -n "$names" ]; then
+    if [ -z "$lane" ] && [ "$lane_known" = 0 ] && [ -n "$names" ] && can_ask; then
       local pvals=() pn
       while IFS= read -r pn; do [ -n "$pn" ] && pvals+=("$pn" "$pn"); done <<< "$names"
       pvals+=("office" "none of them: the work is the office's own")
@@ -1824,15 +1840,19 @@ cmd_open() {
         "The project whose repo the job changes, so office start knows where its session goes. none of them leaves the folder with no lane; office start then asks where the work lands." \
         "" 0 "${pvals[@]}"
       [ "$ans" = office ] || lane="$ans"
+      # office start new reads where he said the work lands, so it is
+      # never asked twice (OPEN_WHERE_FILE).
+      [ -z "${OPEN_WHERE_FILE:-}" ] || printf '%s\n' "$ans" > "$OPEN_WHERE_FILE"
       asked=1
     fi
     if [ -z "$size" ]; then size=small; debug "size: small, until a session says otherwise"; fi
+    [ -n "$given_size" ] || provisional+=(size)
     if [ -z "$source" ]; then
       source="${OPEN_SOURCE:-}"
       if [ -z "$source" ] && [ -n "$words_file" ]; then source="the occupant"; fi
     fi
     if [ "$filed" = 1 ] && [ -z "$sid" ]; then die "--filed needs --sid SID, the session the job was done in"; fi
-    [ "$asked" = 0 ] || log "the size is small and the source $([ -n "$source" ] && printf '%s' "$source" || printf 'unsaid'), for now; other fields take flags: --size, --source, --class, --blueprint, --after, --serializes-after, --consumer, --linked (office open --help explains each)"
+    [ "$asked" = 0 ] || log "the size is small and the source $([ -n "$source" ] && printf '%s' "$source" || printf 'unsaid'), for now; the title, size and goal are provisional until the session that works the job sends back its own (other fields take flags: office open --help)"
   else
     [ -n "$slug" ] || [ -n "$title" ] || die "open needs a slug or a title: office open SLUG, or --title TITLE; piped input is never asked"
     [ "$filed" = 0 ] || [ -n "$sid" ] || die "--filed needs --sid SID, the session the job was done in; piped input is never asked"
@@ -1871,6 +1891,21 @@ cmd_open() {
     # (0.20.0): office start N offers it as the session's goal.
     helper folder-set-field "$root/$folder/folder.md" --key goal --value "$goal" >/dev/null \
       || { rm -rf "${root:?}/$folder"; die "could not write the goal in $folder/folder.md"; }
+  fi
+  if [ "${#provisional[@]}" -gt 0 ] && [ "$filed" = 0 ]; then
+    # Only a field the folder carries is marked (a goal is written only
+    # when there is one).
+    local marks=() m
+    for m in "${provisional[@]}"; do
+      case "$m" in
+        title|size) marks+=("$m") ;;
+        goal) [ -z "$goal" ] || marks+=(goal) ;;
+      esac
+    done
+    if [ "${#marks[@]}" -gt 0 ]; then
+      helper folder-set-field "$root/$folder/folder.md" --key provisional --value "$(printf '%s\n' "${marks[@]}" | paste -sd, - | sed 's/,/, /g')" >/dev/null \
+        || { rm -rf "${root:?}/$folder"; die "could not mark the provisional fields in $folder/folder.md"; }
+    fi
   fi
   if [ "$filed" = 1 ]; then
     helper record-session "$root/$folder/folder.md" "$sid" >/dev/null || die "could not record $sid in $folder/folder.md"
@@ -2329,11 +2364,14 @@ cmd_sessions() {
   fi
   if [ "$ratified" = 1 ]; then
     [ -z "$words" ] || die "-m goes with recording a session, not with --ratified"
+    local rrc
     if [ "$has_except" = 1 ]; then
-      out="$(helper ratify "$root/$space/$name/folder.md" "$sid" --day "$day" --except "$except")" || exit 1
+      out="$(helper ratify "$root/$space/$name/folder.md" "$sid" --day "$day" --except "$except")"; rrc=$?
     else
-      out="$(helper ratify "$root/$space/$name/folder.md" "$sid" --day "$day")" || exit 1
+      out="$(helper ratify "$root/$space/$name/folder.md" "$sid" --day "$day")"; rrc=$?
     fi
+    [ "$rrc" != 4 ] || die "$out"
+    [ "$rrc" = 0 ] || exit 1
     log "$name: $out"
     commit_paths "$root" "office sessions: $sid ratified in $name" "$space/$name/folder.md" || true
     return 0
@@ -3525,7 +3563,8 @@ downloads_known() {
 
 usage_start() {
   cat <<'USAGE'
-usage: office start [FOLDER] [--in-office | --on PROJECT] [--goal TEXT] [--slug SLUG]
+usage: office start new [--words TEXT] [--in-office | --on PROJECT] [--goal TEXT] [--slug SLUG] ...
+       office start [FOLDER] [--in-office | --on PROJECT] [--goal TEXT] [--slug SLUG]
                     [--write PATH]... [--include PATH]... [--brief FILE] [--read-only]
                     [--leave-out PATH]... [--no-rides] [--carry N... | --carry none]
        office start [FOLDER] [--in-office | --on PROJECT] --bundle FILE [--leave-out PATH]... [--no-rides]
@@ -3533,6 +3572,13 @@ usage: office start [FOLDER] [--in-office | --on PROJECT] [--goal TEXT] [--slug 
        office start --drop PAGE [--title TITLE] [--lane LANE] [--size SIZE] [--goal TEXT] [--slug SLUG]
                     [--write PATH]... [--include PATH]... [--leave-out PATH]... [--no-rides]
        office start --sort
+The one door for new work: office start new takes the job in your words
+(asked on a terminal; --words TEXT gives them), names the project only
+when your words name none of the office's (by key; --on PROJECT or
+--in-office), mints the folder through office open's own code (its title,
+size and goal provisional until the session sends back its own), and sends
+the session out, all in one motion. Piped, it takes --words and --on or
+--in-office and asks nothing.
 Packs a session for a folder on the desk and gathers everything to attach
 into one out tray: the request, the doctrine, and whatever rides with the
 work (on a project, the office's context and the project's ride-alongs;
@@ -3549,7 +3595,13 @@ two pages from them as the Walkthrough and Delivery sections at the end
 of its notes.md, and office land files them in the folder. Every session
 it sends out carries the in-tray's unsorted drops (office drop): in the
 request for an office session, in the office's context for a project
-session; the out tray's listing and the opener say how many ride.
+session; the out tray's listing and the opener say how many ride. When the
+brief carries the planner's ratification of earlier sessions (--- RATIFIED
+SID --- lines), start files each in the folder that records that session,
+on the desk or in the filing cabinet, and says so.
+  new            a new job, in your words (the one door)
+  --words TEXT   the job, in your words, for new (piped, it is how new is
+                 given them)
   FOLDER         the job: its name, a unique part of it, or folder N;
                  on a terminal it is asked for, and new opens one through
                  office open's own questions (a title already on the desk
@@ -3648,6 +3700,8 @@ Under the hood: bale pack --json (or bale open --check, then bale open, for
 a bundle) where the work lands, and bale pack --context for each context
 tarball; OFFICE_DEBUG=1 shows each call.
 Examples:
+  office start new                             (asks for the job in your words, and sends it out)
+  office start new --words "Fix the login on narrow screens" --on alpha
   office start                                 (asks which job, where, and the goal)
   office start fix-login --on office-src --goal "Fix the login redirect"
   office start plan-wave --in-office --read-only --goal "Plan the next wave"
@@ -3659,8 +3713,9 @@ Examples:
   office start --sort
 The out tray is ~/out-tray/SID unless this machine's
 ~/.config/office-src/machine.toml sets out_tray. On WSL the tray opens in
-Explorer and the opener goes to the clipboard; clipboard_command and
-open_command in the same file change that, and "" turns either off.
+Explorer and the opener goes to the clipboard, the last copy made, read back
+to check (paste_command) and said; clipboard_command and open_command in
+the same file change that, and "" turns either off.
 USAGE
 }
 
@@ -3990,9 +4045,12 @@ start_drop() {
         "" 0 "${pvals[@]}"
     done
     # The size: small, until a session says otherwise (--size sets it).
+    # The title from the drop's first line and the size the office set are
+    # provisional on the folder (0.23.0), for the session to send back.
+    local drop_provisional=""
     if [ -n "$drop_size" ]; then check_field drop_size size --size || true; fi
-    [ -n "$drop_size" ] || drop_size=small
-    [ -n "$drop_title" ] || drop_title="$heading"
+    [ -n "$drop_size" ] || { drop_size=small; drop_provisional="size"; }
+    [ -n "$drop_title" ] || { drop_title="$heading"; drop_provisional="title${drop_provisional:+, $drop_provisional}"; }
     check_field drop_title title --title || { ask_field drop_title title --title "Title, in a few words" "" 1; }
 
     # The one-writer rule, before anything is written: the in-tray this
@@ -4006,7 +4064,7 @@ start_drop() {
     local open_args=(--title "$drop_title" --size "$drop_size" --lane "$drop_lane" --source drop)
     [ -n "$drop_title_given" ] || open_args=("$slug" "${open_args[@]}")
     local folder_rel
-    folder_rel="$(cmd_open "${open_args[@]}")" || exit 1
+    folder_rel="$(OPEN_PROVISIONAL="$drop_provisional" cmd_open "${open_args[@]}")" || exit 1
     fname="${folder_rel#desk/}"
     md="$root/desk/$fname/folder.md"
     START_OPENED="$fname"; START_TOOK=0
@@ -4119,7 +4177,7 @@ cmd_start() {
   local want="" where="" project="" goal="" slug="" brief="" read_only=0 includes=() writes=() set_w=0 bundle=""
   local leave_out=() no_rides=0 carry=() carry_none=0 bundle_given="" slug_flag=0
   local root name md status lane lane_project lane_paths names cls ans tz day out sid tray tray_root rel about="" args=() v
-  local packed_flags=() drop="" drop_title="" drop_lane="" drop_size="" drop_title_given="" sort=0 others=()
+  local packed_flags=() drop="" drop_title="" drop_lane="" drop_size="" drop_title_given="" sort=0 others=() said_words="" words_given=0
   START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_BUNDLE_FOUND=""; START_DROP_PAGE=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -4132,6 +4190,8 @@ cmd_start() {
                      --write) writes+=("$2"); set_w=1 ;; --include) includes+=("$2") ;; esac
         packed_flags+=("$1"); shift 2 ;;
       --sort) sort=1; shift ;;
+      --words) [ $# -ge 2 ] || die "--words needs the job, in your words (office start --help explains it)"
+               said_words="$2"; words_given=1; shift 2 ;;
       --drop) [ $# -ge 2 ] || die "--drop needs the drop's page: in-tray/NAME.md, or its name (office desk lists them)"
               [ -z "$drop" ] || die "office start takes one drop"; drop="$2"; shift 2 ;;
       --title|--lane|--size)
@@ -4155,7 +4215,7 @@ cmd_start() {
   if [ "$sort" = 1 ]; then
     # The standalone sort takes nothing else: its goal, forecast and brief
     # are the office's own (0.20.0).
-    [ -z "$want$where$drop$bundle$drop_title$drop_lane$drop_size" ] && [ "${#packed_flags[@]}" -eq 0 ] \
+    [ -z "$want$where$drop$bundle$drop_title$drop_lane$drop_size$said_words" ] && [ "${#packed_flags[@]}" -eq 0 ] \
       && [ "$no_rides" = 0 ] && [ "${#leave_out[@]}" -eq 0 ] && [ "${#carry[@]}" -eq 0 ] && [ "$carry_none" = 0 ] \
       || die "--sort sends the in-tray's own session, with the office's goal, forecast and brief, so it takes nothing else: office start --sort"
     root="$(resolve_office)" || exit 1
@@ -4168,6 +4228,13 @@ cmd_start() {
   [ "$read_only" = 0 ] || [ "$set_w" = 0 ] || die "--read-only forecasts nothing, so it takes no --write"
   [ "$no_rides" = 0 ] || [ "${#leave_out[@]}" -eq 0 ] || die "--no-rides leaves every ride-along out, so it takes no --leave-out"
   [ "$carry_none" = 0 ] || [ "${#carry[@]}" -eq 0 ] || die "--carry none carries no rider, so it takes no --carry N"
+  # --words is the one door's flag twin (0.23.0): a new job, in his words.
+  if [ "$words_given" = 1 ]; then
+    [ -n "${said_words//[[:space:]]/}" ] || die "--words is empty: the job, in your words"
+    [ -z "$want" ] || [ "$want" = new ] || die "--words opens a new job from your words, so it takes no folder (office start $want sends that folder out)"
+    [ -z "$drop$bundle" ] || die "--words opens a new job from your words; a drop or a bundle carries its own"
+    want=new
+  fi
   if [ -n "$drop" ]; then
     [ -z "$bundle" ] || die "--drop sends the drop out with the office's own brief, so it takes no bundle"
     [ "$where" != office ] || die "--drop sends a project session, so it takes no --in-office"
@@ -4214,7 +4281,15 @@ cmd_start() {
   [ "$where" != project ] || start_check_place "$where" "$project" "$names"
   local where_default="office" where_why="" found checked=0
   if [ "$want" = new ]; then
-    can_ask || die "new opens a folder through office open's questions, which need a terminal; run office open first"
+    # The one door (0.23.0): a new job from his words, its folder minted
+    # through office open's own code, and its session out, in one motion.
+    # Piped, the words and where the work lands are given, never asked.
+    if ! can_ask; then
+      [ "$words_given" = 1 ] || [ -n "$bundle" ] \
+        || die "office start new takes the job in your words: --words TEXT (and --on PROJECT or --in-office); piped input is never asked"
+      [ -n "$where" ] || [ -n "$bundle" ] \
+        || die "say where the work lands: --in-office, or --on PROJECT ($(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')); piped input is never asked, and nothing was written"
+    fi
     # A bundle is asked about before the folder is opened: where it lands,
     # then bale open --check there, so a bundle bale cannot find or would
     # refuse stops the start before anything is written. (A bundle that
@@ -4232,8 +4307,16 @@ cmd_start() {
       resolve_hosted_bundle "$root" "$where" "$project"
       if [ "$where" = project ]; then check_start_bundle "$root" "$where" "$project" "$bundle"; checked=1; fi
     fi
-    local desk_before words_file="" words_by="" words_source=""
+    local desk_before words_file="" words_by="" words_source="" where_file=""
     desk_before="$(ls -1 "$root/desk" 2>/dev/null)"
+    if [ "$words_given" = 1 ]; then
+      words_file="$(mktemp)" || die "no temporary file for your words"
+      TMP_PATHS+=("$words_file")
+      printf '%s\n' "$said_words" > "$words_file" || die "could not keep your words"
+      tz="$(office_tz "$root")"
+      words_by="The occupant, at office start on $(office_date "$tz") at $(office_time "$tz"), in his words (--words)"
+      words_source="the occupant"
+    fi
     # A new job for a planner's bundle is opened from the bundle's own goal,
     # the planner's words: nothing is asked of the occupant (0.22.0).
     local bundle_here="$bundle"
@@ -4250,8 +4333,15 @@ cmd_start() {
     fi
     local open_lane=""
     case "$where" in project) open_lane="$project" ;; office) open_lane="-" ;; esac
+    where_file="$(mktemp)" || die "no temporary file for where the work lands"
+    TMP_PATHS+=("$where_file")
     rel="$(OPEN_FOR_START=1 OPEN_LANE="$open_lane" OPEN_WORDS_FILE="$words_file" OPEN_WORDS_BY="$words_by" \
-           OPEN_SOURCE="$words_source" cmd_open)" || exit 1
+           OPEN_SOURCE="$words_source" OPEN_WHERE_FILE="$where_file" cmd_open)" || exit 1
+    # He said the work is the office's own when open asked which project:
+    # start takes that, and asks nothing again.
+    if [ -z "$where" ] && [ "$(cat "$where_file" 2>/dev/null)" = office ]; then
+      where=office; log "the work lands in the office, as you said"
+    fi
     want="${rel#desk/}"
     START_OPENED="$want"
     START_TOOK=0
@@ -4434,6 +4524,7 @@ for w in json.load(sys.stdin)["warnings"]:
   local filed_rc=0 request
   request="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["request"])')"
   file_sitting_pages "$root" "$request" "$sid" || filed_rc=1
+  file_ratifications "$root" "$request" "$sid" "$day"
 
   if [ -n "$second_desk" ]; then
     printf 'Joined %s, already open, as a second desk for desk/%s.\n\n' "$sid" "$name"
@@ -4489,47 +4580,144 @@ file_sitting_pages() {
   return $([ "$rc" = 0 ] && echo 0 || echo 1)
 }
 
+# file_ratifications ROOT REQUEST SID DAY (0.23.0): the planner's
+# ratification of earlier sessions, carried in the brief as `--- RATIFIED
+# SID ---` lines (doctrine section 4), filed in the folder that records each
+# session, on the desk or in the filing cabinet, as the last line of its
+# Sessions section, and committed; each is said in a line. A session no
+# folder records is said and skipped; one already ratified there is said
+# and left; a folder an open session's forecast holds (the one-writer
+# rule, the session this start sent out among them) is said, with the line
+# that files it once that session is in. Never fails the start.
+file_ratifications() {
+  local root="$1" request="$2" sid="$3" day="$4" out state rsid rel except md rc held name paths=() said
+  out="$(helper ratifications "$root" --request "$request")" \
+    || { warn "the brief in $request could not be read for the planner's ratifications (the line above says why)"; return 0; }
+  [ -n "$out" ] || return 0
+  while IFS=$'\t' read -r state rsid rel except; do
+    [ -n "$state" ] || continue
+    case "$state" in
+      malformed) warn "NOT FILED: a ratification line in $sid's brief: $rel" ;;
+      nowhere) log "the brief ratifies $rsid, which no folder records; nothing was filed for it" ;;
+      file)
+        md="$root/$rel/folder.md"; name="${rel#*/}"
+        held="$(reader writers "$root" "$rel/folder.md" 2>/dev/null)"; rc=$?
+        if [ "$rc" = 3 ]; then
+          printf '%s\n' "$held" | sed 's/^/[office]   /' >&2
+          log "the brief ratifies $rsid, but an open session holds $rel (the one-writer rule), so it is not filed yet; once that session is in: office sessions $name $rsid --ratified${except:+ --except $(shq "$except")}"
+          continue
+        fi
+        if [ -n "$except" ]; then
+          said="$(helper ratify "$md" "$rsid" --day "$day" --except "$except" --at-end)"; rc=$?
+        else
+          said="$(helper ratify "$md" "$rsid" --day "$day" --at-end)"; rc=$?
+        fi
+        case "$rc" in
+          0) log "filed the planner's ratification from $sid's brief in $rel: $said"; paths+=("$rel/folder.md") ;;
+          4) log "the brief ratifies $rsid, and $rel holds its ratification already; left as it is ($said)" ;;
+          *) warn "the planner's ratification of $rsid was not filed in $rel (the line above says why)" ;;
+        esac ;;
+    esac
+  done <<< "$out"
+  [ "${#paths[@]}" -eq 0 ] || commit_paths "$root" "office start: the planner's ratifications from $sid's brief" "${paths[@]}" || true
+  return 0
+}
+
 # The two desktop steps, on a terminal only: copy the opener to the
 # clipboard and open the out tray in the file manager. On WSL they
 # default to clip.exe and explorer.exe, as desktop_tool finds them;
 # elsewhere they are off until machine.toml names a command.
 start_desktop() {
   local tray="$1" opener="$2" open
+  # The opener's copy is the last the start makes (bale's pack copies it
+  # too, before), and every outcome of it is said, piped included.
+  to_clipboard "$opener" "the opener"
   [ -t 1 ] || return 0
   if on_wsl; then
     open="$(machine_setting open_command "$(desktop_tool explorer.exe)")"
   else
     open="$(machine_setting open_command "")"
   fi
-  to_clipboard "$opener" "the opener"
   if [ -n "$open" ]; then
     (cd "$tray" && $open . >/dev/null 2>&1 &)
     log "opened the out tray with $open"
   fi
 }
 
-# to_clipboard TEXT WHAT: on a terminal, put TEXT on the clipboard and
-# say so. On WSL the default is clip.exe as desktop_tool finds it (fed
-# UTF-16, which is what it reads); elsewhere it is off until machine.toml
-# names clipboard_command, and "" there turns it off. Returns 1 when
-# nothing was copied.
+# to_clipboard TEXT WHAT: on a terminal, put TEXT on the clipboard, and
+# claim only what is true (0.23.0). On WSL the default is clip.exe as
+# desktop_tool finds it, fed UTF-16LE (which it reads whole, every
+# non-ASCII character intact; UTF-8 it reads in the console's code page,
+# the mangling bale's own copy shows); elsewhere it is off until
+# machine.toml names clipboard_command, and "" there turns it off. The
+# copy is then read back with this machine's paste command (machine.toml's
+# paste_command, else the one the machine has, never written) and held to
+# the text; a copy that reads back otherwise is made once more, since
+# another program (bale copies the same blocks) may have copied after it.
+# Every outcome is one line, so no copy is skipped or fails unsaid.
+# Returns 0 when the clipboard reads back the text, 2 when the copy was made
+# and cannot be read back to confirm, and 1 when nothing true was copied.
 to_clipboard() {
-  local text="$1" what="$2" clip
-  [ -t 1 ] || return 1
+  local text="$1" what="$2" clip paste rc tmp err
+  if [ ! -t 1 ]; then
+    log "$what is not on the clipboard: off a terminal the office copies nothing; it is printed above"
+    return 1
+  fi
   if on_wsl; then
     clip="$(machine_setting clipboard_command "$(desktop_tool clip.exe)")"
   else
     clip="$(machine_setting clipboard_command "")"
   fi
-  [ -n "$clip" ] || return 1
-  if [ "$(basename "${clip%% *}")" = clip.exe ] && command -v iconv >/dev/null 2>&1; then
-    printf '%s\n' "$text" | iconv -f UTF-8 -t UTF-16LE | $clip 2>/dev/null
-  else
-    printf '%s\n' "$text" | $clip 2>/dev/null
+  if [ -z "$clip" ]; then
+    log "$what is not on the clipboard: this machine names no clipboard command (clipboard_command in $MACHINE_FILE); copy it from the screen above"
+    return 1
   fi
-  if [ $? -eq 0 ]; then log "$what is on the clipboard ($clip)"; return 0; fi
-  warn "$clip could not take $what; copy it from above"
-  return 1
+  tmp="$(mktemp -d)" || { warn "$what is not on the clipboard: no temporary space to copy it through; copy it from the screen above"; return 1; }
+  TMP_PATHS+=("$tmp")
+  printf '%s\n' "$text" > "$tmp/text"
+  if [ "$(basename "${clip%% *}")" = clip.exe ]; then
+    python3 -c 'import sys
+data = open(sys.argv[1], "rb").read().decode("utf-8", "replace")
+open(sys.argv[2], "wb").write(data.encode("utf-16-le"))' "$tmp/text" "$tmp/feed" \
+      || { warn "$what is not on the clipboard: it could not be turned into the UTF-16 clip.exe reads; copy it from the screen above"; return 1; }
+  else
+    cp -- "$tmp/text" "$tmp/feed"
+  fi
+  clipboard_copy() { $clip < "$tmp/feed" > /dev/null 2> "$tmp/err"; }
+  clipboard_copy; rc=$?
+  if [ "$rc" != 0 ]; then
+    err="$(tail -n 1 "$tmp/err" 2>/dev/null)"
+    warn "$what is NOT on the clipboard: $clip exited $rc${err:+ ($err)}; copy it from the screen above"
+    return 1
+  fi
+  # The read-back: the machine's own reader, never asked for here.
+  paste="$(helper paste-command "$MACHINE_FILE" 2>/dev/null)"; rc=$?
+  if [ "$rc" = 3 ]; then paste="$(helper paste-command "$MACHINE_FILE" --candidate 2>/dev/null)" || paste=""; fi
+  if [ -z "$paste" ]; then
+    log "$what went to the clipboard ($clip), unconfirmed: this machine has no way to read it back (paste_command in $MACHINE_FILE); if a paste shows anything else, copy it from the screen above"
+    return 2
+  fi
+  clipboard_reads_back() {
+    timeout 15 bash -c "$paste" < /dev/null > "$tmp/back" 2> "$tmp/err" || return 2
+    python3 -c 'import sys
+def norm(path):
+    t = open(path, "rb").read().decode("utf-8", "replace").lstrip("\ufeff")
+    return "\n".join(l.rstrip("\r") for l in t.replace("\r\n", "\n").split("\n")).rstrip("\n")
+sys.exit(0 if norm(sys.argv[1]) == norm(sys.argv[2]) else 1)' "$tmp/text" "$tmp/back"
+  }
+  clipboard_reads_back; rc=$?
+  if [ "$rc" = 1 ]; then
+    debug "$what read back otherwise from the clipboard; copying it once more"
+    clipboard_copy && { clipboard_reads_back; rc=$?; }
+  fi
+  case "$rc" in
+    0) log "$what is on the clipboard ($clip; read back and checked)"; return 0 ;;
+    1) warn "$what is NOT on the clipboard as printed: $clip took it, but the clipboard reads back otherwise ($paste); copy it from the screen above"
+       return 1 ;;
+    *) err="$(tail -n 1 "$tmp/err" 2>/dev/null)"
+       log "$what went to the clipboard ($clip), unconfirmed: reading it back failed ($paste${err:+: $err}); if a paste shows anything else, copy it from the screen above"
+       return 2 ;;
+  esac
 }
 
 # --- bringing a session back ---------------------------------------------------
@@ -4551,21 +4739,24 @@ out, runs bale apply in the repo the session belongs to (a project, or the
 office itself; bale retry when bale held the session), and says how it
 ended. bale asks its own questions (an admission, the merge, a hook) and
 only you answer them. After an applied landing it runs the project's
-after-land actions in order, then asks whether the planner ratified the
-session's judgment calls, and ends by saying what became of each action
-(ran, failed, not run). After an applied landing it also runs office
+after-land actions in order, and ends by saying what became of each
+action (ran, failed, not run). It asks nothing about ratification: the
+planner ratifies in the next brief it writes, and office start files that
+in the folder. After an applied landing it also runs office
 watches check (it records nothing) and prints the watches that fired, and
 when the founding session lands with the profile complete it closes the
 founding folder, done. Anything bale prints for you to carry is printed
-whole and, on WSL, put on the clipboard. Given a read-only sitting the
+whole and, on WSL, put on the clipboard as land's last step, read back to
+check, and said; a copy that cannot be confirmed is said, and the block
+printed again. Given a read-only sitting the
 office sent out (by its id or its folder), land ends it instead: bale
 unlock in its repo and an `ended` line in the folder's History; the
 folder stays as it is. An after-land action runs only through office
 land: a session applied by hand with bale apply runs none.
-After an applied landing, when the folder records that session alone and
-the planner ratified it with no exception, land offers to close the
-folder, done, in the same breath (default: close); piped, it leaves the
-folder open and says so.
+After an applied landing, when the folder records that session alone, the
+job is finished: on a terminal land closes the folder, done, in the same
+breath, and names the line that reopens it; piped, it leaves the folder
+open and says so.
 After an applied landing, before the after-land actions, it files what
 the response's notes.md says, when the office found the response on this
 machine (a path, or by name in the downloads): for a project session the
@@ -4605,10 +4796,10 @@ newest is passed to bale by its path, and land says so.
                    directory and then the downloads)
                    (default: response-SID.tar.gz, found by bale, or the newest
                    copy in the downloads)
-  --ratified       the planner ratified the session's judgment calls
+  --ratified       record that the planner ratified the session's judgment
+                   calls (a brief's RATIFIED line does this; nothing asks)
   --except TEXT    ...except TEXT: what was corrected, and where it went
-  --not-now        do not ask about ratification; office sessions FOLDER SID
-                   --ratified records it later
+  --not-now        changes nothing (land asks nothing about ratification)
   --close          close a finished folder with the landing, without asking
   --leave-open     leave it open, without asking (office close closes it later)
 Under the hood: bale apply TARBALL (bale retry for a held session) in the
@@ -4707,12 +4898,12 @@ run_after_land_hosted() {
 }
 
 # offer_close ROOT FOLDER SID: after an applied landing, a folder whose
-# only recorded session is the one that landed, ratified by the planner
-# with no exception, is finished: land offers to close it, done (office
-# close's own code), default close. --close and --leave-open answer
-# without asking (LAND_CLOSE); piped with neither, it stays open and land
-# says so. The founding folder has its own rule (close_founding_folder).
-# Never fails the landing.
+# only recorded session is the one that landed is finished (0.23.0: landed
+# applied; the planner's ratification comes in the next brief): on a
+# terminal land closes it, done (office close's own code), and says how to
+# reopen it. --close and --leave-open answer without asking (LAND_CLOSE);
+# piped with neither, it stays open and land says so. The founding folder
+# has its own rule (close_founding_folder). Never fails the landing.
 offer_close() {
   local root="$1" folder="$2" sid="$3" name why ans founding
   [ "${folder%%/*}" = desk ] || return 0
@@ -4732,16 +4923,16 @@ offer_close() {
     leave) log "--leave-open: $name stays open (office close $name closes it)"; return 0 ;;
     *)
       if ! can_ask; then
-        log "$name recorded $sid alone, and the planner ratified it with no exception; piped, the folder stays open: office land --close closes it with the landing, office close $name closes it now"
+        log "$name recorded $sid alone, and it landed applied; piped, the folder stays open: office land --close closes it with the landing, office close $name closes it now"
         return 0
       fi
       # On a terminal the office closes a finished job without asking
       # (0.22.0): closing can be undone, and nothing is left to judge.
-      log "$name recorded $sid alone, and the planner ratified it with no exception: the job is finished, so the folder is closed (office reopen $name brings it back; --leave-open keeps it on the desk)" ;;
+      log "$name recorded $sid alone, and it landed applied: the job is finished, so the folder is closed (office reopen $name brings it back; --leave-open keeps it on the desk)" ;;
   esac
-  if ( OFFICE_ROOT="$root" MOVE_TEXT="office land: $sid landed and was ratified, the folder's only session" cmd_close "$name" ); then
-    log "$name is closed: in the filing cabinet, done"
-    AFTER_LAND_REPORT+=("the folder $name: closed, done (its one session landed and was ratified)")
+  if ( OFFICE_ROOT="$root" MOVE_TEXT="office land: $sid landed applied, the folder's only session" cmd_close "$name" ); then
+    log "$name is closed: in the filing cabinet, done (office reopen $name brings it back)"
+    AFTER_LAND_REPORT+=("the folder $name: closed, done (its one session landed applied; office reopen $name brings it back)")
   else
     warn "$name could not be closed (the lines above say why); office close $name closes it"
     AFTER_LAND_REPORT+=("the folder $name: NOT closed; office close $name closes it")
@@ -4778,7 +4969,8 @@ cmd_land() {
                      --except) except="$2"; has_except=1 ;; esac
         shift 2 ;;
       --ratified) [ "$ratify" != no ] || die "--ratified and --not-now contradict each other"; ratify=yes; shift ;;
-      --not-now) [ "$ratify" != yes ] || die "--ratified and --not-now contradict each other"; ratify=no; shift ;;
+      --not-now) [ "$ratify" != yes ] || die "--ratified and --not-now contradict each other"; ratify=no
+                 debug "--not-now: land asks nothing about ratification since 0.23.0, so it changes nothing"; shift ;;
       -h|--help) usage_land; return 0 ;;
       -*) usage_land >&2; die "office land does not know $1; the flags above are what it takes" ;;
       *) [ -z "$want" ] || die "office land takes one session, folder or response"; want="$1"; shift ;;
@@ -4933,26 +5125,13 @@ for l in json.load(sys.stdin)["told"]:
 for l in json.load(sys.stdin)["told"]:
     print(l)' | while IFS= read -r line; do log "$line"; done
 
-  # The blocks to carry: printed whole when bale did not print them (a
-  # clarification's), and on the clipboard one at a time, in bale's order.
-  relays="$(printf '%s' "$out" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["relays"]))')"
-  i=0
-  while [ "$i" -lt "$relays" ]; do
-    local block to
-    block="$(printf '%s' "$out" | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["relays"][int(sys.argv[1])]["lines"]))' "$i")"
-    to="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["relays"][int(sys.argv[1])]["to"])' "$i")"
-    if [ "$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["outcome"])')" = clarification ]; then
-      printf '\nFor the planner, whole:\n\n%s\n' "$block"
-    fi
-    if [ "$i" -gt 0 ] && [ -t 1 ] && can_ask; then
-      ask ans "Return puts the block for the $to on the clipboard" "" 0 \
-        "bale printed more than one block to carry; they go one at a time, in the order bale says to send them."
-    fi
-    to_clipboard "$block" "the block for the $to" || [ "$i" -gt 0 ] || [ ! -t 1 ] || log "copy the block for the $to from above"
-    i=$((i + 1))
-  done
-
+  # The blocks to carry (carry_relays): on an applied landing they go on
+  # the clipboard last of all, after the after-land actions, so the
+  # office's copy is the last made (bale copied each block too, while it
+  # applied); when nothing landed, nothing runs after, so they go now.
+  local landed="$out"
   if [ -z "$(printf '%s' "$out" | python3 -c 'import json,sys; print("yes" if json.load(sys.stdin)["applied"] else "")')" ]; then
+    carry_relays "$landed" 0
     [ -z "$ratify$except" ] || log "nothing landed, so nothing is ratified"
     [ "$LAND_CLOSE" != close ] || log "nothing landed, so no folder is closed"
     line="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["next"] or "")')"
@@ -4995,47 +5174,70 @@ for l in json.load(sys.stdin)["told"]:
     debug "after land: an office session runs no after-land actions"
   fi
 
-  # The planner's ratification, through the same step as office sessions.
+  # Ratification left the landing (0.23.0): land asks nothing about it,
+  # since the planner has not read the relay yet. The planner's ratification
+  # travels in the next brief it authors, and office start files it in this
+  # folder, wherever it is by then. --ratified, given, still records one.
   if [ -z "$folders" ]; then
-    log "no folder records $sid, so there is nothing to ratify in"
+    [ "$ratify" != yes ] || log "no folder records $sid, so --ratified has nothing to record in"
   else
     [ "$behind" = 0 ] || log "the renovation has landed; next: office upgrade, which checks its declaration and stamps the office"
     space="${folders%%/*}"; name="${folders#*/}"
-    if [ -z "$ratify" ] && can_ask; then
-      while :; do
-        ask ans "Did the planner ratify $sid's judgment calls: yes, yes except TEXT, or not now (--ratified, --except TEXT, --not-now)" \
-          "not now" 0 \
-          "yes records that the planner ratified the session's judgment calls (the flagged decisions in its notes); yes except TEXT records what was corrected and where it went; not now records nothing, and office sessions $name $sid --ratified records it later."
-        case "$ans" in
-          y|Y|yes|Yes|YES) ratify=yes; break ;;
-          "yes except "*|"Yes except "*|"except "*) ratify=yes; except="${ans#*except }"; has_except=1
-            [ -n "${except//[[:space:]]/}" ] && break
-            printf '  except what: the correction, and where it went\n' >&2; ratify="" ;;
-          n|N|no|No|"not now"|"Not now") ratify=no; break ;;
-          *) printf '  answer yes, yes except TEXT, or not now\n' >&2 ;;
-        esac
-      done
-    fi
     if [ "$ratify" = yes ]; then
       md="$root/$space/$name/folder.md"
+      local rrc
       if [ "$has_except" = 1 ]; then
-        out="$(helper ratify "$md" "$sid" --day "$day" --except "$except")" || rc=1
+        out="$(helper ratify "$md" "$sid" --day "$day" --except "$except")"; rrc=$?
       else
-        out="$(helper ratify "$md" "$sid" --day "$day")" || rc=1
+        out="$(helper ratify "$md" "$sid" --day "$day")"; rrc=$?
       fi
+      case "$rrc" in
+        0) ;;
+        4) log "$name: $out; left as it is"; out="" ;;
+        *) rc=1; out="" ;;
+      esac
       if [ -n "$out" ]; then
         log "$name: $out"
         commit_paths "$root" "office sessions: $sid ratified in $name" "$space/$name/folder.md" || true
       fi
-    else
-      log "not ratified; when the planner rules: office sessions $name $sid --ratified (or --ratified --except TEXT)"
     fi
     close_founding_folder "$root" "$folders" "$sid" "$day"
     offer_close "$root" "$folders" "$sid"
   fi
   land_watches "$root" "$tz" "$day"
   after_land_summary "$repo"
+  carry_relays "$landed" 1
   return "$rc"
+}
+
+# carry_relays OUTCOME AT_END: the blocks bale printed for a person to
+# carry, from land-outcome's JSON, printed whole when bale did not print
+# them (a clarification's) and put on the clipboard one at a time, in
+# bale's order, each copy said (to_clipboard). AT_END 1 is an applied
+# landing's last step: a block whose copy is not confirmed is printed again
+# there, whole, since bale printed it far above.
+carry_relays() {
+  local out="$1" at_end="$2" relays i=0 block to outcome ans crc
+  relays="$(printf '%s' "$out" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["relays"]))')"
+  outcome="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["outcome"])')"
+  while [ "$i" -lt "$relays" ]; do
+    block="$(printf '%s' "$out" | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["relays"][int(sys.argv[1])]["lines"]))' "$i")"
+    to="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["relays"][int(sys.argv[1])]["to"])' "$i")"
+    if [ "$outcome" = clarification ]; then
+      printf '\nFor the planner, whole:\n\n%s\n' "$block"
+    fi
+    if [ "$i" -gt 0 ] && [ -t 1 ] && can_ask; then
+      ask ans "Return puts the block for the $to on the clipboard" "" 0 \
+        "bale printed more than one block to carry; they go one at a time, in the order bale says to send them."
+    fi
+    [ "$at_end" = 0 ] || [ ! -t 1 ] || printf '\n'
+    to_clipboard "$block" "the block for the $to"; crc=$?
+    if [ "$crc" != 0 ] && [ "$at_end" = 1 ] && [ -t 1 ]; then
+      printf '\nThe block for the %s, whole, to copy from here:\n\n%s\n' "$to" "$block"
+    fi
+    i=$((i + 1))
+  done
+  return 0
 }
 
 # land_files ROOT FOLDER SID PLAN: after an applied landing, what the
@@ -6090,7 +6292,7 @@ b = next((i for i, l in enumerate(lines) if l.startswith("BALE EXCHANGE END")), 
 if a is not None and b is not None and b > a:
     print("\n".join(lines[a:b + 1]))')"
   if [ -n "$block" ]; then
-    to_clipboard "$block" "the block for the worker" || [ ! -t 1 ] || log "copy the block for the worker from above"
+    to_clipboard "$block" "the block for the worker" || true
   fi
   return 0
 }
@@ -6323,8 +6525,10 @@ print("\n".join(v) if isinstance(v, list) else ("" if v is None else v))' "$1" "
   if [ "$(probe_field "$result_file" closed)" = True ]; then
     block="$(probe_field "$result_file" block)"
     if [ -t 1 ]; then
-      to_clipboard "$block" "the probe block (PROBE BEGIN to PROBE END)" \
-        || log "the block is not on the clipboard (no clipboard_command here); copy it from above, PROBE BEGIN to PROBE END"
+      # The office's copy is the last: the probe's own closing step may
+      # have copied its output through bale, whose copy mangles every
+      # non-ASCII character on WSL.
+      to_clipboard "$block" "the probe block (PROBE BEGIN to PROBE END)" || true
     else
       log "not on a terminal, so the block was not copied to the clipboard; it is above, PROBE BEGIN to PROBE END"
     fi
@@ -6900,7 +7104,8 @@ usage: office [VERB [args]]
   office drop [FILE]        a message or a thread someone gave you, from the
                             clipboard, kept in the in-tray to sort out later
   office slip TEXT          a friction slip in the suggestion box
-  office open               a new job, in your own words: its folder on the desk
+  office start new          a new job, in your own words: its folder on the
+                            desk and its session out, in one go
   office start              send a session out: a job on the desk, or a
                             planner's bundle from your downloads
   office land               bring a session back: its response applied, and
@@ -6961,7 +7166,8 @@ Capture a thought or a friction
                             sessions start sends out carry it until it is sorted
 
 Start a job, and finish one
-  office open               a numbered folder on the desk; asks for what it needs
+  office open               a numbered folder on the desk, and no session yet (office
+                            start new opens one and sends its session out)
   office close FOLDER       to the filing cabinet: done, or --into N, --split A,B,
                             --retired WHY
   office reopen FOLDER      a done folder back on the desk, history and all
@@ -6993,6 +7199,9 @@ Plan work too big for one folder (the drafting table)
                             the last sitting, watches, standing lines, desk, agenda
 
 Send a session out
+  office start new          a new job from your words (--words TEXT): its folder
+                            minted, its session packed and recorded, the out tray
+                            and the opener ready, in one motion
   office start [FOLDER]     asks which job, where the work lands and the goal; packs
                             the session, records it in the folder, and puts every file
                             to attach in one out tray beside the opener

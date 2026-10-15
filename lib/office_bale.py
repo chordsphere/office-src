@@ -1587,8 +1587,8 @@ def next_move(skew, founded, out, groups, projects, slips, behind=None):
     unplaced = sum(len(groups.get(g, [])) for g in ("no_status", "misplaced", "unreadable"))
     if unplaced:
         return ("office desk", f"{unplaced} folder(s) on the desk that it cannot order; the desk names each and why")
-    return ("office open", "nothing waits on you; open asks for a new job's title when one comes in, and office "
-                           "note TEXT captures a thought")
+    return ("office start new", "nothing waits on you; start new takes a new job in your words when one comes in "
+                                "and sends its session out, and office note TEXT captures a thought")
 
 
 def next_line(rd, office_root, skew, founded, groups):

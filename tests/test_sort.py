@@ -75,7 +75,7 @@ class TestTheNotes(unittest.TestCase):
         self.assertEqual(n["qa_other"], 1)
         self.assertEqual(n["handbook"], [("alpha", ["one fact"], ["alpha is the app."])])
         self.assertEqual(osort.parse_notes("# Notes\n\n## Walkthrough\n\nx\n"),
-                         {"sorts": None, "qa": None, "qa_other": 0, "handbook": None})
+                         {"sorts": None, "qa": None, "qa_other": 0, "handbook": None, "structure": None})
 
     def test_a_subsection_off_the_format_is_refused_with_why(self):
         def problems(block):
@@ -502,7 +502,8 @@ class TestTheStandaloneSort(LandCase):
                               notes=notes)
         proc = self.run_office("land", "--response", str(tb), check=0)
         self.assertIn(f"Landed: {sid} is applied in this office", proc.stdout)
-        self.assertIn(f"no folder records {sid}, so there is nothing to ratify in", proc.stderr)
+        # 0.23.0: land says nothing of ratification, folder or no folder.
+        self.assertNotIn("ratif", proc.stderr)
         filing = sorted(p.name for p in (self.root / "filing-cabinet").iterdir() if p.is_dir())
         self.assertEqual(len(filing), 3, filing)
         desk = sorted(p.name for p in (self.root / "desk").iterdir() if p.is_dir())
