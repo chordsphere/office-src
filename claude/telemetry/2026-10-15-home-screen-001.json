@@ -1,0 +1,356 @@
+{
+  "record_version": 1,
+  "session_id": "2026-10-15-home-screen-001",
+  "created_at": "2026-10-15T15:24:46+00:00",
+  "attempts": [
+    {
+      "at": "2026-10-15T15:24:46+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "claude/context",
+        "doctrine",
+        "lib",
+        "share",
+        "templates",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-10-15-home-screen-001.log",
+      "bundle": {
+        "stem": "2026-10-15-home-screen-v2",
+        "brief_sha256": "7dcc073b72e55e97799b9e77a8aca81895de26b3c1b635761ecce9f50aecbc70",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "a3f201e35c00ba93024d02159d836ec85e65270f05fd142849e9afc1388739a8"
+      },
+      "provenance": {
+        "work_class": "code",
+        "packer": "chordsphere",
+        "packed_at": "2026-10-15T15:24:46+00:00"
+      }
+    },
+    {
+      "at": "2026-10-15T21:24:55+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-10-15-home-screen-001.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "tests/run.sh --fast test_home_screen": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "VERSION is 0.22.0 and RELEASES.md's newest entry says so": "pass",
+          "every built script verb has a surface, and the occupant's are the twelve": "pass",
+          "office help lists the occupant verbs and office help --all every verb": "pass",
+          "the doctrine's verbs table has a surface column agreeing with the catalog": "pass",
+          "the consumption manifest declares what the home screen reads": "pass",
+          "the judgment questions are gone from bin/office": "pass",
+          "the home screen is walk_in on a terminal, and the page off one": "pass",
+          "tests/run.sh (the whole suite, --slow)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "tests/run.sh --fast test_home_screen": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "VERSION is 0.22.0 and RELEASES.md's newest entry says so": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "every built script verb has a surface, and the occupant's are the twelve": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "office help lists the occupant verbs and office help --all every verb": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "the doctrine's verbs table has a surface column agreeing with the catalog": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "the consumption manifest declares what the home screen reads": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "the judgment questions are gone from bin/office": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "the home screen is walk_in on a terminal, and the page off one": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "tests/run.sh (the whole suite, --slow)": {
+            "claim": "pass",
+            "verdict": "skip",
+            "agreement": "n/a"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "bash -n bin/office",
+          "python syntax (lib, tests)",
+          "toml syntax (share)",
+          "tests/run.sh --fast test_home_screen",
+          "VERSION is 0.22.0 and RELEASES.md's newest entry says so",
+          "every built script verb has a surface, and the occupant's are the twelve",
+          "office help lists the occupant verbs and office help --all every verb",
+          "the doctrine's verbs table has a surface column agreeing with the catalog",
+          "the consumption manifest declares what the home screen reads",
+          "the judgment questions are gone from bin/office",
+          "the home screen is walk_in on a terminal, and the page off one",
+          "bin/office is executable",
+          "tests/run.sh (the whole suite, --slow)"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin",
+        "claude/context",
+        "doctrine",
+        "lib",
+        "share",
+        "templates",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib/office_bale.py",
+        "lib/office_helper.py",
+        "lib/office_home.py",
+        "share/bale-consumption.toml",
+        "share/verbs.toml",
+        "tests/test_audience_line.py",
+        "tests/test_desk_verbs.py",
+        "tests/test_drop.py",
+        "tests/test_front_door.py",
+        "tests/test_home_screen.py",
+        "tests/test_land.py",
+        "tests/test_office.py",
+        "tests/test_probe.py",
+        "tests/test_return_trip.py",
+        "tests/test_second_trip.py",
+        "tests/test_start.py",
+        "tests/test_third_trip.py",
+        "tests/test_watches_digest.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.55",
+            "contract_docs": {
+              "AGENT.md": "31dcdded2a8fd175f7778c2bd1be09688e89e76b8fd4cd62b7646aacfa2782c4",
+              "TARBALL.md": "3037b905ee561af44f27cc83ec45d832feb7d429a98d4e07b4482a518cda6e94",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "a8e5714e51049768e52bb5bc0ede9338db1175e7095d9b2bdd0d314ab3e01078"
+            },
+            "packer": "chordsphere",
+            "work_class": "code",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-10-15T15:24:46+00:00",
+            "base_files": {
+              "README.md": "a66a4e35b94e6456bf39ac95c45cd40c36806090d270eb4345a85ac890eaff02",
+              "RELEASES.md": "43916fbae9072340c7bb4febf8b52e654bddade873600325ecb0b8ab9c66ac60",
+              "VERSION": "363c6aacbb689a2ef691b69674629f647f1afafebc9dc353a86e6b09300b24f6",
+              "bin/office": "6b3df22450a871c7d8eb360142f951900c7f1686c6a601f74170b978f90968fb",
+              "claude/context/front-sheet.md": "cfd603c30846abee659dc5fe3f8e83dd5ade588da8a76ea33bf1b848240f4614",
+              "claude/context/sittings/2026-09-23-office-construction-001.md": "9c804c7dae8ee5056e571720bdc5defc42acd6a497fcc0299d87286aad930a64",
+              "claude/context/sittings/2026-09-29-continue-plan-002-2.md": "b5a3f09fd59ac66f3fd0023a98a23dd0d13ac35188a4dce6a01624ee1ca18c78",
+              "claude/context/sittings/2026-09-29-continue-plan-002-3.md": "6e1e0c056307d3606da8a3d595d973fd15280833d980324574966fc87fc69eaf",
+              "claude/context/sittings/2026-09-29-continue-plan-002-4.md": "da1fbbc5514918a2d57aadb7affdd052d8a008560e749c32219d551e775d3c6d",
+              "claude/context/sittings/2026-09-29-continue-plan-002.md": "6d1097bb8986ebafdc8902db26019d3ce1f0ba2eaa174917b08345cc850f5c4a",
+              "claude/context/sittings/2026-10-02-friction-wave-sitting-001-2.md": "2db9f41b29aa1adaac51fa6a4f06aec8f0eb397f05493862f405138c0b24c13e",
+              "claude/context/sittings/2026-10-02-friction-wave-sitting-001-3.md": "b48fdc2ecde43007c680b59f4d75c165dc63a9eef6c70eb95367bd38dda7c44a",
+              "claude/context/sittings/2026-10-02-friction-wave-sitting-001-4.md": "b215511da03ba2ad32462e3600f5862b0a5f135291058af4a347fcf070eb81f5",
+              "claude/context/sittings/2026-10-02-friction-wave-sitting-001.md": "97a2df5f66da24b7a75a13024da98403e9aa4229865014e5c993410de592ddf2",
+              "doctrine/OFFICE.md": "5060f6e168336f4e33772bf4e5dfe9e2ecbf05f1becde15f0939677b25e1d2e0",
+              "doctrine/checks/filed-append-only.sh": "0f52ed5870f32c3d985e032fc99df071e256f7cad2e343d9dba8b6a2e7099e95",
+              "lib/office_bale.py": "3a5218f676772d873a10ccee92bbc7763110ec5ee7988e41e0f8b9ec77b04e03",
+              "lib/office_deliver.py": "ab46e57647f381843ebfba6ce5cd3a86b7c85d613d87f6de14afc426e95eb193",
+              "lib/office_digest.py": "a23ba2f30375d2d753961b77395d2b3caab2eb8d590f6cee89a91f5cad022702",
+              "lib/office_door.py": "31b9b4d4ade8f93d52caf5cc1452b5f2f14f947c7b4b54cdd1ddb9b88a273715",
+              "lib/office_drafting.py": "cec1803f280dcc9ce2c7c4538b38e381c53dd5c047d12ed3d7b23cabec47ed42",
+              "lib/office_drop.py": "68ab3732e16ee5b8ca325f39b00ace648b63d2d837f475a52ee7b499e881dfef",
+              "lib/office_helper.py": "edc426865d3884e8599251fe36f221dad088bc1c2fdb73360131cf8b67bdd84b",
+              "lib/office_host.py": "f961d5dd69a8384a76b17bd654e65dffc79b42af8493d5b1eed7dc49a98f9a97",
+              "lib/office_letterhead.py": "55f278d6d6eac285936fbc9f4ffd1578c19621a2fcd2699ec295d4f852f21060",
+              "lib/office_probe.py": "66722a8d2861fc67bb47b6d8219f00eb9203916ebfcc80f83d4d7006773bf1bf",
+              "lib/office_sort.py": "73dd15f5b2f9e3390c450fcdb601410c3ab878304290a4bf1e4c77b7af30e046",
+              "lib/office_watches.py": "fbb0d04fe0795403eb068ba42a0b9d6b2773dfb8dd90678c0f7dffd6b5d6d95f",
+              "share/bale-consumption.toml": "c1e986580868fe9a5e8ab8cd0ae52be9b8c0475c17fd090d548c11929b007833",
+              "share/letterhead.toml": "80aa355d8f8f6b0baee55dac636006eb4368a231460fd7dac35e776f3d4dde20",
+              "share/profile-shape.toml": "be33d802bb251cbae19eb2ec87c1068f12974a8c3cb532f7b4f8d78553f53083",
+              "share/spaces.toml": "6ec0e529005e5beed5ba4beb09afd8e611d8beb6a0753990c8020142ac3d3cc1",
+              "share/verbs.toml": "5e7f072ee8af766736823a2b4890fe7077e1092a1f704029ed82ec648113dbdf",
+              "share/watch-queries.toml": "a131e859f3668a9288c4f2a8e14d26eb141d3190a9fe2dea2a2a12466107cda0",
+              "templates/blueprint.md": "afdcee03c546aed8351407128984b8bc8302bc08d6e8e0bdc03f36eddd0b43a1",
+              "templates/clipboard-series.md": "a5d9eb92961bd491b10225321c7564ba0afd3bbb8d9bedd6913f26be36866f22",
+              "templates/clipboard-sheet.md": "3a49bc3bc432964a963d3a8167ab19ac237119f309d9f1943c9313c9e61bd769",
+              "templates/close-report.md": "2ed79c13360c2c9b2dc354b7203d22104344670be50bbe7b70409b32de1012fe",
+              "templates/delivery.md": "fc255946123c6ef37b96b124bbc1096c59bdcb3779a21cfb313e4e519db7df61",
+              "templates/drafting-table-README.md": "cc8824bba0fb1cb4f20848c69206287e4d0211ec570c2e43e4b83b2afd4f8a52",
+              "templates/drafting-table-agenda.md": "ec2c50086d54a7e29c253cc98d7bd20b749a58862e0ede7a42e70fe5f56e15f0",
+              "templates/drafting-table-evidence.md": "2db0ee33c42518ec534463f8d28782d6446eca05fa63a4c6a3f2f33603397516",
+              "templates/drafting-table-moves.md": "f66ff189ab6d642774580116792dd9edee24ba414b35d829c40866cc4a2992da",
+              "templates/drafting-table-riders.md": "997a09888b6e5d981f968683629861cace9005f9e1759b5a2ece42ca4f2d2b43",
+              "templates/drafting-table-rulings.md": "c3ee8b27e758291a2dd418f5b56168a5d3539aff84e5714d999e8f96a90cd084",
+              "templates/drafting-table-watch-log.md": "ab312220fe93939ef3c719e2ff1175f004937624d85bb7188080b83497c12f20",
+              "templates/drafting-table-watches.md": "2dcdec752acf5c3ac508feffc1a8e1027ca799dfa43699673c9f7d148ee04c5d",
+              "templates/drop-brief.md": "342d7e1a1564c70f7729aac9290a51b073a9d1241d7a8502ebcfbedc4bb8b9d7",
+              "templates/folder.md": "bbf7390000645252e5441fa2685712ba8b8b70d56321eec327cbbe3c243cc149",
+              "templates/handbook-README.md": "f2f8b368e6d05bb062144adbb62cdc96891c6e444f9587767de97032dd15cac7",
+              "templates/handbook-chapter.md": "f8a57c3f203f11a162c99dd8a3e2fe5e6eb4decae702d7120720c08f2e9754cd",
+              "templates/in-tray-README.md": "3e9adfd8c44c4bda715f5084a53a7e76d947baccc058f74e7ec2ae90132d6c66",
+              "templates/notepad-page.md": "692df506823206c9db5f7153bf90aa0bf46014ad80fe2962163a5997f8e065de",
+              "templates/profile.md": "c57c886d2d71ff7c07969282a6778da8f0c7a6e352f08021ce50574ce4c7a708",
+              "templates/rolodex-card.md": "833635ca21cc16ed318ae9a8103c9afc8fd8e98027a1fa4eb013cee9cf386833",
+              "templates/sort-brief.md": "3ab87190bb653b3e2b55d160dc347602c6a8a50de462f36b0e21ebdae016e342",
+              "templates/suggestion-slip.md": "8b95b77a645429817ace549f81822ff0c65b1369746bb580635a4be6ac87c5d1",
+              "templates/walkthrough.md": "dce05bbd474606b2f6e8b9a444288c0aa35027706ad80c5071efa7b775aa7e96",
+              "tests/fast-tier.toml": "a429e9c4ae61a766c80fa1a40f6bcb25d131c92cde9165ed83734ad88c0eb919",
+              "tests/run.sh": "35b3954b5bf5d4e975ba58026bc8c313e11e94f1e97bd5f2140aa963f40829cf",
+              "tests/runner.py": "cebf4e47b1af3a8e943371b3b9543f35988a57136e69539f7d6351b5e2249fc2",
+              "tests/test_audience_line.py": "a3b0b85df917b782661f8407cceddb15ab8b83d9c41c128001a1fc96fb65599b",
+              "tests/test_desk_verbs.py": "843ec5a431c22f6dd96e61b53a00daa372fbe9535238a5037a9447a747fb3a70",
+              "tests/test_drafting_table.py": "d14930bf0c9c8a01b868ea7c7cdd7df13088765fc42655f25326addc772c4c4c",
+              "tests/test_drop.py": "34e9cb2ea09a6c0ce7c43d7863b04e7a5f003a5cc84368b807e0383ab806239a",
+              "tests/test_filed_append_only.py": "9daf033c18db0969190168fb2276dd835c3abd71a56f5bd01d0d6f0edd76d45b",
+              "tests/test_founding_door.py": "8b65f958aecc070bb88fede0c7c27fae82cb1a2c8892c88c665e3ca4359a970a",
+              "tests/test_front_door.py": "0e2c6837b285597e3956e4faaea335ac402ad238000bc86dfea64c18493bb104",
+              "tests/test_land.py": "7638d2e280f5d7d8b0148e69daca870a649bac23c81108d032776674c382d27c",
+              "tests/test_office.py": "0170540ac53ffa06ffdd3390e6c6a3fb39102b4d8b009e8885db62f9a94671bd",
+              "tests/test_out_trip_to_host.py": "cbd15fd98fec1506172d822f231b5b69fdf30390782341a65169dbfd55a0d87b",
+              "tests/test_probe.py": "03faf950ba5cd5aacfdf03e7f20951bd56e59d9250a1fc68e1fce9d18e4db80f",
+              "tests/test_project_on_host.py": "121c1cef2534f2605a90dcaa400543500f71fa16aa0c5f23dbbb63719b09dba6",
+              "tests/test_read_side.py": "93a74d91ef837429cb53abd56429c5f5d98ba0c266f7fa7fc47ccf98256f528d",
+              "tests/test_return_trip.py": "9e3109427031691fa5a88702b386e9556eea9febf54d1009b2049ab164b6355a",
+              "tests/test_second_trip.py": "4ad56dc850ff7680c7770bd9ae73f77cc2b0db0c38bd13c3bf69f164c1d1bbdd",
+              "tests/test_sort.py": "f6a355ccea8994e040553c86a5b22682594f61243fc984ffc6c14660da6c24c0",
+              "tests/test_start.py": "be49933a0f3e84d10e76f70ee8bbdaf0a7f09f30ff98128dc40558a2b2b0bdfa",
+              "tests/test_suite_clock.py": "27a735e7438fd18ebe646643b308796976fed06dd3bc08214cfd80b3fc8a41db",
+              "tests/test_third_trip.py": "88786eb998dbb2d94165b187cd23a870a0ac9da5bb13fcfe2f56ca3717ce4487",
+              "tests/test_watches_digest.py": "e0c1ae686cd33ad1716baa43616aa867b190663857c6f99be3bfd3dd3f01a67c"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "A bundle counts as opened when a session dossier for a sid of the bundle's own slug names its stem; browser copies ' (N)' are the same bundle.",
+            "Only bundles saved to the downloads in the last 14 days are offered; older ones are taken as dealt with.",
+            "Provisional folder fields stand until session 2 sends real ones back: size small, source computed (the occupant, the bundle's name, or the drop), the goal from his words."
+          ],
+          "judgment_calls": [
+            "Bundles are found in the downloads only, not in bale's apply search paths: no --json surface names those paths and doctrine section 10 forbids reading bale's config (deferred; a bale-src slip proposed).",
+            "The occupant's surface is twelve verbs (close, deliver, desk, drop, init, land, note, open, projects, slip, start, tour); every other built script verb is plumbing; office help shows his, office help --all every verb.",
+            "Home screen keys: digits 1-9 for what waits, letters for fixed moves (o open, s start, l land when out, n note, d drop, k desk, h help, q quit); the next move is always item 1.",
+            "Two waiting items beyond the brief's list: an office out of step (clock skew) and a read-only sitting to end.",
+            "A title clash on office open takes a -2 suffix instead of asking; his words become the goal, joined with ';' when lines lack stops.",
+            "Fixed a pre-existing bug on the way: ask/pick locals shadowed the caller's variable and swallowed answers (relay's ask answer).",
+            "Questions kept are the ones only he can answer (his words, which project when several fit, which of several sessions); each is offered by key with the flag twin unchanged."
+          ],
+          "budget_pressure": "tight",
+          "includes_missing": [],
+          "compaction_occurred": {
+            "occurred": true,
+            "disclosure_ref": "notes.md"
+          },
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md core (META through section 11.2), and sections 11.6 and 11.7 after the compaction",
+            "README.md (the brief)",
+            "TARBALL.md, and sections 5.2 and 5.4 again after the compaction",
+            "doctrine/OFFICE.md",
+            "claude/context/front-sheet.md",
+            "tools/craft_response.py and tools/response_lint.py before running them"
+          ]
+        }
+      },
+      "log": ".bale/logs/2026-10-15-home-screen-001.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-10-15T21:24:55+00:00",
+  "outcome": "applied"
+}
