@@ -4,6 +4,94 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.22.0
+
+Additive: no migration, nothing to do in any office. On a terminal,
+`office` is now your home screen, `office help` lists only your own verbs,
+and the wizards stop asking you for what a session can work out. Every
+verb takes the same flags as before and, piped, behaves as before.
+
+The home screen. `office` on a terminal shows the office, the date and
+time, its state and the install's lines as before, then each project the
+office scopes on one line (what is in flight on it, or what last landed
+and when), then what waits on you, each with a key: the next move first,
+then a response in your downloads for a session that is out, a planner's
+bundle in your downloads that no session has opened, each unsorted drop
+and the sort, the desk moves a sitting decided, an office out of step
+with the install, and a read-only sitting, which only you can say is
+over. Keys for a new job, sending a session out, bringing one back, a
+note, a drop, the desk and help are always there, and `q` leaves. A key
+runs the verb's own code with its arguments filled in; when it ends, a
+key brings the screen back. Sessions are named by their folders, never by
+their ids, and responses and bundles are found in your downloads, so you
+never type either. Whether a response has arrived is still bale's to say:
+the file is offered, and `office land` asks bale. Whether a bundle was
+opened is read from bale's records (a session's attempts carry the stem
+of the bundle they came from), never guessed. Off a terminal, piped or
+under a test or a session, `office` prints the page and ends with its
+Next line, unchanged. The work is lib/office_home.py.
+
+Bare `office start` on a terminal first offers the planner's bundles in
+your downloads that no session has opened, newest first, one key each; a
+plain return goes on to the jobs on the desk. A bundle saved more than
+two weeks ago is not offered (`office start --bundle` still opens it).
+bale's own search directories are on none of its --json surfaces, so the
+office looks only in its own downloads setting.
+
+Two surfaces of verbs. `office help` lists your own, one line each in
+plain words, with what a folder and a project are: the home screen,
+`note`, `drop`, `slip`, `open`, `start`, `land`, `desk`, `close`,
+`deliver`, `projects add`, `tour` and `init`. The rest is the plumbing
+the office and its sessions use, which a session names in full when it
+needs you to run one; `office help --all` lists every verb as `office
+help` did. share/verbs.toml gives each built script verb a `surface`
+(`occupant` or `plumbing`), the catalog check holds every built script
+verb to one, and the doctrine's verbs table has a surface column.
+
+The wizards, under one rule: you supply the words, the session supplies
+the structure. A verb asks you only for the ask in your words, which
+project when the office cannot tell, yes or no on what cannot be undone,
+and what only your eyes can check. Removed:
+
+- `office open`: the title, size, lane and source. It asks for the job in
+  your words; the first line is the title, the slug comes from it, the
+  words go in the folder's Asked section and, as one line, are its goal;
+  the size is small and the source the occupant (or the planner's bundle
+  for `office start new` with a bundle, which asks nothing). It asks the
+  project by key only when your words name none of the office's projects.
+  A name another folder took today gets one of its own instead of asking
+  for another title.
+- `office start`: where the work lands (the folder's lane, or the
+  bundle's own paths, said), the goal when the folder has one, the paths
+  the session will change, which ride-alongs go this time, and whether to
+  carry a rider the forecast touches (it is carried, said).
+- `office start --drop`: the size (small); the project is asked by key
+  only when the drop names none of the office's.
+- `office land`: whether to close a finished folder (closed, said, with
+  the line that reopens it; piped, still left open).
+- `office slip`: what the slip is about (`--about` still says it).
+- the clipboard command: this machine's own reader is taken and kept,
+  asked only when there is none.
+
+Choices the office can list are offered by key: the folder for close,
+reopen, sessions, deliver and probe, the job for start, the session for
+land and relay, the held response's copies in the downloads, the session
+a probe is for, a blueprint, and a ratification's notepad page. Each
+still takes the name or id typed out. notes.md of session
+2026-10-15-home-screen-001 lists every question kept and removed, with
+the reason.
+
+One fix on the way: `office relay` asked for the planner's answer on a
+terminal into a variable its own question shadowed, so the answer was
+lost; every question's locals are now named so none can shadow the
+caller's.
+
+The fast tier, in the worker's two-core sandbox: 69.9 and 72.5 seconds
+before, 62.8 and 64.8 after, 343 tests each time (the release adds no
+test to the tier); with this release's own module beside it, as its
+validation runs it, 73 to 77 seconds for 356 and 357. The whole suite,
+825 tests, ran in about 1050 seconds there.
+
 ## 0.21.0
 
 Additive: no migration, nothing to do in any office, and no verb gains a

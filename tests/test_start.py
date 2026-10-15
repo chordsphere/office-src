@@ -76,6 +76,10 @@ if argv == ["status", "--json"]:
     line = json.loads(fx("office-status")["stdout"][0])
     line["sid"] = repo["sessions"][0] if repo["sessions"] else None
     line["sessions"] = repo["sessions"]; line["scopes"] = repo["scopes"]; line["outbox"] = repo["outbox"]
+    # The light pointer at applied history (0.22.0, the home screen): the
+    # land fake appends each session it applies.
+    applied = repo.get("applied") or []
+    line["applied"] = {{"count": len(applied), "latest": applied[-1] if applied else None}}
     line["repo"]["root"] = cwd
     print(json.dumps(line)); sys.exit(0)
 if not argv or argv[0] != "pack":
@@ -244,7 +248,8 @@ def tar_names(path):
 
 def on_a_terminal(test, argv, cwd, env, script):
     """Run the office command on a pty, answering each prompt in script:
-    a list of (marker the screen must show, line to type). Returns
+    a list of (marker the screen must show, line to type, or None to type
+    nothing). Returns
     (exit code, everything the screen showed)."""
     pid, fd = pty.fork()
     if pid == 0:
@@ -272,7 +277,8 @@ def on_a_terminal(test, argv, cwd, env, script):
 
     for marker, answer in script:
         test.assertTrue(read_until(marker), seen.decode(errors="replace"))
-        os.write(fd, answer.encode() + b"\n")
+        if answer is not None:  # None: the marker is only waited for (0.22.0)
+            os.write(fd, answer.encode() + b"\n")
     deadline = time.time() + 60
     while time.time() < deadline:  # to the end of the child's output
         ready, _, _ = select.select([fd], [], [], 0.2)
@@ -501,13 +507,21 @@ class TestSlip(SlipCase):
 
 class TestSlipOnATerminal(SlipCase):
     serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
-    def test_on_a_terminal_it_asks_what_it_is_about(self):
+    def test_on_a_terminal_it_asks_only_for_his_words(self):
+        """0.22.0: what a slip is about is the session's to judge when it
+        reads the box; --about still says it."""
         proj = git_repo(self.e.tmp / "alpha")
         self.e.run("projects", "add", "alpha", str(proj), cwd=self.root, check=0)
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "slip", "the", "desk", "is", "slow"], self.root,
-                                   self.e.env, [(b"office, bale, office-src, alpha (--about) [office]:", "alpha")])
+                                   self.e.env, [])
         self.assertEqual(code, 0, seen)
-        self.assertIn("- about: alpha\n", self.slips()[0].read_text())
+        self.assertNotIn("(--about)", seen)
+        self.assertNotIn("- about: alpha", self.slips()[0].read_text())
+        code, seen = on_a_terminal(self, [str(self.e.office_bin), "slip"], self.root, self.e.env,
+                                   [(b"What caused friction, in a line or two (office slip TEXT):", "the week is slow")])
+        self.assertEqual(code, 0, seen)
+        self.assertNotIn("(--about)", seen)
+        self.assertEqual(len(self.slips()), 2)
 
 
 # --- office note's check before it commits ---------------------------------------------------
@@ -873,32 +887,50 @@ class TestStartRefusals(StartCase):
 
 class TestStartOnATerminal(StartCase):
     serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
-    def test_the_wizard_asks_which_job_where_and_the_goal(self):
+    def downloads_set(self):
+        """This machine's downloads, set and empty: no bundle to offer."""
+        cfg = self.e.home / ".config/office-src"
+        cfg.mkdir(parents=True, exist_ok=True)
+        (self.e.home / "Downloads").mkdir(exist_ok=True)
+        (cfg / "machine.toml").write_text(f'downloads = ["{self.e.home / "Downloads"}"]\n')
+
+    def test_the_wizard_asks_which_job_by_key_and_the_goal_in_his_words(self):
+        """0.22.0: which job, by key; where the work lands is the folder's
+        lane, said and not asked; the goal is his words; what rides, rides
+        as declared, said and not asked."""
+        self.downloads_set()
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start"], self.root, self.e.env, [
-            (b"or new to open one (office start FOLDER):", "folder 1"),
-            (b"(--in-office or --on PROJECT) [alpha]:", "elsewhere"),
-            (b"office, or one of this office's projects: alpha", ""),
-            (b"in one sentence (--goal):", "?"),
+            (b"Which job, by its key (office start FOLDER):", "1"),
+            (b"in your words (--goal):", "?"),
             (b"becomes the request's goal", "Fix the login redirect"),
-            # 0.9.0: what rides with alpha is shown, and a plain return rides it all.
-            (b"Which ride with this session: all, none, or the numbers to leave out", ""),
         ])
         self.assertEqual(code, 0, seen)
         self.assertIn("Packed ", seen)
+        self.assertIn("[1] folder 1, fix-login", seen)
+        self.assertIn("[2] a new job, in your own words", seen)
+        self.assertIn("the work lands on alpha, the project the folder's lane names", seen)
+        self.assertIn("what rides with alpha, as declared:", seen)
+        for gone in ("Where the work lands", "Which ride", "Paths in"):
+            self.assertNotIn(gone, seen)
         (cwd, argv), = [p for p in self.fake.packs() if "--context" not in p[1]]
         self.assertEqual(cwd, os.path.realpath(self.proj))
         self.assertEqual(argv[1], "Fix the login redirect")
 
-    def test_new_opens_a_folder_through_office_opens_questions(self):
-        code, seen = on_a_terminal(self, [str(self.e.office_bin), "start", "--in-office", "--goal", "g"],
+    def test_new_opens_a_folder_from_his_words_and_asks_no_goal_again(self):
+        self.downloads_set()
+        code, seen = on_a_terminal(self, [str(self.e.office_bin), "start", "--in-office"],
                                    self.root, self.e.env, [
-            (b"(office start FOLDER):", "new"),
-            (b"Title, in a few words (--title):", "Write the plan"),
-            (b"(--size)", ""), (b"(--lane)", ""), (b"(--source)", ""),
+            (b"(office start FOLDER):", "2"),
+            (b"The job, in your own words", "Write the plan\n"),
         ])
         self.assertEqual(code, 0, seen)
         md = next(self.root.glob("desk/*-write-the-plan/folder.md")).read_text()
         self.assertIn("- status: open", md)
+        self.assertIn("- goal: Write the plan", md)
+        self.assertNotIn("(--goal)", seen)
+        self.assertNotIn("Which project", seen)
+        (_, argv), = [p for p in self.fake.packs() if "--context" not in p[1]]
+        self.assertEqual(argv[1], "Write the plan")
 
 
 # --- the desktop the suite never touches (0.20.1) -----------------------------------------------------
@@ -933,8 +965,7 @@ class TestStartOnAnImitatedWsl(StartCase):
 
     def start_on_a_terminal(self, env):
         return on_a_terminal(self, [str(self.shell), str(self.e.office_bin), "start", "fix-login", "--on", "alpha",
-                                    "--goal", "Fix the login redirect"], self.root, env, [
-            (b"Which ride with this session: all, none, or the numbers to leave out", "")])
+                                    "--goal", "Fix the login redirect"], self.root, env, [])
 
     def test_under_the_suites_env_no_clipboard_is_written_and_no_file_manager_opens(self):
         code, seen = self.start_on_a_terminal(imitate_wsl(self.e, self.windows))

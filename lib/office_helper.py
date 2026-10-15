@@ -515,6 +515,10 @@ SESSION_KINDS = ("office-session", "project-session")
 TRIGGERS = ("manual", "before-sitting", "after-sitting", "after-build",
             "on-hold", "on-correctable-hold", "schedule")
 VERB_KEYS = ("lands", "attended", "trigger")
+# Which surface a verb is on (0.22.0): the occupant's own, which office
+# help lists, or the plumbing the office and its sessions use. Every built
+# script verb says which.
+SURFACES = ("occupant", "plumbing")
 PLACEHOLDER_RE = re.compile(r"\{[^{}]*\}")
 
 
@@ -566,6 +570,10 @@ def verb_catalog_problems(catalog):
         for key in VERB_KEYS:
             if key not in verb:
                 problems.append(f"{name}: no {key} key")
+        if "surface" in verb and verb["surface"] not in SURFACES:
+            problems.append(f"{name}: surface must be one of {', '.join(SURFACES)}, not {verb['surface']!r}")
+        elif kind == "script" and verb.get("built") is True and "surface" not in verb:
+            problems.append(f"{name}: a built script verb with no surface; say occupant or plumbing")
         writes = verb.get("writes", [])
         if not string_list(writes):
             problems.append(f"{name}: writes must be a list of non-empty strings")
@@ -1287,11 +1295,13 @@ FIELD_HELP = {
     "class": "bale's work class for the job's sessions: " + ", ".join(WORK_CLASSES)
              + ". The read side joins the folder to bale's telemetry by it.",
     "size": "how big the job is: " + ", ".join(SIZES) + ". The desk puts small jobs first when "
-            "nothing else orders them.",
+            "nothing else orders them. office open's wizard writes small, for a session to change.",
     "lane": "the project and the paths the job will touch, as `project: paths`, e.g. "
             "`office-src: bin/, lib/`. The folder's forecast in waiting.",
     "source": "where the job came from, in one form: `proposal SID #n`, `rider N`, `ruling ID`, "
-              "`blueprint ID`, a notepad page (`notepad/...`), or a person (whose words go in Asked).",
+              "`blueprint ID`, a notepad page (`notepad/...`), `drop`, `bundle NAME` (a planner's bundle, whose "
+              "goal goes in Asked), or a person (whose words go in Asked; `the occupant` when office open's "
+              "wizard took them).",
     "goal": "the job's goal in one sentence: office start N offers it as the session's goal (a return "
             "takes it, --goal overrides). Written by office open --goal, or by office moves from a sorted "
             "drop.",
@@ -2638,6 +2648,33 @@ def cmd_record_session(a):
         print(change)
 
 
+def record_asked(folder_md, words, by):
+    """Keep the occupant's words, word for word, in a folder's Asked
+    section (0.22.0): a line saying who and where (`by`), then the words
+    as a quoted block, each line as given and kept ASCII. Appended after
+    what the section holds; the rest of the folder is untouched."""
+    path = pathlib.Path(folder_md)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start, end = section_bounds(lines, "Asked")
+    if start is None:
+        raise HelperError(f"{path}: no '## Asked' section to keep the words in")
+    said = ascii_escape(str(words).replace("\r\n", "\n").replace("\r", "\n").strip("\n"))[0].splitlines()
+    if not any(l.strip() for l in said):
+        raise HelperError("the words are empty")
+    body = lines[start + 1:end]
+    while body and not body[-1].strip():
+        body.pop()
+    head = ascii_escape(" ".join(str(by).split()))[0].rstrip(":")
+    block = ["", f"{head}:", ""] + [f"> {l.rstrip()}" if l.strip() else ">" for l in said]
+    lines[start + 1:end] = body + block + ([""] if end < len(lines) else [])
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def cmd_folder_asked(a):
+    record_asked(a.folder_md, pathlib.Path(a.words_file).read_bytes().decode("utf-8", "surrogateescape"), a.by)
+    print("kept")
+
+
 def cmd_folder_summary(a):
     nxt, sessions = folder_summary(a.folder_md, a.template)
     print(f"{nxt}\t{sessions}")
@@ -3182,6 +3219,9 @@ def main(argv=None):
     p.set_defaults(fn=cmd_project_facts)
     p = sub.add_parser("record-session"); p.add_argument("folder_md"); p.add_argument("sid")
     p.add_argument("--words"); p.add_argument("--day"); p.set_defaults(fn=cmd_record_session)
+    p = sub.add_parser("folder-asked", help="keep the occupant's words in a folder's Asked section")
+    p.add_argument("folder_md"); p.add_argument("--words-file", required=True); p.add_argument("--by", required=True)
+    p.set_defaults(fn=cmd_folder_asked)
     p = sub.add_parser("normalize-field"); p.add_argument("key"); p.add_argument("value")
     p.set_defaults(fn=cmd_normalize_field)
     p = sub.add_parser("field-help"); p.add_argument("key"); p.set_defaults(fn=cmd_field_help)

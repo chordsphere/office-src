@@ -44,9 +44,12 @@ questions, and sends the founding session out through `office start`
 with the answers in its brief; `office found` does the same for an
 office that exists and is unfounded. `office tour` builds a throwaway office
 to try the verbs on, walks through them, and deletes it. `office` on its
-own is walking in: what is on the desk, this week, the last notes, the
-suggestion box, what you can do from here, and, last, the one command to
-type next. The
+own is walking in. On a terminal it is the home screen: each project the
+office scopes, one line each, then what waits on the occupant, each thing
+with a key that runs it, so he never types a session id or a file name.
+Off a terminal it is the page: what is on the desk, this week, the last
+notes, the suggestion box, what you can do from here, and, last, the one
+command to type next. The
 everyday verbs take seconds and need no session: `office note` captures a
 line, `office slip` drops a friction slip in the suggestion box, `office
 drop` drops a message or a thread in the in-tray, to be sorted by a
@@ -64,9 +67,11 @@ runs after its sessions land, and renders what bale records about them.
 on its host when it has one, after showing the block's header and asking
 once, and hands the output back with the block on the clipboard.
 
-`office start` sends a session out: it asks which job, whether the work
-lands in the office or on a project, and the goal, then runs bale's pack
-(or opens a planner's bundle), records the session in the folder, and
+`office start` sends a session out: it offers the planner's bundles in the
+downloads that no session has opened, asks which job, works out where the
+work lands from the folder (asking only when it cannot tell) and takes the
+folder's goal or asks for one in the occupant's words, then runs bale's
+pack (or opens a planner's bundle), records the session in the folder, and
 puts every file to attach in one out tray beside the opener to paste.
 `office land` brings it back: it runs bale's apply in the repo the session
 belongs to, says how it ended, hands you whatever bale printed for you to
@@ -353,7 +358,16 @@ list of directories, asked once on a terminal the first time a verb
 needs it (this machine's likely directories offered, `?` explaining it)
 and never again; a piped verb that needs it refuses and names the key.
 `office land` finds a hosted session's response there by name, and
-`office start` a bundle for a hosted project. A browser saves a second
+`office start` a bundle for a hosted project. The home screen offers what
+it finds there by key: a response for a session that is out (a file to
+offer, never a verdict: whether it has arrived is still bale's to say),
+and a planner's bundle no session has opened, which bare `office start`
+offers too, newest first, before it asks anything else. Whether a bundle
+was opened is read from bale's records (a session's attempts name the
+bundle they were opened from, by its stem), never guessed; a bundle
+saved more than two weeks ago is not offered, and `office start --bundle`
+still opens it. bale's own search directories are not on any of its
+--json surfaces, so the office looks only in its own setting. A browser saves a second
 download of one name as `NAME (1).EXT`; of several copies of a name the
 newest by modification time wins, and the office names the file it took.
 For a project on the occupant's machine bale's own search finds a
@@ -363,10 +377,12 @@ bale's search takes the plain name first and a corrected response after
 a HOLD is usually the `(1)`.
 
 A folder is finished when its only recorded session landed applied and
-the planner ratified it with no exception: `office land` then offers to
-close it, done, in the same breath, default close (`--close` and
-`--leave-open` are the flag twins; piped, it leaves the folder open and
-says so). The founding folder keeps its own rule.
+the planner ratified it with no exception: on a terminal `office land`
+then closes it, done, in the same breath, and says so with the line that
+reopens it, since a close can be undone and nothing is left to judge
+(`--leave-open` keeps it on the desk, `--close` closes it piped; piped
+with neither, it leaves the folder open and says so). The founding
+folder keeps its own rule.
 
 After a project session lands, the office side (the folder, and the
 front sheet of any handbook chapter the change touched) is brought up to
@@ -394,8 +410,8 @@ no folder records, is filed by `office sessions --in-tray SID --pages
 RESPONSE` when only bale found its response.
 
 `office start N` asks nothing the folder already knows. A folder with a
-`goal` field offers it as the session's goal (a return takes it, piped it
-is taken, `--goal` overrides), and a folder with a brief.md sends it as
+`goal` field sends it as the session's goal, said and never asked again
+(`--goal` overrides), and a folder with a brief.md sends it as
 the session's brief (`--brief` names another; a bundle keeps its own, and
 the office says so). The folder rides as it always has, the drops in its
 drops/ with it.
@@ -721,8 +737,8 @@ empty `- facts:` line, one `- ` line each. `office start
 --drop in-tray/PAGE` is the direct path for a drop whose job is plain:
 it mints the folder through `office open`'s own code (the title from the
 drop's first line, the lane from its project when that is one of the
-office's, else asked; the size asked, small by default; the source
-`drop`), moves the page into the folder, writes `- DATE dropped:
+office's, else asked by key; the size small; the source `drop`), moves
+the page into the folder, writes `- DATE dropped:
 drops/DATE-SLUG.md, via ...` in its History before the `opened` line,
 and sends a project session out on the lane's project, whose brief tells
 it to sort the drop first and do the work second. It holds the one-writer
@@ -799,73 +815,122 @@ Kinds:
 - project session: packed from a project, lands there; the office's
   context rides beside it (section 4).
 
-| verb | kind | built |
-|---|---|---|
-| init | script; writes bale.toml, asks which projects the office watches, asks the profile's questions, opens the founding folder and sends the founding session out through start | yes |
-| found | script: the founding door for an office that exists: the profile's questions (only what the founding folder does not keep), the founding folder, the founding session out through start | yes |
-| survey | script | yes |
-| status | script, read-only | yes |
-| upgrade | script; when a migration needs judgment, opens its folder and sends the renovation session out through start | yes |
-| where, default | script: which office a command acts on | yes |
-| note | script: append a dated line to the notepad | yes |
-| slip | script: drop a friction slip in the suggestion box, saying what it is about | yes |
-| drop | script: capture a message or a thread as one in-tray page, with an optional free-text project | yes |
-| open | script: start a numbered folder on the desk, or a candidate, or one born done in the filing cabinet; with --goal, the goal office start offers | yes |
-| desk | script: in flight, ready in order, parked under what each waits for, candidates | yes |
-| week | script: this week's calendar and its gaps | yes |
-| close, reopen | script: move a folder to the filing cabinet, done, absorbed, split or retired, and a done one back | yes |
-| sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes |
-| projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace, a clone here brought there with --from), declare where it is, what rides with it and what runs after it lands, bring a host's bale level with this machine's (level-bale), render what bale records about them | yes |
-| start | script: pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; with --sort, send the standalone sort; send a folder out with its goal and brief.md when it has them; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes |
-| land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, the folder's walkthrough and delivery pages filed from the response, then its Sort on each drop's page, its questions and answers in the folder and its facts in the handbook, and office moves when a drop was sorted, the founding folder closed when the founding has landed, the watches that fired, and what became of each action; or end a read-only sitting the office sent out | yes |
-| relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes |
-| probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), stdin closed, once its purpose header has been shown and the occupant said yes; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes |
-| deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, checked by the letterhead, asked once, recorded in the folder | yes |
-| letterhead check | script, read-only: name every line in a tree, a range or a file that holds what the letterhead refuses | yes |
-| tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes |
-| moves | script: apply the in-tray's sorted drops (a folder minted through open's code for folder: new, or folder N; the page moved in whole with its brief, its History line, its goal and its tell), then the desk moves a sitting or a sort wrote, through open's, close's and the gate flags' own code, ticking each and writing a minted number onto its blueprint's decomposition line; stops at the first line it cannot apply | yes |
-| blueprint open, blueprint ratify | script: draft a blueprint from the template; write its charter's ratified line | yes |
-| rider add, rider carry, rider consumed | script: a rider on the riders page; moved into the folder that carries it; consumed at a session | yes |
-| riders | script, read-only: the riders, where each is, the orphans, and the ones a pack's forecast would carry | yes |
-| agenda add | script: a question on the agenda for a sitting to rule on | yes |
-| rulings, evidence | script, read-only: the ledgers, one record with what points at it, and every citation resolved | yes |
-| watches, watches check | script: the watches and where each stands, read from the log; run every query watch over its window and the standing lines, and with --record append a fired record for each that fired | yes |
-| digest | script: write the sitting-open page, every section computed; office start runs it before it packs a sitting | yes |
-| founding | office session: the profile, the occupant's words, the timezone | yes, via init, found and start |
-| work | office session: answer, draft, probe, decide, deliver | yes, via start |
-| build | project session: change a project for a folder, and write the folder's walkthrough and delivery pages at the end of its notes.md | yes, via start |
-| sort | office session: the standalone sort, belonging to no folder: read every unsorted drop, write one Sort subsection each, a Brief for every new folder, facts in a Handbook section and, with a drafting table, the moves the desk needs on its moves page | yes, via start |
-| prep | office session: a briefing for a meeting | not yet |
-| meeting | office session held open during a meeting | not yet |
-| cleanup | office session: keep the office as designed | not yet |
-| blueprint close | office session: a sitting scoped to one blueprint, landing its close report and a notepad page | yes, via office blueprint close |
-| renovate | office session: change the design | by hand |
+| verb | kind | built | surface |
+|---|---|---|---|
+| init | script; writes bale.toml, asks which projects the office watches, asks the profile's questions, opens the founding folder and sends the founding session out through start | yes | occupant |
+| found | script: the founding door for an office that exists: the profile's questions (only what the founding folder does not keep), the founding folder, the founding session out through start | yes | plumbing |
+| survey | script | yes | plumbing |
+| status | script, read-only | yes | plumbing |
+| upgrade | script; when a migration needs judgment, opens its folder and sends the renovation session out through start | yes | plumbing |
+| where, default | script: which office a command acts on | yes | plumbing |
+| note | script: append a dated line to the notepad | yes | occupant |
+| slip | script: drop a friction slip in the suggestion box, saying what it is about | yes | occupant |
+| drop | script: capture a message or a thread as one in-tray page, with an optional free-text project | yes | occupant |
+| open | script: start a numbered folder on the desk, or a candidate, or one born done in the filing cabinet; on a terminal, from the occupant's words (the title, the Asked section and the goal office start takes); with --goal, the goal | yes | occupant |
+| desk | script: in flight, ready in order, parked under what each waits for, candidates | yes | occupant |
+| week | script: this week's calendar and its gaps | yes | plumbing |
+| close | script: move a folder to the filing cabinet, done, absorbed, split or retired | yes | occupant |
+| reopen | script: move a done folder back to the desk | yes | plumbing |
+| sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes | plumbing |
+| projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace, a clone here brought there with --from), declare where it is, what rides with it and what runs after it lands, bring a host's bale level with this machine's (level-bale), render what bale records about them | yes | occupant |
+| start | script: bare on a terminal, offer the planner's bundles in the downloads no session has opened, by key; pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; with --sort, send the standalone sort; send a folder out with its goal and brief.md when it has them; record it in the folder, file the sitting's page its brief carries, and gather what to attach in one out tray | yes | occupant |
+| land | script: bring a session back: bale's apply in its repo, how it ended, the relay to carry, the project's after-land actions, the planner's ratification, the folder's walkthrough and delivery pages filed from the response, then its Sort on each drop's page, its questions and answers in the folder and its facts in the handbook, and office moves when a drop was sorted, the founding folder closed when the founding has landed, the watches that fired, and what became of each action; or end a read-only sitting the office sent out | yes | occupant |
+| relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes | plumbing |
+| probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), stdin closed, once its purpose header has been shown and the occupant said yes; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes | plumbing |
+| deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, checked by the letterhead, asked once, recorded in the folder | yes | occupant |
+| letterhead check | script, read-only: name every line in a tree, a range or a file that holds what the letterhead refuses | yes | plumbing |
+| tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes | occupant |
+| moves | script: apply the in-tray's sorted drops (a folder minted through open's code for folder: new, or folder N; the page moved in whole with its brief, its History line, its goal and its tell), then the desk moves a sitting or a sort wrote, through open's, close's and the gate flags' own code, ticking each and writing a minted number onto its blueprint's decomposition line; stops at the first line it cannot apply | yes | plumbing |
+| blueprint open, blueprint ratify | script: draft a blueprint from the template; write its charter's ratified line | yes | plumbing |
+| rider add, rider carry, rider consumed | script: a rider on the riders page; moved into the folder that carries it; consumed at a session | yes | plumbing |
+| riders | script, read-only: the riders, where each is, the orphans, and the ones a pack's forecast would carry | yes | plumbing |
+| agenda add | script: a question on the agenda for a sitting to rule on | yes | plumbing |
+| rulings, evidence | script, read-only: the ledgers, one record with what points at it, and every citation resolved | yes | plumbing |
+| watches, watches check | script: the watches and where each stands, read from the log; run every query watch over its window and the standing lines, and with --record append a fired record for each that fired | yes | plumbing |
+| digest | script: write the sitting-open page, every section computed; office start runs it before it packs a sitting | yes | plumbing |
+| founding | office session: the profile, the occupant's words, the timezone | yes, via init, found and start | session |
+| work | office session: answer, draft, probe, decide, deliver | yes, via start | session |
+| build | project session: change a project for a folder, and write the folder's walkthrough and delivery pages at the end of its notes.md | yes, via start | session |
+| sort | office session: the standalone sort, belonging to no folder: read every unsorted drop, write one Sort subsection each, a Brief for every new folder, facts in a Handbook section and, with a drafting table, the moves the desk needs on its moves page | yes, via start | session |
+| prep | office session: a briefing for a meeting | not yet | session |
+| meeting | office session held open during a meeting | not yet | session |
+| cleanup | office session: keep the office as designed | not yet | session |
+| blueprint close | office session: a sitting scoped to one blueprint, landing its close report and a notepad page | yes, via office blueprint close | plumbing |
+| renovate | office session: change the design | by hand | session |
 
 Session verbs are done by hand a few times before the command learns
 them.
 
 A verb is a wizard on a terminal. It walks the occupant through
 whatever it was not given, and it explains an argument it does not
-understand rather than refusing it. Every question a verb asks has a
-flag twin, so the same invocation can be typed in full without being
-asked anything. With piped input a verb never asks: it refuses what it
-was not given and names the flag. The verbs ask the same way: each
-question names its flag, offers its default or the words a field takes,
-explains the field when the answer is `?`, and asks again, with the
-reason, when an answer is not one the field takes. A plain return skips
-a question that may be skipped. A verb asks only for what matters to
-it, so a folder is opened in four answers (title, size, lane, source);
-the other fields are flags, and `--help` explains each. `office help`
-lists the verbs by what the occupant wants to do (look around, capture,
-start a job, send a session out, bring one back, look after the office),
-and every verb's `--help` carries at least one example.
+understand rather than refusing it. The rule every wizard keeps: the
+occupant supplies words; the session supplies structure. A verb asks him
+only for what only he knows: the ask, in his words; which project, and
+only when the office cannot tell; yes or no on anything that cannot be
+undone; and what only his eyes can check. Everything else the office
+computes, or leaves provisional for a session to set. So a folder is
+opened from his words: its title is their first line, trimmed as a
+drop's heading is, its slug comes from the title, the words are kept in
+the folder's Asked section and, as one line, are the goal `office start`
+takes; the size is small and the source is where the words came from
+(the occupant, a drop, a planner's bundle), until a session says
+otherwise. Where a session's work lands is the folder's lane, what it
+will change is the session's to forecast, what rides with a project
+rides as declared, and a rider whose path the forecast touches is
+carried; each is said, never asked. A choice among things the office
+knows (a folder, a session, a project, a bundle, a copy in the downloads)
+is offered by key, never refused for being ambiguous, and nothing he acts
+on is named by an id or a file name for him to type. Every question a
+verb asks has a flag twin, and every value a flag gives is taken as
+given, so the same invocation can be typed in full without being asked
+anything. With piped input a verb never asks: it refuses what it was not
+given and names the flag, as before. The verbs ask the same way: each
+question names its flag, offers its default or its keys, explains the
+field when the answer is `?`, and asks again, with the reason, when an
+answer is not one the field takes. A plain return skips a question that
+may be skipped.
+
+The verbs are on two surfaces, which the table above names and
+share/verbs.toml declares. The occupant's own (`occupant`) are the home
+screen and what he uses: the two instant captures (`office note`,
+`office drop`), the friction slip, a new job (`office open`), sending a
+session out and bringing it back (`office start`, `office land`), the
+desk, closing a job, delivering it, adding a project, the tour and a new
+office. `office help` lists them, one line each in plain words, with a
+line on what a folder is and what a project is. Everything else is the
+plumbing the office and its sessions use, which a session names in full
+when it needs him to run one; `office help --all` lists every verb by
+what it is for (look around, capture, start a job, send a session out,
+bring one back, look after the office). Every verb works the same on
+either surface, and every verb's `--help` carries at least one example.
 
 A session whose goal the occupant overrides midway keeps the override
 words on its notepad page, and the new ask becomes a new folder or
 blueprint, never an exception counted against the old one.
 
 Walking in is `office` with no verb, from inside an office or anywhere on
-the machine (the per-machine default). It shows the office's name, the
+the machine (the per-machine default). On a terminal (its input and its
+output both) it is the home screen. It shows the office's name, the date
+and time in its timezone, whether it is founded and current, and the
+install's and the suite's lines when they apply, as the page does; then
+each project the office scopes, one line each, saying what is in flight
+on it, or what last landed and when (bale's status names the latest
+session it applied, and its record when), and the office itself when a
+session is open there; the desk in one line (how many jobs are in
+flight, ready, parked and candidates); then what waits on the occupant, each thing with
+a key: the page's Next move first, marked, then a response in the
+downloads for a session that is out, a planner's bundle in the downloads
+no session has opened, each unsorted drop and the sort, the desk moves
+a sitting decided, an office out of step with the install, and a
+read-only sitting a folder records, which only he can say is over. A
+session is named by its folder, never by its id. Keys for a new job,
+sending a session out, bringing one back, a note, a drop, the whole
+desk and help are always there. Choosing a key runs the code the verb
+already runs, with its arguments filled in, as a command of its own,
+and asks only what that verb must; when it ends, a key brings the home
+screen back, worked out again, and q leaves. It asks once, the first
+time, where this machine's downloads land. Off a terminal (piped, under
+a test or a session) walking in is the page. It shows the office's name, the
 date and time in its timezone (and, when the floor plan's zone does not
 resolve, that the office is on UTC instead), whether it is founded and
 current, a line saying the install is behind its source when the office

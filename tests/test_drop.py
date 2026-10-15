@@ -230,10 +230,13 @@ class TestDropOnATerminal(unittest.TestCase):
 
     def test_from_the_clipboard_it_says_what_it_took_and_asks_the_project(self):
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "drop"], self.root, self.e.env, [
-            (b"(alpha, or anything) (--project) [return skips]:", "?"),
+            (b"by its key, or in any words; a plain return leaves it for the sort (--project) [return skips]:", "?"),
             (b"the drop is taken either way.", "Alpha"),
         ])
         self.assertEqual(code, 0, seen)
+        # 0.22.0: each of the office's projects has a key; any words are
+        # taken as typed.
+        self.assertIn("  [1] alpha", seen)
         self.assertIn("took 2 line(s) from the clipboard: Hi,", seen)
         text = drop_pages(self.root)[0].read_text()
         self.assertIn("- project: Alpha\n- via: clipboard\n", text)
@@ -427,16 +430,15 @@ class TestStartDrop(DropCase):
 class TestStartDropOnATerminal(DropCase):
     serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
 
-    def test_a_drop_with_no_project_asks_the_lane_then_the_size(self):
+    def test_a_drop_with_no_project_asks_the_project_by_key_and_nothing_else(self):
         page = self.drop()
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start", "--drop", page], self.root, self.e.env, [
-            (b"or project: paths (--lane):", "gamma"),
-            (b"gamma is not one of this office's projects: alpha", "alpha"),
-            (b"(--size) [small]:", ""),
-            (b"[return: the whole repo]", ""),
-            (b"Which ride with this session", ""),
+            (b"Which project the drop is for, by its key (--lane PROJECT):", "gamma"),
+            (b"a key from the list above (1 to 1)", "1"),
         ])
         self.assertEqual(code, 0, seen)
+        for gone in ("(--size)", "[return: the whole repo]", "Which ride"):
+            self.assertNotIn(gone, seen)
         md = next(self.root.glob("desk/*-could-you-look-at-the-login-page/folder.md")).read_text()
         self.assertIn("- size: small\n- lane: alpha\n- source: drop\n", md)
         self.assertIn("- status: open\n", md)

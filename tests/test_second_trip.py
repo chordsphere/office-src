@@ -287,17 +287,16 @@ class TestWhatRides(RideCase):
 
 class TestWhatRidesOnATerminal(RideCase):
     serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
-    def test_on_a_terminal_it_shows_what_rides_and_asks(self):
+    def test_on_a_terminal_it_says_what_rides_and_asks_nothing(self):
+        # 0.22.0: what rides is declared for good; which of it a session
+        # needs is not his to judge each time, so it all rides, said.
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start", "fix-login", "--on", "alpha",
-                                          "--goal", "g"], self.root, self.e.env, [
-            (b"Which ride with this session: all, none, or the numbers to leave out (--leave-out PATH, --no-rides) "
-             b"[all]:", "?"),
-            (b"  Each declared ride-along is packed", "7"),
-            (b"all, none, or numbers from the list above", "1"),
-        ])
+                                          "--goal", "g"], self.root, self.e.env, [])
         self.assertEqual(code, 0, seen)
-        self.assertIn(f"1. {self.ride}  (", seen)
-        self.assertIn("left out of this session", seen)
+        self.assertIn(f"what rides with alpha, as declared: {self.ride} (--leave-out PATH or --no-rides keeps one "
+                      "home this once)", seen)
+        self.assertNotIn("Which ride", seen)
+        self.assertNotIn("left out of this session", seen)
 
 
 class TestTheDoctrineRidesOnce(LandCase):
@@ -444,14 +443,13 @@ class TestWhereFromTheBundle(WhereFromTheBundleCase):
 
 class TestWhereFromTheBundleOnATerminal(WhereFromTheBundleCase):
     serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
-    def test_on_a_terminal_a_plain_return_opens_it_where_its_paths_are(self):
+    def test_on_a_terminal_it_opens_where_its_paths_are_and_says_so(self):
+        # 0.22.0: the office can tell, so it says where and asks nothing.
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start", "fix-login", "--bundle",
-                                          str(self.office_bundle())], self.root, self.e.env, [
-            (b"(--in-office or --on PROJECT) [office]:", "?"),
-            (b"  office: the session works in this office", ""),
-        ])
+                                          str(self.office_bundle())], self.root, self.e.env, [])
         self.assertEqual(code, 0, seen)
-        self.assertIn("The default is office because every path the bundle names (desk, notepad) is in the office's "
+        self.assertNotIn("(--in-office or --on PROJECT) [", seen)
+        self.assertIn("the work lands in the office: every path the bundle names (desk, notepad) is in the office's "
                       "tree", re.sub(r"\s+", " ", seen.replace("\r", "")))
         (cwd, _, _), = self.fake.calls_of("open")
         self.assertEqual(cwd, os.path.realpath(self.root))

@@ -74,21 +74,24 @@ can_ask() { [ -t 0 ]; }
 # prints; FIELD, when given, is the folder field the answer is checked
 # and normalized as (the helper's closed vocabularies).
 ask() {
-  local __var="$1" prompt="$2" def="$3" required="$4" help="$5" field="${6:-}" answer norm shown="$2"
-  if [ -n "$def" ]; then shown="$shown [$def]"
-  elif [ "$required" != "1" ]; then shown="$shown [return skips]"; fi
+  # Every local but the first is __a_-prefixed: VAR is set with printf
+  # -v, which a local of the same name here would swallow (0.22.0: office
+  # relay's own `ask answer` was one).
+  local __var="$1" __a_prompt="$2" __a_def="$3" __a_req="$4" __a_help="$5" __a_field="${6:-}" __a_ans __a_norm __a_shown="$2"
+  if [ -n "$__a_def" ]; then __a_shown="$__a_shown [$__a_def]"
+  elif [ "$__a_req" != "1" ]; then __a_shown="$__a_shown [return skips]"; fi
   while :; do
-    IFS= read -r -p "$shown: " answer || die "no answer given to: $prompt"
-    answer="$(printf '%s' "$answer" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
-    if [ "$answer" = "?" ]; then printf '%s\n' "$help" | fold -s -w 76 | sed 's/^/  /' >&2; continue; fi
-    if [ -z "$answer" ]; then
-      if [ -n "$def" ]; then answer="$def"
-      elif [ "$required" = "1" ]; then printf '  an answer is needed here; ? explains it\n' >&2; continue
+    IFS= read -r -p "$__a_shown: " __a_ans || die "no answer given to: $__a_prompt"
+    __a_ans="$(printf '%s' "$__a_ans" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    if [ "$__a_ans" = "?" ]; then printf '%s\n' "$__a_help" | fold -s -w 76 | sed 's/^/  /' >&2; continue; fi
+    if [ -z "$__a_ans" ]; then
+      if [ -n "$__a_def" ]; then __a_ans="$__a_def"
+      elif [ "$__a_req" = "1" ]; then printf '  an answer is needed here; ? explains it\n' >&2; continue
       else printf -v "$__var" '%s' ""; return 0; fi
     fi
-    if [ -z "$field" ]; then printf -v "$__var" '%s' "$answer"; return 0; fi
-    if norm="$(helper normalize-field "$field" -- "$answer" 2>&1)"; then printf -v "$__var" '%s' "$norm"; return 0; fi
-    printf '  %s\n' "${norm#\[office\] error: }" >&2
+    if [ -z "$__a_field" ]; then printf -v "$__var" '%s' "$__a_ans"; return 0; fi
+    if __a_norm="$(helper normalize-field "$__a_field" -- "$__a_ans" 2>&1)"; then printf -v "$__var" '%s' "$__a_norm"; return 0; fi
+    printf '  %s\n' "${__a_norm#\[office\] error: }" >&2
   done
 }
 
@@ -113,6 +116,42 @@ check_field() {
     return 2
   fi
   die "$flag: $norm"
+}
+
+# pick VAR QUESTION HELP DEFAULT FREE VALUE LABEL [VALUE LABEL]...: on a
+# terminal, a choice by key (0.22.0): each VALUE is shown with its LABEL
+# under a number from 1, and the answer is the number. The value itself,
+# typed out, is taken too, for whoever knows it. DEFAULT is a value, taken
+# on a plain return ("" for none: an answer is needed). FREE=1 hands any
+# other answer back as typed, for the verb's own reading (a unique part of
+# a folder's name, folder N); FREE=0 asks again. The question names the
+# flag twin, and ? explains it, as every question does.
+pick() {
+  # Every local is __p_-prefixed: VAR is set with printf -v, which a local
+  # of the same name here would swallow.
+  local __p_var="$1" __p_q="$2" __p_help="$3" __p_def="$4" __p_free="$5" __p_ans __p_i __p_defkey="" __p_req=1
+  shift 5
+  local __p_vals=() __p_labels=()
+  # DEFAULT --skip: a plain return answers nothing (VAR is left empty).
+  if [ "$__p_def" = --skip ]; then __p_def=""; __p_req=0; fi
+  while [ $# -ge 2 ]; do __p_vals+=("$1"); __p_labels+=("$2"); shift 2; done
+  [ "${#__p_vals[@]}" -gt 0 ] || die "nothing to choose from: $__p_q"
+  for __p_i in "${!__p_vals[@]}"; do
+    printf '  [%s] %s\n' "$((__p_i + 1))" "${__p_labels[$__p_i]}" >&2
+    [ -z "$__p_def" ] || [ "${__p_vals[$__p_i]}" != "$__p_def" ] || __p_defkey="$((__p_i + 1))"
+  done
+  while :; do
+    ask __p_ans "$__p_q" "$__p_defkey" "$__p_req" "$__p_help"
+    if [ -z "$__p_ans" ] && [ "$__p_req" = 0 ]; then printf -v "$__p_var" '%s' ""; return 0; fi
+    if [[ "$__p_ans" =~ ^[0-9]+$ ]] && [ "$__p_ans" -ge 1 ] && [ "$__p_ans" -le "${#__p_vals[@]}" ]; then
+      printf -v "$__p_var" '%s' "${__p_vals[$((__p_ans - 1))]}"; return 0
+    fi
+    for __p_i in "${!__p_vals[@]}"; do
+      if [ "$__p_ans" = "${__p_vals[$__p_i]}" ]; then printf -v "$__p_var" '%s' "$__p_ans"; return 0; fi
+    done
+    if [ "$__p_free" = 1 ]; then printf -v "$__p_var" '%s' "$__p_ans"; return 0; fi
+    printf '  a key from the list above (1 to %s); ? explains it\n' "${#__p_vals[@]}" >&2
+  done
 }
 
 TMP_PATHS=()
@@ -413,6 +452,28 @@ ask_paragraph() {
     break
   done
   if [ -z "$line" ]; then printf -v "$__var" '%s' ""; return 0; fi
+  lines=("$line")
+  while IFS= read -r -p "  > " line; do
+    line="$(printf '%s' "$line" | sed 's/[[:space:]]*$//')"
+    [ -n "${line//[[:space:]]/}" ] || break
+    lines+=("$line")
+  done
+  printf -v "$__var" '%s' "$(printf '%s\n' "${lines[@]}")"
+}
+
+# ask_words VAR PROMPT HELP: the occupant's words, on a terminal (0.22.0):
+# as many lines as he likes, each kept as typed, a blank line ending them.
+# The first line is needed, and ? as the first line explains the question.
+ask_words() {
+  local __var="$1" prompt="$2" help="$3" line lines=()
+  while :; do
+    IFS= read -r -p "$prompt [several lines welcome; a blank line ends them]: " line \
+      || die "no answer given to: $prompt"
+    line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    if [ "$line" = "?" ]; then printf '%s\n' "$help" | fold -s -w 76 | sed 's/^/  /' >&2; continue; fi
+    [ -z "$line" ] || break
+    printf '  your words are needed here; ? explains it\n' >&2
+  done
   lines=("$line")
   while IFS= read -r -p "  > " line; do
     line="$(printf '%s' "$line" | sed 's/[[:space:]]*$//')"
@@ -1309,20 +1370,30 @@ find_folder() {
 }
 
 # On a terminal, a folder a verb was not given: the folders it could
-# mean, then the question. Piped, the verb refuses before this.
-ask_folder() {
-  local __var="$1" root="$2" space="$3" verb="$4" d n=0 number
-  printf 'Folders in %s/:\n' "$space" >&2
+# mean, each with a key (0.22.0), then the question. Piped, the verb
+# refuses before this.
+folder_choices() {
+  local root="$1" space="$2" d number title
   for d in "$root/$space"/*/; do
     [ -d "$d" ] || continue
-    n=$((n + 1))
-    number=""
-    [ -f "$d/folder.md" ] && number="$(helper folder-facts "$d/folder.md" 2>/dev/null | sed -n 's/^number\t//p')"
-    printf '  %s%s\n' "${number:+folder $number  }" "$(basename "$d")" >&2
+    number=""; title=""
+    if [ -f "$d/folder.md" ]; then
+      number="$(helper folder-facts "$d/folder.md" 2>/dev/null | sed -n 's/^number\t//p')"
+      title="$(head -n 1 "$d/folder.md" | sed -n 's/^# //p')"
+    fi
+    printf '%s\t%s\n' "$(basename "$d")" "${number:+folder $number, }${title:-$(basename "$d")}"
   done
-  [ "$n" -gt 0 ] || die "nothing in $space/ to $verb"
-  ask "$__var" "Which folder: a unique part of its name, or folder N (office $verb FOLDER)" "" 1 \
-    "The folder to $verb: its directory name, any part of it that names only one folder, or its number as folder N."
+}
+
+ask_folder() {
+  local __var="$1" root="$2" space="$3" verb="$4" rows=() row vals=()
+  mapfile -t rows < <(folder_choices "$root" "$space")
+  [ "${#rows[@]}" -gt 0 ] || die "nothing in $space/ to $verb"
+  for row in "${rows[@]}"; do vals+=("${row%%$'\t'*}" "${row#*$'\t'}"); done
+  printf 'Folders in %s/:\n' "$space" >&2
+  pick "$__var" "Which folder, by its key (office $verb FOLDER)" \
+    "The folder to $verb, by its key in the list above. Its directory name, a part of it that names only one folder, or folder N is taken too." \
+    "" 1 "${vals[@]}"
 }
 
 usage_note() {
@@ -1383,12 +1454,13 @@ usage: office slip [TEXT...] [--about WHAT]   (or the text on stdin)
 Drops a friction slip in the suggestion box: one new page,
 suggestion-box/DATE-SLUG.md, committed on its own. --about names what the
 slip is about: the office, a tool (bale, office-src) or one of the
-office's projects, so it can be carried to that tool's project. On a
-terminal it asks for what it was not told; piped, it never asks. Like
-office note, it works in an unfounded office and one behind or ahead of
-the installed tool, and only warns.
+office's projects, so it can be carried to that tool's project; left out,
+the session that reads the box judges it. On a terminal it asks for the
+words when it was given none; piped, it never asks. Like office note, it
+works in an unfounded office and one behind or ahead of the installed
+tool, and only warns.
 Examples:
-  office slip                                  (asks what caused friction, and about what)
+  office slip                                  (asks what caused friction, in your words)
   office slip --about bale pack needs too many flags
   office slip --about office-src the desk does not say why a folder waits
 USAGE
@@ -1430,14 +1502,13 @@ cmd_slip() {
       "Where it hurt and what would remove it, in your words. It lands as its own page in the suggestion box; cleanup and renovation sessions read the box."
   fi
   [ -n "${text//[[:space:]]/}" ] || die "nothing to slip: the text is empty"
-  if [ -z "$about" ] && can_ask; then
-    ask about "What it is about: $(slip_about_choices "$root") (--about)" "office" 0 \
-      "The office itself, a tool the office uses (bale, office-src), or one of this office's projects. A slip about a tool says so, so it can be carried to that tool's project."
-  fi
+  # What a slip is about is the session's to judge when it reads the box
+  # (0.22.0: the occupant supplies the words, a session the structure);
+  # --about still says it.
   if [ -n "$about" ] && [[ ! "$about" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
     die "--about takes one word, the office, a tool or a project ($(slip_about_choices "$root")), not $(shq "$about")"
   fi
-  [ -n "$about" ] || log "the slip does not say what it is about (--about office, a tool or a project says so)"
+  [ -n "$about" ] || log "the slip does not say what it is about; the session that reads the box judges it (--about says it)"
   tz="$(office_tz "$root")"; day="$(office_date "$tz")"; now="$(office_time "$tz")"
   # The slug from the words as typed, as office open makes one: an
   # escape is no part of a file name.
@@ -1474,10 +1545,10 @@ Drops a message or a thread in the in-tray: one new page,
 in-tray/DATE-SLUG.md, committed on its own, waiting to be sorted. The text
 comes from FILE, from stdin (-, or anything piped), or, on a terminal with
 neither, from the clipboard (machine.toml's paste_command, asked once). It
-says what it took: the first line and how many lines. On a terminal it asks
-one question, the project, as free text: the office's projects are offered
-as hints, any words are taken, and a plain return leaves it empty
-(--project is the flag twin). Piped, it asks nothing. It never refuses a
+says what it took: the first line and how many lines. On a terminal, when
+the office scopes a project, it asks one question, the project: each of
+the office's projects has a key, any words are taken, and a plain return
+leaves it empty (--project is the flag twin). Piped, it asks nothing. It never refuses a
 drop it can write: no project is needed, and like office note it works in an
 unfounded office and one behind or ahead of the installed tool, and only
 warns. The in-tray arrives with the first drop. Every session office start
@@ -1533,10 +1604,18 @@ cmd_drop() {
     || die "nothing to drop: the text from $([ "$via" = clipboard ] && printf 'the clipboard' || printf '%s' "$via") is empty"
   lines="${took%%$'\t'*}"; first="${took#*$'\t'}"
   log "took $lines line(s) from $([ "$via" = clipboard ] && printf 'the clipboard' || printf '%s' "$via"): $first"
+  # Which project, by key, and only when the office scopes one: the one
+  # question a drop asks, which a plain return skips (0.22.0).
   if [ "$project_given" = 0 ] && can_ask; then
-    names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null | paste -sd, - | sed 's/,/, /g')"
-    ask project "Which project it is for, in any words${names:+ ($names, or anything)} (--project)" "" 0 \
-      "Free text, kept on the page as you type it, to help the session that sorts the drop decide where it goes. When it names one of this office's projects, office start --drop sends the drop out on that project without asking. A plain return leaves it empty: the drop is taken either way."
+    local pnames=() pn pvals=()
+    mapfile -t pnames < <(helper project-names "$root/$MANIFEST_REL" 2>/dev/null | grep .)
+    for pn in "${pnames[@]}"; do pvals+=("$pn" "$pn"); done
+    if [ "${#pvals[@]}" -gt 0 ]; then
+      printf "This office's projects:\n" >&2
+      pick project "Which project it is for, by its key, or in any words; a plain return leaves it for the sort (--project)" \
+        "Kept on the page as you give it, to help the session that sorts the drop decide where it goes. When it names one of this office's projects, office start --drop sends the drop out on that project without asking. A plain return leaves it empty: the drop is taken either way." \
+        --skip 1 "${pvals[@]}"
+    fi
   fi
   tz="$(office_tz "$root")"; day="$(office_date "$tz")"; now="$(office_time "$tz")"
   # The slug from the first line as typed, the way office slip makes one:
@@ -1567,14 +1646,19 @@ Starts a folder on the desk: numbered one more than the highest number on
 the desk and in the filing cabinet, status queued, the day it was queued,
 and every field it is given. --candidate opens it as a candidate; --filed
 --sid SID files it straight into the filing cabinet, done at that session.
-On a terminal it asks for the title, size, lane and source it was not
-given: a plain return skips one, and ? explains it. The title comes first
-and is checked at once: a folder of that name already on the desk or in
-the filing cabinet is said before anything else is asked (office start
-new offers the one on the desk as the folder to start). Piped, it never
-asks.
+On a terminal, given no title, it asks for the job in your own words (as
+many lines as you like; a blank line ends them, and ? explains it): the
+first line is the folder's title, its slug comes from the title, the
+words are kept in the folder's Asked section, and, as one line, they are
+the goal office start takes. It asks which project the job is on, by key,
+only when your words name none of the office's projects and the office
+scopes some. The size is small and the source is where the words came
+from, until a session says otherwise; each flag twin still sets its
+field. A title another folder took today gets a name of its own (-2);
+office start new offers a folder of that name on the desk as the one to
+start. Piped, it never asks.
 Examples:
-  office open                                  (asks for the title, size, lane, source)
+  office open                                  (asks for the job in your words)
   office open fix-login --title "Fix the login" --size small --lane "office-src: bin/"
   office open fix-login --title "Fix the login" --goal "Fix the login redirect"
                                                (office start offers the goal)
@@ -1656,49 +1740,99 @@ cmd_open() {
   for i in "${!linked[@]}"; do v="${linked[$i]}"; check_field v linked --linked || ask_field v linked --linked "Linked folder" "" 1; linked[$i]="$v"; done
 
   tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  local words_file="" by=""
   if can_ask && [ "$thread" = 0 ]; then
-    # The wizard: what matters to the desk, in four answers at most. The
-    # title comes first and is checked at once, so a name already on the
-    # desk or in the filing cabinet is said before any other question:
-    # nobody answers questions whose outcome is a refusal. Opened for
-    # office start (new), a folder already on the desk is offered as the
-    # one to start.
-    local fixed_name=0 taken want_slug ans
+    # The wizard (0.22.0): the occupant supplies words, the office supplies
+    # structure. It asks for the job in his own words, and for the project
+    # only when the office cannot tell; everything else it works out and
+    # leaves provisional, for a session to set (doctrine section 7, the
+    # wizard rule). The title is the first line of his words, trimmed as a
+    # drop's heading is, and the slug comes from it; the words themselves
+    # go in the folder's Asked section and, as one line, its goal, which
+    # office start takes; the size is small; the source is where the words
+    # came from. Each flag twin still sets its field. A folder opened for
+    # office start whose name is on the desk already is offered as the one
+    # to start, before anything else happens.
+    local fixed_name=0 taken want_slug ans words reading names n
     [ -z "$title" ] || fixed_name=1
     [ -z "$slug" ] || fixed_name=1
-    while :; do
-      if [ -z "$title" ]; then
-        ask raw_title "Title, in a few words (--title)" "$slug" 1 "$(field_help title)"; asked=1
-        title="$(helper normalize-field title -- "$raw_title")" || die "--title: the title is empty"
+    names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+    if [ "$fixed_name" = 0 ]; then
+      words_file="$(mktemp)" || die "no temporary file for your words"
+      TMP_PATHS+=("$words_file")
+      if [ -n "${OPEN_WORDS_FILE:-}" ]; then
+        cp -- "$OPEN_WORDS_FILE" "$words_file" || die "could not read the words office start gave ($OPEN_WORDS_FILE)"
+        by="${OPEN_WORDS_BY:-the words office start gave}"
+      else
+        ask_words words "The job, in your own words (--title gives a title instead)" \
+          "What the job is, as you would say it to someone who will do it: what was asked, by whom, and anything you already know. The first line becomes the folder's title and the rest is kept, word for word, in the folder's Asked section; a session reads it there and works out the rest."
+        printf '%s\n' "$words" > "$words_file" || die "could not keep your words"
+        by="The occupant, at office open on $day at $(office_time "$tz"), in his words"
       fi
+      reading="$(homex words --text-file "$words_file" --projects "$names")" || die "your words could not be read (the line above says why)"
+      title="$(printf '%s\n' "$reading" | sed -n 's/^title\t//p')"
+      raw_title="$(printf '%s\n' "$reading" | sed -n 's/^slug-from\t//p')"
+      [ -n "$goal" ] || goal="$(printf '%s\n' "$reading" | sed -n 's/^goal\t//p')"
+      if [ -z "$lane" ]; then
+        lane="$(printf '%s\n' "$reading" | sed -n 's/^project\t//p')"
+        [ -z "$lane" ] || log "your words name $lane, one of this office's projects: the folder's lane (--lane says otherwise)"
+      fi
+      asked=1
+    fi
+    n=1
+    while :; do
       want_slug="$slug"; [ -n "$want_slug" ] || want_slug="$(short_slug "${raw_title:-$title}")"
       want_slug="$(slugify "$want_slug")"
       [ -n "$want_slug" ] || die "the slug has no letters or digits (give one: office open SLUG)"
+      [ "$n" = 1 ] || want_slug="$want_slug-$n"
       taken=""
       [ ! -e "$root/desk/$day-$want_slug" ] || taken=desk
       [ ! -e "$root/filing-cabinet/$day-$want_slug" ] || taken=filing-cabinet
       [ -n "$taken" ] || break
-      if [ "$taken" = desk ] && [ "${OPEN_FOR_START:-0}" = 1 ] && [ "$filed" = 0 ]; then
+      if [ "$taken" = desk ] && [ "${OPEN_FOR_START:-0}" = 1 ] && [ "$filed" = 0 ] && [ "$n" = 1 ]; then
         ask ans "desk/$day-$want_slug is already on the desk: start it, rather than open another (office start $day-$want_slug)" "yes" 1 \
-          "A folder with this title was opened today, perhaps by a start that did not get its session out. yes starts that folder as it is; no asks for another title."
+          "A folder with this title was opened today, perhaps by a start that did not get its session out. yes starts that folder as it is; no opens another beside it."
         case "$ans" in
           y|Y|yes|Yes|YES) log "desk/$day-$want_slug is already on the desk; start takes it as it is"
                            printf 'desk/%s\n' "$day-$want_slug"; return 0 ;;
         esac
       fi
       [ "$fixed_name" = 0 ] || { [ "$taken" = desk ] && die "already on the desk: desk/$day-$want_slug"; die "already filed: filing-cabinet/$day-$want_slug (office reopen $day-$want_slug)"; }
-      if [ "$taken" = desk ]; then
-        printf '  desk/%s is already on the desk; give another title\n' "$day-$want_slug" >&2
-      else
-        printf '  filing-cabinet/%s is already filed (office reopen %s brings it back); give another title\n' "$day-$want_slug" "$day-$want_slug" >&2
-      fi
-      title=""; raw_title=""
+      # Another job whose words begin alike: a name of its own, said.
+      n=$((n + 1))
     done
-    if [ -z "$size" ]; then ask_field size size --size "Size: small, medium or high"; asked=1; fi
-    if [ -z "$lane" ]; then ask_field lane lane --lane "Lane: the project and paths, as project: paths"; asked=1; fi
-    if [ -z "$source" ]; then ask_field source source --source "Source: where the job came from"; asked=1; fi
-    if [ "$filed" = 1 ] && [ -z "$sid" ]; then ask_field sid sid --sid "Session id it was done in" "" 1; asked=1; fi
-    [ "$asked" = 0 ] || log "other fields take flags: --class, --blueprint, --after, --serializes-after, --consumer, --linked (office open --help explains each)"
+    if [ "$n" -gt 1 ]; then
+      log "$day-${want_slug%-$n} is taken already, so this folder is $day-$want_slug"
+      slug="$want_slug"
+    fi
+    # The project: his to say, only when the office cannot tell (his words
+    # name none, and the office scopes some); by key. The paths a job will
+    # touch are a session's to judge, so none is asked.
+    # office start new says where the work lands when it knows (OPEN_LANE:
+    # the project, or - for the office): then nothing is asked.
+    local lane_known=0
+    if [ -z "$lane" ] && [ -n "${OPEN_LANE:-}" ]; then
+      [ "$OPEN_LANE" = - ] || lane="$OPEN_LANE"
+      lane_known=1
+    fi
+    if [ -z "$lane" ] && [ "$lane_known" = 0 ] && [ -n "$names" ]; then
+      local pvals=() pn
+      while IFS= read -r pn; do [ -n "$pn" ] && pvals+=("$pn" "$pn"); done <<< "$names"
+      pvals+=("office" "none of them: the work is the office's own")
+      printf "This office's projects:\n" >&2
+      pick ans "Which project the job is on, by its key (--lane PROJECT)" \
+        "The project whose repo the job changes, so office start knows where its session goes. none of them leaves the folder with no lane; office start then asks where the work lands." \
+        "" 0 "${pvals[@]}"
+      [ "$ans" = office ] || lane="$ans"
+      asked=1
+    fi
+    if [ -z "$size" ]; then size=small; debug "size: small, until a session says otherwise"; fi
+    if [ -z "$source" ]; then
+      source="${OPEN_SOURCE:-}"
+      if [ -z "$source" ] && [ -n "$words_file" ]; then source="the occupant"; fi
+    fi
+    if [ "$filed" = 1 ] && [ -z "$sid" ]; then die "--filed needs --sid SID, the session the job was done in"; fi
+    [ "$asked" = 0 ] || log "the size is small and the source $([ -n "$source" ] && printf '%s' "$source" || printf 'unsaid'), for now; other fields take flags: --size, --source, --class, --blueprint, --after, --serializes-after, --consumer, --linked (office open --help explains each)"
   else
     [ -n "$slug" ] || [ -n "$title" ] || die "open needs a slug or a title: office open SLUG, or --title TITLE; piped input is never asked"
     [ "$filed" = 0 ] || [ -n "$sid" ] || die "--filed needs --sid SID, the session the job was done in; piped input is never asked"
@@ -1740,6 +1874,13 @@ cmd_open() {
   fi
   if [ "$filed" = 1 ]; then
     helper record-session "$root/$folder/folder.md" "$sid" >/dev/null || die "could not record $sid in $folder/folder.md"
+  fi
+  if [ -n "$words_file" ]; then
+    # His words, word for word (kept ASCII), in the folder's Asked section.
+    helper folder-asked "$root/$folder/folder.md" --words-file "$words_file" --by "$by" >/dev/null \
+      || { rm -rf "${root:?}/$folder"; die "could not keep your words in $folder/folder.md"; }
+    # Called inside $(...) by office start, where no EXIT trap runs.
+    rm -f "$words_file"
   fi
   if [ "$thread" = "1" ]; then
     [ ! -t 0 ] || die "--thread reads the pasted thread on stdin"
@@ -2150,7 +2291,14 @@ cmd_sessions() {
   [ -f "$root/$space/$name/folder.md" ] || die "$space/$name has no folder.md"
   if [ -z "$source" ] && [ "$ratified" = 1 ]; then
     can_ask || die "--ratified needs the session: office sessions FOLDER SID --ratified; piped input is never asked"
-    ask_field source sid "SID" "Session id to ratify" "" 1
+    # The sessions the folder records, one key each (0.22.0).
+    local rvals=() r
+    while IFS= read -r r; do [ -n "$r" ] && rvals+=("$r" "$r"); done < <(sed -n '/^## Sessions$/,/^## /p' \
+      "$root/$space/$name/folder.md" | sed -nE 's/^- ([0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*-[0-9]{3})([: ].*)?$/\1/p' | sort -u)
+    [ "${#rvals[@]}" -gt 0 ] || die "$space/$name records no session to ratify"
+    printf 'Sessions %s/%s records:\n' "$space" "$name" >&2
+    pick source "The session to ratify, by its key (SID)" \
+      "The session whose judgment calls the planner ratified, by its key in the list above." "" 0 "${rvals[@]}"
   fi
   if [ -z "$source" ]; then
     helper folder-summary "$root/$space/$name/folder.md" "$TEMPLATES/folder.md" >/dev/null || die "could not read $space/$name/folder.md"
@@ -2356,10 +2504,12 @@ ask_blueprint() {
   local __var="$1" root="$2" verb="$3" list
   list="$(drafting blueprints "$root" 2>/dev/null)"
   [ -n "$list" ] || die "no blueprint on the drafting table to $verb (office blueprint open drafts one)"
+  local bvals=() bid bst bti
+  while IFS=$'\t' read -r bid bst bti; do [ -n "$bid" ] && bvals+=("$bid" "$bid  [$bst]  $bti"); done <<< "$list"
   printf 'Blueprints:\n' >&2
-  printf '%s\n' "$list" | awk -F'\t' '{printf "  %s  [%s]  %s\n", $1, $2, $3}' >&2
-  ask "$__var" "Which blueprint: its id, DATE-SLUG (office blueprint $verb ID)" "" 1 \
-    "The blueprint's id is its directory's name under drafting-table/blueprints/, the date and the slug."
+  pick "$__var" "Which blueprint, by its key (office blueprint $verb ID)" \
+    "The blueprint by its key in the list above; its id, the directory's name under drafting-table/blueprints/, is taken too." \
+    "" 0 "${bvals[@]}"
 }
 
 usage_blueprint_ratify() {
@@ -2400,8 +2550,15 @@ cmd_blueprint_ratify() {
   fi
   if [ -z "$words" ] && [ -z "$sid" ]; then
     can_ask || die "say where the ratifying words are: --words notepad/PAGE or --sid SID; piped input is never asked"
-    ask words "The notepad page that carries the ratifying words, notepad/PAGE.md (--words; --sid SID for a session)" "" 1 \
-      "Ratification points at the words that gave it, never copies them: a notepad page (office note writes the day's page), or a session id given as --sid."
+    # The newest notepad pages, one key each (0.22.0); a session id or a
+    # page's path typed out is taken too.
+    local nvals=() np
+    while IFS= read -r np; do [ -n "$np" ] && nvals+=("notepad/$np" "notepad/$np"); done < <(ls -1t "$root/notepad" 2>/dev/null | grep '\.md$' | head -n 9)
+    [ "${#nvals[@]}" -gt 0 ] || die "the notepad holds no page; say where the ratifying words are: --words notepad/PAGE or --sid SID"
+    printf 'The newest notepad pages:\n' >&2
+    pick words "The notepad page that carries the ratifying words, by its key (--words; --sid SID for a session)" \
+      "Ratification points at the words that gave it, never copies them: a notepad page (office note writes the day's page), or a session id typed out, as --sid takes it." \
+      "" 1 "${nvals[@]}"
     case "$words" in [0-9][0-9][0-9][0-9]-*-[0-9][0-9][0-9]) sid="$words"; words="" ;; esac
   fi
   one_writer "$root" "blueprint ratify" "drafting-table/blueprints/$id/blueprint.md"
@@ -3507,76 +3664,72 @@ open_command in the same file change that, and "" turns either off.
 USAGE
 }
 
-# The folder a start is for: asked on a terminal, with new as a choice.
+# The folder a start is for: asked on a terminal, each folder on the desk
+# with a key, and a new job last (0.22.0).
 ask_start_folder() {
-  local __var="$1" root="$2" d number n=0
-  printf 'Folders on the desk:\n' >&2
-  for d in "$root/desk"/*/; do
-    [ -d "$d" ] || continue
-    n=$((n + 1)); number=""
-    [ -f "$d/folder.md" ] && number="$(folder_fact "$d/folder.md" number)"
-    printf '  %s%s\n' "${number:+folder $number  }" "$(basename "$d")" >&2
-  done
-  [ "$n" -gt 0 ] || printf '  (none yet)\n' >&2
-  ask "$__var" "Which job: a unique part of its name, folder N, or new to open one (office start FOLDER)" \
-    "$([ "$n" -eq 0 ] && printf new)" 1 \
-    "The folder the session works on. new opens one first, with office open's questions (title, size, lane, source)."
+  local __var="$1" root="$2" rows=() row vals=()
+  mapfile -t rows < <(folder_choices "$root" desk)
+  for row in "${rows[@]}"; do vals+=("${row%%$'\t'*}" "${row#*$'\t'}"); done
+  vals+=(new "a new job, in your own words")
+  printf 'Jobs on the desk:\n' >&2
+  pick "$__var" "Which job, by its key (office start FOLDER)" \
+    "The folder the session works on, by its key in the list above; a part of its name or folder N is taken too. A new job opens its folder first, from your words (office open's question)." \
+    "$([ "${#rows[@]}" -eq 0 ] && printf new)" 1 "${vals[@]}"
 }
 
-# ask_rides VAR PROJECT RIDE...: on a terminal, what rides with the
-# project, each with its size, and which stay home this once. VAR gets
-# the ones left out (the flag twin is --leave-out, repeatable, or
-# --no-rides). The default is that everything rides, as declared.
-ask_rides() {
-  local __var="$1" project="$2" ans n i size picked=() w; shift 2
-  local rides=("$@")
-  printf 'What rides with %s (declared; office projects set %s changes it for good):\n' "$project" "$project" >&2
-  i=0
-  for w in "${rides[@]}"; do
-    i=$((i + 1))
-    size="$w"
-    case "$size" in "~") size="$HOME" ;; "~/"*) size="$HOME/${size#\~/}" ;; esac
-    size="$(timeout 3 du -sh "$size" 2>/dev/null | cut -f1)"
-    printf '  %s. %s%s\n' "$i" "$w" "${size:+  ($size)}" >&2
+# offer_bundles: bare office start on a terminal (0.22.0), before it asks
+# anything else: the planner's bundles in this machine's downloads that no
+# session has opened (bale's records say which were: lib/office_home.py),
+# newest first, one key each; choosing one starts it as office start
+# --bundle does, and a plain return goes on to the jobs on the desk. Sets
+# bundle. Where downloads land is asked once on this machine, and kept.
+offer_bundles() {
+  local root="$1" out rows=() row path stem age words vals=() d dl=() chosen=""
+  downloads_known || downloads_setting "office start offers the planner's bundles in your downloads that no session has opened"
+  while IFS= read -r d; do [ -n "$d" ] && dl+=(--dir "$d"); done <<< "$DOWNLOADS"
+  if ! out="$(homex bundles "$root" "${dl[@]}")"; then
+    warn "the bundles in your downloads could not be read (the line above says why); start goes on to the jobs on the desk"
+    return 0
+  fi
+  [ -n "$out" ] || { debug "no planner bundle in the downloads waits to be opened"; return 0; }
+  mapfile -t rows <<< "$out"
+  for row in "${rows[@]}"; do
+    IFS=$'\t' read -r path stem age words <<< "$row"
+    [ -n "$path" ] || continue
+    [ "${#words}" -le 60 ] || words="${words:0:57}..."
+    vals+=("$path" "$stem, saved $age${words:+: $words}")
   done
-  while :; do
-    ask ans "Which ride with this session: all, none, or the numbers to leave out (--leave-out PATH, --no-rides)" \
-      "all" 1 \
-      "Each declared ride-along is packed as context beside the request. Leave one out when this session does not need it: it stays home this once, and the declaration is unchanged. all rides everything; none leaves everything out; 1 3 leaves out the first and the third."
-    case "$ans" in
-      all|All|ALL) eval "$__var=()"; return 0 ;;
-      none|None|NONE) eval "$__var=(\"\${rides[@]}\")"; return 0 ;;
-    esac
-    picked=(); n=0
-    for w in ${ans//,/ }; do
-      if [[ "$w" =~ ^[0-9]+$ ]] && [ "$w" -ge 1 ] && [ "$w" -le "${#rides[@]}" ]; then
-        picked+=("${rides[$((w - 1))]}"); n=$((n + 1))
-      else
-        n=-1; break
-      fi
-    done
-    if [ "$n" -gt 0 ]; then eval "$__var=(\"\${picked[@]}\")"; return 0; fi
-    printf '  all, none, or numbers from the list above\n' >&2
-  done
+  printf "Planner's bundles in your downloads that no session has opened, newest first:\n" >&2
+  pick chosen "The bundle to start, by its key; a plain return goes on to the jobs on the desk (--bundle FILE)" \
+    "A planner's bundle carries a whole session: its goal, what it may change and its brief. Its key starts it, as office start --bundle FILE does. bale's records say which bundles a session was opened from; those are not offered. A plain return goes on to the jobs on the desk." \
+    --skip 0 "${vals[@]}"
+  [ -z "$chosen" ] || { bundle="$chosen"; log "starting the planner's bundle $(basename "$bundle")"; }
 }
 
-# ask_where WHERE_VAR PROJECT_VAR DEFAULT WHY NAMES: where the work lands,
-# office or one of the projects (NAMES, one per line), asked on a
-# terminal; the flag twins are --in-office and --on PROJECT.
+# ask_where WHERE_VAR PROJECT_VAR DEFAULT WHY NAMES LANE: where the work
+# lands, office or one of the projects (NAMES, one per line); the flag
+# twins are --in-office and --on PROJECT. On a terminal (0.22.0) the
+# office says it when it can tell: a bundle's own paths (WHY says so),
+# else the project the folder's lane names (LANE), else the office when it
+# scopes no project; only otherwise is it asked, by key. Piped, it is
+# never asked and nothing is taken for granted: the verb names the flags.
 ask_where() {
-  local __w="$1" __p="$2" def="$3" why="$4" known="$5" ans list
+  local __w="$1" __p="$2" def="$3" why="$4" known="$5" lane="${6:-}" ans list vals=() n
   list="$(printf '%s' "$known" | paste -sd, - | sed 's/,/, /g')"
   can_ask || die "say where the work lands: --in-office, or --on PROJECT ($list); piped input is never asked"
-  while :; do
-    ask ans "Where the work lands: office, or the project it changes ($list) (--in-office or --on PROJECT)" \
-      "$def" 1 \
-      "office: the session works in this office (the folder, the notepad) and is packed here. A project's name: the session changes that project's repo and is packed there, with this office's context riding beside it, never inside it.${why:+ The default is $def because $why.}"
-    if [ "$ans" = office ]; then printf -v "$__w" '%s' office; return 0; fi
-    if printf '%s\n' "$known" | grep -qxF -- "$ans"; then
-      printf -v "$__w" '%s' project; printf -v "$__p" '%s' "$ans"; return 0
-    fi
-    printf '  office, or one of this office'"'"'s projects: %s\n' "$list" >&2
-  done
+  if [ -n "$why" ]; then ans="$def"; log "the work lands in $([ "$def" = office ] && printf 'the office' || printf '%s' "$def"): $why (--in-office or --on PROJECT says otherwise)"
+  elif [ -n "$lane" ]; then ans="$lane"; log "the work lands on $lane, the project the folder's lane names (--in-office sends it to the office instead)"
+  elif [ -z "$known" ]; then ans=office; log "the work lands in the office: it scopes no project (office projects add adds one)"
+  else
+    while IFS= read -r n; do [ -n "$n" ] && vals+=("$n" "$n: the session changes its repo, with this office's context beside it"); done <<< "$known"
+    vals+=(office "the office: the session works in this office (the folder, the notepad)")
+    printf 'Where the work lands:\n' >&2
+    pick ans "Where the work lands, by its key (--in-office or --on PROJECT)" \
+      "A project: the session changes that project's repo and is packed there, with this office's context riding beside it, never inside it. The office: the session works in this office and is packed here. The folder's lane names no project, so the office cannot tell which." \
+      "" 0 "${vals[@]}"
+  fi
+  if [ "$ans" = office ]; then printf -v "$__w" '%s' office; return 0; fi
+  printf -v "$__w" '%s' project; printf -v "$__p" '%s' "$ans"
 }
 
 # start_check_place WHERE PROJECT NAMES: a project start names a project
@@ -3694,10 +3847,10 @@ offer_riders() {
       printf '%s\n' "${carry[@]}" | grep -qxF -- "$n" \
         || log "rider $n ($t) rides this forecast too (rides $r); --carry $n would carry it"
     elif can_ask; then
-      ask ans "Rider $n, $t (rides $r; the forecast's $touched): carry it into the folder, so it rides with this session (--carry $n, --carry none)" \
-        "yes" 1 \
-        "A rider is small work with a named carrier. Its path glob says the next session that touches it carries it, and this one does. yes moves it from the riders page into the folder's Riders section (office rider carry), which rides in the request; no leaves it on the page for a later session."
-      case "$ans" in y|Y|yes|Yes|YES) take+=("$n") ;; esac
+      # Its path glob says the next session that touches it carries it,
+      # and this one does: the office carries it, and says so (0.22.0).
+      log "rider $n, $t, rides this forecast (rides $r; the forecast's $touched): carried with this session (--carry none leaves it on the riders page)"
+      take+=("$n")
     else
       log "rider $n ($t) rides this forecast (rides $r); piped input carries none: --carry $n carries it"
     fi
@@ -3828,13 +3981,17 @@ start_drop() {
         drop_lane=""
       fi
       can_ask || die "$rel's project ($([ -n "$pproj" ] && printf '%s' "$pproj" || printf 'none given')) names no project this office scopes ($list): give --lane PROJECT; nothing was written"
-      ask_field drop_lane lane --lane "Lane: the project the drop is for ($list), or project: paths" "" 1
+      # Which project, by key: the office cannot tell from the drop.
+      local pvals=() pn
+      while IFS= read -r pn; do [ -n "$pn" ] && pvals+=("$pn" "$pn"); done <<< "$names"
+      printf "The drop names %s; this office's projects:\n" "$([ -n "$pproj" ] && printf '%s' "$pproj" || printf 'no project')" >&2
+      pick drop_lane "Which project the drop is for, by its key (--lane PROJECT)" \
+        "The project the session goes out on: it sorts the drop first, then does what it asks there. The folder minted for the drop gets it as its lane." \
+        "" 0 "${pvals[@]}"
     done
-    # The size: asked, small by default (--size); piped, small.
+    # The size: small, until a session says otherwise (--size sets it).
     if [ -n "$drop_size" ]; then check_field drop_size size --size || true; fi
-    if [ -z "$drop_size" ]; then
-      if can_ask; then ask_field drop_size size --size "Size: small, medium or high" "small" 1; else drop_size=small; fi
-    fi
+    [ -n "$drop_size" ] || drop_size=small
     [ -n "$drop_title" ] || drop_title="$heading"
     check_field drop_title title --title || { ask_field drop_title title --title "Title, in a few words" "" 1; }
 
@@ -4034,6 +4191,14 @@ cmd_start() {
   warn_if_unfounded "$root"
   command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office start runs bale pack"
 
+  # Bare office start on a terminal offers the planner's bundles in the
+  # downloads that no session has opened, before it asks anything else
+  # (0.22.0); a plain return goes on to the jobs on the desk.
+  if [ -z "$want$bundle$drop" ] && [ "${#packed_flags[@]}" -eq 0 ] && can_ask; then
+    offer_bundles "$root"
+    if [ -n "$bundle" ]; then bundle_given="$bundle"; bundle="$(readlink -f "$bundle")"; fi
+  fi
+
   # A dropped message, sent straight out: the folder minted and the page
   # moved into it, and where, the goal and the brief set (start_drop).
   [ -z "$drop" ] || start_drop
@@ -4061,15 +4226,32 @@ cmd_start() {
           found="$(reader bundle-where "$root" --bundle "$bundle")" || exit 1
           if [ -n "$found" ]; then where_default="${found%%$'\t'*}"; where_why="${found#*$'\t'}"; fi
         fi
-        ask_where where project "$where_default" "$where_why" "$names"
+        ask_where where project "$where_default" "$where_why" "$names" ""
       fi
       start_check_place "$where" "$project" "$names"
       resolve_hosted_bundle "$root" "$where" "$project"
       if [ "$where" = project ]; then check_start_bundle "$root" "$where" "$project" "$bundle"; checked=1; fi
     fi
-    local desk_before
+    local desk_before words_file="" words_by="" words_source=""
     desk_before="$(ls -1 "$root/desk" 2>/dev/null)"
-    rel="$(OPEN_FOR_START=1 cmd_open)" || exit 1
+    # A new job for a planner's bundle is opened from the bundle's own goal,
+    # the planner's words: nothing is asked of the occupant (0.22.0).
+    local bundle_here="$bundle"
+    [ -f "$bundle_here" ] || bundle_here="$START_BUNDLE_FOUND"
+    if [ -n "$bundle" ] && [ -n "$bundle_here" ] && [ -f "$bundle_here" ]; then
+      words_file="$(mktemp)" || die "no temporary file for the bundle's goal"
+      TMP_PATHS+=("$words_file")
+      if homex bundle-goal --bundle "$bundle_here" > "$words_file" 2>/dev/null && [ -s "$words_file" ]; then
+        words_by="The planner's bundle $(basename "$bundle"), its goal"
+        words_source="bundle $(basename "$bundle")"
+      else
+        words_file=""
+      fi
+    fi
+    local open_lane=""
+    case "$where" in project) open_lane="$project" ;; office) open_lane="-" ;; esac
+    rel="$(OPEN_FOR_START=1 OPEN_LANE="$open_lane" OPEN_WORDS_FILE="$words_file" OPEN_WORDS_BY="$words_by" \
+           OPEN_SOURCE="$words_source" cmd_open)" || exit 1
     want="${rel#desk/}"
     START_OPENED="$want"
     START_TOOK=0
@@ -4140,7 +4322,7 @@ cmd_start() {
       fi
     fi
     can_ask || die "say where the work lands: --in-office, or --on PROJECT ($(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')); piped input is never asked"
-    ask_where where project "$where_default" "$where_why" "$names"
+    ask_where where project "$where_default" "$where_why" "$names" "$lane_project"
   fi
   start_check_place "$where" "$project" "$names"
   [ "$where" = project ] || about="$lane_project"
@@ -4159,13 +4341,15 @@ cmd_start() {
   # The goal: the one thing the pack cannot derive (a bundle carries its own).
   if [ -n "$bundle" ]; then
     goal="(the bundle's)"
-  elif [ -z "$goal" ] && [ -n "$folder_goal" ] && ! can_ask; then
+  elif [ -z "$goal" ] && [ -n "$folder_goal" ]; then
+    # A folder that knows its goal is never asked it again (0.22.0): its
+    # goal is the occupant's words office open kept, or a sort's.
     goal="$folder_goal"
     log "the goal is the folder's own: $folder_goal (--goal TEXT overrides it)"
   elif [ -z "$goal" ]; then
     can_ask || die "give the session's goal: --goal TEXT, one sentence; piped input is never asked"
-    ask goal "The session's goal, in one sentence (--goal)" "$folder_goal" 1 \
-      "What the session is for, in one sentence: it becomes the request's goal and the opener's first line. The folder, its lane and the project's ride-alongs go with it on their own.${folder_goal:+ The default is the goal field of the folder; a plain return takes it.}"
+    ask goal "What the session is to do, in your words (--goal)" "" 1 \
+      "What the session is for, in your own words: it becomes the request's goal and the opener's first line. The folder, its lane and the project's ride-alongs go with it on their own."
   fi
   goal="$(printf '%s' "$goal" | tr '\n' ' ' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
   [ -n "$goal" ] || die "the goal is empty"
@@ -4186,13 +4370,9 @@ cmd_start() {
       IFS=',' read -r -a writes <<< "$lane_paths"
       for v in "${!writes[@]}"; do writes[$v]="$(printf '%s' "${writes[$v]}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; done
       log "forecast from the folder's lane: ${writes[*]}"
-    elif can_ask; then
-      ask ans "Paths in $project the session will change, comma-separated (--write) [return: the whole repo]" "" 0 \
-        "Its write forecast, relative to $project's top: what bale keeps other sessions off while this one is open. A directory covers what lands under it. The whole repo keeps every other $project session waiting."
-      [ -z "$ans" ] || IFS=',' read -r -a writes <<< "$ans"
-      for v in "${!writes[@]}"; do writes[$v]="$(printf '%s' "${writes[$v]}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; done
-      [ "${#writes[@]}" -eq 0 ] || START_ASKED_WRITES=1
     fi
+    # Which paths a session will change is the session's judgment, never
+    # asked (0.22.0): with no lane paths and no --write, the whole repo.
     [ "${#writes[@]}" -gt 0 ] || log "no forecast given: bale forecasts the whole of $project, so no other session there runs beside this one"
   fi
   # What rides with the project: shown on a terminal, where a declared
@@ -4207,8 +4387,9 @@ cmd_start() {
     [ "${#rides[@]}" -gt 0 ] || log "nothing rides with ${ride_project:-this session}, so --no-rides changes nothing"
     leave_out=("${rides[@]}")
   elif [ "${#rides[@]}" -gt 0 ] && [ "${#leave_out[@]}" -eq 0 ] && can_ask; then
-    ask_rides leave_out "$ride_project" "${rides[@]}"
-    [ "${#leave_out[@]}" -eq 0 ] || START_ASKED_LEAVE=1
+    # What rides is declared once, for good (office projects set); which
+    # of it this session needs is not asked (0.22.0): it all rides.
+    log "what rides with $ride_project, as declared: $(printf '%s\n' "${rides[@]}" | paste -sd, - | sed 's/,/, /g') (--leave-out PATH or --no-rides keeps one home this once)"
   fi
 
   # The riders this pack carries: the queued riders on the drafting
@@ -4446,6 +4627,22 @@ Examples:
 USAGE
 }
 
+# land_words ROOT SID WHERE FOLDERS: a session out, named the way the
+# occupant knows it (0.22.0): by the folder that records it, else by its
+# slug, and where it is out.
+land_words() {
+  local root="$1" sid="$2" where="$3" folders="$4" rel md number title
+  rel="${folders%%,*}"
+  if [ -n "$rel" ] && [ -f "$root/$rel/folder.md" ]; then
+    md="$root/$rel/folder.md"
+    number="$(folder_fact "$md" number)"
+    title="$(head -n 1 "$md" | sed -n 's/^# //p')"
+    printf '%s%s (%s)' "${number:+folder $number, }" "${title:-${rel#*/}}" "$where"
+  else
+    printf '%s (%s)' "$(printf '%s' "$sid" | sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}-//; s/-[0-9]{3}$//')" "$where"
+  fi
+}
+
 # What became of each after-land action, for land's last lines.
 AFTER_LAND_REPORT=()
 
@@ -4538,16 +4735,9 @@ offer_close() {
         log "$name recorded $sid alone, and the planner ratified it with no exception; piped, the folder stays open: office land --close closes it with the landing, office close $name closes it now"
         return 0
       fi
-      while :; do
-        ask ans "$name recorded $sid alone, and the planner ratified it with no exception: close the folder, done, or leave it open (--close, --leave-open)" \
-          "close" 1 \
-          "The job looks finished: its one session landed applied and was ratified with nothing corrected. close moves the folder to the filing cabinet as done, with a History line (office close's own step); leave open keeps it on the desk, for another session or a later office close."
-        case "$ans" in
-          close|Close|c|y|yes|Yes|done) break ;;
-          "leave open"|leave|open|l|n|no|No) log "$name stays open (office close $name closes it)"; return 0 ;;
-          *) printf '  close, or leave open\n' >&2 ;;
-        esac
-      done ;;
+      # On a terminal the office closes a finished job without asking
+      # (0.22.0): closing can be undone, and nothing is left to judge.
+      log "$name recorded $sid alone, and the planner ratified it with no exception: the job is finished, so the folder is closed (office reopen $name brings it back; --leave-open keeps it on the desk)" ;;
   esac
   if ( OFFICE_ROOT="$root" MOVE_TEXT="office land: $sid landed and was ratified, the folder's only session" cmd_close "$name" ); then
     log "$name is closed: in the filing cabinet, done"
@@ -4636,14 +4826,16 @@ cmd_land() {
            printf '%s\n' "$out" | sed 's/\t/  (/; s/\t/; /; s/$/)/; s/^/[office]   /' >&2
            die "$n sessions are out; name one: office land SID; piped input is never asked"
          fi
+         # One key per session out, named by its folder (0.22.0).
+         local svals=() srow ssid swhere sfolders
+         while IFS=$'\t' read -r ssid swhere sfolders; do
+           [ -n "$ssid" ] || continue
+           svals+=("$ssid" "$(land_words "$root" "$ssid" "$swhere" "$sfolders")")
+         done <<< "$out"
          printf 'Sessions out:\n' >&2
-         printf '%s\n' "$out" | sed 's/\t/  (/; s/\t/; /; s/$/)/; s/^/  /' >&2
-         while :; do
-           ask sid "Which session lands (office land SID)" "${out%%$'\t'*}" 1 \
-             "The id of the session whose response came back; the lines above are every session a folder records that is open."
-           printf '%s\n' "$out" | cut -f1 | grep -qxF -- "$sid" && break
-           printf '  one of the ids above\n' >&2
-         done ;;
+         pick sid "Which session lands, by its key (office land SID)" \
+           "The session whose response came back, by its key in the list above. Each is named by the folder that records it." \
+           "" 0 "${svals[@]}" ;;
     esac
   fi
 
@@ -4671,13 +4863,31 @@ cmd_land() {
       die "bale held $sid, so its corrected response lands with bale retry; give it: office land $sid --response FILE (a browser saves a second download of one name as 'response-$sid (1).tar.gz'${default:+; the downloads hold one copy, $default, which may be the held one}); piped input is never asked"
     fi
     if [ -n "$host" ]; then
-      help_more="It is carried to $host from this machine: give its path${default:+, or a plain return for $default, the one copy in the downloads, which may be the held one}."
+      help_more="It is carried to $host from this machine; only one copy in the downloads may be the held one."
     else
-      help_more="A plain return lets bale find response-$sid.tar.gz, which may be the held one."
+      help_more="The last key lets bale find response-$sid.tar.gz by its own search, which takes the plain name first and may find the held one."
     fi
-    ask response "bale held $sid; the corrected response: a path, or a name$([ -n "$host" ] && printf ' in the downloads' || printf " bale's search finds") (--response FILE)" \
-      "${default:-response-$sid.tar.gz}" 1 \
-      "The response the worker sent after the HOLD. A browser saves a second download of the same name as 'response-$sid (1).tar.gz', so give the path of the new one. $help_more"
+    # The copies of its name in the downloads, newest first, one key each
+    # (0.22.0): nobody types a file's name. For a project here bale's own
+    # search is the last choice.
+    local cvals=() cpath cage cargs=() i
+    if [ "${#dl_args[@]}" -eq 0 ] || [ "${dl_args[0]}" = --no-downloads ]; then
+      downloads_setting "bale held $sid, and its corrected response is offered from your downloads"
+      dl_args=()
+      while IFS= read -r d; do [ -n "$d" ] && dl_args+=(--downloads "$d"); done <<< "$DOWNLOADS"
+    fi
+    for ((i = 0; i < ${#dl_args[@]}; i++)); do
+      [ "${dl_args[$i]}" != --downloads ] || cargs+=(--dir "${dl_args[$((i + 1))]}")
+    done
+    while IFS=$'\t' read -r cpath cage; do
+      [ -n "$cpath" ] && cvals+=("$cpath" "$(basename "$cpath"), saved $cage")
+    done < <(homex copies --name "response-$sid.tar.gz" "${cargs[@]}")
+    [ -n "$host" ] || cvals+=("response-$sid.tar.gz" "the one bale's own search finds first (it may be the held one)")
+    [ "${#cvals[@]}" -gt 0 ] || die "bale held $sid, and no response-$sid.tar.gz is in your downloads yet; once the corrected response is saved there, office land $sid lands it"
+    printf 'The responses for %s, newest first:\n' "$sid" >&2
+    pick response "bale held $sid; the corrected response, by its key (--response FILE)" \
+      "The response the worker sent after the HOLD, usually the newest: a browser saves a second download of one name as 'response-$sid (1).tar.gz'. $help_more" \
+      "" 1 "${cvals[@]}"
     reader land-plan "$root" --sid "$sid" --response "$response" --cwd "$PWD" --plan "$plan" "${dl_args[@]}" || exit 1
   fi
   plan_field "$plan" problems | while IFS= read -r line; do [ -n "$line" ] && warn "$line"; done
@@ -5413,8 +5623,12 @@ cmd_projects_set() {
   require_current "$root"
   if [ -z "$name" ]; then
     can_ask || { usage_projects >&2; die "name the project: office projects set NAME; piped input is never asked"; }
-    printf 'Projects: %s\n' "$(helper project-names "$root/$MANIFEST_REL" | paste -sd, - | sed 's/,/, /g')" >&2
-    ask name "Which project (office projects set NAME)" "" 1 "One of the projects this office scopes, by the name office projects lists."
+    local pvals=() pn
+    while IFS= read -r pn; do [ -n "$pn" ] && pvals+=("$pn" "$pn"); done < <(helper project-names "$root/$MANIFEST_REL")
+    [ "${#pvals[@]}" -gt 0 ] || die "this office scopes no project (office projects add adds one)"
+    printf 'Projects:\n' >&2
+    pick name "Which project, by its key (office projects set NAME)" \
+      "One of the projects this office scopes, by its key in the list above; its name typed out is taken too." "" 0 "${pvals[@]}"
   fi
   facts="$(helper project-facts "$root/$MANIFEST_REL" "$name")" || exit 1
   cur_host="$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "host" {print $2}')"
@@ -5520,8 +5734,12 @@ cmd_projects_level_bale() {
   require_current "$root"
   if [ -z "$name" ]; then
     can_ask || { usage_projects >&2; die "name the project: office projects level-bale NAME; piped input is never asked"; }
-    printf 'Projects: %s\n' "$(helper project-names "$root/$MANIFEST_REL" | paste -sd, - | sed 's/,/, /g')" >&2
-    ask name "Which project's host (office projects level-bale NAME)" "" 1 "A project on a host, by the name office projects lists: its host gets the bale this machine runs."
+    local pvals=() pn
+    while IFS= read -r pn; do [ -n "$pn" ] && pvals+=("$pn" "$pn"); done < <(helper project-names "$root/$MANIFEST_REL")
+    [ "${#pvals[@]}" -gt 0 ] || die "this office scopes no project (office projects add adds one)"
+    printf 'Projects:\n' >&2
+    pick name "Which project's host, by its key (office projects level-bale NAME)" \
+      "A project on a host, by its key in the list above: its host gets the bale this machine runs." "" 0 "${pvals[@]}"
   fi
   log "reading the bale on $name's host and the one this machine runs"
   plan="$(reader level-plan "$root" --project "$name")" || exit 1
@@ -5840,7 +6058,17 @@ cmd_relay() {
   command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office relay runs bale relay"
   if [ -z "$sid" ]; then
     can_ask || { usage_relay >&2; die "name the session: office relay SID ANSWER-FILE; piped input is never asked"; }
-    ask_field sid sid "SID" "The suspended session's id" "" 1
+    # The sessions out, one key each, named by their folders (0.22.0).
+    local out svals=() ssid swhere sfolders
+    out="$(reader land-out "$root")" || die "could not read which sessions are out"
+    while IFS=$'\t' read -r ssid swhere sfolders; do
+      [ -n "$ssid" ] && svals+=("$ssid" "$(land_words "$root" "$ssid" "$swhere" "$sfolders")")
+    done <<< "$out"
+    [ "${#svals[@]}" -gt 0 ] || die "no session is out, so there is none to carry an answer to (office relay SID ANSWER-FILE names one)"
+    printf 'Sessions out:\n' >&2
+    pick sid "The suspended session, by its key (office relay SID)" \
+      "The session whose worker asked the planner, by its key in the list above; its id typed out is taken too." \
+      "" 0 "${svals[@]}"
   fi
   [[ "$sid" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*-[0-9]{3}$ ]] || die "not a session id (YYYY-MM-DD-slug-NNN): $sid"
   if [ -z "$answer" ]; then
@@ -5905,9 +6133,16 @@ paste_setting() {
   esac
   can_ask || die "$why, so the office needs to know how this machine reads its clipboard: set paste_command in $MACHINE_FILE, one command line whose output is the clipboard's text (paste_command = \"pbpaste\"), or ${2:-give the block as FILE or -}; piped input is never asked"
   cand="$(helper paste-command "$MACHINE_FILE" --candidate 2>/dev/null)"
-  printf 'How does this machine read its clipboard? %s; this is asked once and kept as paste_command in %s.\n' "$why" "$MACHINE_FILE" >&2
-  [ -n "$cand" ] || printf '  (no clipboard reader found on this machine; give the command)\n' >&2
-  ask ans "The command whose output is the clipboard's text (paste_command in machine.toml)" "$cand" 1 "$PASTE_HELP"
+  if [ -n "$cand" ]; then
+    # The machine's own clipboard reader: a fact the office finds, not
+    # a judgment to ask for (0.22.0). Kept, and said.
+    ans="$cand"
+    log "$why: this machine reads its clipboard with $cand"
+  else
+    printf 'How does this machine read its clipboard? %s; this is asked once and kept as paste_command in %s.\n' "$why" "$MACHINE_FILE" >&2
+    printf '  (no clipboard reader found on this machine; give the command)\n' >&2
+    ask ans "The command whose output is the clipboard's text (paste_command in machine.toml)" "" 1 "$PASTE_HELP"
+  fi
   helper paste-command "$MACHINE_FILE" --set "$ans" >/dev/null \
     || die "paste_command could not be written to $MACHINE_FILE (the line above says why)"
   log "kept in $MACHINE_FILE: paste_command = $ans; it is not asked again (edit the file to change it)"
@@ -5967,14 +6202,13 @@ USAGE
 # projects (NAMES, one per line), asked on a terminal; the flag twin is
 # --project.
 ask_probe_project() {
-  local __var="$1" known="$2" ans list
-  list="$(printf '%s' "$known" | paste -sd, - | sed 's/,/, /g')"
-  while :; do
-    ask ans "Where it runs: office, or the project ($list) (--project)" "" 1 \
-      "The project whose environment the worker asked about: the block runs in its repo, through its shell when it is on a host. office runs it in this office's root. The folder's lane names a project when it has one, and then this is not asked."
-    if [ "$ans" = office ] || printf '%s\n' "$known" | grep -qxF -- "$ans"; then printf -v "$__var" '%s' "$ans"; return 0; fi
-    printf '  office, or one of this office'"'"'s projects: %s\n' "$list" >&2
-  done
+  local __var="$1" known="$2" vals=() n
+  while IFS= read -r n; do [ -n "$n" ] && vals+=("$n" "$n"); done <<< "$known"
+  vals+=(office "the office itself")
+  printf 'Where the probe runs:\n' >&2
+  pick "$__var" "Where it runs, by its key (--project)" \
+    "The project whose environment the worker asked about: the block runs in its repo, through its shell when it is on a host. The office runs it in this office's root. The folder's lane names a project when it has one, and then this is not asked." \
+    "" 0 "${vals[@]}"
 }
 
 cmd_probe() {
@@ -6052,13 +6286,11 @@ cmd_probe() {
       5) mapfile -t cands <<< "$out"
          can_ask || die "desk/$name has ${#cands[@]} sessions open where the probe runs ($(printf '%s\n' "${cands[@]}" | paste -sd, - | sed 's/,/, /g')), and the block's slug names none of them: --sid SID says which; piped input is never asked"
          printf 'Sessions desk/%s records that are open where the probe runs:\n' "$name" >&2
-         for c in "${cands[@]}"; do printf '  %s\n' "$c" >&2; done
-         while :; do
-           ask sid "Which session asked for this probe (--sid)" "" 1 \
-             "The probe's output belongs to the session whose worker returned the block: its id names the out tray a fallback probe's files go to, and the folder's History line counts the probe against it."
-           printf '%s\n' "${cands[@]}" | grep -qxF -- "$sid" && break
-           printf '  one of the sessions above\n' >&2
-         done ;;
+         local pvals=()
+         for c in "${cands[@]}"; do pvals+=("$c" "$c"); done
+         pick sid "Which session asked for this probe, by its key (--sid)" \
+           "The probe's output belongs to the session whose worker returned the block: its id names the out tray a fallback probe's files go to, and the folder's History line counts the probe against it." \
+           "" 0 "${pvals[@]}" ;;
       *) exit 1 ;;
     esac
   done
@@ -6334,7 +6566,7 @@ STUB
 
   tour_step 3 "$total" "start a job"
   tour_show open fix-the-gate --title "Fix the garden gate" --size small
-  tour_say "What it did: opened a folder on the desk, numbered one more than any folder before it, status queued, with the fields it was given. On a terminal, office open with nothing after it asks for the title, size, lane and source, and ? explains each; the tour gave them as flags, so nothing was asked."
+  tour_say "What it did: opened a folder on the desk, numbered one more than any folder before it, status queued, with the fields it was given. On a terminal, office open with nothing after it asks for the job in your own words (the title, the goal and the Asked section come from them) and, when your words name no project, which project, by key; the tour gave the fields as flags, so nothing was asked."
   tour_say "Why you would type it: a job gets a folder. The folder holds why the job exists, the questions and answers, and the ids of the sessions that worked on it."
   tour_pause || { tour_end; return 0; }
 
@@ -6384,25 +6616,23 @@ RC
   tour_end
 }
 
-# Walking in: `office` with no arguments.
-walk_in() {
-  local root name tz report state skew slips notes founded is_founded next_file next
-  if ! root="$(resolve_office 2>/dev/null)"; then
-    usage
-    printf '\nNot inside an office, and this machine has no default office. office init PATH builds one.\n'
-    printf '\nNext: office tour  (a throwaway office to try every verb on; then office init PATH builds a real one)\n'
-    return 0
-  fi
+# walk_in_head ROOT: the first lines every walk-in prints, on a terminal
+# or off it: the office, the date and time in its timezone, whether it is
+# founded and current, and the install's lines when they apply. Sets
+# WALK_TZ, WALK_SKEW (current, behind, ahead or unreadable) and
+# WALK_FOUNDED (yes or no) for what is read after.
+WALK_TZ=""; WALK_SKEW=""; WALK_FOUNDED=""
+walk_in_head() {
+  local root="$1" name tz report state founded tz_named tz_shown install_lines
   name="$(helper get "$root/$MANIFEST_REL" office.name --default "(unnamed)")"
   tz="$(office_tz "$root")"
-  local tz_named tz_shown
   tz_named="$(office_tz_named "$root")"
   tz_shown="$tz"
   [ "$tz_named" = "$tz" ] || tz_shown="$tz (the floor plan's $tz_named does not resolve here; office status says what fixes it)"
   report="$(skew_report "$root" 2>/dev/null)" && state="$(printf '%s\n' "$report" | head -n 1)" || state="unreadable"
-  case "$state" in current|behind|ahead) skew="$state" ;; *) skew=unreadable ;; esac
-  if helper profile-check "$root/$PROFILE_REL" "$SHAPE" >/dev/null 2>&1; then founded="founded"; is_founded=yes
-  else founded="UNFOUNDED (profile incomplete: office status)"; is_founded=no; fi
+  case "$state" in current|behind|ahead) WALK_SKEW="$state" ;; *) WALK_SKEW=unreadable ;; esac
+  if helper profile-check "$root/$PROFILE_REL" "$SHAPE" >/dev/null 2>&1; then founded="founded"; WALK_FOUNDED=yes
+  else founded="UNFOUNDED (profile incomplete: office status)"; WALK_FOUNDED=no; fi
   case "$state" in
     current) state="current with office-src $(install_version)" ;;
     behind) state="BEHIND office-src $(install_version) (run: office upgrade)" ;;
@@ -6416,9 +6646,24 @@ walk_in() {
   # run the install, so the Next line names the install line too); and the
   # latest detached run of the source's suite when its verdict is not OK
   # (FAILED, BROKEN, or RUNNING for over an hour), one line (0.17.2).
-  local install_lines
   install_lines="$(reader install-lines "$root" 2>/dev/null)" || install_lines=""
   [ -z "$install_lines" ] || printf '%s\n' "$install_lines"
+  WALK_TZ="$tz"
+}
+
+# Walking in: `office` with no arguments. On a terminal (stdin and stdout
+# both), the home screen (0.22.0); off one, piped or under a test or a
+# session, the page, ending with its Next line, as before.
+walk_in() {
+  local root slips notes next_file next
+  if ! root="$(resolve_office 2>/dev/null)"; then
+    usage
+    printf '\nNot inside an office, and this machine has no default office. office init PATH builds one.\n'
+    printf '\nNext: office tour  (a throwaway office to try every verb on; then office init PATH builds a real one)\n'
+    return 0
+  fi
+  if can_ask && [ -t 1 ]; then home_screen "$root"; return; fi
+  walk_in_head "$root"
   printf '\n'
 
   # In flight: one line per session open in the projects this office
@@ -6426,13 +6671,13 @@ walk_in() {
   # the desk's count and its first three ready folders. A gate cleared
   # since the last walk-in says so. Never fails the walk-in.
   local desk today since
-  today="$(office_date "$tz")"; since="$(last_walk_in "$root")"
+  today="$(office_date "$WALK_TZ")"; since="$(last_walk_in "$root")"
   # The Next line is worked out from the same reading as the desk, so
   # bale is asked each question once; it is printed last.
   next_file="$(mktemp)" || die "cannot make a temp file for the walk-in"
   TMP_PATHS+=("$next_file")
   desk="$(reader desk "$root" --walk-in --today "$today" ${since:+--since "$since"} \
-    --next-file "$next_file" --skew "$skew" --founded "$is_founded")"
+    --next-file "$next_file" --skew "$WALK_SKEW" --founded "$WALK_FOUNDED")"
   case $? in
     0|3) printf '%s\n' "$desk" ;;
     *) printf 'In flight:\n  could not be read (OFFICE_DEBUG=1 office for why)\n\nOn the desk:\n  could not be read; office desk says why\n' ;;
@@ -6449,6 +6694,85 @@ walk_in() {
   printf '\nSuggestion box: %s slip(s).\n' "$slips"
   printf '\nFrom here: office start, office land, office note TEXT, office slip TEXT, office drop, office open, office close FOLDER, office desk, office week, office projects, office status. office help lists everything by what you want to do; office tour tries it all on a throwaway office.\n'
   printf '\n%s\n' "$next"
+}
+
+# --- the home screen (0.22.0) ----------------------------------------------------
+#
+# `office` on a terminal: the walk-in's head, then each project the office
+# scopes, one line each, and what waits on the occupant, each with a key
+# (lib/office_home.py works it all out and writes the menu). A key runs the
+# verb's own code with its arguments filled in, as a command of its own;
+# when it ends, a key brings the screen back, worked out again. He never
+# types a session id or a file name here: sessions are named by their
+# folders, and responses and bundles are found in this machine's downloads.
+
+HOME_PY="$OFFICE_SRC/lib/office_home.py"
+homex() { pylib "$HOME_PY" "$@"; }
+
+# read_key VAR PROMPT: one key, on a terminal, without a return. A return
+# alone is the empty key; the end of the input leaves.
+read_key() {
+  local __var="$1" __k
+  IFS= read -r -s -n 1 -p "$2" __k || { printf '\n'; printf -v "$__var" '%s' q; return 0; }
+  printf '%s\n' "${__k:-(return)}"
+  printf -v "$__var" '%s' "$__k"
+}
+
+home_screen() {
+  local root="$1" menu today since key line kind text rc d dl=() fields=()
+  # Where downloads land is asked once on this machine and kept (doctrine
+  # section 4): the home screen offers the responses and the planner's
+  # bundles it finds there.
+  if ! downloads_known; then
+    downloads_setting "the home screen offers the responses and the planner's bundles it finds in your downloads"
+  fi
+  while IFS= read -r d; do [ -n "$d" ] && dl+=(--dir "$d"); done <<< "$DOWNLOADS"
+  menu="$(mktemp)" || die "cannot make a temp file for the home screen"
+  TMP_PATHS+=("$menu")
+  while :; do
+    printf '\n'
+    walk_in_head "$root"
+    printf '\n'
+    today="$(office_date "$WALK_TZ")"; since="$(last_walk_in "$root")"
+    : > "$menu"
+    if ! homex page "$root" --today "$today" ${since:+--since "$since"} --tz "$WALK_TZ" --skew "$WALK_SKEW" \
+        --founded "$WALK_FOUNDED" --menu-file "$menu" "${dl[@]}"; then
+      printf 'The home screen could not be worked out (the line above says why; OFFICE_DEBUG=1 office says more).\n'
+      printf 'office desk shows the desk, and office help the verbs.\n'
+      return 1
+    fi
+    record_walk_in "$root" "$today"
+    printf '\n'
+    while :; do
+      read_key key "Your key: "
+      [ -n "$key" ] || key=q
+      line="$(awk -F'\t' -v k="$key" '$1 == k { print; exit }' "$menu")"
+      [ -n "$line" ] && break
+      printf '  %s is not one of the keys above; q leaves\n' "$key"
+    done
+    IFS=$'\t' read -r -a fields <<< "$line"
+    kind="${fields[1]}"
+    printf '\n'
+    case "$kind" in
+      quit) return 0 ;;
+      office)
+        debug "the home screen runs: office ${fields[*]:2}"
+        env -u OFFICE_RERUN -u OFFICE_REACHED_FILE "$OFFICE_SRC/bin/office" "${fields[@]:2}"; rc=$? ;;
+      shell)
+        debug "the home screen runs: ${fields[2]}"
+        bash -c "${fields[2]}"; rc=$? ;;
+      note)
+        IFS= read -r -p "A line for today's notepad page (return notes nothing): " text || text=""
+        if [ -n "${text//[[:space:]]/}" ]; then
+          env -u OFFICE_RERUN -u OFFICE_REACHED_FILE "$OFFICE_SRC/bin/office" note "$text"; rc=$?
+        else rc=0; fi ;;
+      *) warn "the home screen's menu holds a key of no known kind ($kind); nothing ran"; rc=1 ;;
+    esac
+    [ "$rc" = 0 ] || printf '\n(it ended with exit %s; the lines above say why)\n' "$rc"
+    printf '\n'
+    read_key key "Return brings your home screen back; q leaves: "
+    [ "$key" != q ] || return 0
+  done
 }
 
 usage_where() {
@@ -6560,11 +6884,56 @@ Examples:
 EOF
 }
 
+# office help: the occupant's own verbs, one line each in plain words
+# (share/verbs.toml says which verb is on which surface, and the doctrine's
+# verbs table says the same); office help --all is every verb, the
+# plumbing the office and its sessions use included (0.22.0).
 usage() {
+  cat <<EOF
+office-src $(install_version): your office, on this machine.
+
+usage: office [VERB [args]]
+
+  office                    your home screen: your projects, what waits on you,
+                            and a key for each thing to do
+  office note TEXT          a line on today's notepad page
+  office drop [FILE]        a message or a thread someone gave you, from the
+                            clipboard, kept in the in-tray to sort out later
+  office slip TEXT          a friction slip in the suggestion box
+  office open               a new job, in your own words: its folder on the desk
+  office start              send a session out: a job on the desk, or a
+                            planner's bundle from your downloads
+  office land               bring a session back: its response applied, and
+                            what follows from it
+  office desk               every job on the desk, in order
+  office close [FOLDER]     a finished job, to the filing cabinet
+  office deliver [FOLDER]   a job's landed work to its project's audience,
+                            asked once before anything leaves
+  office projects add       a project for this office to watch
+  office tour               try it all on a throwaway office, then delete it
+  office init PATH          build a new office
+
+A folder is one job: what was asked, in your words, the sessions that
+worked on it and what came of them. It sits on the desk while the job is
+open and moves to the filing cabinet when it is done.
+A project is a repo whose audience may read what it holds; the office
+keeps everything around it that only you and your sessions may read.
+
+The rest is plumbing: the verbs the office and its sessions use, which a
+session names in full when it needs you to run one.
+office help --all lists every verb; office help VERB explains one.
+EOF
+}
+
+usage_all() {
   cat <<EOF
 office-src $(install_version): builds and keeps offices.
 
 usage: office [VERB [args]]
+
+Every verb, yours and the plumbing, by what it is for. office help lists
+only yours; on a terminal, office alone is the home screen, which runs most
+of them for you by key.
 
 New here? office tour builds a throwaway office, walks you through it, and
 deletes it at the end. Nothing real is touched.
@@ -6572,8 +6941,10 @@ deletes it at the end. Nothing real is touched.
 What you want to do, and the command for it:
 
 Walk in and look around
-  office                    walk in: sessions out, what is ready, this week, the last
-                            notes, slips, and the one command to type next
+  office                    on a terminal, the home screen: your projects, what waits
+                            on you, a key for each; off one, the walk-in: sessions
+                            out, what is ready, this week, the last notes, slips,
+                            and the one command to type next
   office desk               in flight, ready in order, parked under what each waits
                             for, candidates, orphaned riders, pending desk moves
   office week               this week's calendar and its gaps
@@ -6695,17 +7066,22 @@ HELP_VERBS=" init found survey status upgrade where default note slip drop open 
 # share/verbs.toml gives them) explains them.
 HELP_PAIRS=" blueprint-open blueprint-ratify blueprint-close rider-add rider-carry rider-consumed agenda-add watches-check letterhead-check "
 
-# office help [VERB [WORD]]: everything by task, or one verb's own help.
+# office help [--all | VERB [WORD]]: the occupant's verbs, every verb by
+# task, or one verb's own help.
 cmd_help() {
   [ $# -gt 0 ] || { usage; return 0; }
+  if [ "$1" = --all ]; then
+    [ $# -eq 1 ] || { usage >&2; die "office help --all takes nothing else"; }
+    usage_all; return 0
+  fi
   local pair="${1}${2:+-$2}"
   case "$HELP_PAIRS" in
     *" $pair "*) main "${pair%%-*}" "${pair#*-}" --help; return ;;
   esac
-  [ $# -le 1 ] || { usage >&2; die "office help knows no verb $*; the list above is every verb"; }
+  [ $# -le 1 ] || { usage >&2; die "office help knows no verb $*; office help --all lists every verb"; }
   case "$HELP_VERBS" in
     *" $1 "*) main "$1" --help ;;
-    *) usage >&2; die "office help knows no verb $1; the list above is every verb" ;;
+    *) usage >&2; die "office help knows no verb $1; office help --all lists every verb" ;;
   esac
 }
 

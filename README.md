@@ -15,22 +15,45 @@ which ships with every office session.
 | you want to | type |
 |---|---|
 | see what an office is like before committing to anything | `office tour` |
-| walk in: what is out, what is ready, and the one command to type next | `office` |
+| walk in: your projects, what waits on you, and a key for each thing to do | `office` |
 | capture a thought | `office note TEXT` |
+| drop a message or a thread someone gave you, to sort out later | `office drop` |
 | drop a friction slip | `office slip TEXT` |
-| start a job | `office open` |
-| plan work too big for one folder | `office blueprint open` |
-| apply the desk moves a sitting decided | `office moves` |
-| send a session out for it | `office start` |
+| start a job, in your own words | `office open` |
+| send a session out for it, or a planner's bundle from your downloads | `office start` |
 | bring the session back | `office land` |
 | deliver a folder's landed work to the project's audience | `office deliver FOLDER` |
 | build an office | `office init` |
-| see every verb, grouped by what you want to do | `office help` |
+| see your own verbs, one line each | `office help` |
+| see every verb, the plumbing too, grouped by what it is for | `office help --all` |
 
-Every verb is a wizard on a terminal: it asks for what you left out, `?`
-explains a question, and every question has a flag, so the same command
-can be typed in full and piped input is never asked anything. `office
-VERB --help` (or `office help VERB`) explains one verb, with examples.
+On a terminal, `office` alone is your home screen: most of what you do
+there is one key, and you never type a session id or a file name.
+
+Every verb is a wizard on a terminal, and every wizard keeps one rule:
+you supply the words, the session supplies the structure. A verb asks you
+only for what only you know: the ask, in your words; which project, when
+the office cannot tell; yes or no on what cannot be undone; and what only
+your eyes can check. Everything else it works out and says, or leaves for
+a session to set. A choice among things the office knows (a folder, a
+session, a project, a bundle) has a key. `?` explains a question, and
+every question has a flag, so the same command can be typed in full and
+piped input is never asked anything. `office VERB --help` (or `office
+help VERB`) explains one verb, with examples.
+
+### Your verbs and the plumbing
+
+`office help` lists your own verbs, one line each in plain words: the
+home screen, `note` and `drop` (the instant captures), `slip`, `open`,
+`start`, `land`, `desk`, `close`, `deliver`, `projects add`, `tour` and
+`init`, with what a folder is (one job, what was asked in your words and
+the sessions that worked on it) and what a project is (a repo whose
+audience may read it, with the office holding what is around it). The
+rest is the plumbing the office and its sessions use: a session names
+the line in full when it needs you to run one, and `office help --all`
+lists every verb. share/verbs.toml says which verb is on which surface
+(`surface = "occupant"` or `"plumbing"`), the doctrine's verbs table says
+the same, and every verb works the same on either.
 
 If you already use bale: with the office you never type a session id,
 never assemble an include list, and never forget a landing step. `office
@@ -64,7 +87,28 @@ PATH, and git's global config is switched off for it.
 
     office
 
-Walking in shows the office's name, the date and time in its timezone
+On a terminal it is your home screen. Under the office's name, the date
+and time and its state, each project the office scopes has one line:
+what is in flight on it, or what last landed and when (or that nothing
+has), and the desk in one line. Then what waits on you, each with a key:
+the next move first, then
+a response in your downloads for a session that is out (a file to offer:
+whether it has arrived is still bale's to say, and `office land` asks
+it), a planner's bundle in your downloads that no session has opened
+(bale's records say which were), each unsorted drop and the sort, desk
+moves a sitting decided, an office out of step with the install, and a
+read-only sitting, which only you can say is over. Keys for a new job
+(`o`), sending a session out (`s`), bringing one back (`l`), a note
+(`n`), a drop (`d`), the whole desk (`k`) and help (`h`) are always
+there, and `q` leaves. A key runs the verb's own code with its arguments
+filled in and asks only what that verb must; when it ends, a key brings
+the home screen back, worked out again. Sessions are named by their
+folders (`folder 3, Fix the login`), never by their ids. The first time,
+it asks where this machine's downloads land (`downloads` in
+machine.toml), and never again.
+
+Off a terminal (piped, under a test or a session) it is the page, as
+before. Walking in shows the office's name, the date and time in its timezone
 (and that it is on UTC, when the floor plan's zone does not resolve;
 `office status` names what fixes that),
 whether it is founded and current (and, when the office scopes the
@@ -109,17 +153,21 @@ Each verb commits only the paths it touched. `office note` and `office
 slip` work in an unfounded office and in one that needs an upgrade; they
 warn and write. `office note` commits a notepad page only when its
 committed bytes are untouched and the new lines are at its end. `office
-slip` asks on a terminal what the slip is about (the office, bale,
-office-src, or one of the office's projects) unless `--about` says so.
+slip` asks on a terminal only for the words; what the slip is about (the
+office, bale, office-src, or one of the office's projects) is `--about`'s
+to say, or the session's that reads the box.
 
 `office drop` captures a message or a thread nobody has read for you:
 one page in the in-tray, `in-tray/DATE-SLUG.md`, committed on its own,
 with its first line as the heading, four field lines (`dropped`,
 `project`, `via`, `status: unsorted`) and the text verbatim under `##
 Text`. The text comes from a file, stdin, or, on a terminal with
-neither, the clipboard (machine.toml's `paste_command`, asked once). It
-asks one question, the project, in any words (`--project`); a plain
-return leaves it empty, and it never refuses a drop it can write. The
+neither, the clipboard (machine.toml's `paste_command`: this machine's
+own reader, found and kept the first time; asked only when there is
+none). When the office scopes a project, it asks one question, the
+project, each of the office's with a key and any words taken
+(`--project`); a plain return leaves it empty, and it never refuses a
+drop it can write. The
 in-tray arrives with the first drop. From then on every session `office
 start` sends out carries the unsorted drops, and a session that can
 judge one sorts it in its notes.md (doctrine section 4); `office start
@@ -132,7 +180,7 @@ a folder (a new one, or folder N) moves there with its brief: the next
 
 ### Start a job, and finish one
 
-    office open                                      # a folder on the desk; asks for what it needs
+    office open                                      # a folder on the desk, from the job in your words
     office open house-hunt --thread < thread.txt     # ...seeded with the thread that started it
     office open fix-login --goal "Fix the login redirect"   # ...with the goal office start offers
     office desk                                      # in flight, ready in order, parked, candidates
@@ -140,9 +188,20 @@ a folder (a new one, or folder N) moves there with its brief: the next
     office close fix-login                           # to the filing cabinet, done
     office reopen fix-login                          # back to the desk, history and all
 
+On a terminal `office open` asks for the job in your own words, as many
+lines as you like (a blank line ends them). The first line is the
+folder's title and its slug comes from it; the words are kept, word for
+word, in the folder's Asked section, and as one line they are the goal
+`office start` sends. It asks which project the job is on, by key, only
+when your words name none of the office's projects. The size is small
+and the source is you, until a session says otherwise; every flag still
+sets its field. A title another folder took today gets a name of its
+own.
+
 A folder is named by the date and a slug, and can be named by any unique
-part of that name or by its number, `folder 12`. Folders, their fields,
-statuses and gates are below.
+part of that name or by its number, `folder 12`; asked for one, a verb
+lists them with a key each. Folders, their fields, statuses and gates are
+below.
 
 ### Plan work too big for one folder
 
@@ -167,11 +226,18 @@ just before it packs one. The details are below.
 
 ### Send a session out
 
-    office start                       # asks: which job, in the office or on a project, the goal
+    office start                       # your downloads' new bundles by key, then which job by key
     office start --drop in-tray/2026-10-14-login-error.md   # a dropped message, straight out
     office start --sort                # the drops nothing carried, to a session of their own
 
-It packs the session with bale where the work lands, records it in the
+On a terminal, bare `office start` first offers the planner's bundles in
+your downloads that no session has opened, newest first, one key each (a
+plain return goes on), then asks which job, by key, or a new one in your
+words. Where the work lands is the folder's lane (asked by key only when
+the lane names no project), the goal is the folder's own or your words,
+what the session will change is the session's to forecast, and what
+rides with a project rides as declared; each is said, not asked. It
+packs the session with bale where the work lands, records it in the
 folder, and puts every file to attach in one out tray, `~/out-tray/SID`,
 beside the opener it prints: attach the tray's files to a fresh chat and
 paste the opener. The details are below.
@@ -188,8 +254,8 @@ actions, records the planner's ratification, files the folder's
 walkthrough and delivery pages from the response, then its Sort on each
 drop's page, its questions and answers in the folder and its facts in the
 handbook, runs `office moves` when a drop was sorted (naming each folder
-it minted), offers to close a
-folder whose one session has landed and been ratified, closes the
+it minted), closes a folder whose one session has landed and been
+ratified (saying so, with the line that reopens it), closes the
 founding folder when the founding has landed, and names any watch that
 fired. `office relay` carries a planner's answer to a clarification back
 to the session's repo, through the project's shell for a hosted one. The
@@ -309,14 +375,14 @@ first `office init` on a machine sets it.
 
 ### Folders: numbers, fields, statuses and gates
 
-On a terminal, `office open` walks you through what you left out: the
-title, the size, the lane and the source, four answers, each skippable
-with a plain return but the title. The title is checked as soon as it is
-given: a folder of that name already on the desk or in the filing cabinet
-is said at once, and another title asked for, before the other three
-questions. Type `?` at any question to have the field explained. Every
-question has a flag, so the same folder opens in
-one line, and piped input is never asked anything:
+On a terminal, `office open` asks for the job in your own words and
+works out the rest (0.22.0): the title is the words' first line, the slug
+comes from it, the words go in the Asked section and become the goal, the
+size is small and the source is you. It asks the project, by key, only
+when your words name none of the office's projects. A name another folder
+took today gets one of its own (`-2`). Type `?` at a question to have it
+explained. Every field has a flag, which sets it as given, so the same
+folder opens in one line, and piped input is never asked anything:
 
     office open fix-login --title "Fix the login" --size small \
         --lane "office-src: bin/" --source "notepad/2026-09-30.md"
@@ -495,7 +561,7 @@ the agenda are checked against their committed bytes before the commit
 
 ### Sending a session out: the details
 
-    office start                       # asks: which job, in the office or on a project, the goal
+    office start                       # your downloads' new bundles by key, then which job by key
     office start fix-login --on office-src --goal "Fix the login redirect"
     office start plan-wave --in-office --read-only --goal "Plan the next wave"
     office start fix-login --on office-src 2026-10-05-fix-login.bale-bundle   # a planner's bundle

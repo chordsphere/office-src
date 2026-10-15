@@ -313,18 +313,19 @@ class TestStartNewOnATerminal(LandCase):
         state = json.loads(self.fake.state.read_text()) if self.fake.state.is_file() else {"repos": {}, "fail": []}
         state["fail"] = ["pack"]
         self.fake.state.write_text(json.dumps(state))
+        # 0.22.0: a new job for a bundle is opened from the bundle's own
+        # goal, the planner's words, so nothing is asked.
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start", "new", "--on", "alpha",
-                                          "2026-10-07-third-trip.bale-bundle"], self.root, self.e.env, [
-            (b"Title, in a few words (--title):", "third trip"),
-            (b"Size: small, medium or high (--size)", ""),
-            (b"Lane: the project and paths", ""),
-            (b"Source: where the job came from (--source)", ""),
-        ])
+                                          "2026-10-07-third-trip.bale-bundle"], self.root, self.e.env, [])
         self.assertEqual(code, 1, seen)
+        self.assertNotIn("your own words", seen)
         lines = [l.strip() for l in seen.replace("\r", "").splitlines() if l.strip()]
         name = next(p for p in self.desk() if p.endswith("-third-trip"))
         self.assertEqual(lines[-1], f"office start {name} --on alpha 2026-10-07-third-trip.bale-bundle")
         self.assertIn(f"desk/{name} (folder 2) was opened by this start and stays on the desk", seen)
+        md = (self.root / "desk" / name / "folder.md").read_text()
+        self.assertIn("- source: bundle 2026-10-07-third-trip.bale-bundle", md)
+        self.assertIn("The planner's bundle 2026-10-07-third-trip.bale-bundle, its goal:\n\n> The third trip\n", md)
         # The line, pasted as it is, sends the session once the cause is gone.
         state = json.loads(self.fake.state.read_text())
         state["fail"] = []
@@ -337,26 +338,34 @@ class TestStartNewOnATerminal(LandCase):
     def test_new_with_a_title_already_on_the_desk_offers_it_before_anything_else(self):
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start", "new", "--on", "alpha", "--goal", "g"],
                                    self.root, self.e.env, [
-            (b"Title, in a few words (--title):", "fix login"),
+            (b"The job, in your own words", "fix login\n"),
             (f"{self.folder} is already on the desk: start it".encode(), ""),
         ])
         self.assertEqual(code, 0, seen)
-        self.assertNotIn("Size:", seen)
+        self.assertNotIn("Which project", seen)
         self.assertIn(f"Packed ", seen)
         self.assertEqual(len([p for p in self.desk()]), 1)
         self.assertRegex((self.root / self.folder / "folder.md").read_text(), r"\n- \d{4}-\d{2}-\d{2}-fix-login-001\n")
 
-    def test_open_asks_another_title_at_once_rather_than_refusing_at_the_end(self):
+    def test_open_takes_his_words_and_a_name_already_taken_gets_one_of_its_own(self):
+        """0.22.0: the words, then the project by key (they name none);
+        no title, size or source is asked, and a name another folder took
+        today is never a reason to ask again."""
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "open"], self.root, self.e.env, [
-            (b"Title, in a few words (--title):", "fix login"),
-            (b"is already on the desk; give another title", "other job"),
-            (b"Size: small, medium or high (--size)", ""),
-            (b"Lane: the project and paths", ""),
-            (b"Source: where the job came from (--source)", ""),
+            (b"The job, in your own words", "Fix login\nA coworker says it fails on phones.\n"),
+            (b"Which project the job is on, by its key (--lane PROJECT)", "1"),
         ])
         self.assertEqual(code, 0, seen)
-        self.assertEqual(seen.count("Size:"), 1)
-        self.assertTrue(any(p.endswith("-other-job") for p in self.desk()))
+        for gone in ("Title", "Size:", "Source:", "give another title"):
+            self.assertNotIn(gone, seen)
+        name = next(p for p in self.desk() if p.endswith("-fix-login-2"))
+        md = (self.root / "desk" / name / "folder.md").read_text()
+        self.assertTrue(md.startswith("# Fix login\n"), md)
+        for line in ("- size: small", "- lane: alpha", "- source: the occupant",
+                     "- goal: Fix login; A coworker says it fails on phones."):
+            self.assertIn(f"\n{line}\n", md)
+        asked = md.split("## Asked", 1)[1].split("\n## ", 1)[0]
+        self.assertIn("in his words:\n\n> Fix login\n> A coworker says it fails on phones.\n", asked)
 
 
 # --- 4. the riders a pack carries, offered at start ----------------------------------------------
@@ -420,13 +429,14 @@ class TestRidersAtStart(RiderCase):
 class TestRidersOnATerminal(RiderCase):
     serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
 
-    def test_each_is_offered_and_a_plain_return_carries_it(self):
+    def test_each_it_carries_is_carried_without_a_question_and_said(self):
+        # 0.22.0: its glob says this session carries it, so the office does.
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start", "fix-login", "--on", "alpha", "--goal",
-                                          "g"], self.root, self.e.env, [
-            (b"Rider 1, Name the sweep (rides src/; the forecast's src): carry it into the folder", ""),
-        ])
+                                          "g"], self.root, self.e.env, [])
         self.assertEqual(code, 0, seen)
-        self.assertNotIn("Rider 2", seen)
+        self.assertIn("rider 1, Name the sweep, rides this forecast (rides src/; the forecast's src): carried with "
+                      "this session", seen)
+        self.assertNotIn("rider 2", seen)
         self.assertIn("### rider 1 - Name the sweep", self.riders_section())
 
 

@@ -285,31 +285,29 @@ class TestWizards(unittest.TestCase):
         self.env = dict(self.o.e.env)
         self.bin = str(self.o.e.office_bin)
 
-    def test_open_in_four_answers(self):
+    def test_open_asks_only_for_his_words(self):
+        """0.22.0, the wizard rule: the occupant supplies words, the office
+        the structure. An office that scopes no project asks nothing else:
+        the title is the words' first line, the size small, the source the
+        occupant, the goal the words as one line."""
         code, seen = terminal(self.env, self.o.root, [self.bin, "open"],
-                              [("(--title):", "Fix the login"), ("(--size) [return skips]:", "small"),
-                               ("(--lane) [return skips]:", "office-src: bin/"),
-                               ("(--source) [return skips]:", "notepad/2026-09-30.md")])
+                              [("The job, in your own words", "?"), ("works out the rest.", "Fix the login\n")])
         self.assertEqual(code, 0, seen)
-        for question in ("Title, in a few words (--title):", "(--size) [return skips]:",
-                         "(--lane) [return skips]:", "(--source) [return skips]:"):
-            self.assertIn(question, seen)
+        for gone in ("(--title):", "(--size)", "(--lane)", "(--source)"):
+            self.assertNotIn(gone, seen)
         folder = next((self.o.root / "desk").glob("*-fix-the-login"))
-        self.assertEqual([k for k, _ in fields_of((folder / "folder.md").read_text())],
-                         ["number", "status", "queued", "size", "lane", "source"])
+        self.assertEqual(fields_of((folder / "folder.md").read_text()),
+                         [("number", "1"), ("status", "queued"), ("queued", folder.name[:10]), ("size", "small"),
+                          ("source", "the occupant"), ("goal", "Fix the login")])
 
-    def test_returns_skip_and_question_marks_explain(self):
-        code, seen = terminal(self.env, self.o.root, [self.bin, "open", "job", "--size", "huge"],
-                              [("(--title) [job]:", ""), ("(--size) [return skips]:", "?"),
-                               ("(--size) [return skips]:", "medium"), ("(--lane) [return skips]:", ""),
-                               ("(--source) [return skips]:", "")])
+    def test_a_flag_it_does_not_take_is_explained_and_nothing_is_asked(self):
+        code, seen = terminal(self.env, self.o.root, [self.bin, "open", "job", "--size", "huge"], [])
         self.assertEqual(code, 0, seen)
         self.assertIn("--size 'huge': size is one of small, medium, high", seen)
-        self.assertIn("the desk puts small jobs first", seen.lower())
-        self.assertIn("Title, in a few words (--title) [job]:", seen)
+        self.assertNotIn("(--", seen.split("size is one of", 1)[1])
         folder = next((self.o.root / "desk").glob("*-job"))
-        self.assertEqual([k for k, _ in fields_of((folder / "folder.md").read_text())],
-                         ["number", "status", "queued", "size"])
+        self.assertEqual(fields_of((folder / "folder.md").read_text()),
+                         [("number", "1"), ("status", "queued"), ("queued", folder.name[:10]), ("size", "small")])
 
     def test_a_flag_given_is_never_asked(self):
         code, seen = terminal(self.env, self.o.root,
@@ -322,7 +320,8 @@ class TestWizards(unittest.TestCase):
         self.o.open("job")
         code, seen = terminal(self.env, self.o.root, [self.bin, "close"], [("(office close FOLDER):", "folder 1")])
         self.assertEqual(code, 0, seen)
-        self.assertIn("folder 1  ", seen)
+        # 0.22.0: each folder with a key; folder N typed out is taken too.
+        self.assertIn("[1] folder 1, job", seen)
         self.assertIn("(office close FOLDER):", seen)
         self.assertTrue(list((self.o.root / "filing-cabinet").glob("*-job")))
         code, seen = terminal(self.env, self.o.e.home, [self.bin, "init", "--no-founding"],
@@ -808,7 +807,9 @@ class TestCatalogAndDoctrine(unittest.TestCase):
 
     def test_the_doctrine_says_what_the_verbs_now_do(self):
         doctrine = " ".join((REPO / "doctrine/OFFICE.md").read_text().split())
-        for words in ("one-writer rule", "nothing ever numbers it after the fact", "folder is opened in four answers",
+        # 0.22.0: the wizard rule replaces the four answers.
+        for words in ("one-writer rule", "nothing ever numbers it after the fact",
+                      "the occupant supplies words; the session supplies structure", "a folder is opened from his words",
                       "explains the field when the answer is `?`", "no folder is ever dropped from the desk",
                       "walks git's history of every filed page"):
             self.assertIn(words, doctrine)

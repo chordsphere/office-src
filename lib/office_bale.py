@@ -599,6 +599,28 @@ def session_view(rd, d):
     return view
 
 
+def applied_latest(rd, cwd):
+    """The latest session bale applied in a repo (status's light pointer at
+    its applied history), or None when none has landed there: what the
+    home screen says last landed on a project (0.22.0)."""
+    applied = rd.key(rd.status(cwd), "status", "applied")
+    return rd.key(applied, "status", "applied.latest") if applied else None
+
+
+def bundle_stems(rd, d):
+    """The stems of the planner bundles a session was opened from, as its
+    dossier records them on its attempts (attempts[].bundle.stem), so
+    whether a bundle was opened is read, never guessed (0.22.0)."""
+    out = []
+    for a in rd.key(d, "dossier", "attempts") or []:
+        blk = rd.key(a, "dossier", "attempts[].bundle")
+        if blk:
+            stem = rd.key(blk, "dossier", "attempts[].bundle.stem")
+            if stem:
+                out.append(str(stem))
+    return out
+
+
 def outcome_word(view):
     """The blueprint's words for where a session stands: applied, held,
     bailed, open, superseded; anything else bale says, as bale says it."""

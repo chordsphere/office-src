@@ -16,7 +16,10 @@ the founding session out through `office start` with your answers in its
 brief (`office found` does the same for an office that is still
 unfounded). From then on the office is on its own, and office-src
 reaches it only through `office upgrade`. Every day: `office` to walk in
-(it ends with a Next line naming the one command to type), `office note`
+(on a terminal, your home screen: your projects one line each, then what
+waits on you, each with a key that runs it, so you never type a session id
+or a file name; off a terminal, the page, ending with a Next line naming
+the one command to type), `office note`
 to capture a line, `office slip` to drop a friction slip, `office drop`
 to drop a message or a thread in the in-tray (from the clipboard, a file
 or stdin, with the project in any words), `office start` to send a
@@ -70,8 +73,13 @@ open blueprints, all computed when it runs. `office start` writes the
 digest again just before it packs a sitting and sends the drafting table
 with it. Walking in
 shows the sessions open in those projects. `office status`, `survey` and
-`upgrade` look after the office itself. `office help` lists every verb by
-what you want to do, and every verb's `--help` has examples.
+`upgrade` look after the office itself. `office help` lists your own
+verbs, one line each; `office help --all` lists every verb, the plumbing
+the office and its sessions use included, by what it is for; and every
+verb's `--help` has examples. Every wizard keeps one rule: you supply the
+words, the session supplies the structure, so a verb asks you only for
+the ask in your words, which project when the office cannot tell, yes or
+no on what cannot be undone, and what only your eyes can check.
 
 ## Who uses it, where and when it runs
 
@@ -152,6 +160,33 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Recent changes
 
+- 0.22.0 (session 2026-10-15-home-screen-001): the home screen, the first
+  of the front-door arc's four sessions.
+  - `office` on a terminal is your home screen: each project one line
+    (what is in flight on it, or what last landed and when), then what
+    waits on you with a key each: the next move, a response in your
+    downloads, a planner's bundle no session has opened, each unsorted
+    drop, the desk moves, an office out of step, a sitting to end. Keys
+    for a new job, start, land, a note, a drop, the desk and help are
+    always there; `q` leaves. Off a terminal it is the page with its Next
+    line, unchanged.
+  - Bare `office start` offers the bundles in your downloads that no
+    session opened (bale's records say which), newest first, by key.
+  - `office help` lists only your verbs; `office help --all` lists every
+    verb. share/verbs.toml and the doctrine's verbs table say which verb
+    is on which surface.
+  - The wizards ask only what only you know. `office open` asks for the
+    job in your words (title, slug, Asked section and goal come from
+    them; size small; source you) and the project by key only when your
+    words name none. `office start` takes where the work lands from the
+    folder's lane, the goal from the folder, what changes from the
+    session, what rides as declared, and carries the riders the forecast
+    touches; it asks the goal in your words when the folder has none.
+    `office land` closes a finished folder without asking. `office slip`
+    no longer asks what it is about. Choices are offered by key.
+  - The fast tier, in the worker's two-core sandbox: 70 to 73 seconds
+    before, 63 to 65 after, 343 tests both times.
+  - Additive: no migration.
 - 0.21.0 (session 2026-10-13-suite-lane-waits-006): the suite waits less,
   and a sitting never goes out on a stale digest without a word.
   - Most of the suite's time was Python compiling the office's modules
@@ -577,6 +612,19 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Known problems
 
+- The home screen and bare `office start` offer only the bundles in this
+  machine's `downloads` (machine.toml): bale's own search directories are
+  on none of its --json surfaces (a slip for bale-src already), and the
+  office never reads bale's config. A bundle saved somewhere else is
+  started by its path, `office start --bundle FILE`.
+- On a terminal, `office open`'s title is the first line of your words,
+  and `office start` sends the words as one line for the goal, while the
+  size is small and the paths whole: provisional until session 2 of the
+  front-door arc lets a session send back the real title, size and goal.
+- The paste command the office now takes without asking is the one it
+  finds on this machine. On WSL that is still PowerShell's Get-Clipboard,
+  offered from memory (below), and no longer shown as a question first:
+  the log line names it, and machine.toml's `paste_command` changes it.
 - A Sort section a session writes is not filed yet: `office land` reads
   nothing of it in 0.19.0, and a carried drop stays `unsorted` in the
   in-tray until the next release files it (and `office moves` mints the
