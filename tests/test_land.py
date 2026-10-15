@@ -839,9 +839,12 @@ class TestLandAProjectSession(LandCase):
         self.assertIn(f"=== RELAY END {sid} to planner ===", proc.stdout)
         self.assertTrue((self.proj / "AFTER-LAND-RAN").is_file())
         self.assertIn("after land (1 of 1)", proc.stderr)
-        # Piped, ratification is not asked, and the line to record it is.
-        self.assertIn(f"office sessions {self.name} {sid} --ratified", proc.stderr)
+        # Ratification is never asked at the landing (0.23.0), nor is a
+        # line to record it offered: the planner's next brief carries it.
+        self.assertNotIn("ratif", proc.stderr)  # the office's lines (bale's relay names itself on stdout)
         self.assertNotIn("ratified", self.folder_md())
+        # Piped, the relay's copy is not made, and that is said.
+        self.assertIn("the block for the planner is not on the clipboard: off a terminal", proc.stderr)
         self.assertFalse(self.fake.is_open(self.proj, sid))
 
     def test_ratified_by_flag_records_it_in_the_folder(self):
@@ -1086,26 +1089,24 @@ class TestLandOnATerminal(LandCase):
     serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
     def test_bale_asks_and_only_the_occupant_answers(self):
         """bale's admission and its merge are asked by bale, on the
-        occupant's terminal; the office asks only its own question."""
+        occupant's terminal; the office asks nothing (0.23.0: not even
+        about ratification)."""
         cfg = self.e.home / ".config/office-src"
         cfg.mkdir(parents=True, exist_ok=True)
         clip = self.e.tmp / "clipboard.txt"
-        (cfg / "machine.toml").write_text(f'clipboard_command = "tee {clip}"\n')
+        (cfg / "machine.toml").write_text(f'clipboard_command = "tee {clip}"\npaste_command = "cat {clip}"\n')
         sid = self.start("fix-login", "--on", "alpha", "--goal", "g")
         response_tarball(self.downloads, sid, {"src/a.py": "x\n", "docs/d.md": "y\n"})
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "land"], self.root, self.e.env, [
             (b"admit docs/d.md? [y/N]", "y"),
             (b"merge into origin (default)", ""),
-            (b"yes except TEXT, or not now (--ratified, --except TEXT, --not-now) [not now]:", "?"),
-            (b"corrected", "maybe"),
-            (b"answer yes, yes except TEXT, or not now", "yes except the docs path"),
         ])
         self.assertEqual(code, 0, seen)
         (_, _, tty), = self.fake.calls_of("apply")
         self.assertTrue(tty)
         self.assertEqual((self.proj / "docs/d.md").read_text(), "y\n")
-        self.assertIn(", except: the docs path", self.folder_md())
-        self.assertIn("the block for the planner is on the clipboard", seen)
+        self.assertNotIn("Did the planner ratify", seen)
+        self.assertIn("the block for the planner is on the clipboard (tee", seen)
         self.assertTrue(clip.read_text().startswith(f"=== RELAY BEGIN {sid} to planner ==="))
 
     def test_several_out_are_asked_for(self):

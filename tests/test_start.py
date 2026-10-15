@@ -304,16 +304,23 @@ def opener_from(text):
     return lines[a + 1:b]
 
 
-def recording_windows(d, clipboard_text=""):
+def recording_windows(d, clipboard_text="", clip_sets_clipboard=False):
     """A directory of fake Windows programs, as WSL puts the real ones on
     the PATH: clip.exe, explorer.exe and powershell.exe. Each appends one
     line to d/calls (its name, its arguments, the directory it ran in);
     clip.exe keeps what it was fed in d/clip.exe.in, and powershell.exe
-    prints clipboard_text, as Get-Clipboard would. Returns (d, d/calls)."""
+    prints clipboard_text, as Get-Clipboard would. With clip_sets_clipboard
+    (0.23.0) clip.exe also does what the real one does with what it is fed,
+    read as UTF-16LE: it becomes the clipboard powershell.exe prints, so a
+    copy the office reads back is held to what was fed. Returns (d,
+    d/calls)."""
     d.mkdir(parents=True)
     calls = d / "calls"
     record = f'printf \'%s %s (in %s)\\n\' "$(basename "$0")" "$*" "$PWD" >> {calls}\n'
-    bodies = {"clip.exe": f"cat > {d / 'clip.exe.in'}\n", "explorer.exe": "",
+    clip = f"cat > {d / 'clip.exe.in'}\n"
+    if clip_sets_clipboard:
+        clip += f"iconv -f UTF-16LE -t UTF-8 < {d / 'clip.exe.in'} > {d / 'clipboard.txt'}\n"
+    bodies = {"clip.exe": clip, "explorer.exe": "",
               "powershell.exe": f"cat {d / 'clipboard.txt'}\n"}
     (d / "clipboard.txt").write_text(clipboard_text)
     for name, body in bodies.items():
@@ -954,7 +961,7 @@ class TestStartOnAnImitatedWsl(StartCase):
 
     def setUp(self):
         super().setUp()
-        self.windows, self.calls = recording_windows(self.e.tmp / "windows")
+        self.windows, self.calls = recording_windows(self.e.tmp / "windows", clip_sets_clipboard=True)
         # The shell: runs the command, then lingers up to three seconds
         # while a program the command started has not said it ran.
         self.shell = self.e.tmp / "shell"
@@ -972,7 +979,9 @@ class TestStartOnAnImitatedWsl(StartCase):
         self.assertEqual(code, 0, seen)
         self.assertIn("Packed ", seen)
         self.assertFalse(self.calls.exists(), self.calls.read_text() if self.calls.exists() else "")
-        self.assertNotIn("on the clipboard", seen)
+        self.assertNotIn("is on the clipboard", seen)
+        # A copy not made is said, never skipped silently (0.23.0).
+        self.assertIn("the opener is not on the clipboard: this machine names no clipboard command", seen)
         self.assertNotIn("opened the out tray", seen)
 
     def test_pointed_at_the_fakes_the_same_start_reaches_both(self):
@@ -980,7 +989,9 @@ class TestStartOnAnImitatedWsl(StartCase):
         code, seen = self.start_on_a_terminal(env)
         self.assertEqual(code, 0, seen)
         screen = seen.replace("\r\n", "\n")
-        self.assertIn(f"the opener is on the clipboard ({self.windows / 'clip.exe'})", screen)
+        # 0.23.0: the copy is read back (Get-Clipboard, through the fake
+        # powershell.exe) and held to the opener before it is claimed.
+        self.assertIn(f"the opener is on the clipboard ({self.windows / 'clip.exe'}; read back and checked)", screen)
         self.assertIn(f"opened the out tray with {self.windows / 'explorer.exe'}", screen)
         fed = (self.windows / "clip.exe.in").read_bytes().decode("utf-16-le")
         self.assertEqual(fed.splitlines(), opener_from(screen))

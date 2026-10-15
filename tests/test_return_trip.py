@@ -340,7 +340,9 @@ class TestDownloadsOnStart(ReturnTripCase):
 # --- 3. land offers to close a finished folder ---------------------------------------------------
 
 class TestTheCloseOffer(LandCase):
-    """Local, piped: the offer's rule and its flag twins."""
+    """Local, piped: the offer's rule and its flag twins. Since 0.23.0 a
+    folder is finished when its one session landed applied: the planner's
+    ratification comes later, in the next brief, and land asks nothing."""
 
     def landed(self, *flags, files=None):
         sid = self.start(self.name, "--on", "alpha", "--goal", "g")
@@ -348,17 +350,17 @@ class TestTheCloseOffer(LandCase):
         return sid, self.run_office("land", sid, *flags, check=0)
 
     def test_piped_a_finished_folder_stays_open_and_land_says_so(self):
-        sid, proc = self.landed("--ratified")
-        self.assertIn(f"{self.name} recorded {sid} alone, and the planner ratified it with no exception; piped, "
+        sid, proc = self.landed()
+        self.assertIn(f"{self.name} recorded {sid} alone, and it landed applied; piped, "
                       "the folder stays open: office land --close closes it with the landing", proc.stderr)
         self.assertTrue((self.root / self.folder).is_dir())
 
     def test_close_closes_it_with_the_landing(self):
-        sid, proc = self.landed("--ratified", "--close")
+        sid, proc = self.landed("--close")
         self.assertFalse((self.root / self.folder).exists())
         md = (self.root / "filing-cabinet" / self.name / "folder.md").read_text()
         self.assertIn("- status: done", md)
-        self.assertIn(f"done: office land: {sid} landed and was ratified, the folder's only session", md)
+        self.assertIn(f"done: office land: {sid} landed applied, the folder's only session", md)
         self.assertIn(f"the folder {self.name}: closed, done", proc.stdout)
         self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
 
@@ -368,11 +370,13 @@ class TestTheCloseOffer(LandCase):
         self.assertTrue((self.root / self.folder).is_dir())
         self.assertIn("contradict", self.run_office("land", "--close", "--leave-open", check=1).stderr)
 
-    def test_it_is_not_offered_for_an_exception_or_a_second_session(self):
-        sid, proc = self.landed("--ratified", "--except", "the slug", "--close")
-        self.assertIn(f"--close: {self.name} stays open, since {sid} was ratified with an exception", proc.stderr)
+    def test_it_is_not_offered_for_a_second_session(self):
+        sid, proc = self.landed("--ratified", "--except", "the slug", "--leave-open")
+        # An exception a hand flag records keeps nothing open (0.23.0): it is
+        # fixed in the next session or queued there.
+        self.assertIn(f"--leave-open: {self.name} stays open", proc.stderr)
         self.assertTrue((self.root / self.folder).is_dir())
-        sid2, proc = self.landed("--ratified", "--close", files={"src/a.py": "again\n"})
+        sid2, proc = self.landed("--close", files={"src/a.py": "again\n"})
         self.assertIn(f"it records 1 other session(s) as well ({sid})", proc.stderr)
         self.assertTrue((self.root / self.folder).is_dir())
 
@@ -390,7 +394,7 @@ class TestTheCloseOffer(LandCase):
         md.write_text(base.format(lines=f"{sid}\n- {sid} ratified 2026-10-08"))
         self.assertEqual(h.finished_folder(md, sid), (True, None))
         md.write_text(base.format(lines=f"{sid}"))
-        self.assertIn("is not ratified", h.finished_folder(md, sid)[1])
+        self.assertEqual(h.finished_folder(md, sid), (True, None))
         md.write_text(base.format(lines=f"{other}\n- {sid}\n- {sid} ratified 2026-10-08"))
         self.assertIn("other session", h.finished_folder(md, sid)[1])
         md.write_text(base.format(lines=f"{other}"))
@@ -414,9 +418,10 @@ class TestLandOnAHostOnATerminal(ReturnTripCase):
             (b"(downloads in machine.toml) [1]:", "?"),
             (b"Where this machine's browser saves", str(mine)),
             (b"merge into origin (default)", ""),
-            (b"(--ratified, --except TEXT, --not-now) [not now]:", "yes"),
         ])
-        # 0.22.0: a finished job's folder is closed without a question.
+        # 0.22.0: a finished job's folder is closed without a question;
+        # 0.23.0: and finished means landed applied, nothing asked of ratification.
+        self.assertNotIn("Did the planner ratify", seen)
         self.assertIn("the job is finished, so the folder is closed", seen)
         self.assertNotIn("close the folder, done, or leave it open", seen)
         self.assertEqual(code, 0, seen)

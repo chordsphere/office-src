@@ -298,7 +298,9 @@ class TestWizards(unittest.TestCase):
         folder = next((self.o.root / "desk").glob("*-fix-the-login"))
         self.assertEqual(fields_of((folder / "folder.md").read_text()),
                          [("number", "1"), ("status", "queued"), ("queued", folder.name[:10]), ("size", "small"),
-                          ("source", "the occupant"), ("goal", "Fix the login")])
+                          ("source", "the occupant"), ("goal", "Fix the login"),
+                          # 0.23.0: what open worked out, for the session to send back.
+                          ("provisional", "title, size, goal")])
 
     def test_a_flag_it_does_not_take_is_explained_and_nothing_is_asked(self):
         code, seen = terminal(self.env, self.o.root, [self.bin, "open", "job", "--size", "huge"], [])
@@ -307,7 +309,8 @@ class TestWizards(unittest.TestCase):
         self.assertNotIn("(--", seen.split("size is one of", 1)[1])
         folder = next((self.o.root / "desk").glob("*-job"))
         self.assertEqual(fields_of((folder / "folder.md").read_text()),
-                         [("number", "1"), ("status", "queued"), ("queued", folder.name[:10]), ("size", "small")])
+                         [("number", "1"), ("status", "queued"), ("queued", folder.name[:10]), ("size", "small"),
+                          ("provisional", "size")])
 
     def test_a_flag_given_is_never_asked(self):
         code, seen = terminal(self.env, self.o.root,

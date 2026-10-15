@@ -118,7 +118,7 @@ class TestNextMove(unittest.TestCase):
         cmd, why = self.move(slips=ob.SLIPS_PILING)
         self.assertTrue(cmd.startswith("office open triage-the-suggestion-box --title"), cmd)
         self.assertIn(f"{ob.SLIPS_PILING} slips", why)
-        self.assertEqual(self.move(slips=ob.SLIPS_PILING - 1)[0], "office open")
+        self.assertEqual(self.move(slips=ob.SLIPS_PILING - 1)[0], "office start new")
         waiting = groups(candidates=[folder(5, "2026-10-05-triage-the-suggestion-box")])
         self.assertEqual(self.move(slips=9, g=waiting)[0], "office desk")
 
@@ -129,7 +129,7 @@ class TestNextMove(unittest.TestCase):
         self.assertIn("1 parked, 1 candidate(s)", why)
         self.assertEqual(self.move(g=groups(no_status=[{"name": "old"}]))[0], "office desk")
         cmd, why = self.move()
-        self.assertEqual(cmd, "office open")
+        self.assertEqual(cmd, "office start new")
         self.assertIn("nothing waits on you", why)
 
 
@@ -172,7 +172,7 @@ class TestNextOnTheWalkIn(LandCase):
         self.assertEqual(line, f"Next: office start {self.name} --on alpha  (folder 1 is open and no session is out "
                                f"for it; office close {self.name} instead when its job is done)")
         self.run_office("close", "fix-login", check=0)
-        self.assertTrue(last_line(self.walk_in()).startswith("Next: office open  (nothing waits on you"))
+        self.assertTrue(last_line(self.walk_in()).startswith("Next: office start new  (nothing waits on you"))
 
     def test_an_unfounded_office_lands_its_founding_session_first(self):
         fresh = self.e.init("fresh")

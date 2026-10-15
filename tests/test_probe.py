@@ -377,7 +377,8 @@ class TestProbeOnATerminal(ProbeCase):
     def test_it_shows_the_header_asks_once_and_puts_the_block_on_the_clipboard(self):
         copied = self.e.tmp / "copied.txt"
         self.machine.parent.mkdir(parents=True, exist_ok=True)
-        self.machine.write_text(f'clipboard_command = "tee {copied}"\n')
+        # 0.23.0: a copy is claimed only once it reads back (paste_command).
+        self.machine.write_text(f'clipboard_command = "tee {copied}"\npaste_command = "cat {copied}"\n')
         code, screen = on_a_terminal(self, [str(self.e.office_bin), "probe", "fix-login", str(self.block)],
                                      self.root, self.e.env, [(b"Run it? y or N (--yes) [N]:", "y")])
         self.assertEqual(code, 0, screen)
@@ -439,11 +440,12 @@ class TestProbeOnATerminal(ProbeCase):
             (b"Run it? y or N (--yes) [N]:", "y")])
         self.assertEqual(code, 0, screen)
         self.assertEqual(tomllib.loads(self.machine.read_text())["paste_command"], "wl-paste --no-newline")
-        self.assertIn("the block is not on the clipboard (no clipboard_command here)", screen)
+        self.assertIn("the probe block (PROBE BEGIN to PROBE END) is not on the clipboard: this machine names no "
+                      "clipboard command", screen)
         self.assertFalse(calls.exists(), calls.read_text() if calls.exists() else "")
 
     def test_on_an_imitated_wsl_pointed_at_the_fakes_powershell_is_offered_and_clip_exe_fed(self):
-        windows, calls = recording_windows(self.e.tmp / "windows", probe_block())
+        windows, calls = recording_windows(self.e.tmp / "windows", probe_block(), clip_sets_clipboard=True)
         env = dict(imitate_wsl(self.e, windows), OFFICE_DESKTOP_PATH=str(windows))
         code, screen = on_a_terminal(self, [str(self.e.office_bin), "probe", "fix-login"], self.root, env, [
             (f"this machine reads its clipboard with {h.WSL_PASTE}".encode(), None),
@@ -451,12 +453,14 @@ class TestProbeOnATerminal(ProbeCase):
         self.assertEqual(code, 0, screen)
         self.assertEqual(tomllib.loads(self.machine.read_text())["paste_command"], h.WSL_PASTE)
         made = [l.split(" (in ")[0] for l in calls.read_text().splitlines()]
-        self.assertEqual(made, ["powershell.exe -NoProfile -Command [Console]::OutputEncoding = "
-                                "[Text.Encoding]::UTF8; Get-Clipboard", "clip.exe "])
+        # The block read, the output copied, and the copy read back (0.23.0).
+        paste = "powershell.exe -NoProfile -Command [Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-Clipboard"
+        self.assertEqual(made, [paste, "clip.exe ", paste])
         back = (windows / "clip.exe.in").read_bytes().decode("utf-16-le").splitlines()
         self.assertEqual((back[0], back[-2], back[-1]), ("=== PROBE BEGIN fix-login ===",
                                                          "--- integrity: 4 lines ---", "=== PROBE END fix-login ==="))
-        self.assertIn(f"the probe block (PROBE BEGIN to PROBE END) is on the clipboard ({windows / 'clip.exe'})",
+        self.assertIn(f"the probe block (PROBE BEGIN to PROBE END) is on the clipboard ({windows / 'clip.exe'}; "
+                      "read back and checked)",
                       screen.replace("\r\n", "\n"))
 
 
