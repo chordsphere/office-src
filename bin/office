@@ -3357,8 +3357,9 @@ the folders opened and closed and what was added to the drafting table,
 read from git, since the latest sitting's notepad page was filed, and the
 page says how it found that); the watches (office watches check's own
 lines, never recorded); the standing lines; the desk (in flight, the first
-five ready, parked by gate); the agenda (open items, oldest first); and the
-open blueprints with their member folders. The page is overwritten on every
+five ready, parked by gate); the in-tray (each unsorted drop by its page's
+file name, with the project it names, or none); the agenda (open items,
+oldest first); and the open blueprints with their member folders. The page is overwritten on every
 run and never edited by hand, like the survey; the first run brings the
 drafting table into the office. office start runs it before it packs a
 read-only office session (a sitting), and the drafting table rides with
@@ -3564,6 +3565,8 @@ downloads_known() {
 usage_start() {
   cat <<'USAGE'
 usage: office start new [--words TEXT] [--in-office | --on PROJECT] [--goal TEXT] [--slug SLUG] ...
+       office start [new | FOLDER] --planner [--words TEXT] [--about PROJECT... | --in-office]
+                    [--sort-first | --no-sort-first]
        office start [FOLDER] [--in-office | --on PROJECT] [--goal TEXT] [--slug SLUG]
                     [--write PATH]... [--include PATH]... [--brief FILE] [--read-only]
                     [--leave-out PATH]... [--no-rides] [--carry N... | --carry none]
@@ -3572,6 +3575,32 @@ usage: office start new [--words TEXT] [--in-office | --on PROJECT] [--goal TEXT
        office start --drop PAGE [--title TITLE] [--lane LANE] [--size SIZE] [--goal TEXT] [--slug SLUG]
                     [--write PATH]... [--include PATH]... [--leave-out PATH]... [--no-rides]
        office start --sort
+A planner sitting from your words (office start --planner, the home
+screen's p key): you say what you want a planner for, and a read-only
+sitting goes out, recorded in a folder (one on the desk, by key, or new,
+minted from your words as start new mints one). Your words are its goal;
+nothing else is asked but what it concerns, and only when your words name
+none of the office's projects and the answer changes what rides (the
+office itself is an answer). The office gathers what rides and says why,
+one line each, on the screen and first in the sitting's brief: for each
+project it concerns, its handbook chapter, the folder.md of each folder on
+the desk on it, the walkthrough page of each job that landed on it since
+the last sitting, and the last sitting's notepad pages; beside them the
+sitting's own folder, the drafting table with the digest written first,
+the hung items and the unsorted drops, as every sitting carries. Piped,
+--words, and --about or --in-office when the words name no project, send
+the same sitting and ask nothing.
+Before any sitting is packed (from your words, --read-only, or a sitting's
+bundle), unsorted drops in the in-tray are said and the in-tray's sort is
+offered first, by key: taken (--sort-first), the sort goes out and the
+sitting right after it in the same motion, the sitting's opener the one
+left on the clipboard; declined (--no-sort-first), or piped with neither,
+the sitting goes alone and carries the drops.
+A planner's bundle whose brief carries a LANDS line (--- LANDS alpha,
+folder 14 ---, or the office, or a new folder: doctrine section 4) is sent
+without asking where it lands or which job, and start says both in one
+line; a line that does not read, or names a project or a folder the office
+does not hold, is said and that question is asked.
 The one door for new work: office start new takes the job in your words
 (asked on a terminal; --words TEXT gives them), names the project only
 when your words name none of the office's (by key; --on PROJECT or
@@ -3665,6 +3694,13 @@ on the desk or in the filing cabinet, and says so.
                  files its Sort and Handbook, and runs office moves.
                  Refused while another sort is out, while an open session
                  holds the in-tray, and when no drop is unsorted
+  --planner      a read-only planner sitting from your words (above)
+  --about PROJECT
+                 what a planner sitting concerns, one project each time it
+                 is given (--in-office: the office itself); default: the
+                 projects your words name
+  --sort-first, --no-sort-first
+                 the answer to the sort's offer before a sitting
   --bundle FILE  a planner's bundle (FILE.bale-bundle, a path or the bare
                  name bale's search finds; given as a word, it needs no
                  flag): bale open replays the bundle's own pack line, so
@@ -3711,6 +3747,9 @@ Examples:
   office start --drop in-tray/2026-10-14-login-error.md
   office start --drop 2026-10-14-login-error --lane office-src --size medium
   office start --sort
+  office start --planner                       (asks what you want a planner for, and the folder by key)
+  office start new --planner --words "Plan the alpha release" --sort-first
+  office start fix-login --planner --words "Is the login fix the right order?" --about alpha
 The out tray is ~/out-tray/SID unless this machine's
 ~/.config/office-src/machine.toml sets out_tray. On WSL the tray opens in
 Explorer and the opener goes to the clipboard, the last copy made, read back
@@ -3951,6 +3990,13 @@ start_retry_hint() {
   elif [ -n "${bundle_given:-}" ]; then
     case "${where:-}" in office) line+=" --in-office" ;; project) line+=" --on $(qword "$project")" ;; esac
     line+=" $(qword "$bundle_given")"
+  elif [ "${planner:-0}" = 1 ]; then
+    # A planner sitting (0.24.0): his words again, and what they concern.
+    line+=" --planner --words $(shq "${goal:-$(printf '%s' "${said_words:-}" | tr '\n' ' ')}")"
+    for v in "${PLANNER_CONCERNS[@]}"; do
+      if [ "$v" = office ]; then line+=" --in-office"; else line+=" --about $(qword "$v")"; fi
+    done
+    [ "${slug_flag:-0}" = 0 ] || line+=" --slug $(qword "$slug")"
   else
     case "${where:-}" in office) line+=" --in-office" ;; project) line+=" --on $(qword "$project")" ;; esac
     [ -z "${goal:-}" ] || line+=" --goal $(shq "$goal")"
@@ -4173,15 +4219,258 @@ if r["opener"] is not None:
   return 0
 }
 
+# --- a planner sitting from his words (0.24.0) -------------------------------------
+#
+# office start --planner (the home screen's p key; office start new
+# --planner mints its folder, office start FOLDER --planner records it in
+# one on the desk): he says what he wants a planner for, in his words, and a
+# read-only sitting goes out. His words are its goal; the project is asked
+# only when they name none and what rides depends on it ("the office" is an
+# answer), the folder by key; nothing else. lib/office_planner.py says what
+# they concern and gathers what rides, and the brief says it, one line each.
+# These read and set cmd_start's own variables.
+
+PLANNER_PY="$OFFICE_SRC/lib/office_planner.py"
+planx() { pylib "$PLANNER_PY" "$@"; }
+PLANNER_HELP="What you want a planner for, as you would say it to the planner: the question, the next piece of work, what worries you. It is the sitting's goal, word for word in its brief; the office gathers what rides with it (the handbook chapters, the folders on the desk, what landed since the last sitting and that sitting's words) from what your words name."
+
+# planner_words ROOT: his words (--words, or asked on a terminal), the
+# goal they make (unless --goal), and what the sitting concerns: --about
+# PROJECT or --in-office as given, else the projects his words name, else
+# asked by key when the answer changes what rides, else the office itself.
+# Sets said_words, goal, PLANNER_FILE, PLANNER_CONCERNS and PLANNER_WHY.
+planner_words() {
+  local root="$1" out line key value named=() ask=no names list ans pvals=() pn a
+  if [ -z "${said_words//[[:space:]]/}" ]; then
+    can_ask || die "a planner sitting takes what you want it for, in your words: --words TEXT; piped input is never asked, and nothing was written"
+    ask_words said_words "What you want a planner for, in your own words (--words)" "$PLANNER_HELP"
+  fi
+  PLANNER_FILE="$(mktemp)" || die "no temporary file for your words"
+  TMP_PATHS+=("$PLANNER_FILE")
+  printf '%s\n' "$said_words" > "$PLANNER_FILE" || die "could not keep your words"
+  out="$(planx concerns "$root" --text-file "$PLANNER_FILE")" || die "your words could not be read (the line above says why); nothing was written"
+  while IFS=$'\t' read -r key value; do
+    case "$key" in
+      goal) [ -n "$goal" ] || goal="$value" ;;
+      concern) named+=("$value") ;;
+      ask) ask="$value" ;;
+    esac
+  done <<< "$out"
+  names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+  list="$(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')"
+  if [ "${#abouts[@]}" -gt 0 ]; then
+    for a in "${abouts[@]}"; do
+      printf '%s\n' "$names" | grep -qxF -- "$a" \
+        || die "--about $a: no such project in this office (it scopes: ${list:-none}); nothing was written"
+    done
+    PLANNER_CONCERNS=("${abouts[@]}"); PLANNER_WHY="as --about says"
+  elif [ "$in_office_given" = 1 ]; then
+    PLANNER_CONCERNS=(office); PLANNER_WHY="as --in-office says"
+  elif [ "${#named[@]}" -gt 0 ]; then
+    PLANNER_CONCERNS=("${named[@]}"); PLANNER_WHY="named in his words"
+    log "your words name $(printf '%s\n' "${named[@]}" | paste -sd, - | sed 's/,/, /g'): what rides is gathered for $([ "${#named[@]}" -eq 1 ] && printf 'it' || printf 'them') (--about PROJECT or --in-office says otherwise)"
+  elif [ "$ask" = yes ]; then
+    can_ask || die "your words name none of this office's projects ($list), and what rides depends on which: --about PROJECT, or --in-office for the office itself; piped input is never asked, and nothing was written"
+    while IFS= read -r pn; do [ -n "$pn" ] && pvals+=("$pn" "$pn"); done <<< "$names"
+    pvals+=(office "the office itself")
+    printf "Your words name none of this office's projects:\n" >&2
+    pick ans "What the sitting concerns, by its key (--about PROJECT, or --in-office)" \
+      "The office gathers what rides with the sitting from it: the project's handbook chapter, its folders on the desk and what landed on it since the last sitting. The office itself gathers the folders that name no project." \
+      "" 0 "${pvals[@]}"
+    PLANNER_CONCERNS=("$ans"); PLANNER_WHY="as he answered"
+  else
+    PLANNER_CONCERNS=(office)
+    if [ -z "$names" ]; then PLANNER_WHY="the office scopes no project"
+    else PLANNER_WHY="his words name no project, and every answer would gather the same"; fi
+    log "the sitting concerns the office itself: $PLANNER_WHY"
+  fi
+  goal="$(printf '%s' "$goal" | tr '\n' ' ' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  [ -n "$goal" ] || die "your words make no goal; nothing was written"
+  where=office
+}
+
+# planner_folder VAR ROOT: the folder that records the sitting, on a
+# terminal by key (the desk's folders, and a new one minted from his
+# words, the default); piped, it is named (new, or FOLDER) or refused.
+planner_folder() {
+  local __var="$1" root="$2" rows=() row vals=()
+  can_ask || die "name the folder that records the sitting: office start new --planner (a folder minted from your words) or office start FOLDER --planner; piped input is never asked, and nothing was written"
+  mapfile -t rows < <(folder_choices "$root" desk)
+  for row in "${rows[@]}"; do vals+=("${row%%$'\t'*}" "${row#*$'\t'}"); done
+  vals+=(new "a new folder, from these words")
+  printf 'The folder that records the sitting:\n' >&2
+  pick "$__var" "Which folder, by its key; a plain return mints a new one (office start FOLDER --planner, or new)" \
+    "The sitting is recorded in a folder, as every session is: its Sessions section names it, and its words are kept there. A new folder is minted from your words, its title, size and goal provisional until a session says otherwise." \
+    new 1 "${vals[@]}"
+}
+
+# planner_asked ROOT FOLDER: his words, kept in the Asked section of a
+# folder already on the desk that records the sitting, and committed; a
+# folder an open session's forecast holds (the one-writer rule) is said
+# and left, since the words ride in the brief all the same.
+planner_asked() {
+  local root="$1" folder="$2" held rc tz by
+  held="$(reader writers "$root" "$folder/folder.md" 2>/dev/null)"; rc=$?
+  if [ "$rc" = 3 ]; then
+    printf '%s\n' "$held" | sed 's/^/[office]   /' >&2
+    log "an open session holds $folder (the one-writer rule), so your words are not kept in its Asked section; they ride in the sitting's brief"
+    return 0
+  fi
+  tz="$(office_tz "$root")"
+  by="The occupant, at office start --planner on $(office_date "$tz") at $(office_time "$tz"), in his words, for a planner sitting"
+  if helper folder-asked "$root/$folder/folder.md" --words-file "$PLANNER_FILE" --by "$by" >/dev/null; then
+    commit_paths "$root" "office start --planner: his words in $(basename "$folder")" "$folder/folder.md" || true
+    log "kept your words in $folder's Asked section"
+  else
+    warn "your words could not be kept in $folder/folder.md (the line above says why); they ride in the sitting's brief"
+  fi
+}
+
+# planner_gather ROOT FOLDER: what the office gathers for the sitting
+# (office_planner.py gather), added to the pack's includes, its brief, and
+# what rides and why, said one line each before the pack.
+planner_gather() {
+  local root="$1" folder="$2" tmp out path why gargs=() c number ftitle words
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/office-sitting-brief.XXXXXXXX")" || die "no temporary directory for the sitting's brief"
+  TMP_PATHS+=("$tmp")
+  for c in "${PLANNER_CONCERNS[@]}"; do
+    if [ "$c" = office ]; then gargs+=(--office); else gargs+=(--about "$c"); fi
+  done
+  number="$(folder_fact "$root/$folder/folder.md" number 2>/dev/null)"
+  ftitle="$(head -n 1 "$root/$folder/folder.md" | sed 's/^# //')"
+  words="${number:+folder $number, }$ftitle"
+  out="$(planx gather "$root" --folder "$folder" "${gargs[@]}" --text-file "$PLANNER_FILE" \
+           --brief-out "$tmp/README.md" --includes-out "$tmp/includes" --day "$(office_date "$(office_tz "$root")")" \
+           --folder-words "$words" --concern-why "$PLANNER_WHY")" \
+    || die "what rides with the sitting could not be gathered (the line above says why); nothing was packed"
+  brief="$tmp/README.md"
+  while IFS= read -r path; do [ -n "$path" ] && includes+=("$path"); done < "$tmp/includes"
+  printf 'What rides with the sitting, and why (its brief says the same, first):\n' >&2
+  while IFS=$'\t' read -r path why; do
+    [ -n "$path" ] && printf '  %s: %s\n' "$path" "$why" >&2
+  done <<< "$out"
+}
+
+# offer_sort_first ROOT: before any sitting is packed (from his words, a
+# --read-only start, or a sitting's bundle), unsorted drops in the in-tray
+# are said, and the in-tray's sort is offered first, by key (--sort-first,
+# --no-sort-first). Taken, the sort goes out through office start --sort's
+# own code and the sitting he asked for goes out after it, in the same
+# motion, its opener the last copy made; declined, or piped with neither
+# flag, the sitting goes as it would have, carrying the drops. Not offered
+# while a sort is out or an open session holds the in-tray (said), and a
+# sort that does not go out is said and the sitting goes on. Reads
+# cmd_start's own variables.
+offer_sort_first() {
+  local root="$1" sitting=0 file count out ans sorts held rc
+  if [ "$planner" = 1 ] || { [ "$where" = office ] && [ "$read_only" = 1 ]; }; then
+    sitting=1
+  elif [ "$where" = office ] && [ -n "$bundle" ]; then
+    file="$bundle"; [ -f "$file" ] || file="$START_BUNDLE_FOUND"
+    [ -z "$file" ] || [ "$(reader bundle-sitting --bundle "$file" 2>/dev/null)" != yes ] || sitting=1
+  fi
+  if [ "$sitting" = 0 ]; then
+    [ -z "$sort_first" ] || log "--$([ "$sort_first" = yes ] && printf 'sort-first' || printf 'no-sort-first'): this session is not a sitting, so the sort is not offered before it"
+    return 0
+  fi
+  out="$(dropx list "$root" --unsorted 2>/dev/null)" || { debug "the in-tray could not be read for the sort's offer"; return 0; }
+  count="$(printf '%s\n' "$out" | grep -c .)"
+  [ "$count" -gt 0 ] || return 0
+  if [ "$sort_first" = no ]; then
+    log "$count unsorted drop(s) wait in the in-tray; --no-sort-first: they ride with the sitting, and no sort goes first"
+    return 0
+  fi
+  if sorts="$(reader sort-out "$root" 2>/dev/null)" && [ -n "$sorts" ]; then
+    log "$count unsorted drop(s) wait in the in-tray, and the in-tray's sort is out already ($(printf '%s\n' "$sorts" | head -n 1)): they ride with the sitting as well"
+    return 0
+  fi
+  held="$(reader writers "$root" in-tray 2>/dev/null)"; rc=$?
+  if [ "$rc" = 3 ]; then
+    log "$count unsorted drop(s) wait in the in-tray, and an open session holds it (the one-writer rule), so no sort goes first; they ride with the sitting"
+    return 0
+  fi
+  if [ "$sort_first" != yes ]; then
+    if ! can_ask; then
+      log "$count unsorted drop(s) wait in the in-tray; piped, the sitting goes as it is and carries them (--sort-first sends the in-tray's sort out first)"
+      return 0
+    fi
+    printf '%s unsorted drop(s) wait in the in-tray.\n' "$count" >&2
+    pick ans "Send the in-tray's sort out first, then this sitting, by its key (--sort-first, --no-sort-first)" \
+      "The sort is a session of its own that reads every unsorted drop and says where each goes; office land files what it says and mints the folders. Taken, it goes out first and the sitting you asked for goes out right after it, both in this one motion: two out trays, and the sitting's opener is the one left on the clipboard. Declined, the sitting goes out alone and carries the drops, as every session does." \
+      sort 0 sort "send the sort out first, then this sitting" sitting "just the sitting; the drops ride with it"
+    if [ "$ans" != sort ]; then
+      log "the sitting goes out alone, and the $count drop(s) ride with it"
+      return 0
+    fi
+  fi
+  log "sending the in-tray's sort out first ($count drop(s)), then the sitting, in the same motion"
+  # In a subshell of its own, so a refusal ends the sort and not the
+  # start; its temporary files are its own, and removed when it ends.
+  if ( TMP_PATHS=(); trap cleanup_tmp EXIT; START_NO_CLIPBOARD=1 start_sort ); then
+    printf '\n'
+    log "the in-tray's sort is out; now the sitting"
+  else
+    warn "the in-tray's sort did not go out (the lines above say why); the sitting goes out as it would have, carrying the drops"
+  fi
+}
+
+# bundle_lands_read ROOT: where a planner's bundle lands and the folder
+# that records it, from the LANDS line its brief carries (0.24.0), read
+# from the bundle here (or its copy in the downloads, for a bare name): each
+# taken unless a flag or a folder given says otherwise, and said in one
+# line; a line that does not read, a place the office does not scope or a
+# folder it does not hold on the desk is said, and that question comes back
+# alone. A bundle whose brief carries none is asked about as before.
+bundle_lands_read() {
+  local root="$1" file="$bundle" out key a b dl=() d lands_where="" lands_project="" lands_folder="" lands_words=""
+  if [ ! -f "$file" ]; then
+    file=""
+    if downloads_known; then
+      while IFS= read -r d; do [ -n "$d" ] && dl+=(--dir "$d"); done <<< "$DOWNLOADS"
+      file="$(reader find-download --name "$(basename "$bundle")" "${dl[@]}" 2>/dev/null)" || file=""
+    fi
+    [ -n "$file" ] || { debug "the bundle $(basename "$bundle") is not a file here, so its brief's LANDS line is not read; bale's search finds it"; return 0; }
+  fi
+  out="$(reader bundle-lands "$root" --bundle "$file")" || { warn "the bundle's brief could not be read for where it lands (the line above says why); asking as before"; return 0; }
+  while IFS=$'\t' read -r key a b; do
+    case "$key" in
+      absent) debug "the bundle's brief carries no LANDS line: where it lands and which folder are asked as before" ;;
+      place) lands_where="$a"; lands_project="$b" ;;
+      folder) lands_folder="$a" ;;
+      words) lands_words="$a" ;;
+      say) log "$a" ;;
+    esac
+  done <<< "$out"
+  if [ -n "$lands_where" ]; then
+    if [ -n "$where" ] && { [ "$where" != "$lands_where" ] || [ "$project" != "$lands_project" ]; }; then
+      log "the bundle's brief says it lands $([ "$lands_where" = office ] && printf 'in the office' || printf 'on %s' "$lands_project"); $([ "$where" = office ] && printf -- '--in-office' || printf -- '--on %s' "$project") says otherwise, and stands"
+      lands_words=""
+    elif [ -z "$where" ]; then
+      where="$lands_where"; project="$lands_project"
+    fi
+  fi
+  if [ -n "$lands_folder" ]; then
+    if [ -n "$want" ] && [ "$want" != "$lands_folder" ]; then
+      log "the bundle's brief names $([ "$lands_folder" = new ] && printf 'a new folder' || printf 'desk/%s' "$lands_folder"); $want, as given, stands"
+      lands_words=""
+    else
+      want="$lands_folder"
+    fi
+  fi
+  [ -z "$lands_words" ] || log "$lands_words (its LANDS line); neither question is asked"
+}
+
 cmd_start() {
   local want="" where="" project="" goal="" slug="" brief="" read_only=0 includes=() writes=() set_w=0 bundle=""
   local leave_out=() no_rides=0 carry=() carry_none=0 bundle_given="" slug_flag=0
   local root name md status lane lane_project lane_paths names cls ans tz day out sid tray tray_root rel about="" args=() v
   local packed_flags=() drop="" drop_title="" drop_lane="" drop_size="" drop_title_given="" sort=0 others=() said_words="" words_given=0
+  local planner=0 abouts=() sort_first="" in_office_given=0
   START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_BUNDLE_FOUND=""; START_DROP_PAGE=""
+  PLANNER_FILE=""; PLANNER_CONCERNS=(); PLANNER_WHY=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --in-office) [ -z "$where" ] || [ "$where" = office ] || die "--in-office and --on are two places; give one"; where=office; shift ;;
+      --in-office) [ -z "$where" ] || [ "$where" = office ] || die "--in-office and --on are two places; give one"; where=office; in_office_given=1; shift ;;
       --on) [ $# -ge 2 ] || die "--on needs the project's name"; [ "$where" != office ] || die "--in-office and --on are two places; give one"
             where=project; project="$2"; shift 2 ;;
       --goal|--slug|--brief|--write|--include)
@@ -4190,6 +4479,11 @@ cmd_start() {
                      --write) writes+=("$2"); set_w=1 ;; --include) includes+=("$2") ;; esac
         packed_flags+=("$1"); shift 2 ;;
       --sort) sort=1; shift ;;
+      --planner) planner=1; shift ;;
+      --about) [ $# -ge 2 ] || die "--about needs the project the sitting concerns (office projects lists them)"
+               abouts+=("$2"); shift 2 ;;
+      --sort-first) [ "$sort_first" != no ] || die "--sort-first and --no-sort-first are two answers; give one"; sort_first=yes; shift ;;
+      --no-sort-first) [ "$sort_first" != yes ] || die "--sort-first and --no-sort-first are two answers; give one"; sort_first=no; shift ;;
       --words) [ $# -ge 2 ] || die "--words needs the job, in your words (office start --help explains it)"
                said_words="$2"; words_given=1; shift 2 ;;
       --drop) [ $# -ge 2 ] || die "--drop needs the drop's page: in-tray/NAME.md, or its name (office desk lists them)"
@@ -4215,8 +4509,9 @@ cmd_start() {
   if [ "$sort" = 1 ]; then
     # The standalone sort takes nothing else: its goal, forecast and brief
     # are the office's own (0.20.0).
-    [ -z "$want$where$drop$bundle$drop_title$drop_lane$drop_size$said_words" ] && [ "${#packed_flags[@]}" -eq 0 ] \
+    [ -z "$want$where$drop$bundle$drop_title$drop_lane$drop_size$said_words$sort_first" ] && [ "${#packed_flags[@]}" -eq 0 ] \
       && [ "$no_rides" = 0 ] && [ "${#leave_out[@]}" -eq 0 ] && [ "${#carry[@]}" -eq 0 ] && [ "$carry_none" = 0 ] \
+      && [ "$planner" = 0 ] && [ "${#abouts[@]}" -eq 0 ] \
       || die "--sort sends the in-tray's own session, with the office's goal, forecast and brief, so it takes nothing else: office start --sort"
     root="$(resolve_office)" || exit 1
     require_current "$root"
@@ -4231,9 +4526,27 @@ cmd_start() {
   # --words is the one door's flag twin (0.23.0): a new job, in his words.
   if [ "$words_given" = 1 ]; then
     [ -n "${said_words//[[:space:]]/}" ] || die "--words is empty: the job, in your words"
-    [ -z "$want" ] || [ "$want" = new ] || die "--words opens a new job from your words, so it takes no folder (office start $want sends that folder out)"
     [ -z "$drop$bundle" ] || die "--words opens a new job from your words; a drop or a bundle carries its own"
-    want=new
+    if [ "$planner" = 0 ]; then
+      [ -z "$want" ] || [ "$want" = new ] || die "--words opens a new job from your words, so it takes no folder (office start $want sends that folder out)"
+      want=new
+    fi
+  fi
+  # A planner sitting from his words (0.24.0): read-only, packed in the
+  # office, his words its goal and the office's brief; what it concerns is
+  # --about PROJECT (or --in-office, the office itself), else his words.
+  if [ "$planner" = 1 ]; then
+    [ -z "$drop$bundle" ] || die "--planner sends a sitting from your words; a drop or a bundle carries its own"
+    [ "$where" != project ] || die "a planner sitting is packed in the office and lands nothing; --about $project says what it concerns, and the office gathers what rides for it"
+    [ "$set_w" = 0 ] || die "a planner sitting forecasts nothing (it is read-only), so it takes no --write"
+    [ -z "$brief" ] || die "a planner sitting's brief is the office's, written from your words and what rides; it takes no --brief"
+    [ "${#abouts[@]}" -eq 0 ] || [ "$in_office_given" = 0 ] || die "--about PROJECT and --in-office are two answers to what the sitting concerns; give --about for each project, or --in-office for the office itself"
+    read_only=1
+  else
+    [ "${#abouts[@]}" -eq 0 ] || die "--about says what a planner sitting concerns, so it goes with --planner (office start --planner --help)"
+  fi
+  if [ -n "$sort_first" ] && [ "$planner" = 0 ] && [ "$read_only" = 0 ] && [ -z "$bundle" ]; then
+    die "--sort-first and --no-sort-first answer the offer made before a sitting: they go with --planner, --read-only or a sitting's bundle"
   fi
   if [ -n "$drop" ]; then
     [ -z "$bundle" ] || die "--drop sends the drop out with the office's own brief, so it takes no bundle"
@@ -4261,17 +4574,26 @@ cmd_start() {
   # Bare office start on a terminal offers the planner's bundles in the
   # downloads that no session has opened, before it asks anything else
   # (0.22.0); a plain return goes on to the jobs on the desk.
-  if [ -z "$want$bundle$drop" ] && [ "${#packed_flags[@]}" -eq 0 ] && can_ask; then
+  if [ -z "$want$bundle$drop" ] && [ "${#packed_flags[@]}" -eq 0 ] && [ "$planner" = 0 ] && can_ask; then
     offer_bundles "$root"
     if [ -n "$bundle" ]; then bundle_given="$bundle"; bundle="$(readlink -f "$bundle")"; fi
   fi
+
+  # A planner's bundle whose brief says where it lands and which folder
+  # records it (its LANDS line, 0.24.0) is sent without either question.
+  [ -z "$bundle" ] || bundle_lands_read "$root"
+  # A planner sitting from his words (0.24.0): the words, and what they
+  # concern, before anything else.
+  [ "$planner" = 0 ] || planner_words "$root"
 
   # A dropped message, sent straight out: the folder minted and the page
   # moved into it, and where, the goal and the brief set (start_drop).
   [ -z "$drop" ] || start_drop
 
   # Which job.
-  if [ -z "$want" ]; then
+  if [ -z "$want" ] && [ "$planner" = 1 ]; then
+    planner_folder want "$root"
+  elif [ -z "$want" ]; then
     can_ask || { usage_start >&2; die "name the folder: office start FOLDER (office open makes one first); piped input is never asked"; }
     ask_start_folder want "$root"
   fi
@@ -4309,7 +4631,14 @@ cmd_start() {
     fi
     local desk_before words_file="" words_by="" words_source="" where_file=""
     desk_before="$(ls -1 "$root/desk" 2>/dev/null)"
-    if [ "$words_given" = 1 ]; then
+    if [ "$planner" = 1 ]; then
+      # A planner sitting's folder is minted from his words, as start new
+      # mints one (0.23.0), provisional as it makes them.
+      tz="$(office_tz "$root")"
+      words_file="$PLANNER_FILE"
+      words_by="The occupant, at office start --planner on $(office_date "$tz") at $(office_time "$tz"), in his words, for a planner sitting"
+      words_source="the occupant"
+    elif [ "$words_given" = 1 ]; then
       words_file="$(mktemp)" || die "no temporary file for your words"
       TMP_PATHS+=("$words_file")
       printf '%s\n' "$said_words" > "$words_file" || die "could not keep your words"
@@ -4333,6 +4662,11 @@ cmd_start() {
     fi
     local open_lane=""
     case "$where" in project) open_lane="$project" ;; office) open_lane="-" ;; esac
+    # A sitting on one project is filed on that project's lane; on several,
+    # or on the office itself, on none.
+    if [ "$planner" = 1 ] && [ "${#PLANNER_CONCERNS[@]}" -eq 1 ] && [ "${PLANNER_CONCERNS[0]}" != office ]; then
+      open_lane="${PLANNER_CONCERNS[0]}"
+    fi
     where_file="$(mktemp)" || die "no temporary file for where the work lands"
     TMP_PATHS+=("$where_file")
     rel="$(OPEN_FOR_START=1 OPEN_LANE="$open_lane" OPEN_WORDS_FILE="$words_file" OPEN_WORDS_BY="$words_by" \
@@ -4355,11 +4689,14 @@ cmd_start() {
   [ -f "$md" ] || die "desk/$name has no folder.md"
   status="$(folder_fact "$md" status)"
   case "$status" in done|absorbed|split|retired) die "desk/$name says status $status, which belongs in the filing cabinet; office status names what disagrees" ;; esac
+  # A planner sitting recorded in a folder already on the desk keeps his
+  # words in its Asked section, as the folder minted for one does.
+  if [ "$planner" = 1 ] && [ -z "$START_OPENED" ]; then planner_asked "$root" "desk/$name"; fi
 
   # The founding folder of an unfounded office goes out through the
   # founding door (office found's own code): the answers its folder keeps
   # ride in the brief, and only what was skipped is asked.
-  if [ -z "$brief" ] && [ -z "$bundle" ] && [ "${FOUNDING_DOOR:-0}" != 1 ] \
+  if [ -z "$brief" ] && [ -z "$bundle" ] && [ "$planner" = 0 ] && [ "${FOUNDING_DOOR:-0}" != 1 ] \
       && [ "$(door door-folder "$root" founding 2>/dev/null)" = "desk/$name" ] \
       && ! helper profile-check "$root/$PROFILE_REL" "$SHAPE" >/dev/null 2>&1; then
     [ "$where" != project ] && [ "$read_only" = 0 ] && [ "$set_w" = 0 ] && [ "${#includes[@]}" -eq 0 ] && [ -z "$slug" ] \
@@ -4376,7 +4713,9 @@ cmd_start() {
   local folder_goal
   folder_goal="$(folder_fact "$md" goal)"
   if [ -f "$root/desk/$name/brief.md" ]; then
-    if [ -n "$bundle" ]; then
+    if [ "$planner" = 1 ]; then
+      log "desk/$name/brief.md rides in the folder, not as the brief: a planner sitting's brief is the office's, from your words and what rides"
+    elif [ -n "$bundle" ]; then
       log "desk/$name/brief.md rides in the folder, not as the brief: a bundle carries its own brief, and the office adds nothing to it"
     elif [ -z "$brief" ]; then
       brief="$root/desk/$name/brief.md"
@@ -4416,6 +4755,9 @@ cmd_start() {
   fi
   start_check_place "$where" "$project" "$names"
   [ "$where" = project ] || about="$lane_project"
+  # A planner sitting gathers its own context (office_planner.py): no
+  # project's tree rides with it, only what the office holds about them.
+  [ "$planner" = 0 ] || about=""
   # A build session writes the folder's two pages from the install's
   # templates, which ride beside the request (share/verbs.toml, build).
   [ "$where" != project ] || START_INSTALL_FILES+=("templates/walkthrough.md" "templates/delivery.md")
@@ -4449,7 +4791,8 @@ cmd_start() {
   # session's default slug says office.
   if [ -z "$slug" ]; then
     slug="$(short_slug "${name#[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-}")"
-    [ "$where" = project ] || slug="$slug-office"
+    if [ "$planner" = 1 ]; then slug="$slug-sitting"
+    elif [ "$where" != project ]; then slug="$slug-office"; fi
   fi
   slug="$(slugify "$slug")"; [ -n "$slug" ] || die "the slug has no letters or digits (give one: --slug SLUG)"
 
@@ -4487,6 +4830,12 @@ cmd_start() {
   # riders --forecast), carried into the folder before the pack, so each
   # rides in the request inside the folder's Riders section.
   offer_riders "$root" "desk/$name" "$where" "$project"
+
+  # What a planner sitting gathers, its brief, and what rides, said (0.24.0).
+  [ "$planner" = 0 ] || planner_gather "$root" "desk/$name"
+  # Before any sitting is packed, unsorted drops are said and the in-tray's
+  # sort offered first (0.24.0); the sitting goes out after it either way.
+  offer_sort_first "$root"
 
   args=(--where "$where" --goal "$goal" --slug "$slug")
   [ "$where" = project ] && args+=(--project "$project")
@@ -4630,8 +4979,14 @@ file_ratifications() {
 start_desktop() {
   local tray="$1" opener="$2" open
   # The opener's copy is the last the start makes (bale's pack copies it
-  # too, before), and every outcome of it is said, piped included.
-  to_clipboard "$opener" "the opener"
+  # too, before), and every outcome of it is said, piped included. The
+  # in-tray's sort sent out ahead of a sitting (0.24.0) leaves the copy to
+  # the sitting's opener, which comes after it.
+  if [ "${START_NO_CLIPBOARD:-0}" = 1 ]; then
+    log "the sort's opener is not copied: the sitting's goes on the clipboard after it; copy this one from the screen above"
+  else
+    to_clipboard "$opener" "the opener"
+  fi
   [ -t 1 ] || return 0
   if on_wsl; then
     open="$(machine_setting open_command "$(desktop_tool explorer.exe)")"
@@ -5359,6 +5714,164 @@ after_land_summary() {
 # The floor plan's [projects] table names each project and its repo on
 # this machine; `office projects add` is the only writer. The renderings
 # read bale's records through the read side and write nothing.
+# --- withdrawing a session never worked (0.24.0) -------------------------------------
+#
+# office withdraw: a session the office sent out that will never go to a
+# model, closed without its id typed. lib/office_bale.py says which can be
+# (no response in the downloads, no apply begun) and does it: bale unlock
+# SID --reason abandoned where the session is open, then a withdrawn line in
+# the History of each folder that records it.
+
+usage_withdraw() {
+  cat <<'USAGE'
+usage: office withdraw [FOLDER] [--yes]
+Withdraws a session the office sent out that will never be worked: one
+with no response in your downloads and that bale has not started to apply.
+It names the session by its folder and asks once, yes or no, since closing
+it cannot be undone; then it runs bale's unlock with bale's own reason,
+abandoned, in the repo the session is open in (through the project's shell
+for a project on a host), and adds a withdrawn line to the History of the
+folder that records it. You never type the session's id: with one such
+session it is named and asked, with several they are offered by key. A
+folder that recorded this session and no other is said, with the line that
+closes it; nothing is closed for you. A session with a response waiting is
+office land's, one bale held is bale's, and a read-only sitting is ended
+by office land, as before; none of them is offered.
+  FOLDER   the folder that records the session: its name, a unique part
+           of it, or folder N (a session id is taken too, for a script)
+  --yes    the answer to the one question; piped input is never asked, so
+           a script withdraws with it
+Under the hood: bale unlock SID --reason abandoned --json where the session
+is open; OFFICE_DEBUG=1 shows the call.
+Examples:
+  office withdraw                     (names the session, or offers them by key)
+  office withdraw fix-login           (the session that folder records)
+  office withdraw "folder 14" --yes
+USAGE
+}
+
+cmd_withdraw() {
+  local want="" yes=0 root out line rows=() kept=() row sid label folders created vals=() chosen="" tz day d ans
+  local dargs=() name words number title k why match=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --yes) yes=1; shift ;;
+      -h|--help) usage_withdraw; return 0 ;;
+      -*) usage_withdraw >&2; die "office withdraw does not know $1; the flags above are what it takes" ;;
+      *) [ -z "$want" ] || die "office withdraw takes one folder"; want="$1"; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office withdraw runs bale's unlock"
+  # A session whose response is in the downloads is land's, so the
+  # downloads are read: asked once on a terminal, said when unset piped.
+  if ! downloads_known; then
+    if can_ask; then downloads_setting "office withdraw leaves alone a session whose response is in your downloads"
+    else log "this machine's downloads are not set (downloads in $MACHINE_FILE), so a response there cannot be seen; bale's records still say whether an apply began"; fi
+  fi
+  if [ -n "$DOWNLOADS" ]; then
+    while IFS= read -r d; do [ -n "$d" ] && dargs+=(--dir "$d"); done <<< "$DOWNLOADS"
+  else
+    dargs+=(--no-downloads)
+  fi
+  out="$(reader withdraw-list "$root" "${dargs[@]}")" || die "the sessions out could not be read (the lines above say why); nothing was closed"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    case "$line" in kept$'\t'*) kept+=("${line#kept$'\t'}") ;; *) rows+=("$line") ;; esac
+  done <<< "$out"
+
+  # Which session: the one a folder (or an id) names, else the only one,
+  # else by key; a session that cannot be withdrawn is said with why.
+  if [ -n "$want" ]; then
+    name=""
+    if ! printf '%s' "$want" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}-.+-[0-9]{3}$'; then
+      name="$(find_folder "$root" desk "$want")" || exit 1
+    fi
+    for row in "${rows[@]}"; do
+      IFS=$'\t' read -r sid label folders created <<< "$row"
+      if [ "$sid" = "$want" ] || { [ -n "$name" ] && printf '%s\n' "${folders//, /$'\n'}" | grep -qxF -- "desk/$name"; }; then
+        [ -z "$match" ] || die "desk/$name records more than one session that can be withdrawn; name one by its id: office withdraw SID"
+        match="$row"
+      fi
+    done
+    if [ -z "$match" ]; then
+      for k in "${kept[@]}"; do
+        IFS=$'\t' read -r sid why <<< "$k"
+        if [ "$sid" = "$want" ] || { [ -n "$name" ] && [ -n "$(folder_records "$root" "desk/$name" "$sid")" ]; }; then
+          die "$sid ($([ -n "$name" ] && printf 'desk/%s' "$name" || printf 'no folder named')) cannot be withdrawn: $why"
+        fi
+      done
+      die "no session the office has out is $([ -n "$name" ] && printf 'recorded in desk/%s' "$name" || printf '%s' "$want") (office withdraw with nothing named lists the ones it can withdraw); nothing was closed"
+    fi
+    chosen="$match"
+  elif [ "${#rows[@]}" -eq 0 ]; then
+    for k in "${kept[@]}"; do IFS=$'\t' read -r sid why <<< "$k"; log "$(withdraw_name "$root" "$sid") is not offered: $why"; done
+    die "no session the office has out can be withdrawn: each is out with a response waiting or an apply begun, or none is out (office desk shows what is in flight); nothing was closed"
+  elif [ "${#rows[@]}" -eq 1 ]; then
+    chosen="${rows[0]}"
+  else
+    can_ask || { for row in "${rows[@]}"; do IFS=$'\t' read -r sid label folders created <<< "$row"; printf '  %s\n' "$(withdraw_name "$root" "$sid" "$folders")" >&2; done
+                 die "${#rows[@]} sessions out can be withdrawn; name one: office withdraw FOLDER --yes (piped input is never asked)"; }
+    for row in "${rows[@]}"; do
+      IFS=$'\t' read -r sid label folders created <<< "$row"
+      vals+=("$row" "$(withdraw_name "$root" "$sid" "$folders") ($([ "$label" = "this office" ] && printf 'the office' || printf '%s' "$label"))")
+    done
+    printf 'Sessions out that were never worked:\n' >&2
+    pick chosen "Which one to withdraw, by its key (office withdraw FOLDER)" \
+      "Each was sent out and has no response in your downloads, and bale has not started to apply it. Withdrawing closes it in bale (bale unlock, reason abandoned), which cannot be undone; its folder keeps a line saying so." \
+      "" 0 "${vals[@]}"
+  fi
+  IFS=$'\t' read -r sid label folders created <<< "$chosen"
+  for k in "${kept[@]}"; do IFS=$'\t' read -r d why <<< "$k"; debug "$d is not offered: $why"; done
+  words="$(withdraw_name "$root" "$sid" "$folders")"
+  printf 'Withdraw %s: %s, out %s%s, with no response and no apply begun.\n' "$words" "$sid" \
+    "$([ "$label" = "this office" ] && printf 'in the office' || printf 'on %s' "$label")" \
+    "${created:+ since $created}" >&2
+  if [ "$yes" = 0 ]; then
+    can_ask || die "piped input is never asked: office withdraw ${want:-FOLDER} --yes withdraws it; nothing was closed"
+    ask ans "Close it in bale, for good? It cannot be undone (--yes)" "no" 1 \
+      "yes closes the session in bale, with bale's reason abandoned, and writes a withdrawn line in its folder's History; the folder stays where it is. no leaves everything as it was."
+    case "$ans" in
+      y|Y|yes|Yes|YES) ;;
+      *) log "nothing was closed: $sid stays out"; return 0 ;;
+    esac
+  fi
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  out="$(reader withdraw "$root" --sid "$sid" --day "$day" "${dargs[@]}")" || die "$sid was not withdrawn (the lines above are bale's words, or the office's); nothing else was changed"
+  printf '%s' "$out" | python3 -c 'import json,sys
+r = json.load(sys.stdin)
+print(r["words"])
+for line in r["told"]:
+    print("[office] " + line, file=sys.stderr)
+for f in r["alone"]:
+    name = f.split("/", 1)[1]
+    print("[office] " + f + " was opened for this session alone and records no other; it stays on the desk, and when its job is not to be done, this line closes it: office close " + name + " --retired \"withdrawn before it was worked\"", file=sys.stderr)'
+}
+
+# withdraw_name ROOT SID [FOLDERS]: a session as the occupant knows it: by
+# the folder that records it (folder N, its title), the in-tray's sort, or
+# its slug.
+withdraw_name() {
+  local root="$1" sid="$2" folders="${3:-}" first number title
+  first="${folders%%, *}"
+  if [ -n "$first" ] && [ -f "$root/$first/folder.md" ]; then
+    number="$(folder_fact "$root/$first/folder.md" number 2>/dev/null)"
+    title="$(head -n 1 "$root/$first/folder.md" | sed -n 's/^# //p')"
+    printf '%s%s' "${number:+folder $number, }" "${title:-${first#*/}}"
+  elif [ "${sid#*-in-tray-sort-}" != "$sid" ]; then
+    printf "the in-tray's sort"
+  else
+    printf '%s' "$sid"
+  fi
+}
+
+# folder_records ROOT FOLDER SID: SID when the folder's Sessions section
+# records it, else nothing.
+folder_records() {
+  grep -qE "^- $3(:|$| )" "$1/$2/folder.md" 2>/dev/null && printf '%s' "$3"
+}
+
 usage_projects() {
   cat <<'EOF'
 usage: office projects                       list the projects this office scopes, where
@@ -7106,10 +7619,14 @@ usage: office [VERB [args]]
   office slip TEXT          a friction slip in the suggestion box
   office start new          a new job, in your own words: its folder on the
                             desk and its session out, in one go
+  office start --planner    a planner sitting, in your own words: what rides
+                            with it gathered for you, the sort offered first
   office start              send a session out: a job on the desk, or a
                             planner's bundle from your downloads
   office land               bring a session back: its response applied, and
                             what follows from it
+  office withdraw           close a session you sent out and will never run,
+                            asked once
   office desk               every job on the desk, in order
   office close [FOLDER]     a finished job, to the filing cabinet
   office deliver [FOLDER]   a job's landed work to its project's audience,
@@ -7211,6 +7728,9 @@ Send a session out
                             brief that tells the session to sort it, then do it
   office start --sort       the drops nothing carried, to a session of their own: it
                             reads them all with the desk, and land files its Sort
+  office start --planner    a read-only planner sitting from your words (--words
+                            TEXT): the folder by key or new, what rides gathered
+                            and said, the in-tray's sort offered first
 
 Bring one back
   office land [SID]         applies the response in the right repo, says how it ended,
@@ -7220,6 +7740,9 @@ Bring one back
                             the handbook's facts, moves the sorted drops, and ends
                             saying how each step went;
                             given a read-only sitting's id, ends the sitting
+  office withdraw [FOLDER]  closes a session sent out and never worked (no response,
+                            no apply begun): bale unlock with reason abandoned where
+                            it is open, asked once, and a line in the folder
   office relay SID FILE     carries the planner's answer to a clarification back to the
                             session's repo (bale relay there), and hands you bale's block
   office probe FOLDER [FILE]
@@ -7257,7 +7780,8 @@ assemble an include list, and never forget a landing step. start knows the
 folder's lane, the forecast, the work class and what rides with each project;
 land knows which repo, which response, and what to do after it applies. bale
 stays visible: start and land run bale's own pack, open, apply, retry and
-unlock (only to end a read-only sitting the office sent out), bale
+unlock (to end a read-only sitting the office sent out, and, by office
+withdraw, a session never worked), bale
 asks its own questions and only you answer them, office start --help and
 office land --help name the bale commands they run, and OFFICE_DEBUG=1 shows
 every bale call. Any bale command still works by hand beside the office.
@@ -7270,7 +7794,7 @@ EOF
 }
 
 # The verbs office help VERB explains, each through its own --help.
-HELP_VERBS=" init found survey status upgrade where default note slip drop open desk week close reopen sessions projects start land tour version moves blueprint rider riders agenda rulings evidence watches digest deliver letterhead relay probe "
+HELP_VERBS=" init found survey status upgrade where default note slip drop open desk week close reopen sessions projects start land withdraw tour version moves blueprint rider riders agenda rulings evidence watches digest deliver letterhead relay probe "
 # The two-word verbs, as office help VERB WORD (or VERB-WORD, the key
 # share/verbs.toml gives them) explains them.
 HELP_PAIRS=" blueprint-open blueprint-ratify blueprint-close rider-add rider-carry rider-consumed agenda-add watches-check letterhead-check "
@@ -7355,6 +7879,7 @@ main() {
     letterhead) cmd_letterhead "$@" ;;
     relay) cmd_relay "$@" ;;
     probe) cmd_probe "$@" ;;
+    withdraw) cmd_withdraw "$@" ;;
     *) usage >&2; die "unknown verb: $verb" ;;
   esac
 }

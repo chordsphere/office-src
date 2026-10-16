@@ -249,9 +249,14 @@ if argv[0] in ("apply", "retry"):
 if argv[0] == "unlock":
     # bale unlock SID --json, as the second-trip probe captured it: the
     # session leaves the registry, its record is committed alone as the
-    # sweep, the JSON line on stdout and the human lines on stderr.
-    if len(argv) != 3 or argv[2] != "--json":
-        print("fake bale: built for bale unlock SID --json only", file=sys.stderr); sys.exit(97)
+    # sweep, the JSON line on stdout and the human lines on stderr. With
+    # --reason R (office withdraw, 0.24.0: abandoned), the reason given
+    # stands where bale would infer one, as bale help unlock says.
+    given = None
+    if len(argv) == 5 and argv[2] == "--reason" and argv[4] == "--json":
+        given = argv[3]
+    elif len(argv) != 3 or argv[2] != "--json":
+        print("fake bale: built for bale unlock SID [--reason R] --json only", file=sys.stderr); sys.exit(97)
     sid = argv[1]
     old_sid, old_root = "2026-10-04-probe-unlock-json-001", "/tmp/office-probe.DPIe0v/repo"
     if sid not in repo["sessions"]:
@@ -261,9 +266,10 @@ if argv[0] == "unlock":
         print("[bale] error: unlock " + sid + ": refused for the test", file=sys.stderr); sys.exit(1)
     s = load()
     r = s["repos"][cwd]
-    reason = "closed-read-only" if r["scopes"].get(sid) == [] else "abandoned"
+    reason = given or ("closed-read-only" if r["scopes"].get(sid) == [] else "abandoned")
     r["sessions"].remove(sid); r["scopes"].pop(sid, None)
     s["land"]["unlocked"].append(sid)
+    s["land"].setdefault("unlock_reasons", {{}})[sid] = reason
     save(s)
     rec = pathlib.Path(cwd) / ("cla" + "ude") / "telemetry" / (sid + ".json")
     rec.parent.mkdir(parents=True, exist_ok=True)
@@ -292,8 +298,9 @@ if argv[:2] == ["stats", "--sid"] and argv[3:] == ["--json"]:
     rec["in_flight"] = is_open
     rec["closure"] = {{"category": "applied", "unlock_reason": None}} if not is_open else None
     if sid in L["unlocked"]:
-        rec.update(outcome="unlocked", in_flight=False, read_only=True,
-                   closure={{"category": "unlocked", "unlock_reason": "closed-read-only"}})
+        why = L.get("unlock_reasons", {{}}).get(sid, "closed-read-only")
+        rec.update(outcome="unlocked", in_flight=False, read_only=why == "closed-read-only",
+                   closure={{"category": "unlocked", "unlock_reason": why}})
     attempts = [dict(pack_a)]
     stem = L.get("stems", {{}}).get(sid)
     if stem is not None:

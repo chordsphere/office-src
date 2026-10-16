@@ -1271,10 +1271,14 @@ STATUSES = DESK_STATUSES + CABINET_STATUSES
 # from the in-tray into the folder it minted, `- DATE dropped:
 # drops/DATE-SLUG.md, via clipboard` (0.19.0), before the `opened` line;
 # it changes no status.
+# `withdrawn` is the line office withdraw writes when it closes a session
+# that went out and was never worked (bale unlock, reason abandoned), `-
+# DATE withdrawn: SID, never worked; closed in bale by office withdraw`
+# (0.24.0); it changes no status.
 HISTORY_VERBS = ("candidate", "queued", "opened", "ratified", "gated", "cleared", "grown",
                  "re-scoped", "corrected", "ruled", "carried", "consumed", "done",
                  "absorbed", "split", "retired", "reopened", "note", "ended", "delivered", "probe",
-                 "dropped")
+                 "dropped", "withdrawn")
 # The state-changing verbs and the status each leaves the folder in:
 # candidate -> queued -> open -> done; any desk status -> absorbed,
 # split or retired; done -> reopened -> open.
@@ -1785,13 +1789,11 @@ RATIFIED_MARK_RE = re.compile(r"^--- RATIFIED (\S+?)(?:, except: (.*\S))? ---$")
 RATIFIED_MARK_PREFIX = "--- RATIFIED "
 
 
-def brief_ratifications(text):
-    """([(sid, except text or None)], problems) from a brief's text: one
-    per `--- RATIFIED SID ---` or `--- RATIFIED SID, except: TEXT ---`
-    line outside fenced blocks and notepad pages, in order, a session named
-    twice taken once; problems names every line that begins like a marker
-    and does not read as one."""
-    out, problems, seen = [], [], set()
+def brief_marker_lines(text):
+    """(line number, line) for every line of a brief that its own marker
+    lines are read from: everything outside fenced blocks and outside the
+    notepad pages it carries, which may quote a marker without being one.
+    The RATIFIED lines (0.23.0) and the LANDS line (0.24.0) are read here."""
     in_fence = in_page = False
     for n, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
         if re.match(r"^\s*(```|~~~)", line) and not in_page:
@@ -1805,7 +1807,19 @@ def brief_ratifications(text):
         if line == NOTEPAD_PAGE_END:
             in_page = False
             continue
-        if in_page or not line.startswith(RATIFIED_MARK_PREFIX):
+        if not in_page:
+            yield n, line
+
+
+def brief_ratifications(text):
+    """([(sid, except text or None)], problems) from a brief's text: one
+    per `--- RATIFIED SID ---` or `--- RATIFIED SID, except: TEXT ---`
+    line outside fenced blocks and notepad pages, in order, a session named
+    twice taken once; problems names every line that begins like a marker
+    and does not read as one."""
+    out, problems, seen = [], [], set()
+    for n, line in brief_marker_lines(text):
+        if not line.startswith(RATIFIED_MARK_PREFIX):
             continue
         m = RATIFIED_MARK_RE.match(line)
         if not m or not SID_RE.match(m.group(1)):
@@ -1817,6 +1831,55 @@ def brief_ratifications(text):
         seen.add(m.group(1))
         out.append((m.group(1), m.group(2)))
     return out, problems
+
+
+# --- where a planner's bundle lands, named in its brief (0.24.0) --------------------
+#
+# bale's bundle format is bale's (bundle.json: the pack argv, the members,
+# the pre-answered intents) and names no project, since bale knows nothing
+# of offices. So the planner who cut the bundle names where its session
+# lands, and the folder that records it, in the brief, its planner's
+# member, as one line kept to the byte like the RATIFIED lines and read
+# where they are read (doctrine section 4, continued; values illustrative):
+#
+#   --- LANDS alpha, folder 14 ---
+#   --- LANDS the office, folder 14 ---
+#   --- LANDS alpha, a new folder ---
+#
+# The place is a project the office scopes, or `the office`; the folder is
+# `folder N`, or `a new folder` for one office start mints from the
+# bundle's goal. office start reads it and asks neither question; a line
+# that does not read, or names a place or a folder the office does not
+# hold, is said, and that question comes back alone.
+
+LANDS_MARK_RE = re.compile(r"^--- LANDS (.+?), (?:folder (\d+)|(a new folder)) ---$")
+LANDS_MARK_PREFIX = "--- LANDS "
+LANDS_OFFICE = "the office"
+
+
+def brief_lands(text):
+    """(mark, problems) from a brief's text: mark is {"place": "office" or
+    a project's name, "folder": a folder number (int) or "new"} from the
+    first `--- LANDS PLACE, folder N ---` or `--- LANDS PLACE, a new folder
+    ---` line outside fenced blocks and notepad pages, or None when the
+    brief carries none that reads; problems names every line that begins
+    like the marker and does not read as one, and a second marker."""
+    mark, problems = None, []
+    for n, line in brief_marker_lines(text):
+        if not line.startswith(LANDS_MARK_PREFIX):
+            continue
+        m = LANDS_MARK_RE.match(line)
+        place = m.group(1) if m else None
+        if not m or not (place == LANDS_OFFICE or PROJECT_NAME_RE.match(place)):
+            problems.append(f"line {n}: not `--- LANDS PLACE, folder N ---` or `--- LANDS PLACE, a new folder ---` "
+                            f"(PLACE a project's name, or the office): {line}")
+            continue
+        if mark is not None:
+            problems.append(f"line {n}: a second LANDS line; the first is taken: {line}")
+            continue
+        mark = {"place": "office" if place == LANDS_OFFICE else place,
+                "folder": "new" if m.group(3) else int(m.group(2))}
+    return mark, problems
 
 
 def folders_recording(root, sid):

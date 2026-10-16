@@ -244,7 +244,11 @@ trigger = ["manual"]
 # carries are offered and carried into the folder before the pack. Every
 # session it sends out carries the in-tray's unsorted drops (0.19.0);
 # with --drop it mints the folder through office open's code and moves
-# the drop's page out of the in-tray into the folder's drops/.
+# the drop's page out of the in-tray into the folder's drops/. With
+# --planner (0.24.0) it sends a read-only sitting from the occupant's words,
+# its brief and what rides the office's; before any sitting it offers the
+# in-tray's sort first; and a bundle whose brief carries a LANDS line goes
+# out without asking where it lands or which folder records it.
 [verbs.start]
 kind = "script"
 built = true
@@ -274,6 +278,21 @@ writes = ["the repo the session belongs to, through bale's apply (or, for a read
           "desk/{folder}/walkthrough.md", "desk/{folder}/delivery.md",
           "filing-cabinet/{folder}", "in-tray", "desk", "handbook", "floor-plan/manifest.toml", "bale.toml",
           "drafting-table/moves.md", "what office moves writes", "what the project's after-land actions write"]
+lands = []
+attended = true
+trigger = ["manual"]
+
+# Withdraws a session the office sent out that will never be worked
+# (0.24.0): no response in the downloads and no apply begun. bale unlock,
+# reason abandoned, in the repo the session is open in (through its shell
+# on a host), asked once, then a withdrawn line in the History of each
+# folder that records it. Nothing is guaranteed to exist after it: a
+# declined question or a bale refusal leaves everything as it was.
+[verbs.withdraw]
+kind = "script"
+built = true
+surface = "occupant"
+writes = ["the repo the session is open in, through bale's unlock", "desk/{folder}/folder.md"]
 lands = []
 attended = true
 trigger = ["manual"]

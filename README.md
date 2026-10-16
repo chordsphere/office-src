@@ -20,8 +20,10 @@ which ships with every office session.
 | drop a message or a thread someone gave you, to sort out later | `office drop` |
 | drop a friction slip | `office slip TEXT` |
 | start a job, in your own words, and send its session out | `office start new` |
+| ask a planner something, in your own words, with the context gathered for it | `office start --planner` |
 | send a session out for a job on the desk, or a planner's bundle from your downloads | `office start` |
 | bring the session back | `office land` |
+| close a session you sent out and will never run | `office withdraw` |
 | deliver a folder's landed work to the project's audience | `office deliver FOLDER` |
 | build an office | `office init` |
 | see your own verbs, one line each | `office help` |
@@ -45,7 +47,8 @@ help VERB`) explains one verb, with examples.
 
 `office help` lists your own verbs, one line each in plain words: the
 home screen, `note` and `drop` (the instant captures), `slip`, `start`
-(with `start new`, the one door for new work), `land`, `desk`, `close`,
+(with `start new`, the one door for new work, and `start --planner`, a
+planner sitting from your words), `land`, `withdraw`, `desk`, `close`,
 `deliver`, `projects add`, `tour` and `init`, with what a folder is (one job, what was asked in your words and
 the sessions that worked on it) and what a project is (a repo whose
 audience may read it, with the office holding what is around it). The
@@ -238,6 +241,7 @@ just before it packs one. The details are below.
     office start                       # your downloads' new bundles by key, then which job by key
     office start --drop in-tray/2026-10-14-login-error.md   # a dropped message, straight out
     office start --sort                # the drops nothing carried, to a session of their own
+    office start --planner             # a planner sitting from your words, what rides gathered for it
 
 On a terminal, bare `office start` first offers the planner's bundles in
 your downloads that no session has opened, newest first, one key each (a
@@ -255,6 +259,21 @@ folder that records that session, wherever it is, and says so. On WSL
 the opener goes on the clipboard as start's last copy, read back to
 check: the office says it is there only when it is. The details are
 below.
+
+A planner sitting from your words (0.24.0): `office start --planner`, or
+the home screen's `p` key. Say what you want a planner for; that is the
+sitting's goal, and nothing else is asked but what it concerns, only when
+your words name none of the office's projects and the answer changes what
+rides. The office gathers what rides (each concerned project's handbook
+chapter, its folders on the desk, the walkthrough of each job that landed
+on it since the last sitting, and the last sitting's notepad pages),
+lists it with why on the screen, and writes the same list first in the
+sitting's brief. When drops wait in the in-tray, before any sitting goes
+out the office says how many and offers the sort first, by key: taken,
+the sort and then the sitting go out together, the sitting's opener left
+on the clipboard. A planner's bundle whose brief carries a LANDS line
+(`--- LANDS alpha, folder 14 ---`) goes out without asking where it lands
+or which job.
 
 ### Bring it back
 
@@ -276,6 +295,15 @@ planner ratifies in the next brief it writes, and `office start` files
 it. `office relay` carries a planner's answer to a clarification back
 to the session's repo, through the project's shell for a hosted one. The
 details are below.
+
+    office withdraw                      # a session you sent out and will never run, closed
+
+`office withdraw` (the home screen's `w` key) closes a session that went
+out and was never worked: no response in your downloads, no apply begun.
+It names the session by its folder, asks once, runs bale's unlock with
+bale's reason `abandoned` where the session is open, and writes a line in
+the folder's History; a folder opened for that session alone is said with
+the line that closes it.
 
 ### Run a worker's probe
 
@@ -571,7 +599,8 @@ The digest. `office digest` writes `digest.md` and prints it: versions
 per project, what happened since the last sitting (the sessions applied,
 held, bailed and still open, the folders opened and closed, and what was
 added to the drafting table), the watches, the standing lines, the desk,
-the agenda and the open blueprints. The last sitting is the latest
+the in-tray (each unsorted drop by its page's file name, with the project
+it names, or none; 0.24.0), the agenda and the open blueprints. The last sitting is the latest
 sitting's page in the notepad, by the commit that filed it, and the page
 says which. Every line is computed; the page is rewritten on every run.
 

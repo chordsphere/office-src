@@ -4,6 +4,61 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.24.0
+
+Additive: no migration, nothing to do in any office. A planner sitting
+goes out from your words with the context the office gathers for it, the
+in-tray's sort is offered first when drops wait, the digest lists the
+unsorted drops, a planner's bundle says where it lands, and a session you
+sent out and will never run is withdrawn by key. Every flag sets its
+field as before, and piped input is never asked anything.
+
+A planner sitting from your words. `office start --planner` (the home
+screen's `p` key; `office start new --planner` mints its folder, `office
+start FOLDER --planner` records it in one on the desk) asks what you want
+a planner for, in your words, and sends a read-only sitting out: your
+words are its goal, kept in the folder's Asked section, and nothing else
+is asked but what the sitting concerns, only when your words name none of
+the office's projects and the answer changes what rides (the office
+itself is an answer: `--about PROJECT`, `--in-office`). The office gathers
+what rides, says why one line each on the screen and first in the
+sitting's brief (the install's new templates/sitting-brief.md), and stays
+inside bale's caps, leaving out the oldest of what landed first, said:
+each concerned project's handbook chapter, the folder.md of each folder on
+the desk on it, the walkthrough page of each job that landed on it since
+the last sitting, and the last sitting's notepad pages, beside what every
+sitting carries (doctrine section 4, continued, pins the set and its
+order). Piped, `--words` and the flag twins send the same sitting.
+
+The sort offered first. Before any sitting is packed (from your words,
+`--read-only`, or a sitting's bundle), unsorted drops in the in-tray are
+said and the in-tray's sort is offered by key. Taken (`--sort-first`), the
+sort goes out and the sitting right after it, in the same motion, the
+sitting's opener the copy left on the clipboard; declined
+(`--no-sort-first`), or piped with neither, the sitting goes alone and
+carries the drops, as before.
+
+The digest lists the unsorted drops: digest.md has an In-tray section,
+each drop by its page's file name with the project it names, or none.
+
+A planner's bundle says where it lands. A brief may carry one line, kept
+to the byte like the RATIFIED lines: `--- LANDS alpha, folder 14 ---`,
+`--- LANDS the office, folder 14 ---`, or `--- LANDS alpha, a new folder
+---`. `office start --bundle`, bare `office start` and the home screen
+then send the bundle without asking where it lands or which job, and say
+both in one line; each question comes back, alone and said, only when the
+line is absent, does not read, or names a project or a folder the office
+does not hold. bale's bundle format is untouched.
+
+A session never worked, withdrawn. `office withdraw` (the home screen's
+`w` key, while there is one) names a session you sent out that has no
+response in your downloads and no apply begun by its folder, asks once
+(`--yes` the twin), runs bale's unlock with bale's reason `abandoned`
+where the session is open (through the shell for a hosted project), and
+writes a `withdrawn` line in the folder's History. A folder that recorded
+that session alone is said with the line that closes it, never closed for
+you. share/bale-consumption.toml declares the new `withdraw` surface.
+
 ## 0.23.0
 
 Additive: no migration, nothing to do in any office. New work comes in

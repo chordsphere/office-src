@@ -439,8 +439,14 @@ def home_items(skew, founded, out, groups, projects, slips, behind, bundles, nam
 
 FIXED_KEYS = (
     ("o", "a new job, in your words", "office", ["start", "new"]),
+    # A planner sitting from his words (0.24.0): what he wants a planner
+    # for, and nothing else; its folder is minted from his words, as the o
+    # key's is (office start --planner offers the desk's folders by key).
+    ("p", "a planner sitting, in your words", "office", ["start", "new", "--planner"]),
     ("s", "send a session out", "office", ["start"]),
     ("l", "bring one back", "office", ["land"]),
+    # Shown only while a session is out that was never worked (0.24.0).
+    ("w", "withdraw a session never worked", "office", ["withdraw"]),
     ("n", "note a line", "note", []),
     ("d", "drop a message", "office", ["drop"]),
     ("k", "the whole desk", "office", ["desk"]),
@@ -471,9 +477,11 @@ def key_lines(keys, width=76):
     return [f"  {l}" for l in lines + ([line] if line else [])]
 
 
-def render_page(rows, items, out_count, desk_line=None):
+def render_page(rows, items, out_count, desk_line=None, withdrawable=0):
     """(lines, menu): the home screen below its heading lines, and the
-    menu bin/office reads, one (key, kind, argv) per key."""
+    menu bin/office reads, one (key, kind, argv) per key. The l key shows
+    only while a session is out, and the w key only while one is out that
+    can be withdrawn (withdrawable, a count: no response, no apply begun)."""
     lines = ["Projects:"]
     width = max((len(label) for label, _ in rows), default=0)
     for label, words in rows:
@@ -494,6 +502,8 @@ def render_page(rows, items, out_count, desk_line=None):
     keys = []
     for key, words, kind, argv in FIXED_KEYS:
         if key == "l" and not out_count:
+            continue
+        if key == "w" and not withdrawable:
             continue
         keys.append(f"[{key}] {words}")
         menu.append((key, kind, argv))
@@ -531,7 +541,13 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
     bundles = waiting_bundles(rd, office_root, directories, now) if directories else []
     items = home_items(skew, founded, out, groups, projects, ob.count_slips(office_root), behind, bundles, names,
                        directories, now, sittings)
-    lines, menu = render_page(rows, items, len(out), desk_words(groups))
+    # The sessions out that were never worked: the w key's (office withdraw).
+    try:
+        offered, _, _ = ob.withdraw_view(rd, office_root, directories)
+    except ob.BaleError as exc:
+        debug(f"which sessions could be withdrawn could not be read: {exc}")
+        offered = []
+    lines, menu = render_page(rows, items, len(out), desk_words(groups), len(offered))
     if directories is None:
         lines.insert(lines.index("Waiting on you:") + 1,
                      "  (this machine's downloads are not set, so no response or bundle there is offered)")

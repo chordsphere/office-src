@@ -444,6 +444,30 @@ keys = [
   "sweep.detail",     # bale's words for what its sweep did
 ]
 
+# Withdrawing a session that was never worked (office withdraw, 0.24.0): a
+# session the office sent out, with no response yet and no apply begun,
+# closed in the repo it is open in (through the project's shell on a host)
+# with bale's own reason for it, `abandoned`, said rather than inferred,
+# since the reason is what the telemetry keeps. The same verb and report as
+# the unlock above: `bale help unlock` lists --reason and its values on the
+# floor (0.4.45, fixtures/bale-0.4.45/land/help-unlock.json) and on 0.4.55;
+# bale refuses a session whose bale/<sid> branch exists (an apply begun)
+# and says so on stderr, which the office shows whole. Not probed live with
+# --reason: the report's keys are the unlock surface's (format_unlock_json
+# writes one report for both), and the suite's fake replays the unlock
+# capture with the reason swapped in.
+[surfaces.withdraw]
+argv = ["unlock", "{sid}", "--reason", "abandoned", "--json"]
+contract = "format_unlock_json's docstring, bin/bale_report.py; bale unlock --help (--reason, v0.4.45; checked on v0.4.55)"
+outcome = "unlocked"
+keys = [
+  "outcome",
+  "closure_reason",   # abandoned, as given
+  "sweep",
+  "sweep.status",     # committed when bale committed the record
+  "sweep.detail",     # bale's words for what its sweep did
+]
+
 # Not a bale verb: the install scripts every bale release ships, which
 # office projects level-bale runs on a hosted project's host (only when
 # the occupant asks) to put there the bale this machine runs. A release

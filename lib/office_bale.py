@@ -451,14 +451,16 @@ class Reader:
             pathlib.Path(capture).write_bytes(data.replace(b"\r\n", b"\n"))
         return code
 
-    def unlock(self, cwd, sid):
+    def unlock(self, cwd, sid, surface="unlock"):
         """End a read-only sitting: bale unlock SID --json in its repo,
         stdin closed, since bale asks nothing there (the second-trip probe
-        found it so, on a terminal and piped). Never cached; what was
-        cached about the repo is dropped, since the registry changed."""
-        proc, shown, where = self.invoke("unlock", cwd, whole_why=True, sid=sid)
+        found it so, on a terminal and piped); or, with surface "withdraw"
+        (0.24.0), close a session that was never worked with bale's own
+        reason, abandoned. Never cached; what was cached about the repo is
+        dropped, since the registry changed."""
+        proc, shown, where = self.invoke(surface, cwd, whole_why=True, sid=sid)
         self.forget(cwd)
-        return self.parse("unlock", proc, shown, where)
+        return self.parse(surface, proc, shown, where)
 
     def pack(self, surface, cwd, also=None, **values):
         """Run one of the surfaces that make something (a session, a
@@ -2260,6 +2262,83 @@ def bundle_where(office_root, bundle, lane=None):
 
 def place_words(label):
     return "the office" if label == "office" else label
+
+
+def bundle_brief(bundle):
+    """The brief a planner bundle carries (its planner's member, named in
+    bundle.json's members.brief.path), as text; None when the bundle is
+    not a file here, carries no brief, or cannot be read (said under
+    OFFICE_DEBUG). The office reads it only for the LANDS line."""
+    p = pathlib.Path(bundle) if bundle else None
+    if p is None or not p.is_file():
+        return None
+    try:
+        with tarfile.open(p) as t:
+            member = t.extractfile("bundle.json")
+            meta = json.loads(member.read().decode("utf-8")) if member else {}
+            brief = (meta.get("members") or {}).get("brief")
+            rel = brief.get("path") if isinstance(brief, dict) else None
+            if not isinstance(rel, str) or not rel:
+                return None
+            data = t.extractfile(rel)
+            return data.read().decode("utf-8", "backslashreplace") if data else None
+    except (OSError, KeyError, tarfile.TarError, json.JSONDecodeError, UnicodeDecodeError, AttributeError) as exc:
+        debug(f"could not read the brief of {p}: {exc}")
+        return None
+
+
+def bundle_lands(office_root, bundle):
+    """Where a planner's bundle says its session lands, from the LANDS line
+    its brief carries (0.24.0; office_helper.brief_lands): a dict with
+    place (office, or a project's name), project (the name, or None for
+    the office), folder (the desk folder's directory name, or "new") and
+    words (one line saying where it lands and in which folder), each None
+    when that half cannot be taken; and said, the lines that say why a
+    half cannot (a line that does not read, a project the office does not
+    scope, a folder it does not hold on the desk), so its question comes
+    back alone. absent is True when the brief carries no LANDS line at all,
+    or the bundle cannot be read here."""
+    out = {"absent": False, "place": None, "project": None, "folder": None, "folder_words": None,
+           "words": None, "said": []}
+    name = pathlib.Path(bundle).name
+    text = bundle_brief(bundle)
+    if text is None:
+        out["absent"] = True
+        return out
+    mark, problems = oh.brief_lands(text)
+    out["said"] += [f"the bundle {name}'s brief: {p}" for p in problems]
+    if mark is None:
+        out["absent"] = not problems
+        return out
+    root = pathlib.Path(office_root)
+    names = [p["name"] for p in office_projects(root) or []]
+    if mark["place"] == "office":
+        out["place"] = "office"
+    elif mark["place"] in names:
+        out["place"], out["project"] = "project", mark["place"]
+    else:
+        out["said"].append(f"the bundle {name}'s brief says it lands on {mark['place']}, which this office does not "
+                           f"scope (it scopes: {', '.join(names) or 'no project'}); where it lands is asked")
+    if mark["folder"] == "new":
+        out["folder"], out["folder_words"] = "new", "a new folder, opened from the bundle's goal"
+    else:
+        found = [f for f in oh.read_folders(root) if f["problem"] is None and f.get("number") == mark["folder"]]
+        desk = [f for f in found if f["space"] == "desk"]
+        if desk:
+            f = desk[0]
+            out["folder"] = f["name"]
+            out["folder_words"] = f"{oh.cite(f)}, {f.get('title') or f['name']} (desk/{f['name']})"
+        elif found:
+            out["said"].append(f"the bundle {name}'s brief names folder {mark['folder']}, which is in the filing cabinet "
+                               f"(filing-cabinet/{found[0]['name']}; office reopen {found[0]['name']} brings it back); "
+                               "which job is asked")
+        else:
+            out["said"].append(f"the bundle {name}'s brief names folder {mark['folder']}, which this office does not "
+                               "hold; which job is asked")
+    if out["place"] and out["folder"]:
+        where = "in the office" if out["place"] == "office" else f"on {out['project']}"
+        out["words"] = f"the bundle's brief says where it lands: {where}, recorded in {out['folder_words']}"
+    return out
 
 
 def bundle_nowhere_lines(bundle, paths, places, chosen=None):
@@ -4134,6 +4213,123 @@ def end_sitting(rd, office_root, plan, day):
     return words, told
 
 
+# --- withdrawing a session that was never worked (0.24.0) -------------------------------
+#
+# A session the office sent out that will never go to a model (the
+# occupant opened it, and the plan changed) has only bale's unlock, typed by
+# hand with its id in its repo. office withdraw, and the home screen's w
+# key, do it for him: the session named by its folder, asked once (closing
+# cannot be undone), bale unlock with bale's own reason, abandoned, in the
+# repo it is open in (through its shell for a project on a host), and a
+# History line in each folder that records it. A session with a response
+# waiting, or one bale has started to apply, is never offered: the first is
+# land's, the second bale's revert. A read-only sitting is office land's to
+# end, as before.
+
+WITHDRAW_REASON = "abandoned"
+
+
+def withdraw_view(rd, office_root, downloads=None):
+    """(offered, kept back, problems): the sessions the office has out that
+    can be withdrawn, each open_anywhere's dict plus created; and the ones
+    that cannot, each (session dict, why). downloads is machine.toml's list,
+    or None when it is not set, and then no response there can be seen."""
+    out, problems = sessions_out(rd, office_root)
+    offered, kept = [], []
+    for x in out:
+        try:
+            d = rd.dossier(x["place"], x["sid"])
+        except BaleError as exc:
+            kept.append((x, f"its record cannot be read ({exc}), so whether bale started to apply it is unknown"))
+            continue
+        view = session_view(rd, d) if d is not None else None
+        tried = [a for a in (view["attempts"] if view else []) if a["command"] not in ("pack", "open")]
+        if tried:
+            kept.append((x, f"bale has started to apply it ({outcome_word(view)}): office land brings it back, and "
+                            "bale revert undoes an apply"))
+            continue
+        name = f"response-{x['sid']}.tar.gz"
+        copies = browser_copies(downloads or [], name)
+        if copies:
+            kept.append((x, f"a response for it is in your downloads ({copies[0][0]}): office land brings it back"))
+            continue
+        offered.append(dict(x, created=(view["created"] if view else "") or ""))
+    offered.sort(key=lambda s: (s["created"] or "~", s["sid"]))
+    return offered, kept, problems
+
+
+def alone_in(office_root, folder, sid):
+    """Whether a folder records sid and no other session: one minted for
+    that session alone, which a withdrawal leaves with nothing to do."""
+    try:
+        parsed = oh.parse_folder((pathlib.Path(office_root) / folder / "folder.md").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError) as exc:
+        debug(f"{folder}/folder.md could not be read: {exc}")
+        return False
+    return parsed["sids"] == [sid]
+
+
+def withdraw(rd, office_root, sid, day, downloads=None):
+    """Withdraw one session the office has out and that was never worked:
+    bale unlock SID --reason abandoned in its repo (through the project's
+    shell on a host), then a `withdrawn` History line in each folder that
+    records it, committed alone. Returns (words, told lines, alone): alone
+    names the folders that recorded this session and no other, each said
+    with the line that closes it, never closed here. Raises StartError
+    when the session is not one that can be withdrawn, or bale refuses
+    (its words whole)."""
+    offered, kept, problems = withdraw_view(rd, office_root, downloads)
+    mine = [x for x in offered if x["sid"] == sid]
+    if not mine:
+        why = next((w for x, w in kept if x["sid"] == sid), None)
+        if why:
+            raise StartError([f"{sid} cannot be withdrawn: {why}"])
+        raise StartError([f"{sid} is not a session the office has out (one a folder records, or the in-tray's sort, "
+                          "open where the office reads); office withdraw with nothing named lists the ones it can "
+                          "withdraw"] + problems)
+    x = mine[0]
+    try:
+        report = rd.unlock(x["place"], sid, surface="withdraw")
+    except BaleError as exc:
+        raise StartError([f"bale unlock {sid} --reason {WITHDRAW_REASON} did not close it: {exc}"])
+    told = []
+    try:
+        reason = rd.key(report, "withdraw", "closure_reason")
+        sweep = rd.key(report, "withdraw", "sweep")
+        swept = bool(sweep) and rd.key(sweep, "withdraw", "sweep.status") == "committed"
+        detail = rd.key(sweep, "withdraw", "sweep.detail") if sweep else "bale reported no sweep"
+    except BaleError as exc:
+        reason, swept, detail = "reason unread", False, f"its report could not be read ({exc})"
+    told.append(f"bale closed {sid} in {x['label']} ({reason}); its sweep: {detail}")
+    if not swept:
+        told.append(f"bale did not commit its record of {sid}; git status in {x['repo']} shows what it left")
+    root = pathlib.Path(office_root)
+    alone = []
+    for folder in x["folders"]:
+        rel = f"{folder}/folder.md"
+        try:
+            _, wrote = oh.folder_event(root / rel, day, "withdrawn",
+                                       f"{sid}, never worked; closed in bale by office withdraw ({reason})")
+        except (OSError, UnicodeDecodeError, oh.HelperError) as exc:
+            told.append(f"{rel}: the withdrawal of {sid} could not be written there ({exc}); it is closed in bale")
+            continue
+        if not wrote:
+            told.append(f"{rel} has no History section, so the withdrawal of {sid} is not written there")
+        else:
+            try:
+                git(root, "add", "--", rel)
+                git(root, "commit", "-q", "-m", f"office withdraw: {sid} in {pathlib.Path(folder).name}", "--", rel)
+                told.append(f"{rel}: History: {day} withdrawn: {sid}")
+            except LandError as exc:
+                told.append(f"{rel}: History: {day} withdrawn: {sid}, written but not committed ({' '.join(exc.lines)})")
+        if alone_in(root, folder, sid):
+            alone.append(folder)
+    where = "the office" if x["label"] == OFFICE_LABEL else x["label"]
+    words = (f"Withdrawn: {sid} is closed in {where}, never worked; bale records it as {reason}."
+             + ("" if x["folders"] else " No folder recorded it (the in-tray's sort)."))
+    return words, told, alone
+
+
 def take_record_out(office_root, plan):
     """Before bale lands an office session: put the folder back as it was
     packed, so bale finds the bytes it stamped and never has to refuse
@@ -4667,7 +4863,65 @@ def main(argv=None):
     p = sub.add_parser("land-outcome", help="what happened, from bale's records; one JSON line")
     p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--capture", required=True)
     p.add_argument("--exit", type=int, required=True); p.add_argument("--day", required=True)
+    p = sub.add_parser("bundle-lands", help="where a bundle's brief says it lands (its LANDS line): place<tab>office "
+                                            "or place<tab>project<tab>NAME, folder<tab>NAME or folder<tab>new, "
+                                            "words<tab>LINE, say<tab>WHY, or absent")
+    p.add_argument("office"); p.add_argument("--bundle", required=True)
+    p = sub.add_parser("bundle-sitting", help="whether a bundle's pack line sends out a sitting: yes, no or unknown")
+    p.add_argument("--bundle", required=True)
+    p = sub.add_parser("withdraw-list", help="the sessions out that can be withdrawn: SID<tab>LABEL<tab>FOLDERS<tab>"
+                                             "CREATED; those that cannot: kept<tab>SID<tab>WHY")
+    p.add_argument("office"); p.add_argument("--dir", action="append", default=[])
+    p.add_argument("--no-downloads", action="store_true", help="machine.toml sets no downloads")
+    p = sub.add_parser("withdraw", help="close a session that was never worked (bale unlock --reason abandoned), "
+                                        "then its folders' History; one JSON line")
+    p.add_argument("office"); p.add_argument("--sid", required=True); p.add_argument("--day", required=True)
+    p.add_argument("--dir", action="append", default=[])
+    p.add_argument("--no-downloads", action="store_true", help="machine.toml sets no downloads")
     a = ap.parse_args(argv)
+    if a.cmd == "bundle-lands":
+        got = bundle_lands(a.office, a.bundle)
+        if got["absent"]:
+            print("absent")
+            return 0
+        if got["place"] == "office":
+            print("place\toffice")
+        elif got["place"] == "project":
+            print(f"place\tproject\t{got['project']}")
+        if got["folder"]:
+            print(f"folder\t{got['folder']}")
+        if got["words"]:
+            print(f"words\t{got['words']}")
+        for line in got["said"]:
+            print(f"say\t{line}")
+        return 0
+    if a.cmd == "bundle-sitting":
+        ro = bundle_read_only(a.bundle)
+        print("unknown" if ro is None else ("yes" if ro else "no"))
+        return 0
+    if a.cmd in ("withdraw-list", "withdraw"):
+        downloads = None if a.no_downloads else a.dir
+        rd = Reader()
+        try:
+            if a.cmd == "withdraw-list":
+                offered, kept, problems = withdraw_view(rd, a.office, downloads)
+                for line in problems:
+                    log(f"warning: {line}")
+                for x in offered:
+                    print(f"{x['sid']}\t{x['label']}\t{', '.join(x['folders'])}\t{x['created']}")
+                for x, why in kept:
+                    print(f"kept\t{x['sid']}\t{why}")
+                return 0
+            words, told, alone = withdraw(rd, a.office, a.sid, a.day, downloads)
+            print(json.dumps({"words": words, "told": told, "alone": alone}))
+            return 0
+        except StartError as exc:
+            for line in exc.lines:
+                log(f"error: {line}")
+            return 1
+        except (oh.HelperError, BaleError, ohost.HostError, OSError) as exc:
+            log(f"error: {exc}")
+            return 1
     if a.cmd.startswith("land-"):
         return land_main(a)
     if a.cmd == "relay":
