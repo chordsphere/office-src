@@ -1,0 +1,12 @@
+# The forbidden list: what never leaves this office, one fixed string per
+# line, matched without regard to case. office letterhead check and office
+# deliver refuse every line that holds one. A line starting with # is a
+# comment.
+#
+# Present by default, with no line here (office-src 0.25.0): the em dash
+# (U+2014), the en dash (U+2013) and the ellipsis character (U+2026). A
+# refusal names the character. To lift one, write a line of its own:
+#
+#   lift: em dash
+#
+# (or en dash, or ellipsis); every check that reads a lift says so.

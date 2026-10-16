@@ -1072,7 +1072,9 @@ DRAFTING_LANDS = {
 # The scripts that bring a space with their first write, as the drafting
 # table's do (0.19.0): they write the space's arrival (its front page, the
 # floor plan, bale.toml) and land the page they were run for.
-ARRIVAL_LANDS = {"drop": ["in-tray/{date}-{slug}.md"]}
+# A verb a space arrives with lands what it always writes, not the space:
+# drop its page; projects (0.25.0, the letterhead) the floor plan.
+ARRIVAL_LANDS = {"drop": ["in-tray/{date}-{slug}.md"], "projects": ["floor-plan/manifest.toml"]}
 # Blueprint section 3's attended and trigger columns for the drafting
 # table's scripts that are not attended and manual alone.
 DRAFTING_RUNS = {

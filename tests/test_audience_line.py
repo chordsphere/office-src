@@ -138,8 +138,10 @@ class AudienceCase(unittest.TestCase):
         if self.hosted:
             self.ssh = FakeSsh(self.e.tmp)
             self.e.env["PATH"] = self.ssh.path(self.e.env["PATH"])
+            # Worked on its host, as before 0.25.0: a project with an
+            # audience is worked here by default, so the flag says so.
             self.run_office("projects", "add", "proj", str(self.clone), "--host", HOST, "--connect", "start the VPN",
-                            "--audience", "origin", "--author", "Zed Zee <z@example.org>", check=0)
+                            "--audience", "origin", "--author", "Zed Zee <z@example.org>", "--worked-on-host", check=0)
         else:
             self.run_office("projects", "add", "proj", str(self.clone), "--audience", "origin",
                             "--author", "Zed Zee <z@example.org>", check=0)
@@ -260,7 +262,7 @@ class TestTheDeclarations(unittest.TestCase):
         self.assertIn("audience='upstream'", hook.read_text())
         listing = self.e.run("projects", cwd=self.root, check=0).stdout
         self.assertIn("audience: the remote upstream", listing)
-        self.assertIn("author: the workbench clone's own identity", listing)
+        self.assertIn("author: none declared; office deliver asks for it once", listing)
         self.assertIn("base: main", listing)
         facts = self.e.run("projects", "set", "c", "--author", "Zed <z@example.org>", cwd=self.root, check=0)
         self.assertIn("author: Zed <z@example.org>", facts.stdout)
@@ -289,7 +291,8 @@ class TestTheDeclarations(unittest.TestCase):
         self.e.run("projects", "add", "c", str(clone), "--audience", "origin", cwd=self.root, check=0)
         pushed = subprocess.run(["git", "-C", str(clone), "push", "origin", "main"], capture_output=True, text=True, env=self.e.env)
         self.assertEqual(pushed.returncode, 1)
-        self.assertIn("origin is this project's audience, and nothing goes there by hand", pushed.stderr)
+        self.assertIn("refs/heads/main (nothing goes to the audience by hand)", pushed.stderr)
+        self.assertIn("origin is this project's audience, and only office deliver reaches it", pushed.stderr)
         self.assertIn("office deliver FOLDER", pushed.stderr)
         self.assertEqual(git(audience, "for-each-ref", env=self.e.env), "")
         # The same URL under another name is the audience too.
@@ -301,7 +304,7 @@ class TestTheDeclarations(unittest.TestCase):
         env = dict(self.e.env, OFFICE_DELIVERY="feature-x")
         pushed = subprocess.run(["git", "-C", str(clone), "push", "origin", "main:refs/heads/other"], capture_output=True, text=True, env=env)
         self.assertEqual(pushed.returncode, 1)
-        self.assertIn("pushes refs/heads/feature-x alone, not refs/heads/other", pushed.stderr)
+        self.assertIn("refs/heads/other (office deliver pushes refs/heads/feature-x alone)", pushed.stderr)
         pushed = subprocess.run(["git", "-C", str(clone), "push", "origin", "main:refs/heads/feature-x"], capture_output=True, text=True, env=env)
         self.assertEqual(pushed.returncode, 0, pushed.stderr)
         self.assertEqual(git(audience, "for-each-ref", "--format=%(refname)", env=self.e.env).split(), ["refs/heads/feature-x"])
@@ -345,7 +348,7 @@ class TestTheDeclarationsWizard(unittest.TestCase):
             (b"Name for it in this office (--name) [c]:", ""),
             (b"audience's git host, or none (--audience) [origin]:", "?"),
             (b"The name of the remote in the workbench clone", ""),
-            (b"a plain return leaves it the clone's own, Own Name <own@example.org> (--author) [return skips]:", "nope"),
+            (b"a plain return leaves it for office deliver to ask (the clone has Own Name <own@example.org>) (--author) [return skips]:", "nope"),
             (b"an author is written as git writes one", "Zed Zee <z@example.org>"),
             (b"a plain return leaves it origin's HEAD branch (--base) [return skips]:", ""),
             (b"(--ride) [return ends the list]:", ""),
@@ -729,24 +732,30 @@ Look.
         self.assertEqual(git(self.clone, "worktree", "list", env=self.e.env).count("\n"), 1)
         self.assertEqual(git(self.clone, "status", "--porcelain", env=self.e.env), "")
 
-    def test_the_author_and_base_defaults_come_from_the_clone(self):
+    def test_the_author_is_declared_never_the_clones_and_the_base_defaults_from_the_clone(self):
+        before = self.audience_refs()
         self.run_office("projects", "set", "proj", "--no-author", check=0)
         git(self.clone, "config", "user.name", "Clone Own", env=self.e.env)
         git(self.clone, "config", "user.email", "own@example.org", env=self.e.env)
-        proc = self.run_office("deliver", self.name, "--yes")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("author:   Clone Own <own@example.org>", proc.stdout)
-        self.assertEqual(self.audience_log().splitlines()[0].split("|")[0], "Clone Own <own@example.org>")
-        # No identity anywhere: refused by name.
-        git(self.clone, "config", "--unset", "user.name", env=self.e.env)
-        git(self.clone, "config", "--unset", "user.email", env=self.e.env)
-        self.land_session(SID2, {"docs.md": "d\n"}, "d")
-        self.run_office("sessions", self.name, SID2, check=0)
+        # No author declared: the clone's own identity is never used;
+        # piped, refused by name, with nothing made.
         proc = self.run_office("deliver", self.name, "--yes")
         self.assertEqual(proc.returncode, 1)
-        self.assertIn("has no git identity to author the delivery as; office projects set proj --author", proc.stderr)
+        self.assertIn("proj declares no author", proc.stderr)
+        self.assertIn("the clone's own identity is never used silently (the clone's is Clone Own <own@example.org>)",
+                      proc.stderr)
+        self.assertIn(f"office deliver {self.name} --author 'Name <email>' declares it and keeps it", proc.stderr)
+        self.assertEqual(self.audience_refs(), before)
+        # --author sets the field: declared, kept, and every commit carries it.
+        proc = self.run_office("deliver", self.name, "--yes", "--author", "Pat Example <pat@example.org>")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("proj's author is Pat Example <pat@example.org>, kept in the floor plan", proc.stderr)
+        self.assertIn('author = "Pat Example <pat@example.org>"', (self.root / "floor-plan" / "manifest.toml").read_text())
+        self.assertEqual(self.audience_log().splitlines()[0].split("|")[:2], ["Pat Example <pat@example.org>", "Pat Example"])
+        self.land_session(SID2, {"docs.md": "d\n"}, "d")
+        self.run_office("sessions", self.name, SID2, check=0)
         # The base: declared, it is used; unset, the remote's HEAD; neither, refused.
-        self.run_office("projects", "set", "proj", "--author", "Zed Zee <z@example.org>", "--base", "nope", check=0)
+        self.run_office("projects", "set", "proj", "--base", "nope", check=0)
         proc = self.run_office("deliver", self.name, "--yes")
         self.assertEqual(proc.returncode, 1)
         self.assertIn("did not answer for nope from this machine", proc.stderr)

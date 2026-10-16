@@ -98,7 +98,8 @@ trigger = ["manual"]
 kind = "script"
 built = true
 surface = "plumbing"
-writes = ["live structure named by each migration", "floor-plan/manifest.toml"]
+writes = ["live structure named by each migration", "floor-plan/manifest.toml", "letterhead", "bale.toml",
+          "the push guard in each audience clone's .git/hooks"]
 lands = ["floor-plan/manifest.toml"]
 attended = true
 trigger = ["manual"]
@@ -221,12 +222,16 @@ trigger = ["manual", "after-build"]
 # writing what rides with a project and what runs after it lands. Outside
 # the office, and never in it, add --from makes a clone on a project's
 # host and level-bale replaces the bale install there (both only when the
-# occupant asks); neither lands anything in the office.
+# occupant asks); neither lands anything in the office. Since 0.25.0 the
+# first project given an audience brings the letterhead (its pages from
+# the install's templates, its floor-plan entry and bale.toml's trigger),
+# and add and set write or replace the push guard in an audience clone's
+# .git/hooks, outside what git tracks.
 [verbs.projects]
 kind = "script"
 built = true
 surface = "occupant"
-writes = ["floor-plan/manifest.toml"]
+writes = ["floor-plan/manifest.toml", "letterhead", "bale.toml", "the push guard in the clone's .git/hooks"]
 lands = ["floor-plan/manifest.toml"]
 attended = true
 trigger = ["manual"]
@@ -304,13 +309,15 @@ trigger = ["manual"]
 # audience's git host, the push guard in the clone's .git/hooks when it
 # is missing, and a temporary repo on this machine, removed after.
 # Nothing is guaranteed to exist after it: a letterhead hit, a conflict
-# or a refused push leaves nothing pushed and nothing recorded.
+# or a refused push leaves nothing pushed and nothing recorded. Since
+# 0.25.0 a project's author, asked once when none is declared (or given
+# as --author), is kept in the floor plan.
 [verbs.deliver]
 kind = "script"
 built = true
 surface = "occupant"
 writes = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md", "a delivery branch on the project's audience",
-          "the push guard in the clone's .git/hooks"]
+          "the push guard in the clone's .git/hooks", "floor-plan/manifest.toml"]
 lands = []
 attended = true
 trigger = ["manual"]
@@ -545,11 +552,14 @@ trigger = ["manual"]
 # delivery.md by office land after the landing, the office step that
 # brings the folder up to date (doctrine section 4); the session never
 # writes into the office. lands names what exists after a build session
-# that wrote both has landed; writes names the folder for it.
+# that wrote both has landed; writes names the folder for it. Since
+# 0.25.0 the letterhead rides beside a session on a project with an
+# audience: its voice page is what text that leaves is written to.
 [verbs.build]
 kind = "project-session"
 built = true
-ships = ["desk/{folder}", "handbook/{systems}", "templates/walkthrough.md and templates/delivery.md, from the install"]
+ships = ["desk/{folder}", "handbook/{systems}", "templates/walkthrough.md and templates/delivery.md, from the install",
+         "letterhead, when the project has an audience"]
 writes = ["{project}", "desk/{folder}"]
 lands = ["desk/{folder}/walkthrough.md", "desk/{folder}/delivery.md"]
 attended = true

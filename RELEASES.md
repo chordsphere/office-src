@@ -4,6 +4,83 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.25.0
+
+Additive: no migration. Landing and delivery hold the audience line by
+default: the letterhead refuses the dashes, a repository's own
+pull-request template is exempt from its phrasing rule, a letterhead has
+a voice page, every commit deliver pushes is shown whole and carries the
+declared author, the push guard covers tags and bale's refs, and a
+project with an audience is worked from a guarded clone on this machine.
+`office upgrade` brings what this release adds to an office without a
+migration (the letterhead's missing pages, the current push guard), and
+`office status` names what is missing. Every flag sets its field as
+before, and piped input is never asked anything.
+
+The dashes. In an office that has a letterhead, `office letterhead check`
+and everything that runs it (office deliver, office land's review) refuse
+the em dash (U+2014), the en dash (U+2013) and the ellipsis character
+(U+2026), with no line in the office needed; each refusal names the file,
+the line and the character by name. The letterhead's forbidden list lifts
+one with a line `lift: em dash` (or en dash, or ellipsis); every check
+that reads a lift says so, and a lift naming anything else stops the
+check. share/letterhead.toml carries the three as a `[characters]` table.
+
+The pull-request template. When the words fill a repository's own
+pull-request template, the lines that are the template's as the
+repository holds them (at the audience's base, for a delivery; at HEAD
+for `office letterhead check --words`) are not held to the phrasing
+rule; the lines the words add, and anything a template line is changed
+into, are, and every other rule still reads all of them. Which files are
+templates is read from the repository, by the places GitHub, GitLab and
+Azure DevOps look for one.
+
+The voice page. A letterhead has three pages from the install's new
+templates: README.md; voice.md, the occupant's style rule for text that
+leaves the office, an empty place plainly marked for his words, which
+office-src never writes; and forbidden.txt, whose template names the
+three characters as refused by default. The letterhead arrives with the
+first project given an audience (`office projects add` or `set
+--audience`); a letterhead from an earlier release gets its voice page
+from `office upgrade`, and `office status` names it missing, or empty,
+with the line that adds it. The letterhead rides beside every session on
+a project with an audience, and the doctrine (section 4) has such a
+session read the voice page before it writes.
+
+Every commit reviewed, under the declared author. `office deliver` makes
+the commits before it asks and shows each whole, as it will be pushed:
+its subject and body, its author and committer, the files it touches, and
+the letterhead's verdict on it; then asks once. Every commit it makes or
+pushes carries the project's declared `author` as both author and
+committer, and it checks that on the commits themselves before the push,
+which no longer lets a tag follow. A project with an audience and no
+declared author is asked for it once on a terminal and keeps it
+(`office deliver --author "Name <email>"` is the twin, and sets the
+field); piped, deliver refuses and names `--author`. The clone's own
+identity is never used. `office land`, on a project with an audience,
+reviews what the session landed against the letterhead (the change, and
+the folder's delivery.md words) and says in a line what deliver would
+refuse, each line named; it refuses nothing.
+
+The push guard. From a clone with a declared audience nothing reaches the
+audience but the one delivery branch deliver pushes: no tag (bale's
+applied/ tags or any other), no bale branch, no other ref and no
+deletion, whatever the push's form (`--tags`, `--all`, `--mirror`, a
+refspec, a tag by name), the audience known by its remote's name or by
+any URL that is the same repository. Each refusal names office deliver.
+The hook carries `guard_version=2`; `office status` names an older guard
+(0.17.0's) with the line that replaces it, and `office upgrade` and
+`office projects set` (with nothing else to set, piped too) replace it.
+
+The workbench on this machine. `office projects add` for a project with
+an audience takes its path as a guarded clone on this machine; a host
+declared with it (`--host`, or `--validates-on HOST`) is recorded in the
+project's entry as `validates_on`, where it validates, never where it is
+worked, and nothing validates there yet (that is S3's, waiting on bale's
+remote validation runner). `--worked-on-host` keeps the old shape, and a
+host answered on a terminal is that, said. Projects already declared on
+a host keep working exactly as they did.
+
 ## 0.24.0
 
 Additive: no migration, nothing to do in any office. A planner sitting

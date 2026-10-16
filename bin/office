@@ -1000,8 +1000,10 @@ the office-src it records, whether the floor plan's timezone resolves (and
 what fixes it when it does not), whether bale.toml's include group matches
 the floor plan, the install's catalogs, folders against their History,
 filed pages against git, the drafting table against the catalog and each
-ratified charter against git from its ratifying commit on, and the
-installed bale and the projects. It reports and exits 0.
+ratified charter against git from its ratifying commit on, the installed
+bale and the projects, the letterhead and its voice page, and the push
+guard in each audience clone (an older or missing one named with the
+line that replaces it). It reports and exits 0.
 Examples:
   office status
   OFFICE_ROOT=~/offices/work office status
@@ -1118,6 +1120,10 @@ cmd_status() {
   # office's reads were written for, and whether each project in scope
   # can be read. Lines, never a refusal.
   reader status-lines "$root" || printf 'bale:       the read side could not be checked\n'
+  # The audience line (0.25.0): the letterhead and its voice page, and the
+  # push guard in each audience clone, older ones named with the line
+  # that replaces them.
+  deliver_py status-lines "$root" || printf 'letterhead: could not be checked\n'
 }
 
 # Run planned migrations in a target office. Arguments: target, plan file.
@@ -1164,6 +1170,25 @@ run_migrations() {
   return 0
 }
 
+# upgrade_additive ROOT: what an additive release brings with no migration
+# (0.25.0): the letterhead and its pages, the push guards. The office's
+# changed paths are committed alone, as one commit; a guard is outside
+# what git tracks. Sets UPGRADED when anything changed.
+upgrade_additive() {
+  local root="$1" changed=() said tmp
+  UPGRADED=""
+  tmp="$(mktemp)" || return 1
+  TMP_PATHS+=("$tmp")
+  mapfile -t changed < <(deliver_py upgrade "$root" 2> "$tmp" | grep -v '^$')
+  said="$(cat "$tmp")"
+  [ -z "$said" ] || { UPGRADED=1; printf '%s\n' "$said" >&2; }
+  if [ "${#changed[@]}" -gt 0 ]; then
+    UPGRADED=1
+    commit_paths "$root" "office upgrade: the letterhead's pages from office-src $(install_version)" "${changed[@]}" || return 1
+  fi
+  return 0
+}
+
 usage_upgrade() {
   cat <<'USAGE'
 usage: office upgrade [--dry-run]
@@ -1176,8 +1201,13 @@ brief carrying its summary, its [landed] declaration and its version; the
 session forecasts what the migration declares under writes, or the whole
 office. office land SID brings it back, and the next run of office upgrade
 checks the declaration and stamps the office. A renovation session already
-out is named, never sent twice. Additive releases need nothing; upgrade
-says so.
+out is named, never sent twice. Additive releases need no migration; upgrade
+says so, and brings what an additive release adds without one (0.25.0):
+the letterhead, in an office with a project given an audience and none
+yet; the voice page and forbidden list, in a letterhead from an earlier
+release; the push guard, in every audience clone with none or an older
+one. Nothing of the occupant's is rewritten; what changed in the office
+is one commit.
 Under the hood, for a renovation: office open, then office start's own code
 (bale pack --json, bale pack --context for each context tarball).
 Examples:
@@ -1202,7 +1232,11 @@ cmd_upgrade() {
   office_v="$(helper stamp "$root/$MANIFEST_REL" migrated_to)"
   case "$state" in
     ahead) die "this office was migrated to $office_v, past the installed office-src $(install_version); install $office_v or later" ;;
-    current) log "nothing to upgrade: office at $office_v, office-src $(install_version), no migrations pending"; return 0 ;;
+    current)
+      if [ "$dry" = 1 ]; then log "office at $office_v, office-src $(install_version), no migrations pending; nothing changed"; return 0; fi
+      upgrade_additive "$root" || return 1
+      [ -n "$UPGRADED" ] || log "nothing to upgrade: office at $office_v, office-src $(install_version), no migrations pending"
+      return 0 ;;
   esac
   git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$root is not a git repo; an upgrade lands as a commit"
   [ -z "$(git -C "$root" status --porcelain)" ] || die "$root has uncommitted changes; commit them first so the upgrade is one clean commit"
@@ -1239,6 +1273,7 @@ cmd_upgrade() {
     log "committed the upgrade:"
     sed 's/^/[office]   /' "$msg" >&2
   fi
+  [ "$rc" -eq 10 ] || upgrade_additive "$root" || true
   if [ "$rc" -eq 10 ]; then
     local line version
     line="$(grep '^renovation' "$scratch/real.out" | head -n 1)"
@@ -5127,6 +5162,11 @@ When only bale's own search knew where the response was, land names the
 line that files it all (office sessions FOLDER SID --pages RESPONSE, or
 office sessions --in-tray SID --pages RESPONSE for the standalone sort,
 which no folder records).
+On a project with an audience, land then reviews what the session landed
+against the letterhead, as office deliver will read it (the files its
+landing changed, bale's own aside, and the folder's delivery.md words),
+and says in a line what deliver would refuse, each line named, so a fix
+can ride the next session; it refuses nothing.
 A session on a project on a host (office projects add --host) lands
 there. land first checks that the host answers (one that does not stops
 land before anything is carried, with your connect line and the line
@@ -5503,6 +5543,12 @@ for l in json.load(sys.stdin)["told"]:
   folders="$(plan_field "$plan" folders | head -n 1)"
   land_files "$root" "$folders" "$sid" "$plan"
   land_moves "$root" "$sid"
+  # On a project with an audience, the letterhead's review of what landed
+  # (0.25.0): what office deliver would refuse, said now so a fix can
+  # ride the next session; it refuses nothing here.
+  if [ -n "$(plan_field "$plan" project)" ]; then
+    deliver_py land-review "$root" --project "$(plan_field "$plan" project)" --sid "$sid" ${folders:+--folder "$folders"} || true
+  fi
 
   # The project's after-land actions, in order. What became of each is
   # said again as land's last lines, after the ratification, so it is
@@ -5880,12 +5926,14 @@ usage: office projects                       list the projects this office scope
                            [--name NAME] [--path PATH] [--prepare]
                            [--host HOST [--shell PREFIX] [--connect TEXT]
                             [--from CLONE [--from-dirty-ok]]]
-                           [--audience REMOTE [--author "Name <email>"] [--base BRANCH]]
+                           [--audience REMOTE [--author "Name <email>"] [--base BRANCH]
+                            [--validates-on HOST] [--worked-on-host]]
                            [--ride PATH]... [--after-land CMD]...
        office projects set [NAME]            declare where a project is, what rides beside
                            [--host HOST] [--shell PREFIX] [--connect TEXT] [--on-this-machine]
                            [--audience REMOTE] [--author "Name <email>"] [--base BRANCH]
                            [--no-audience] [--no-author] [--no-base]
+                           [--validates-on HOST] [--no-validates-on]
                            [--ride PATH]... [--no-rides]            every session on it, and
                            [--after-land CMD]... [--no-after-land]  what runs after one lands
        office projects level-bale [NAME] [--yes]
@@ -5939,14 +5987,27 @@ The audience line (office deliver): --audience names the remote in the
 workbench clone that points at the audience's git host (origin, usually;
 checked against the clone's remotes); a project with none is never
 delivered. --author is the identity the audience expects on the delivery
-commits, Name <email>; unset, deliver authors as the clone's own identity,
-read where the clone is. --base is the audience branch deliveries branch
-from; unset, the audience remote's HEAD branch, read from the clone. On a
-terminal the three are asked after the host, defaults read from the clone.
+commits, Name <email>; unset, office deliver asks for it once on a
+terminal and keeps it (the clone's own identity is never used). --base is
+the audience branch deliveries branch from; unset, the audience remote's
+HEAD branch, read from the clone. On a terminal the three are asked after
+the host, defaults read from the clone.
+A project with an audience is worked and delivered from a guarded clone
+on this machine by default (0.25.0): PATH is that clone here, and a host
+declared for it (--host HOST with --audience, or --validates-on HOST) is
+recorded as where it validates, never where it is worked (nothing
+validates there yet). --worked-on-host keeps the repo worked on HOST, as
+before 0.25.0; a host answered on a terminal is that, and said so.
+Projects already declared on a host keep working as they did.
 Declaring an audience installs the push guard in the clone's .git/hooks
 (a pre-push hook outside what git tracks, as --prepare keeps everything
-the office writes): a push to the audience from the clone by hand is
-refused there, naming office deliver, which pushes one delivery branch.
+the office writes): nothing reaches the audience from the clone but the
+one delivery branch office deliver pushes; a tag (bale's applied/ tags or
+any other), a bale branch or any other ref is refused there, whatever the
+push's form, naming office deliver. office projects set, and office
+upgrade, replace a guard an earlier release installed. The first project
+given an audience brings the office its letterhead (letterhead/: the voice
+page, the forbidden list), from the install's templates.
 A ride-along is a path on this machine, absolute or ~/: a directory inside
 another repo, a whole repo, or a file. Its context rides beside every
 session office start packs for the project. An after-land action is a
@@ -5965,6 +6026,7 @@ Examples:
   office projects set api --shell "ssh me@workhost docker exec -i -u me box bash -lc"
   office projects set api --connect "start the VPN client, then retry"
   office projects set api --audience origin --author "Pat Example <pat@example.org>" --base main
+  office projects add beta ~/work/beta --audience origin --host me@workhost   (worked here; validates on workhost)
   office projects set office-src --after-land ./install.sh
   office projects set office-src --ride ~/nisaba-src/blueprints
   office projects --landed bin/office
@@ -6036,7 +6098,7 @@ host_args() {
 }
 
 AUDIENCE_HELP="The name of the remote in the workbench clone that points at the audience's git host (origin, usually): office deliver fetches its base from there and pushes a delivery branch to it, and nothing else. none, or a plain return when the clone has no origin, leaves the project without an audience, and deliver refuses it by name."
-AUTHOR_HELP="The identity the audience expects on the delivery commits, as git writes one: Name <email>. A plain return leaves it unset, and deliver authors each delivery as the clone's own identity, read where the clone is; set it once when that is not the name the audience knows."
+AUTHOR_HELP="The identity the audience expects on the delivery commits, as git writes one: Name <email>. A plain return leaves it unset, and office deliver asks for it once, at the first delivery, and keeps it; the clone's own identity is never used for a delivery."
 BASE_HELP="The audience branch deliveries branch from (main, usually). A plain return leaves it unset, and deliver reads the audience remote's HEAD branch from the clone each time."
 
 # clone_facts FACTSVAR PATH HOST SHELL CONNECT: what the audience line's
@@ -6080,7 +6142,7 @@ ask_audience_keys() {
   done
   identity="$(clone_fact "$facts" name)"; [ -z "$identity" ] || identity="$identity <$(clone_fact "$facts" email)>"
   while :; do
-    ask _auth "The identity the audience expects on the commits, Name <email>; a plain return leaves it the clone's own${identity:+, $identity} (--author)" "" 0 "$AUTHOR_HELP"
+    ask _auth "The identity the audience expects on the commits, Name <email>; a plain return leaves it for office deliver to ask${identity:+ (the clone has $identity)} (--author)" "" 0 "$AUTHOR_HELP"
     [ -n "$_auth" ] || break
     if out="$(helper check-audience-key author "$_auth" 2>&1)"; then _auth="$out"; break; fi
     printf '  %s\n' "${out#\[office\] error: }" >&2
@@ -6183,10 +6245,12 @@ bring_clone() {
 cmd_projects_add() {
   local name="" path="" root default missing=() rides=() afters=() set_r=0 set_a=0 args=()
   local host="" shell="" connect="" set_h=0 prepare=no found="" hargs=() from="" from_set=0 dirty_ok=no rc
-  local audience="" author="" base="" set_aud=0 facts="" url=""
+  local audience="" author="" base="" set_aud=0 facts="" url="" validates="" worked_there=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --name) [ $# -ge 2 ] || die "--name needs a value"; name="$2"; shift 2 ;;
+      --validates-on) [ $# -ge 2 ] || die "--validates-on needs an ssh target"; validates="$2"; shift 2 ;;
+      --worked-on-host) worked_there=1; shift ;;
       --audience) [ $# -ge 2 ] || die "--audience needs a remote's name"; audience="$2"; set_aud=1; shift 2 ;;
       --author) [ $# -ge 2 ] || die "--author needs Name <email>"; author="$2"; set_aud=1; shift 2 ;;
       --base) [ $# -ge 2 ] || die "--base needs a branch name"; base="$2"; set_aud=1; shift 2 ;;
@@ -6200,7 +6264,7 @@ cmd_projects_add() {
       --ride) [ $# -ge 2 ] || die "--ride needs a path"; rides+=("$2"); set_r=1; shift 2 ;;
       --after-land) [ $# -ge 2 ] || die "--after-land needs a command"; afters+=("$2"); set_a=1; shift 2 ;;
       -h|--help) usage_projects; return 0 ;;
-      -*) usage_projects >&2; die "office projects add does not know $1; it takes a name and a path, as words or as --name and --path, --host, --shell, --connect, --from, --from-dirty-ok, --prepare, --audience, --author, --base, --ride and --after-land" ;;
+      -*) usage_projects >&2; die "office projects add does not know $1; it takes a name and a path, as words or as --name and --path, --host, --shell, --connect, --from, --from-dirty-ok, --prepare, --audience, --author, --base, --validates-on, --worked-on-host, --ride and --after-land" ;;
       *) if [ -z "$name" ]; then name="$1"; elif [ -z "$path" ]; then path="$1"; else die "office projects add takes a name and a path, and got more: $1"; fi; shift ;;
     esac
   done
@@ -6208,6 +6272,19 @@ cmd_projects_add() {
   if [ "$from_set" = 1 ] && [ -z "$host" ] && { [ "$set_h" = 1 ] || ! [ -t 0 ]; }; then die "--from brings a clone to a host; it goes with --host HOST"; fi
   [ "$dirty_ok" = no ] || [ "$from_set" = 1 ] || die "--from-dirty-ok goes with --from CLONE"
   [ -n "$audience" ] || { [ -z "$author" ] && [ -z "$base" ]; } || die "--author and --base go with --audience REMOTE"
+  [ -n "$audience" ] || [ -z "$validates" ] || die "--validates-on goes with --audience REMOTE: it names where a project with an audience validates"
+  [ "$worked_there" = 0 ] || [ -n "$host" ] || die "--worked-on-host goes with --host HOST"
+  [ "$worked_there" = 0 ] || [ -z "$validates" ] || die "--worked-on-host and --validates-on contradict each other: the project is worked on its host, or on this machine and validated there"
+  # A project with an audience is worked on this machine by default
+  # (0.25.0, ruling 2 of the front-door arc): a host declared for it is
+  # where it validates, never where it is worked, unless --worked-on-host.
+  if [ -n "$audience" ] && [ -n "$host" ] && [ "$worked_there" = 0 ]; then
+    [ -z "$shell" ] && [ -z "$connect" ] || die "--shell and --connect say how a repo on a host is worked, and $host is where this project validates: add --worked-on-host to work it there, as before 0.25.0"
+    [ -z "$from" ] || die "--from brings a clone to the host it is worked on, and $host is where this project validates: add --worked-on-host to work it there"
+    log "a project with an audience is worked on this machine, from a guarded clone, and $host is kept for validation only (--worked-on-host works it on $host, as before 0.25.0)"
+    validates="$host"; host=""; set_h=0
+  fi
+  [ -z "$validates" ] || validates="$(helper check-audience-key validates_on "$validates")" || exit 1
   if [ -n "$host" ]; then helper check-host-keys "$host" ${shell:+--shell "$shell"} >/dev/null || exit 1; fi
   [ -z "$audience" ] || audience="$(helper check-audience-key audience "$audience")" || exit 1
   [ -z "$author" ] || author="$(helper check-audience-key author "$author")" || exit 1
@@ -6259,6 +6336,9 @@ cmd_projects_add() {
         clone_facts facts "$path" "$host" "$shell" "$connect" || true
         ask_audience_keys audience author base "$name" "$facts"
         set_aud=1
+        if [ -n "$audience" ] && [ -n "$host" ]; then
+          log "$name is worked on $host, as you answered (its twin: --host $host --worked-on-host); a project with an audience is worked on this machine by default, its host kept for validation: office projects add $name PATH-HERE --audience $audience --host $host"
+        fi
       fi
       if [ "$set_r" = 0 ]; then ask_declaration rides "$name" ride; set_r=1; fi
       if [ "$set_a" = 0 ]; then ask_declaration afters "$name" after-land; set_a=1; fi
@@ -6296,26 +6376,41 @@ cmd_projects_add() {
   [ -z "$audience" ] || args+=(--audience "$audience")
   [ -z "$author" ] || args+=(--author "$author")
   [ -z "$base" ] || args+=(--base "$base")
+  [ -z "$validates" ] || args+=(--validates-on "$validates")
   if [ "${#rides[@]}" -gt 0 ] || [ "${#afters[@]}" -gt 0 ] || [ "${#args[@]}" -gt 0 ]; then
     declare_flags args ride "$([ "${#rides[@]}" -gt 0 ] && echo 1 || echo 0)" "${rides[@]}"
     declare_flags args after-land "$([ "${#afters[@]}" -gt 0 ] && echo 1 || echo 0)" "${afters[@]}"
     helper project-declare "$root/$MANIFEST_REL" "$name" "${args[@]}" || die "added $name, but its declarations could not be written; office projects set $name tries again"
   fi
   commit_paths "$root" "office projects: add $name" "$MANIFEST_REL" || true
-  [ -z "$audience" ] || install_guard "$path" "$host" "$shell" "$connect" "$audience" "$url" || true
+  if [ -n "$audience" ]; then
+    install_guard "$path" "$host" "$shell" "$connect" "$audience" "$url" || true
+    letterhead_arrives "$root"
+  fi
+}
+
+# letterhead_arrives ROOT: the letterhead arrives with the first project
+# given an audience (0.25.0), or finishes arriving: its pages from the
+# install's templates, each only when missing, committed alone.
+letterhead_arrives() {
+  local root="$1" changed=()
+  mapfile -t changed < <(deliver_py arrive "$root" | grep -v '^$')
+  [ "${#changed[@]}" -eq 0 ] || commit_paths "$root" "office projects: the letterhead arrives" "${changed[@]}" || true
 }
 
 cmd_projects_set() {
   local name="" root facts rides=() afters=() set_r=0 set_a=0 args=() current keep line
   local host="" shell="" connect="" set_h=0 hargs=() cur_host
-  local audience="" author="" base="" set_aud=0 clear_aud=() gitfacts="" url="" cur_aud path k
+  local audience="" author="" base="" set_aud=0 clear_aud=() gitfacts="" url="" cur_aud path k validates=""
   while [ $# -gt 0 ]; do
     case "$1" in
+      --validates-on) [ $# -ge 2 ] || die "--validates-on needs an ssh target"; validates="$2"; set_aud=1; shift 2 ;;
+      --no-validates-on) clear_aud+=(--no-validates-on); set_aud=1; shift ;;
       --audience|--author|--base)
         [ $# -ge 2 ] || die "$1 needs a value"
         case "$1" in --audience) audience="$2" ;; --author) author="$2" ;; --base) base="$2" ;; esac
         set_aud=1; shift 2 ;;
-      --no-audience) clear_aud+=(--no-audience --no-author --no-base); set_aud=1; shift ;;
+      --no-audience) clear_aud+=(--no-audience --no-author --no-base --no-validates-on); set_aud=1; shift ;;
       --no-author) clear_aud+=(--no-author); set_aud=1; shift ;;
       --no-base) clear_aud+=(--no-base); set_aud=1; shift ;;
       --host) [ $# -ge 2 ] || die "--host needs an ssh target"; host="$2"; set_h=1; shift 2 ;;
@@ -6327,7 +6422,7 @@ cmd_projects_set() {
       --after-land) [ $# -ge 2 ] || die "--after-land needs a command"; afters+=("$2"); set_a=1; shift 2 ;;
       --no-after-land) set_a=2; shift ;;
       -h|--help) usage_projects; return 0 ;;
-      -*) usage_projects >&2; die "office projects set does not know $1; it takes a project's name, --host, --shell, --connect, --on-this-machine, --audience, --author, --base, --no-audience, --no-author, --no-base, --ride, --no-rides, --after-land and --no-after-land" ;;
+      -*) usage_projects >&2; die "office projects set does not know $1; it takes a project's name, --host, --shell, --connect, --on-this-machine, --audience, --author, --base, --validates-on, --no-audience, --no-author, --no-base, --no-validates-on, --ride, --no-rides, --after-land and --no-after-land" ;;
       *) [ -z "$name" ] || die "office projects set takes one project"; name="$1"; shift ;;
     esac
   done
@@ -6348,6 +6443,14 @@ cmd_projects_set() {
   facts="$(helper project-facts "$root/$MANIFEST_REL" "$name")" || exit 1
   cur_host="$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "host" {print $2}')"
   if [ "$set_r" = 0 ] && [ "$set_a" = 0 ] && [ "$set_h" = 0 ] && [ "$set_aud" = 0 ] && ! can_ask; then
+    # Nothing to set, piped: a project with an audience still gets its
+    # push guard brought up to date (0.25.0), and nothing is asked.
+    if printf '%s\n' "$facts" | grep -q '^audience'$'\t'; then
+      log "nothing to set for $name; its push guard, and the letterhead:"
+      deliver_py guard "$root" --project "$name" || true
+      letterhead_arrives "$root"
+      return 0
+    fi
     die "nothing to set for $name; give --host HOST (with --shell PREFIX and --connect TEXT) or --on-this-machine, --audience REMOTE (with --author and --base) or --no-audience, --ride PATH (repeatable) or --no-rides, and --after-land CMD (repeatable) or --no-after-land; piped input is never asked"
   fi
   path="$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "path" {print $2}')"
@@ -6356,6 +6459,8 @@ cmd_projects_set() {
     [ -z "${!k}" ] || printf -v "$k" '%s' "$(helper check-audience-key "$k" "${!k}")" || exit 1
   done
   { [ -z "$author" ] && [ -z "$base" ]; } || [ -n "$audience" ] || [ -n "$cur_aud" ] || die "$name has no audience; --author and --base go with --audience REMOTE"
+  [ -z "$validates" ] || [ -n "$audience" ] || [ -n "$cur_aud" ] || die "$name has no audience; --validates-on names where a project with an audience validates"
+  [ -z "$validates" ] || validates="$(helper check-audience-key validates_on "$validates")" || exit 1
   if [ "$set_h" = 1 ] && [ -z "$host" ]; then
     [ -n "$cur_host" ] || die "$name is on this machine; --shell and --connect go with --host HOST"
     host="$cur_host"
@@ -6393,7 +6498,7 @@ cmd_projects_set() {
       clone_facts gitfacts "$path" "$eff_host" "$eff_shell" "$eff_connect" || true
       ask_audience_keys audience author base "$name" "$gitfacts"
       set_aud=1
-      if [ -z "$audience" ]; then clear_aud=(--no-audience --no-author --no-base)
+      if [ -z "$audience" ]; then clear_aud=(--no-audience --no-author --no-base --no-validates-on)
       else [ -n "$author" ] || clear_aud+=(--no-author); [ -n "$base" ] || clear_aud+=(--no-base); fi ;;
     esac
   fi
@@ -6418,7 +6523,11 @@ cmd_projects_set() {
       if [ -z "$current" ] && [ "$line" = after-land ] && [ "$set_a" = 2 ]; then set_a=0; fi
     done
   fi
-  [ "$set_r" != 0 ] || [ "$set_a" != 0 ] || [ "$set_h" != 0 ] || [ "$set_aud" != 0 ] || { log "nothing changed for $name"; return 0; }
+  if [ "$set_r" = 0 ] && [ "$set_a" = 0 ] && [ "$set_h" = 0 ] && [ "$set_aud" = 0 ]; then
+    log "nothing changed for $name"
+    if [ -n "$cur_aud" ]; then deliver_py guard "$root" --project "$name" || true; letterhead_arrives "$root"; fi
+    return 0
+  fi
   declare_flags args ride "$([ "$set_r" != 0 ] && echo 1 || echo 0)" "${rides[@]}"
   declare_flags args after-land "$([ "$set_a" != 0 ] && echo 1 || echo 0)" "${afters[@]}"
   if [ "$set_h" = 2 ]; then args+=(--on-this-machine)
@@ -6426,10 +6535,19 @@ cmd_projects_set() {
   [ -z "$audience" ] || args+=(--audience "$audience")
   [ -z "$author" ] || args+=(--author "$author")
   [ -z "$base" ] || args+=(--base "$base")
+  [ -z "$validates" ] || args+=(--validates-on "$validates")
   args+=("${clear_aud[@]}")
   helper project-declare "$root/$MANIFEST_REL" "$name" "${args[@]}" || exit 1
   commit_paths "$root" "office projects: set $name" "$MANIFEST_REL" || true
-  [ -z "$audience" ] || install_guard "$path" "$eff_host" "$eff_shell" "$eff_connect" "$audience" "$url" || true
+  if [ -n "$audience" ]; then
+    install_guard "$path" "$eff_host" "$eff_shell" "$eff_connect" "$audience" "$url" || true
+    letterhead_arrives "$root"
+  elif [ -n "$cur_aud" ] && ! printf '%s\n' "${clear_aud[@]}" | grep -qx -- --no-audience; then
+    # A guard an earlier release installed is replaced, a missing one
+    # installed (0.25.0); a current one is left as it is.
+    deliver_py guard "$root" --project "$name" || true
+    letterhead_arrives "$root"
+  fi
 }
 
 # office projects level-bale NAME: the host's bale brought level with this
@@ -6529,14 +6647,19 @@ deliver_py() { pylib "$DELIVER" "$@"; }
 
 usage_deliver() {
   cat <<'USAGE'
-usage: office deliver [FOLDER] [--on PROJECT] [--branch NAME] [--others-too] [--yes]
+usage: office deliver [FOLDER] [--on PROJECT] [--branch NAME] [--author "Name <email>"] [--others-too] [--yes]
 Carries a folder's landed work to its project's audience as curated
 commits: a branch named from the folder (--branch NAME overrides), made
 from the audience's base branch, holding the landed tree changes as one
 commit (several only when delivery.md marks them) with the words from
-desk/FOLDER/delivery.md, authored as the project's author, pushed to the
-audience remote, and nothing else: no bale commit, merge, tag or branch,
-no file bale's exclude list names, and never the workbench branch.
+desk/FOLDER/delivery.md, authored and committed as the project's declared
+author, pushed to the audience remote, and nothing else: no bale commit,
+merge, tag or branch, no file bale's exclude list names, and never the
+workbench branch.
+The author is a fact only you know: a project that declares none is asked
+for it once on a terminal, and keeps it (--author is the twin, and sets
+it); piped, deliver refuses and names --author. The clone's own identity
+is never used.
 The project is the folder's lane's (--on PROJECT when the lane names
 none); it must declare an audience (office projects set NAME --audience
 REMOTE), and the folder must record at least one session applied there.
@@ -6546,11 +6669,17 @@ applied session in it is named by its id and its folder; sessions of
 other folders ride in the same delivery, said and named, and you may stop
 there (--others-too goes on; piped, it refuses without it); the words
 come from delivery.md (missing, deliver stops and says what to write
-where); the diff and the words go through the letterhead check, and one
-hit refuses the delivery with nothing pushed; then the diff's stat, the
-sessions covered, the author, the branch and the words are shown and
-deliver asks once before anything leaves (--yes answers it; piped, it
-refuses without it). After the push the folder's History gains a dated
+where); the diff and the words go through the letterhead check (the
+office's letterhead: in an office that has one, the em dash, the en dash
+and the ellipsis are refused by default; the lines of the repository's
+own pull-request template, as the audience holds it, are not held to the
+phrasing rule), and one hit refuses the delivery with nothing pushed;
+then the commits are made and each is shown whole, as it will be pushed:
+its subject and body, its author and committer, the files it touches and
+the letterhead's verdict on it, with the diff's stat, the sessions
+covered and the branch; and deliver asks once before anything leaves
+(--yes answers it; piped, it refuses without it). Before the push each
+commit's author and committer are checked against the declared author. After the push the folder's History gains a dated
 delivered line (branch, sessions, workbench commit, delivery commit), and
 deliver prints what you do next: open the review (a URL when the git
 host's compare-URL shape is known, GitHub or GitLab; the branch's name
@@ -6565,55 +6694,77 @@ any push to the audience from the clone that deliver did not make.
   FOLDER           the folder, by name, part of it, or folder N; asked on a terminal
   --on PROJECT     the project, when the folder's lane names none
   --branch NAME    the delivery branch's name (default: the folder's slug)
+  --author "Name <email>"
+                   the identity the audience expects, declared for the project and kept
   --others-too     deliver other folders' sessions riding in the landed work
   --yes            do not ask before pushing
 Under the hood: git fetch of the audience's base and branch, a thin git
 bundle of the clone's HEAD carried back for a hosted project, git merge
 --squash in a temporary worktree, office letterhead-check on it and on
-delivery.md, git commit as the author, git push AUDIENCE
+delivery.md, git commit as the author (author and committer), each commit
+read back and checked, git push --no-follow-tags AUDIENCE
 refs/office/delivery:refs/heads/BRANCH with OFFICE_DELIVERY=BRANCH set
 for the push guard. OFFICE_DEBUG=1 shows every git call and connection.
 Examples:
   office deliver health-route
   office deliver 14 --yes
+  office deliver 14 --author "Pat Example <pat@example.org>"
   office deliver health-route --branch api-health --others-too
 USAGE
 }
 
-# deliver_show PLAN: what leaves, on stdout, before the question.
+# deliver_show PLAN: what leaves, on stdout, before the question: each
+# commit whole, as it will be pushed (0.25.0), the review's words and
+# whom they go to.
 deliver_show() {
   local plan="$1" line
   printf '\nDelivery of %s to %s (%s):\n' "$(plan_field "$plan" folder)" "$(plan_field "$plan" audience)" "$(plan_field "$plan" url)"
   printf '  branch:   %s%s, from %s\n' "$(plan_field "$plan" branch)" "$([ -n "$(plan_field "$plan" continuing)" ] && printf ' (adding to the branch on the audience)')" "$(plan_field "$plan" base)"
-  printf '  author:   %s\n' "$(plan_field "$plan" author)"
+  printf '  author:   %s (author and committer of every commit)\n' "$(plan_field "$plan" author)"
   printf '  sessions: %s' "$(plan_field "$plan" sessions | paste -sd, - | sed 's/,/, /g')"
   printf '  (%s commit(s) on the workbench since %s)\n' "$(plan_field "$plan" commits)" "$(plan_field "$plan" since_why)"
   if [ -n "$(plan_field "$plan" others_lines)" ]; then
     printf '  and of other folders: %s\n' "$(plan_field "$plan" others_lines | paste -sd ';' - | sed 's/;/; /g')"
   fi
   printf '  changes:\n'; plan_field "$plan" stat | sed 's/^/   /'
-  printf '  words (desk/%s/delivery.md):\n' "$(plan_field "$plan" folder_name)"
+  printf '  words (desk/%s/delivery.md), and the commits as they will be pushed:\n' "$(plan_field "$plan" folder_name)"
   python3 -c 'import json, sys
-w = json.load(open(sys.argv[1]))["words"]
+plan = json.load(open(sys.argv[1]))
+w = plan["words"]
+shown = plan.get("commits_shown") or []
 for n, c in enumerate(w["commits"], 1):
-    print(f"    commit {n}: " + c["subject"])
-    for l in (c["body"] or "").splitlines():
+    made = shown[n - 1] if n <= len(shown) else None
+    print(f"    commit {n}: " + (made["subject"] if made else c["subject"]))
+    for l in ((made["body"] if made else c["body"]) or "").splitlines():
         print("      " + l)
     if c["paths"]:
         print("      (takes: " + ", ".join(c["paths"]) + ")")
+    if made:
+        print("      " + made["sha"][:12] + ", author " + made["author"] + ", committer " + made["committer"])
+        print("      files: " + ("; ".join(made["files"]) or "none"))
+        v = made["verdict"]
+        print("      letterhead: " + (v if isinstance(v, str) else "REFUSED"))
+        if not isinstance(v, str):
+            for h in v:
+                print("        " + h)
 print("    review: " + w["review"]["title"])
 for l in (w["review"]["body"] or "").splitlines():
     print("      " + l)
 if w.get("to"):
-    print("    to: " + w["to"])' "$plan"
+    print("    to: " + w["to"])
+print("    letterhead on the diff and the words: clean")
+for l in plan.get("check_told") or []:
+    if "file(s) read" not in l:
+        print("      " + l)' "$plan"
   printf '\n'
 }
 
 cmd_deliver() {
-  local want="" project="" branch="" others=0 yes=0 root name space tmp plan out line ans rc=0 url
+  local want="" project="" branch="" others=0 yes=0 root name space tmp plan out line ans rc=0 url author="" who
   while [ $# -gt 0 ]; do
     case "$1" in
       --on) [ $# -ge 2 ] || die "--on needs the project's name"; project="$2"; shift 2 ;;
+      --author) [ $# -ge 2 ] || die "--author needs Name <email>"; author="$2"; shift 2 ;;
       --branch) [ $# -ge 2 ] || die "--branch needs a name"; branch="$2"; shift 2 ;;
       --others-too) others=1; shift ;;
       --yes|-y) yes=1; shift ;;
@@ -6636,9 +6787,32 @@ cmd_deliver() {
   tmp="$(mktemp -d)" || die "cannot make temp space for the delivery"
   TMP_PATHS+=("$tmp")
   plan="$tmp/plan.json"
-  log "planning the delivery of $space/$name: the audience's base, the landed work, the words, the letterhead check"
+  [ -z "$author" ] || author="$(helper check-audience-key author "$author")" || exit 1
+  log "planning the delivery of $space/$name: the audience's base, the landed work, the words, the letterhead check, the commits"
   deliver_py plan "$root" "$name" --plan "$plan" ${branch:+--branch "$branch"} ${project:+--on "$project"} \
-    $([ "$others" = 1 ] && printf -- --others-too) $(can_ask && printf -- --interactive) || exit 1
+    ${author:+--author "$author"} $([ "$others" = 1 ] && printf -- --others-too) $(can_ask && printf -- --interactive); rc=$?
+  if [ "$rc" = 4 ]; then
+    # The project declares no author: a fact only the occupant knows, asked
+    # once here and kept (0.25.0); the clone's own identity is never used.
+    who="$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(p["need_author"]); print(p.get("clone_identity") or "")' "$plan")"
+    project="$(printf '%s\n' "$who" | sed -n 1p)"
+    local own help
+    own="$(printf '%s\n' "$who" | sed -n 2p)"
+    help="The name and address the people who read $project know you by, as git writes them: Name <email>. Every commit office deliver makes or pushes carries it as both author and committer, and the floor plan keeps it, so this is asked once (office projects set $project --author changes it)."
+    [ -z "$own" ] || help="$help The clone's own identity is $own, and it is never used unless you give it here."
+    if [ -n "$own" ]; then log "$project declares no author, and the clone's own identity is never used silently: the clone's is $own"
+    else log "$project declares no author, and the clone has no identity of its own"; fi
+    while :; do
+      ask author "The identity $project's audience expects on the commits, Name <email>; kept for every delivery (--author)" "" 1 "$help"
+      if out="$(helper check-audience-key author "$author" 2>&1)"; then author="$out"; break; fi
+      printf '  %s\n' "${out#\[office\] error: }" >&2
+    done
+    deliver_py plan "$root" "$name" --plan "$plan" ${branch:+--branch "$branch"} ${project:+--on "$project"} \
+      --author "$author" $([ "$others" = 1 ] && printf -- --others-too) --interactive || exit 1
+  elif [ "$rc" != 0 ]; then
+    exit 1
+  fi
+  plan_field "$plan" author_told | while IFS= read -r line; do [ -n "$line" ] && log "$line"; done
   plan_field "$plan" guard | while IFS= read -r line; do [ -n "$line" ] && log "$line"; done
   deliver_show "$plan"
   if [ -n "$(plan_field "$plan" others_lines)" ] && [ "$others" = 0 ]; then
@@ -6653,7 +6827,7 @@ cmd_deliver() {
       die "nothing left: office deliver $name --yes pushes it; piped input is never asked"
     fi
     ask ans "Push $(plan_field "$plan" branch) to $(plan_field "$plan" audience) as shown? (--yes) (y/n)" "y" 0 \
-      "y makes the commit(s) above as the author shown and pushes that branch, and only it, to the audience; n stops here with nothing pushed. The letterhead check has already passed on the diff and the words."
+      "y checks the commit(s) above carry the author shown, as author and committer, and pushes that branch, and only it, to the audience; n stops here with nothing pushed. The letterhead check has already passed on the diff, the words and each commit."
     case "$ans" in y|Y|yes) ;; *) deliver_py abandon "$root" --plan "$plan"; log "stopped before anything left"; return 0 ;; esac
   fi
   out="$(deliver_py run "$root" --plan "$plan" --day "$(office_date "$(office_tz "$root")")")" || exit 1
@@ -6681,14 +6855,20 @@ and exits 1 with a hit, 0 clean. What it refuses is one list in the
 install, share/letterhead.toml (model, vendor and product names;
 tell-tale phrasing an assistant writes; bale's marks: its commit
 subjects, applied/ tags, bale/ branches and session ids) plus, when this
-office has letterhead/forbidden.txt, each non-blank, non-comment line of
-it as a fixed string (read when the file exists; never written).
+office has a letterhead, the em dash, the en dash and the ellipsis
+character, refused by default and each named in a refusal, and each
+non-blank, non-comment line of its letterhead/forbidden.txt as a fixed
+string; a `lift: em dash` line there lifts one, said on every check
+(read when the files exist; never written).
 Scope: the files a range changed and the range's commit messages
 (--range A..B, as office deliver checks a delivery); else the files a
 dirty tree changed, as they are; else the whole tree, with --all or when
 the directory is not a git repo (said so). --words FILE checks a text as
-it is (a delivery's words). Binary files are skipped by name and by a
-NUL byte; OFFICE_DEBUG=1 names every file read.
+it is (a delivery's words); in a git repo, a line of the words that is a
+line of the repo's own pull-request template, as HEAD holds it, is not
+held to the phrasing rule (every other rule still reads it). Binary
+files are skipped by name and by a NUL byte; OFFICE_DEBUG=1 names every
+file read.
   PATH             a tree on this machine (default: here)
   --on PROJECT     a project this office scopes, in its repo: on its host, through
                    its shell (the check travels there; nothing is written)
@@ -6714,9 +6894,10 @@ cmd_letterhead_check() {
     esac
   done
   [ -z "$project" ] || [ -z "$path" ] || die "--on PROJECT and a path are two trees; give one"
-  # The office's own forbidden strings ride when there is an office here.
+  # The office's letterhead rides when there is an office here: its
+  # forbidden strings, and the characters it refuses by default (0.25.0).
   root="$( (resolve_office) 2>/dev/null)" || root=""
-  [ -z "$root" ] || [ ! -f "$root/letterhead/forbidden.txt" ] || forbidden=(--forbidden "$root/letterhead/forbidden.txt")
+  [ -z "$root" ] || forbidden=(--letterhead "$root/letterhead")
   if [ -n "$project" ]; then
     [ -n "$root" ] || die "--on PROJECT needs an office (OFFICE_ROOT, the office around here, or the default)"
     deliver_py check "$root" --project "$project" "${args[@]}"

@@ -7,7 +7,13 @@ every heading one level down (### Commit, ### Review); office land files
 it in the folder as delivery.md, and office deliver reads it. Written by
 hand, it is this file, in the folder. A `to:` line names the reviewer.
 Nothing here names a model, a tool or a session: the letterhead check
-reads these words before anything leaves.
+reads these words before anything leaves. When the office has a
+letterhead, they follow its voice page (letterhead/voice.md) and hold no
+em dash, en dash or ellipsis character unless the letterhead lifts one.
+A Review that fills the repository's own pull-request template keeps the
+template's lines as the repository holds them: those lines are not held
+to the letterhead's phrasing rule, and every line written into or
+around them is.
 
 - to: {{to}}
 
