@@ -48,6 +48,7 @@ sessions = ["test_read_side.TestFolderSessions.test_the_folder_keeps_only_ids_an
 projects = ["test_read_side.TestLedgerLandedVersions.test_the_trust_ledger"]
 start = ["test_start.TestStartOnAProject.test_one_command_packs_records_and_fills_the_tray"]
 land = ["test_land.TestLandAProjectSession.test_one_command_lands_it_and_runs_the_after_land_actions"]
+withdraw = ["test_planner_from_words.TestWithdraw.test_piped_it_is_named_and_needs_its_answer"]
 moves = ["test_drafting_table.TestMoves.test_a_line_that_does_not_read_refuses_before_anything_is_applied"]
 blueprint = ["test_watches_digest.TestDigest.test_watches_standing_desk_agenda_blueprints"]
 rider = ["test_watches_digest.TestNextLineMoves.test_the_walk_in_names_it"]

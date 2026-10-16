@@ -162,6 +162,26 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Recent changes
 
+- 0.24.0 (session 2026-10-15-planner-from-words-004): a planner from
+  your words, the second half of the front-door arc's second session.
+  - `office start --planner` (the home screen's `p` key) sends a
+    read-only planner sitting from your words: they are its goal, and
+    nothing else is asked but what it concerns, only when your words
+    name no project and the answer matters. The office gathers what
+    rides (the chapters, the folders on the desk, what landed since the
+    last sitting, that sitting's pages) and lists it, with why, on the
+    screen and first in the sitting's brief.
+  - Before any sitting goes out, unsorted drops are said and the
+    in-tray's sort is offered first, by key; taken, both go out in the
+    same motion, the sitting's opener left on the clipboard.
+  - The digest lists each unsorted drop, or says none.
+  - A planner's brief can carry `--- LANDS PLACE, folder N ---` (or `a
+    new folder`), and such a bundle goes out without asking where it
+    lands or which job.
+  - `office withdraw` (the `w` key) closes a session you sent out and
+    will never run: named by its folder, asked once, bale's unlock with
+    reason abandoned, and a line in the folder's History.
+  - Additive: no migration.
 - 0.23.0 (session 2026-10-15-one-door-002): one door, the first half of
   the front-door arc's second session.
   - `office start new` is the one door for new work: your words (asked,
@@ -883,6 +903,15 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Questions likely to come up
 
+- *I opened a session and will not run it. What now?* `office withdraw`,
+  or `w` on the home screen. It names the session by its folder, asks
+  once, and closes it in bale; you never type its id. A session with a
+  response waiting is land's, and one bale held is bale's.
+- *What does a planner sitting from my words carry?* What it concerns:
+  each project's handbook chapter, its folders on the desk, what landed
+  on it since the last sitting and the last sitting's words, besides the
+  digest, the hung items and the drops. The sitting's brief lists each,
+  with why, so you can see it before you paste.
 - *Where does a message I dropped go?* Into the in-tray, as its own page,
   until a session sorts it. Every session you send out carries it;
   `office start --drop in-tray/PAGE` sends it out on its own, and the

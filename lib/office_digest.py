@@ -10,11 +10,12 @@ a number that can go stale is computed here, never written down
 (doctrine section 13). The page is overwritten on every run and never
 edited by hand, like the survey.
 
-The seven sections, in order: versions per project; since the last
+The eight sections, in order: versions per project; since the last
 sitting; the watches (office watches check's own lines, never
 recorded); the standing lines; the desk (in flight, the first five
-ready, parked by gate); the agenda (open items, oldest first); the open
-blueprints.
+ready, parked by gate); the in-tray (each unsorted drop by its page's
+file name, with the project it names when it names one, or none: 0.24.0);
+the agenda (open items, oldest first); the open blueprints.
 
 When the last sitting was. A sitting's words are filed as a notepad
 page named for it (notepad/DATE-SLUG.md, office start files it from the
@@ -51,6 +52,7 @@ import office_helper as oh  # noqa: E402
 import office_drafting as od  # noqa: E402
 import office_bale as ob  # noqa: E402
 import office_watches as ow  # noqa: E402
+import office_drop as odrop  # noqa: E402
 
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 PAGE = f"{od.SPACE}/digest.md"
@@ -365,6 +367,33 @@ def desk_section(rd, root, today):
     return out, bad > 0
 
 
+def in_tray_section(root):
+    """Each unsorted drop in the in-tray, oldest first, by its page's file
+    name, with the project it names when it names one: the office's name
+    for it when the drop's words resolve to one of its projects, else the
+    words as given. "none" when the in-tray is empty or not there."""
+    out = ["## The in-tray", ""]
+    drops = odrop.unsorted(root)
+    if not drops:
+        return out + ["- none"]
+    names = []
+    try:
+        manifest = oh.read_toml(pathlib.Path(root) / "floor-plan" / "manifest.toml")
+        names = [p["name"] for p in oh.read_projects(manifest) or []]
+    except (OSError, oh.HelperError) as exc:
+        debug(f"the floor plan's projects could not be read for the in-tray: {exc}")
+    for d in drops:
+        given = d.get("project")
+        resolved = odrop.resolve_project(given, names) if given else None
+        if resolved:
+            out.append(f"- {d['name']} (project: {resolved})")
+        elif given:
+            out.append(f"- {d['name']} (project: \"{given}\", none of this office's)")
+        else:
+            out.append(f"- {d['name']}")
+    return out
+
+
 def agenda_section(root):
     out = ["## The agenda", ""]
     entries, disposed = od.Table(root).agenda()
@@ -459,6 +488,7 @@ def render(rd, root, now, tz_name):
         out += ["## Watches", "", f"- could not be checked: {exc}", "", "## Standing lines", "",
                 "- could not be computed (the watches' error above)", ""]
     out += section(desk_section, rd, root, today) + [""]
+    out += section(in_tray_section, root) + [""]
     out += section(agenda_section, root) + [""]
     out += section(blueprints_section, root)
     text = oh.ascii_escape("\n".join(out).rstrip("\n") + "\n")[0]

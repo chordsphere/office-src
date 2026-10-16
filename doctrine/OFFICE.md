@@ -83,7 +83,13 @@ after an applied landing runs the project's after-land actions and closes
 a folder whose one session landed, ends by saying what became of each
 action, and puts what bale printed for you to carry on the clipboard last
 of all; it asks nothing about ratification. Given a read-only sitting it
-sent out, it ends the sitting with bale's unlock instead. The
+sent out, it ends the sitting with bale's unlock instead. `office start
+--planner` sends a planner sitting from the occupant's words: his words
+its goal, what rides gathered by the office and said, and the in-tray's
+sort offered first when drops wait; a planner's bundle whose brief names
+where it lands (its LANDS line) goes out asking neither where nor which
+job; and `office withdraw` closes a session he sent out and will never
+run, named by its folder and asked once. The
 office runs bale when you ask, as your hands at the terminal; bale asks its
 own questions and only you answer them. It never schedules a session,
 never hands one to a model and never carries pastes. bale carries the
@@ -336,6 +342,91 @@ forecast and brief, and the office adds nothing to it and answers none of
 its intents; it says so when the line leaves out something the office
 would have carried, such as the constraint of section 2.
 
+A planner's brief names where its session lands and the folder that
+records it (0.24.0), in one line kept to the byte as the RATIFIED lines
+are and read where they are read, anywhere in the brief outside a fenced
+block and outside a notepad page (values illustrative):
+
+  ```
+  --- LANDS alpha, folder 14 ---
+  --- LANDS the office, folder 14 ---
+  --- LANDS alpha, a new folder ---
+  ```
+
+The place is a project the office scopes, or `the office`; the folder is
+`folder N` on the desk, or `a new folder`, which `office start` mints from
+the bundle's goal as it mints one for any bundle. bale's bundle format is
+untouched: the line lives in the brief, the planner's member, so bale's
+open and its gates see nothing new. `office start --bundle`, bare `office
+start` and the home screen send such a bundle without asking where it
+lands or which job, and say both in one line. Each question comes back,
+alone, only when the line is absent, does not read, names a project the
+office does not scope, or names a folder the office does not hold on the
+desk (one in the filing cabinet is named, with the line that reopens it);
+each case is said in a line and never guessed past. A flag still sets
+its field (`--on`, `--in-office`, a folder given), and the line it
+overrides is said. A brief carries one LANDS line; a second is said and
+the first taken. Every planner bundle carries one from office-src 0.24.0
+on.
+
+A planner sitting from the occupant's words (0.24.0): `office start
+--planner`, the home screen's p key. He says what he wants a planner for,
+in his words, and a read-only sitting goes out from the office, recorded
+in a folder: one minted from his words through start new's code, its
+title, size and goal provisional as section 5 says (`office start new
+--planner`, and the p key), or one on the desk he picks by key or names
+(`office start FOLDER --planner`), which keeps his words in its Asked
+section. His words are the sitting's goal. Nothing else is asked: no
+title, no separate goal, no size, no include list; what the sitting
+concerns is asked only when his words name none of the office's projects
+and the answer changes what rides, and "the office itself" is an answer
+(`--about PROJECT`, once per project, and `--in-office` are its flag
+twins; piped, a sitting whose words name no project and whose answer
+matters refuses and names them). Its brief is the office's, from the
+install's templates/sitting-brief.md: his words verbatim, what they
+concern and how that was found, and what rides and why, one line each, in
+the order to read them, where the planner reads first; the screen shows
+the same lines before the pack. What rides, in this order:
+
+1. the sitting's own folder, whole, the drafting table with its digest
+   written first, the hung items and the unsorted drops, as every
+   sitting carries them;
+2. for each project his words concern, its handbook chapter;
+3. the folder.md of each folder on the desk on those projects (for the
+   office itself, the folders whose lane names none of its projects),
+   the sitting's own aside;
+4. what landed on those projects since the last sitting, as the office
+   holds it: the walkthrough.md of each folder, on the desk or in the
+   filing cabinet, that `office land` filed or rewrote since the commit
+   that filed the last sitting's page, newest first (a folder that only
+   moved is a rename to git, not a filing); never bale's telemetry;
+5. the last sitting's notepad pages: the latest sitting's page, by the
+   commit that filed it, and its continuations (SLUG.md, SLUG-2.md, and
+   on, whichever of them was filed last).
+
+No project's tree rides with a sitting from his words: what the office
+holds about the project does. The set stays inside bale pack's soft caps
+(10,000 files and 100 MB, `bale help pack`), with a tenth to spare for the
+rest of the pack: when it would not, the oldest page of what landed is
+left out first, one at a time, each said on the screen and in the brief,
+and nothing else is ever left out; a set still past the caps then is
+said, and bale's own caps speak for themselves. A sitting a planner's
+bundle carries goes out as before: the bundle's pack line is the whole
+session.
+
+Before any sitting is packed (from his words, a `--read-only` start, or a
+bundle whose pack line is read-only), unsorted drops in the in-tray are
+said, how many, and the in-tray's sort is offered first, by key, through
+`office start --sort`'s own code (`--sort-first` and `--no-sort-first`
+are its flag twins). Taken, the sort goes out and the sitting he asked
+for goes out right after it, in the same motion: two out trays, and the
+sitting's opener is the last copy made, so it is the one on the
+clipboard, the sort's printed above it. Declined, or piped with neither
+flag, the sitting goes out as it would have and carries the drops, as
+every session does. The sort is not offered while one is out or while an
+open session holds the in-tray (each said), and a sort that does not go
+out is said and the sitting goes on.
+
 The folder records the id of every session that worked on its job.
 `bale pack --json` reports the id, so nobody types it: `office start`
 records it in the folder's Sessions section, and a session packed by
@@ -435,6 +526,25 @@ is left to judge; the planner's ratification, and any exception, arrive
 later in the next brief (`--leave-open` keeps it on the desk, `--close`
 closes it piped; piped with neither, it leaves the folder open and says
 so). The founding folder keeps its own rule.
+
+A session that went out and will never be worked is withdrawn (0.24.0):
+`office withdraw`, his surface's verb, and the home screen's w key, shown
+while there is one. The office names the session by its folder, the
+folder's number and title, never by its id: with one such session it is
+named, with several they are offered by key (a folder given, or a session
+id for a script, picks one). It asks yes or no once, since closing it
+cannot be undone (`--yes` is the twin; piped, it is needed); then it runs
+bale's unlock with bale's own reason, `abandoned`, in the repo the session
+is open in (through the project's shell for a project on a host), and
+adds `- DATE withdrawn: SID, never worked; closed in bale by office
+withdraw (abandoned)` to the History of each folder that records it. A
+session with a response in the downloads (land's), one bale has started
+to apply (held, or any attempt after its pack: bale's revert, never an
+unlock), and a read-only sitting (office land ends it) are never offered,
+each said with why; bale's own refusals are shown whole. A folder that
+recorded the withdrawn session and no other is said in the same breath,
+with the line that closes it (`office close NAME --retired "withdrawn
+before it was worked"`), and never closed by the office.
 
 After a project session lands, the office side (the folder, and the
 front sheet of any handbook chapter the change touched) is brought up to
@@ -581,7 +691,8 @@ in another folder, or was retired, is not reopened. Its History section
 is one dated line per event, `- YYYY-MM-DD verb: text`, from a closed
 set of verbs, appended and never rewritten, and the status line always
 agrees with the last line that changed it (`ended`, which `office land`
-writes when it ends a read-only sitting, changes nothing). `office sessions FOLDER SID
+writes when it ends a read-only sitting, and `withdrawn`, which `office
+withdraw` writes when it closes a session never worked, change nothing). `office sessions FOLDER SID
 --ratified` records that the planner ratified a session's judgment
 calls, with `--except` for what was corrected and where it went; a
 brief's RATIFIED line does the same through `office start` (section 4).
@@ -735,8 +846,12 @@ landing, without recording, and prints only the watches that fired. With `--reco
 for each watch that fired; re-arming, rewording, closing and a not-fired
 record are a sitting's. `office digest` writes digest.md, the page a
 sitting opens on: versions, what happened since the last sitting, the
-watches, the standing lines, the desk, the agenda and the open
-blueprints, every line computed when it runs. The last sitting is the
+watches, the standing lines, the desk, the in-tray (each unsorted drop by
+its page's file name, with the project it names when it names one: the
+office's name for it when its words resolve to one of the office's
+projects, else the words as given; "none" when the in-tray is empty or
+not there), the agenda and the open blueprints, every line computed when
+it runs. The last sitting is the
 latest sitting's page in the notepad, by the commit that filed it, and
 the page says so. The digest is overwritten on every run and never
 edited by hand, and `office start` writes it again before it packs a
@@ -865,7 +980,9 @@ A session may always write the notepad and the suggestion box.
 Verbs declare what a session ships and where it lands. office-src runs
 bale's pack and apply when the occupant asks, as the occupant's hands at
 the terminal: `office start` packs, and `office land` applies, or, for a
-read-only sitting the office sent out, ends it with bale's unlock. It never
+read-only sitting the office sent out, ends it with bale's unlock; `office
+withdraw` closes a session sent out and never worked with the same unlock,
+bale's reason `abandoned` given. It never
 schedules a session, never
 dispatches one to a model and never carries pastes, so whoever carries
 sessions (the occupant, bale, a future harness) can change freely
@@ -897,8 +1014,9 @@ Kinds:
 | reopen | script: move a done folder back to the desk | yes | plumbing |
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes | plumbing |
 | projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace, a clone here brought there with --from), declare where it is, what rides with it and what runs after it lands, bring a host's bale level with this machine's (level-bale), render what bale records about them | yes | occupant |
-| start | script: the one door for new work: with new, a job from the occupant's words (--words the twin), its folder minted through open's code and its session sent out in one motion; bare on a terminal, offer the planner's bundles in the downloads no session has opened, by key; pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; with --sort, send the standalone sort; send a folder out with its goal and brief.md when it has them; record it in the folder, file the sitting's page and the planner's ratifications its brief carries, gather what to attach in one out tray, and put the opener on the clipboard last | yes | occupant |
+| start | script: the one door for new work: with new, a job from the occupant's words (--words the twin), its folder minted through open's code and its session sent out in one motion; bare on a terminal, offer the planner's bundles in the downloads no session has opened, by key, and send a bundle whose brief carries a LANDS line where it says, asking neither where nor which job; with --planner, a read-only planner sitting from the occupant's words (--words, --about PROJECT or --in-office the twins), its folder minted or picked by key, what rides gathered and said in its brief; before any sitting, the in-tray's sort offered first when drops wait (--sort-first, --no-sort-first); pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; with --sort, send the standalone sort; send a folder out with its goal and brief.md when it has them; record it in the folder, file the sitting's page and the planner's ratifications its brief carries, gather what to attach in one out tray, and put the opener on the clipboard last | yes | occupant |
 | land | script: bring a session back: bale's apply in its repo, how it ended, the folder's walkthrough and delivery pages filed from the response, then its Sort on each drop's page, its questions and answers in the folder, its facts in the handbook and its Structure over the folder's provisional fields, and office moves when a drop was sorted, the project's after-land actions, the folder closed when its one session landed and the founding folder when the founding has, the watches that fired, what became of each action, and last the relay to carry on the clipboard; it asks nothing about ratification; or end a read-only sitting the office sent out | yes | occupant |
+| withdraw | script: close a session the office sent out and that was never worked (no response in the downloads, no apply begun), named by its folder and asked once (--yes the twin): bale's unlock with reason abandoned where it is open, and a withdrawn line in its folder's History; a folder that recorded it alone is said with the line that closes it | yes | occupant |
 | relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes | plumbing |
 | probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), stdin closed, once its purpose header has been shown and the occupant said yes; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes | plumbing |
 | deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, checked by the letterhead, asked once, recorded in the folder | yes | occupant |
@@ -959,10 +1077,11 @@ The verbs are on two surfaces, which the table above names and
 share/verbs.toml declares. The occupant's own (`occupant`) are the home
 screen and what he uses: the two instant captures (`office note`,
 `office drop`), the friction slip, a new job from his words with its
-session out (`office start new`, the one door), sending a job on the desk
-out and bringing a session back (`office start`, `office land`), the
-desk, closing a job, delivering it, adding a project, the tour and a new
-office. `office help` lists them, one line each in plain words, with a
+session out (`office start new`, the one door), a planner sitting from
+his words (`office start --planner`), sending a job on the desk out and
+bringing a session back (`office start`, `office land`), withdrawing one
+never worked (`office withdraw`), the desk, closing a job, delivering it,
+adding a project, the tour and a new office. `office help` lists them, one line each in plain words, with a
 line on what a folder is and what a project is. Everything else is the
 plumbing the office and its sessions use, which a session names in full
 when it needs him to run one; `office help --all` lists every verb by
@@ -989,9 +1108,11 @@ downloads for a session that is out, a planner's bundle in the downloads
 no session has opened, each unsorted drop and the sort, the desk moves
 a sitting decided, an office out of step with the install, and a
 read-only sitting a folder records, which only he can say is over. A
-session is named by its folder, never by its id. Keys for a new job,
-sending a session out, bringing one back, a note, a drop, the whole
-desk and help are always there. Choosing a key runs the code the verb
+session is named by its folder, never by its id. Keys for a new job, a
+planner sitting from his words (p), sending a session out, bringing one
+back (while a session is out), a note, a drop, the whole desk and help
+are always there, and a key that withdraws a session never worked (w)
+while one is out with no response and no apply begun. Choosing a key runs the code the verb
 already runs, with its arguments filled in, as a command of its own,
 and asks only what that verb must; when it ends, a key brings the home
 screen back, worked out again, and q leaves. It asks once, the first
@@ -1159,7 +1280,9 @@ the occupant at the terminal (pack and open in `office start`, which
 first asks `bale open --check`, a rehearsal that writes nothing, whether
 a bundle can open before it writes anything of its own; apply,
 retry and relay in `office land`, and unlock when `office land` ends a
-read-only sitting the office sent out, and no other session): a question
+read-only sitting the office sent out or `office withdraw` closes a session
+the office sent out that was never worked, with bale's reason `abandoned`
+given, and no other session): a question
 bale asks is his to answer, and
 where bale prints a block for him to carry and no --json key holds it,
 the office takes the lines between the markers the manifest below

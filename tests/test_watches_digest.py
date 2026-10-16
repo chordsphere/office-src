@@ -711,15 +711,17 @@ class DigestCase(WatchCase):
 
 
 class TestDigest(DigestCase):
-    def test_the_seven_sections_in_order_and_the_page_committed_alone(self):
+    def test_the_eight_sections_in_order_and_the_page_committed_alone(self):
         self.sitting_page()
         self.land()
         proc = self.digest()
         page = (self.root / DT / "digest.md").read_text()
         self.assertEqual(proc.stdout, page)
         heads = re.findall(r"^## (.+)$", page, re.M)
+        # The in-tray joined after the desk in 0.24.0: the unsorted drops, or none.
         self.assertEqual(heads, ["Versions", "Since the last sitting", "Watches", "Standing lines", "The desk",
-                                 "The agenda", "Open blueprints"])
+                                 "The in-tray", "The agenda", "Open blueprints"])
+        self.assertEqual(self.section(page, "The in-tray").strip(), "- none")
         self.assertIn("Never edit by hand", page)
         self.assertTrue(page.isascii())
         # The first digest brings the drafting table, in the same commit.

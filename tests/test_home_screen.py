@@ -158,7 +158,7 @@ class TestTheHomeScreenUnits(unittest.TestCase):
         self.assertNotIn("  [10] thing 9", lines)
         self.assertIn("  and 2 more: office desk lists the drops and the folders", lines)
         keys = [k for k, _, _ in menu]
-        self.assertEqual(keys, [str(n) for n in range(1, 10)] + ["o", "s", "n", "d", "k", "h", "q"])
+        self.assertEqual(keys, [str(n) for n in range(1, 10)] + ["o", "p", "s", "n", "d", "k", "h", "q"])
         self.assertNotIn("[l]", "\n".join(lines), "nothing is out, so there is nothing to bring back")
         self.assertTrue(all(len(l) <= 80 for l in lines if l.startswith("  [o]") or l.startswith("  [")))
         _, menu = hs.render_page([], [], 1)
