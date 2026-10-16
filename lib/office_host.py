@@ -932,28 +932,69 @@ def remove_scratch(place, path):
 # occupant's machine, where the audience answers with his credentials.
 
 GUARD_MARK = "office push guard"
+# The guard's version, written into the hook as `guard_version=N` (0.25.0).
+# A hook with the mark and no version line is the first guard, 0.17.0's,
+# which let a tag or another branch through under OFFICE_DELIVERY and
+# knew the audience only by its remote's name and recorded URL as
+# written. office status names an older guard with the line that replaces
+# it; office upgrade and office projects set replace it.
+GUARD_VERSION = 2
 # The variable office deliver sets on the one push it makes, naming the
 # delivery branch: the guard lets that branch through and nothing else.
 DELIVERY_ENV = "OFFICE_DELIVERY"
 PUSH_GUARD = """#!/bin/sh
-# {mark} (office-src): a push to this project's audience goes through
-# office deliver, which pushes one delivery branch and nothing else.
-# Written by office projects add and set, and by office deliver; the
-# office owns this file (.git/hooks is outside what git tracks).
-audience='{audience}'
-audience_url='{url}'
+# @MARK@ (office-src): a push to this project's audience goes through
+# office deliver, which pushes one delivery branch and nothing else: no
+# tag (bale's applied/ tags or any other), no bale branch, no other ref,
+# whatever the push's form (--tags, --all, --mirror, a refspec, a tag by
+# name). Written by office projects add and set, office upgrade and office
+# deliver; the office owns this file (.git/hooks is outside what git
+# tracks). A push with --no-verify runs no hook at all, this one included.
+guard_version=@VERSION@
+audience='@AUDIENCE@'
+audience_url='@URL@'
 remote="$1"; url="$2"
-if [ "$remote" != "$audience" ] && [ "$url" != "$audience_url" ]; then exit 0; fi
-if [ -n "${{{env}:-}}" ]; then
-  while read -r local_ref local_sha remote_ref remote_sha; do
-    [ "$remote_ref" = "refs/heads/${env}" ] && continue
-    echo "[office] refused: office deliver pushes refs/heads/${env} alone, not $remote_ref" >&2
-    exit 1
+# A URL as the audience's git host knows it: no scheme, no user, no
+# port, no trailing .git or slash, in lower case, so https://HOST/ORG/REPO,
+# git@HOST:ORG/REPO.git and ssh://git@HOST/ORG/REPO are one audience.
+norm() {
+  printf '%s' "$1" | sed -e 's#^[A-Za-z][A-Za-z0-9+.-]*://##' -e 's#^[^@/]*@##' \\
+    -e 's#^\\([^/:]*\\):[0-9][0-9]*/#\\1/#' -e 's#^\\([^/:]*\\):#\\1/#' -e 's#/*$##' -e 's#\\.git$##' | tr 'A-Z' 'a-z'
+}
+is_audience=no
+[ "$remote" = "$audience" ] && is_audience=yes
+if [ "$is_audience" = no ]; then
+  pushed="$(norm "$url")"
+  for known in "$audience_url" $(git config --get-all "remote.$audience.url" 2>/dev/null) \\
+               $(git config --get-all "remote.$audience.pushurl" 2>/dev/null); do
+    [ -n "$known" ] && [ "$(norm "$known")" = "$pushed" ] && is_audience=yes
   done
-  exit 0
 fi
-echo "[office] refused: $remote is this project's audience, and nothing goes there by hand: office deliver FOLDER carries a folder's landed work as a delivery branch, and nothing else." >&2
-exit 1
+[ "$is_audience" = yes ] || exit 0
+delivery="${@ENV@:-}"
+refused=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -n "$remote_ref" ] || continue
+  why=""
+  if [ -z "$delivery" ]; then
+    why="nothing goes to the audience by hand"
+  else
+    case "$delivery" in bale/*|refs/*|"") why="OFFICE_DELIVERY names $delivery, which is not a delivery branch" ;; esac
+    case "$local_ref" in refs/tags/*) why="${why:-it is a tag}" ;; esac
+    case "$remote_ref" in refs/tags/*) why="${why:-it is a tag}" ;; esac
+    case "$local_sha" in *[!0]*) ;; *) why="${why:-it deletes a ref}" ;; esac
+    [ "$remote_ref" = "refs/heads/$delivery" ] || why="${why:-office deliver pushes refs/heads/$delivery alone}"
+  fi
+  if [ -n "$why" ]; then
+    echo "[office] refused: $remote_ref ($why)" >&2
+    refused=$((refused + 1))
+  fi
+done
+if [ -z "$delivery" ] || [ "$refused" -gt 0 ]; then
+  echo "[office] refused: $remote is this project's audience, and only office deliver reaches it: office deliver FOLDER carries a folder's landed work as one delivery branch, and nothing else (no tag, no bale branch, no other ref)." >&2
+  exit 1
+fi
+exit 0
 """
 
 _GIT_FACTS_SCRIPT = (
@@ -966,6 +1007,7 @@ _GIT_FACTS_SCRIPT = (
     'hook="$(git rev-parse --git-path hooks)/pre-push"; '
     'if [ -f "$hook" ]; then if grep -q "' + GUARD_MARK + '" "$hook"; then '
     "echo \"guard=office $(sed -n \"s/^audience='\\(.*\\)'\\$/\\1/p\" \"$hook\")\"; "
+    'echo "guard_version=$(sed -n "s/^guard_version=//p" "$hook" | head -n 1)"; '
     'else echo "guard=other"; fi; else echo "guard=none"; fi; '
     'echo "dirty=$(git status --porcelain 2>/dev/null | wc -l | tr -d " ")"'
 )
@@ -996,8 +1038,33 @@ def git_facts(place):
             facts["guard_audience"] = audience or None
         elif key in ("branch", "head", "name", "email", "hooks_path", "dirty"):
             facts[key] = value
+        elif key == "guard_version":
+            facts["guard_version"] = int(value) if value.isdigit() else 1
     facts["dirty"] = int(facts.get("dirty") or 0)
+    if facts["guard"] == "office":
+        # The first guard (0.17.0) wrote no version line.
+        facts.setdefault("guard_version", 1)
     return facts
+
+
+def guard_state(facts):
+    """(state, line) for a clone's push guard, from git_facts: current,
+    older (a guard an earlier release installed), none, other (a hook the
+    office did not write) or unread (core.hooksPath points elsewhere)."""
+    if facts.get("hooks_path"):
+        return "unread", ("core.hooksPath is set, so the clone's .git/hooks are not the hooks git runs and the "
+                          "guard goes unread there")
+    kind = facts.get("guard")
+    if kind == "office":
+        v = facts.get("guard_version", 1)
+        if v >= GUARD_VERSION:
+            return "current", f"the push guard, version {v}"
+        return "older", (f"an older push guard (version {v}), which lets a tag or another branch through under "
+                         "office deliver's variable and knows the audience only by its remote's name and URL as "
+                         "written")
+    if kind == "other":
+        return "other", "a pre-push hook the office did not write, so a push to the audience by hand is not refused"
+    return "none", "no push guard"
 
 
 _GUARD_SCRIPT = (
@@ -1015,7 +1082,14 @@ _GUARD_FAILED = {3: "no such directory", 4: "not a git repo", 5: "could not make
 
 
 def push_guard_text(audience, url):
-    return PUSH_GUARD.format(mark=GUARD_MARK, audience=audience, url=url or "", env=DELIVERY_ENV)
+    """The hook, for one audience. The audience's name and URL are checked
+    words (a remote's name; a URL git took), and a quote in either would
+    end the shell's string, so one is refused."""
+    if "'" in (audience or "") or "'" in (url or ""):
+        raise HostError("refused", f"the audience {audience!r} or its URL {url!r} holds a quote, which the guard "
+                                   "cannot carry; rename the remote")
+    return (PUSH_GUARD.replace("@MARK@", GUARD_MARK).replace("@VERSION@", str(GUARD_VERSION))
+            .replace("@AUDIENCE@", audience).replace("@URL@", url or "").replace("@ENV@", DELIVERY_ENV))
 
 
 def install_push_guard(place, audience, url):

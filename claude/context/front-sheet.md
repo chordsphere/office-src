@@ -162,6 +162,36 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Recent changes
 
+- 0.25.0 (session 2026-10-16-clean-delivery-001): clean delivery, the
+  front-door arc's third session. The audience line now holds by
+  default, not by your care.
+  - In an office with a letterhead, the check (and deliver, and land's
+    review) refuses the em dash, the en dash and the ellipsis character,
+    naming each; `lift: em dash` in the letterhead's forbidden list lifts
+    one, and every check says so.
+  - The lines of a repository's own pull-request template, as the
+    repository holds them, are not held to the phrasing rule; what the
+    words add or change is.
+  - The letterhead has a voice page (letterhead/voice.md) with an empty,
+    marked place for your style rule in your words; it arrives with the
+    first project given an audience, `office upgrade` adds it to a
+    letterhead from before, and `office status` names it missing or
+    empty. It rides beside every session on a project with an audience.
+  - `office deliver` shows each commit whole before it asks (subject and
+    body, author and committer, files, the letterhead's verdict), makes
+    every commit as the project's declared author, checks that before the
+    push, and asks you for the author once when none is declared (kept;
+    `--author` the twin). The clone's own identity is never used.
+    `office land` on a project with an audience says what deliver would
+    refuse, and refuses nothing.
+  - The push guard (version 2) lets nothing reach the audience but the
+    delivery branch: no tag, no bale branch, no other ref, whatever the
+    push's form. `office status` names an older guard; `office upgrade`
+    and `office projects set` replace it.
+  - A project with an audience is worked from a guarded clone on this
+    machine; a host given with it is recorded as where it validates
+    (`validates_on`). Projects already on a host work as they did.
+  - Additive: no migration.
 - 0.24.0 (session 2026-10-15-planner-from-words-004): a planner from
   your words, the second half of the front-door arc's second session.
   - `office start --planner` (the home screen's `p` key) sends a
@@ -654,6 +684,17 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Known problems
 
+- The push guard is a git hook: a push made with `--no-verify` runs no
+  hook and passes it. It keeps a slip out, not a deliberate act; the
+  doctrine says so (section 10).
+- A project's `validates_on` is recorded and shown, and nothing uses it
+  yet: validation on a host waits on bale's remote validation runner
+  (S3). The work office's own projects stay where they are until that
+  office moves them.
+- office land's letterhead review reads a session's landing as
+  applied/SID's first parent to the tag; a bale that ever lands without
+  that tag makes the review say it could not run, a line and nothing
+  more.
 - The home screen and bare `office start` offer only the bundles in this
   machine's `downloads` (machine.toml): bale's own search directories are
   on none of its --json surfaces (a slip for bale-src already), and the

@@ -742,7 +742,7 @@ def read_projects(manifest):
         item = {"name": name, "path": None, "resolved": None, "problem": None,
                 "rides": [], "after_land": [], "declaration_problems": [],
                 "host": None, "shell": None, "connect": None,
-                "audience": None, "author": None, "base": None}
+                "audience": None, "author": None, "base": None, "validates_on": None}
         if not PROJECT_NAME_RE.match(name):
             item["problem"] = "the name must be letters, digits, dash or underscore"
         elif not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
@@ -828,7 +828,13 @@ HOST_KEYS = ("host", "shell", "connect")
 #             `Name <email>`; unset, deliver reads the clone's own
 #   base      the audience branch deliveries branch from; unset, the
 #             audience remote's HEAD branch, read from the clone
-AUDIENCE_KEYS = ("audience", "author", "base")
+#   validates_on
+#             (0.25.0) the host where a project with an audience
+#             validates, an ssh target as --host takes one; never where
+#             it is worked: such a project is worked from a guarded
+#             clone on this machine by default (ruling 2 of the front-door
+#             arc). Recorded and rendered; nothing validates there yet.
+AUDIENCE_KEYS = ("audience", "author", "base", "validates_on")
 REMOTE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 AUTHOR_RE = re.compile(r"^(?P<name>[^<>]+?)\s*<(?P<email>[^<>@\s]+@[^<>@\s]+)>$")
 # A branch name as git takes one: no space, no control character, none
@@ -874,7 +880,16 @@ def check_base(name):
     return text
 
 
-AUDIENCE_CHECKS = {"audience": check_audience, "author": check_author, "base": check_base}
+def check_validates_on(host):
+    """The host a project validates on, as --host takes one."""
+    try:
+        return ohost.check_host(host)
+    except ohost.HostError as exc:
+        raise HelperError(f"validates_on: {exc}")
+
+
+AUDIENCE_CHECKS = {"audience": check_audience, "author": check_author, "base": check_base,
+                   "validates_on": check_validates_on}
 
 
 def check_ride(path):
@@ -1015,9 +1030,14 @@ def describe_audience(entry):
         return []
     out = [f"audience: the remote {entry['audience']} (office deliver pushes a delivery branch there, and nothing else)"]
     out.append(f"author: {entry['author']}" if entry.get("author")
-               else "author: the workbench clone's own identity (set --author to name another)")
+               else "author: none declared; office deliver asks for it once, and the clone's own identity is never "
+                    "used (set --author to name it now)")
     out.append(f"base: {entry['base']}" if entry.get("base")
                else "base: the audience's HEAD branch, read from the clone (set --base to name another)")
+    if entry.get("validates_on"):
+        where = f"on {entry['host']}" if entry.get("host") else "on this machine"
+        out.append(f"validates on: {entry['validates_on']}, not where it is worked ({where}); nothing validates "
+                   "there yet")
     return out
 
 
@@ -2829,7 +2849,8 @@ def cmd_project_declare(a):
     for key in AUDIENCE_KEYS:
         given, cleared = getattr(a, key), getattr(a, f"no_{key}")
         if given is not None and cleared:
-            raise HelperError(f"--{key} and --no-{key} contradict each other")
+            flag = key.replace("_", "-")
+            raise HelperError(f"--{flag} and --no-{flag} contradict each other")
         if cleared:
             audience_keys[key] = None
         elif given is not None:
@@ -3470,7 +3491,8 @@ def main(argv=None):
     p.add_argument("--host"); p.add_argument("--shell"); p.add_argument("--connect")
     p.add_argument("--on-this-machine", action="store_true")
     for key in AUDIENCE_KEYS:
-        p.add_argument(f"--{key}"); p.add_argument(f"--no-{key}", action="store_true")
+        flag = key.replace("_", "-")
+        p.add_argument(f"--{flag}", dest=key); p.add_argument(f"--no-{flag}", dest=f"no_{key}", action="store_true")
     p.set_defaults(fn=cmd_project_declare)
     p = sub.add_parser("check-audience-key", help="one of the audience line's keys as it would be stored, or why not")
     p.add_argument("key", choices=AUDIENCE_KEYS); p.add_argument("value"); p.set_defaults(fn=cmd_check_audience_key)

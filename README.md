@@ -404,9 +404,9 @@ rendering says bale is missing and the rest of the command works.
 
 ### Looking after an office
 
-    office status              # version, skew, the install against its source, profile, survey age, timezone, hung items, catalogs, folders, filed pages, bale, projects
+    office status              # version, skew, the install against its source, profile, survey age, timezone, hung items, catalogs, folders, filed pages, bale, projects, the letterhead, the push guards
     office survey              # rewrite floor-plan/survey.md, report what changed
-    office upgrade             # run pending migrations: dry run, then one commit; a renovation goes out through office start
+    office upgrade             # run pending migrations: dry run, then one commit; a renovation goes out through office start; with or without one, the letterhead's missing pages and the current push guards
     office found               # an unfounded office's founding session, through the founding door
     office where               # the office a command here acts on
     office default [PATH]      # this machine's default office
@@ -1079,17 +1079,26 @@ session applied in that project. In order, each step logged:
 - In a temporary worktree at the audience's tip the landed work is
   squashed on (`git merge --squash`), the names bale makes are taken out
   of the index whatever the clone tracks, and the diff and the words go
-  through the letterhead check; one hit refuses the delivery, with
-  nothing pushed.
-- The diff's stat, the sessions covered, the author, the branch (named
-  from the folder's slug, or `--branch NAME`) and the words are shown,
-  and deliver asks once (`--yes`; piped, it refuses without it).
+  through the letterhead check, the office's letterhead with it (the
+  dashes and the ellipsis refused by default; the lines of the
+  repository's own pull-request template, as the audience's base holds
+  them, exempt from the phrasing rule); one hit refuses the delivery,
+  with nothing pushed.
 - The words become one commit (several when `delivery.md` has several
   Commit sections, each but the last naming on a `paths:` line what it
-  takes), authored and committed as the project's `author` (`Name
-  <email>`, or the clone's own identity), and that commit alone is
-  pushed as the delivery branch, with its name in `OFFICE_DELIVERY` for
-  the push guard; never the workbench branch.
+  takes), authored and committed as the project's declared `author`
+  (`Name <email>`; a project with none is asked once on a terminal and
+  keeps it, `--author` the twin; piped, deliver refuses and names it;
+  the clone's own identity is never used).
+- Each commit is shown whole, as it will be pushed: its subject and
+  body, its author and committer, the files it touches, and the
+  letterhead's verdict on it; with the diff's stat, the sessions covered
+  and the branch (named from the folder's slug, or `--branch NAME`).
+  deliver asks once (`--yes`; piped, it refuses without it).
+- Every commit's author and committer is checked against the declared
+  author, and those commits alone are pushed as the delivery branch,
+  with its name in `OFFICE_DELIVERY` for the push guard and no tag
+  following; never the workbench branch.
 - The folder's History gains a dated `delivered` line: the branch, the
   audience, the sessions covered, the workbench commit and the delivery
   commit. Then what you do next: open the review (a URL when the git
@@ -1112,11 +1121,24 @@ base into the workbench branch first, land that, and deliver again.
 The push guard. Declaring an audience (`office projects add --audience`,
 `set --audience`) writes a pre-push hook into the clone's `.git/hooks`,
 outside what git tracks, as `--prepare` keeps everything the office
-writes; `office deliver` installs it when it is missing. It refuses any
-push to the audience from the clone, by name or by URL, naming `office
-deliver`; deliver's own push names its branch in `OFFICE_DELIVERY`, and
-the guard lets that branch through and nothing else. A clone with
-`core.hooksPath` set, or another pre-push hook, is said and left alone.
+writes; `office deliver` installs it when it is missing. Nothing reaches
+the audience from the clone but the one delivery branch deliver pushes,
+named in `OFFICE_DELIVERY`: no tag (bale's `applied/` tags or any other),
+no bale branch, no other ref and no deletion, whatever the push's form
+(`--tags`, `--all`, `--mirror`, a refspec, a tag by name), the audience
+known by its remote's name or by any URL that is the same repository.
+Each refusal names `office deliver`. A push with `--no-verify` runs no
+hook at all; the guard keeps a slip out, not a deliberate act. The hook
+carries `guard_version=2`: `office status` names an older guard (0.17.0's)
+with the line that replaces it, and `office upgrade` or `office projects
+set NAME` replaces it. A clone with `core.hooksPath` set, or another
+pre-push hook, is said and left alone.
+
+After a session lands on a project with an audience, `office land`
+reviews it against the letterhead as deliver will (the files its landing
+changed, bale's own aside, and the folder's `delivery.md` words) and says
+in a line what deliver would refuse, each line named, so the fix rides
+the next session; it refuses nothing.
 Known gap: a push from the host itself is not built (the probe found the
 work host's credential cache empty, so nothing reaches the audience from
 there without a prompt); the delivery crosses from this machine.
@@ -1133,9 +1155,19 @@ It names every line that holds what the letterhead refuses, as
 the install, share/letterhead.toml: the names of models, vendors and
 products; tell-tale phrasing an assistant writes and a person does not;
 and bale's marks (its commit subjects, `applied/` tags, `bale/` branches
-and session ids); plus, when the office has `letterhead/forbidden.txt`
-(a later space; the check reads the file when it exists and never
-creates it), each non-blank, non-comment line of it as a fixed string.
+and session ids); plus, when the office has a letterhead, each
+non-blank, non-comment line of `letterhead/forbidden.txt` as a fixed
+string, and the em dash, the en dash and the ellipsis character, refused
+by default with no line needed and each named in a refusal (a line
+`lift: em dash` in the forbidden list lifts one, said on every check).
+The letterhead arrives with the first project given an audience: its
+front page, its voice page (`letterhead/voice.md`, the occupant's style
+rule for text that leaves the office, an empty marked place for his
+words) and its forbidden list, from the install's templates; a session
+on a project with an audience carries it and reads the voice page before
+it writes. The check never writes it. In a git repo, a line of `--words`
+that is a line of the repo's own pull-request template, as HEAD holds
+it, is not held to the phrasing rule.
 The suite's own text rules read the same list, so office-src's text is
 held to it too. Scope: the files a range changed and its commit messages
 (`--range A..B`, which is how deliver checks a delivery's diff); else the
@@ -1279,14 +1311,25 @@ A project with an audience declares three more, the audience line's
 remote in the workbench clone that points at the audience's git host
 (origin, usually; checked against the clone's remotes; a project with
 none is never delivered); `--author "Name <email>"`, the identity the
-audience expects on the delivery commits (unset, deliver authors as the
-clone's own identity, read where the clone is); and `--base BRANCH`, the
-audience branch deliveries branch from (unset, the audience remote's
-HEAD branch, read from the clone). On a terminal `add` and `set` ask the
-three after the host question, defaults read from the clone;
-`--no-audience` takes a project off the audience line, `--no-author` and
-`--no-base` clear one. Declaring an audience installs the push guard in
-the clone (above). Walking in shows the sessions
+audience expects on the delivery commits, as both author and committer
+(unset, `office deliver` asks for it once on a terminal and keeps it;
+piped, it refuses and names `--author`; the clone's own identity is
+never used); and `--base BRANCH`, the audience branch deliveries branch
+from (unset, the audience remote's HEAD branch, read from the clone). On
+a terminal `add` and `set` ask the three after the host question,
+defaults read from the clone; `--no-audience` takes a project off the
+audience line, `--no-author` and `--no-base` clear one. Declaring an
+audience installs the push guard in the clone (above), and the first
+project given one brings the office its letterhead.
+A project with an audience is worked from a guarded clone on this
+machine (0.25.0): with `--audience`, `add` takes PATH as that clone here,
+and a host declared with it (`--host HOST`, or `--validates-on HOST`) is
+recorded as `validates_on`, where the project validates, never where it
+is worked (nothing validates there yet). `--worked-on-host` keeps the
+repo worked on its host, as before; a host answered on a terminal is
+that, and said. Projects already declared on a host work as they did.
+
+    office projects add beta ~/work/beta --audience origin --host me@workhost   # worked here, validates on workhost Walking in shows the sessions
 open in those projects and the folder whose Sessions section names each.
 Everything here is read from bale's `--json` surfaces in each project and
 rendered on every run, never copied into the office; the bale verbs,
@@ -1310,11 +1353,11 @@ matches the floor plan.
 | bin/office | the command (bash) |
 | lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library) |
 | lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after |
-| lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard and a bundle carried back |
+| lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
 | lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for, the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray |
-| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check), its run (the commits, the push, the record) and what it abandons; office letterhead check --on PROJECT |
-| lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin) |
-| share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks, one list for office letterhead check and the suite's text rules |
+| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review |
+| lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin); the characters an office's letterhead refuses and lifts, and a repository's pull-request templates |
+| share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks, one list for office letterhead check and the suite's text rules; and the characters an office with a letterhead refuses by default |
 | doctrine/OFFICE.md | how every office works; it opens with a reading card naming what each kind of session reads, and what a build session reads sits above its PAST THE CORE banner |
 | doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |
 | share/spaces.toml | every space an office can have; the base ones are the default floor plan; a space files itself whole or as a list of paths |
@@ -1327,7 +1370,7 @@ matches the floor plan.
 | lib/office_watches.py | the watches: the query catalog, the register and its log, the check and its fired records |
 | lib/office_digest.py | the digest: the sitting-open page, every section computed |
 | share/watch-queries.toml | every query a watch can evaluate: the bale surface it reads, the value, how it compares, or the datum bale does not stamp yet |
-| templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), each made into a page the first time a verb writes it; the folder's two pages, walkthrough.md and delivery.md, which ride with every build session; the in-tray's front page (in-tray-README.md) and the brief office start --drop sends (drop-brief.md); the handbook's front page (handbook-README.md) and chapter (handbook-chapter.md), and the brief office start --sort sends (sort-brief.md) |
+| templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), each made into a page the first time a verb writes it; the folder's two pages, walkthrough.md and delivery.md, which ride with every build session; the in-tray's front page (in-tray-README.md) and the brief office start --drop sends (drop-brief.md); the handbook's front page (handbook-README.md) and chapter (handbook-chapter.md), and the brief office start --sort sends (sort-brief.md); the letterhead's front page, voice page and forbidden list (letterhead-README.md, letterhead-voice.md, letterhead-forbidden.txt) |
 | migrations/ | one file per breaking release; format in migrations/README.md |
 | RELEASES.md | release notes |
 | tests/ | the test suite; run.sh (with runner.py) runs it side by side |

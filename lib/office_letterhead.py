@@ -9,6 +9,22 @@ refuses, as `file:line: what`. The list it refuses is share/letterhead.toml
 writes; bale's own marks) plus, when the office has letterhead/forbidden.txt,
 each non-blank, non-comment line of it as a fixed string.
 
+In an office that has a letterhead (0.25.0) three characters are refused
+as well, by default, with no line in the office needed: the em dash
+(U+2014), the en dash (U+2013) and the ellipsis (U+2026), each named by
+its name in a refusal. The office's forbidden list lifts one with a line
+`lift: em dash`, and every check that reads a lift says so. --letterhead
+DIR is how the office hands its letterhead over; without it (a tree
+checked outside any office) the characters are not refused.
+
+A repository's own pull-request template is not the occupant's writing:
+when words are checked in a git repo, each line of the words that is a
+line of one of the repo's pull-request templates, as the repo holds it
+(at HEAD, or --template-rev), is not held to the phrasing rule. Every
+other rule still reads it, and a template line that was changed is an
+ordinary line. Which files are templates is read from the repo, by the
+places git hosts look for one (PR_TEMPLATE_PLACES).
+
 What it reads, in order of what it was told:
 
   --range A..B   the files the range changed, at B's version, and the
@@ -19,6 +35,12 @@ What it reads, in order of what it was told:
                  which the check says)
   --words FILE   a text checked as it is (a delivery's words), any
                  number of times
+  --words-json   [[label, text], ...]: words that travel as one argument
+                 (the check on a host reads no file of this machine)
+  --files-only   with --range, the files alone, not the commit messages
+                 (office land's review: bale's own messages never travel)
+  --never PATH   a path never read, nor anything under it (repeatable;
+                 bale's names, which a delivery never carries)
 
 Binary files are skipped by their name (the suffixes the rules list) and
 by a NUL byte in their first bytes; OFFICE_DEBUG=1 names every file read
@@ -41,6 +63,16 @@ import subprocess
 import sys
 
 RULE_SECTIONS = ("names", "phrasing", "marks")
+# The places git hosts look for a repository's pull-request template
+# (GitHub, GitLab, Azure DevOps), as lower-case paths: a file whose
+# directory and name match one of the single-file shapes, or any .md or
+# .txt file directly inside one of the directories.
+PR_TEMPLATE_DIRS = ("", ".github/", "docs/", ".azuredevops/", ".vsts/")
+PR_TEMPLATE_NAMES = ("pull_request_template", "pull_request_template.md", "pull_request_template.txt")
+PR_TEMPLATE_FOLDERS = tuple(f"{d}pull_request_template/" for d in PR_TEMPLATE_DIRS) + \
+    tuple(f"{d}pull_request_template/branches/" for d in (".azuredevops/", ".vsts/")) + \
+    (".gitlab/merge_request_templates/",)
+LIFT_RE = re.compile(r"^\s*lift\s*:\s*(?P<name>.*?)\s*$", re.I)
 # A line longer than this is read for hits in full, but a match is
 # reported with the line cut short, so a minified file does not flood
 # the screen.
@@ -75,18 +107,81 @@ def load_rules_toml(path):
         raise CheckError(f"{path}: [binary] suffixes is not a list of suffixes")
     rules["binary"] = [s.lower() for s in suffixes]
     rules["forbidden"] = []
+    chars = data.get("characters") or {}
+    if not isinstance(chars, dict) or not all(isinstance(k, str) and isinstance(v, str) and len(v) == 1
+                                              for k, v in chars.items()):
+        raise CheckError(f"{path}: [characters] is not a table of names, each one character")
+    # The catalog, applied only by apply_letterhead: an office with a
+    # letterhead refuses them; a tree checked outside one does not.
+    rules["character_catalog"] = [[name, char] for name, char in chars.items()]
+    rules["characters"] = []
+    rules["lifted"] = []
     return rules
 
 
 def forbidden_lines(text):
     """The fixed strings letterhead/forbidden.txt holds: each non-blank
-    line that does not start with #, stripped."""
+    line that does not start with # and is not a `lift:` line, stripped."""
     out = []
     for line in text.splitlines():
         line = line.strip()
-        if line and not line.startswith("#"):
+        if line and not line.startswith("#") and not LIFT_RE.match(line):
             out.append(line)
     return out
+
+
+def lifts_in(text, catalog, where):
+    """[(name, where:line)] for each `lift: NAME` line of a forbidden
+    list. A name that is not one of the catalog's characters is the
+    check's error, never a silent skip."""
+    names = {n for n, _ in catalog}
+    out = []
+    for n, line in enumerate(text.splitlines(), 1):
+        m = LIFT_RE.match(line)
+        if not m or line.lstrip().startswith("#"):
+            continue
+        name = " ".join(m.group("name").lower().split())
+        if name not in names:
+            raise CheckError(f"{where}:{n}: a lift names one of the characters the letterhead refuses by default "
+                             f"({', '.join(sorted(names))}), not {m.group('name')!r}")
+        out.append((name, f"{where}:{n}"))
+    return out
+
+
+def apply_letterhead(rules, letterhead_dir, shown=None):
+    """The rules as an office's letterhead makes them: when the directory
+    exists, its forbidden.txt's fixed strings (when it has one) and the
+    catalog's characters, less the ones it lifts. Returns the rules; their
+    "letterhead" key names the directory (None when the office has none),
+    and "lifted" the lifts, each [name, where]."""
+    rules.setdefault("forbidden", [])
+    catalog = rules.get("character_catalog") or []
+    d = pathlib.Path(letterhead_dir)
+    shown = shown or str(d)
+    if not d.is_dir():
+        rules["letterhead"] = None
+        rules["no_letterhead"] = shown
+        rules["characters"] = []
+        rules["lifted"] = []
+        return rules
+    rules["letterhead"] = shown
+    lifted = []
+    forbidden = d / "forbidden.txt"
+    if forbidden.is_file():
+        try:
+            text = forbidden.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            raise CheckError(f"{forbidden}: {exc}")
+        rules["forbidden"] = list(rules["forbidden"]) + forbidden_lines(text)
+        lifted = lifts_in(text, catalog, f"{shown}/forbidden.txt")
+    gone = {name for name, _ in lifted}
+    rules["characters"] = [[name, char] for name, char in catalog if name not in gone]
+    rules["lifted"] = [[name, where] for name, where in lifted]
+    return rules
+
+
+def char_label(name, char):
+    return f"the {name} (U+{ord(char):04X})"
 
 
 def compile_rules(rules):
@@ -97,6 +192,8 @@ def compile_rules(rules):
     out = []
     for text in rules.get("forbidden") or []:
         out.append(("forbidden", text, re.compile(re.escape(text), re.I)))
+    for name, char in rules.get("characters") or []:
+        out.append(("character", char_label(name, char), re.compile(re.escape(char))))
     for section in RULE_SECTIONS:
         for pat in rules.get(section) or []:
             try:
@@ -106,19 +203,59 @@ def compile_rules(rules):
     return out
 
 
-def hits_in_text(text, compiled, label):
+def hits_in_text(text, compiled, label, exempt=None):
     """Every hit in a text: (label, line number, kind, what matched, the
-    line, shown short)."""
+    line, shown short). A character's hit names the character, not the
+    match. A line in exempt (a pull-request template's line, as the repo
+    holds it) is not held to the phrasing rule."""
     out = []
     for n, line in enumerate(text.splitlines(), 1):
-        for kind, _, rx in compiled:
+        templated = exempt is not None and line.rstrip() in exempt
+        for kind, what, rx in compiled:
+            if templated and kind == "phrasing":
+                continue
             m = rx.search(line)
             if m:
                 shown = line.strip()
                 if len(shown) > SHOWN:
                     shown = shown[:SHOWN] + "..."
-                out.append((label, n, kind, m.group(0), shown))
+                out.append((label, n, kind, what if kind == "character" else m.group(0), shown))
     return out
+
+
+def is_pr_template(path):
+    """Whether a repo path is one of the places git hosts read a
+    pull-request template from."""
+    low = path.lower()
+    if any(low == d + n for d in PR_TEMPLATE_DIRS for n in PR_TEMPLATE_NAMES):
+        return True
+    for folder in PR_TEMPLATE_FOLDERS:
+        if low.startswith(folder) and "/" not in low[len(folder):] and low.endswith((".md", ".txt")):
+            return True
+    return False
+
+
+def pr_template_lines(top, rev):
+    """(lines, paths, rev): every non-blank line, right-stripped, of the
+    repo's pull-request templates at rev (HEAD when rev does not resolve),
+    the templates' paths and the rev read. (set(), [], rev) when the repo
+    has none, or nothing resolves (said under debug)."""
+    proc = git(top, "ls-tree", "-r", "-z", "--name-only", rev, check=False)
+    if proc.returncode != 0 and rev != "HEAD":
+        debug(f"{rev} does not resolve in {top}; the pull-request templates are read at HEAD")
+        rev = "HEAD"
+        proc = git(top, "ls-tree", "-r", "-z", "--name-only", rev, check=False)
+    if proc.returncode != 0:
+        debug(f"no pull-request template read: {rev} does not resolve in {top}")
+        return set(), [], rev
+    paths = sorted(p for p in proc.stdout.split("\0") if p and is_pr_template(p))
+    lines = set()
+    for path in paths:
+        text = read_file(top, path, rev)
+        if text is None:
+            continue
+        lines.update(l.rstrip() for l in text.splitlines() if l.strip())
+    return lines, paths, rev
 
 
 def looks_binary(data):
@@ -167,6 +304,11 @@ def changed_in_range(cwd, a, b):
         sha, _, body = rec.lstrip("\n").partition("\0")
         messages.append((sha.strip(), body))
     return paths, messages
+
+
+def never_read(path, never):
+    """Whether a path is one of the never-read paths, or under one."""
+    return any(path == n or path.startswith(n.rstrip("/") + "/") for n in never)
 
 
 def changed_in_tree(cwd):
@@ -231,13 +373,26 @@ def read_file(cwd, path, at=None):
     return data.decode("utf-8", "replace")
 
 
-def check(cwd, rules, scope_all=False, range_spec=None, words=()):
+def check(cwd, rules, scope_all=False, range_spec=None, words=(), files_only=False, never=(),
+          words_text=(), template_rev=None):
     """Run the check. Returns (hits, lines told): hits as hits_in_text
-    gives them, told as the lines the check says about what it read."""
+    gives them, told as the lines the check says about what it read.
+    words are files, words_text (label, text) pairs; both are words, and
+    in a git repo the lines of its pull-request templates at template_rev
+    (HEAD when not given) are not held to the phrasing rule there."""
     cwd = str(pathlib.Path(cwd).resolve())
     compiled = compile_rules(rules)
     suffixes = rules.get("binary") or []
     told, hits, read = [], [], 0
+    for name, where in rules.get("lifted") or []:
+        told.append(f"the letterhead lifts the {name} ({where}), so it is not refused")
+    if rules.get("no_letterhead"):
+        told.append(f"no letterhead here ({rules['no_letterhead']}), so the em dash, the en dash and the ellipsis "
+                    "are not refused (an office's letterhead arrives with its first project given an audience)")
+    if rules.get("letterhead") and rules.get("characters"):
+        labels = [char_label(n, c) for n, c in rules["characters"]]
+        told.append("the letterhead refuses " + (", ".join(labels[:-1]) + " and " if len(labels) > 1 else "")
+                    + labels[-1] + f" by default ({rules['letterhead']})")
     in_git = is_git_tree(cwd)
     top = cwd
     if in_git:
@@ -249,9 +404,12 @@ def check(cwd, rules, scope_all=False, range_spec=None, words=()):
         a, b = range_ends(range_spec)
         paths, messages = changed_in_range(top, a, b)
         at = b
-        told.append(f"the files {range_spec} changed ({len(paths)}), at {b}'s version, and its {len(messages)} commit message(s)")
-        for sha, body in messages:
-            hits += hits_in_text(body, compiled, f"commit {sha[:12]}")
+        if files_only:
+            told.append(f"the files {range_spec} changed ({len(paths)}), at {b}'s version (not its commit messages)")
+        else:
+            told.append(f"the files {range_spec} changed ({len(paths)}), at {b}'s version, and its {len(messages)} commit message(s)")
+            for sha, body in messages:
+                hits += hits_in_text(body, compiled, f"commit {sha[:12]}")
     elif scope_all or not in_git:
         paths = whole_tree(top, in_git)
         told.append(f"the whole tree, {len(paths)} file(s)" + ("" if in_git else f" (not a git repo, so the changed set cannot be told: {cwd})"))
@@ -261,7 +419,13 @@ def check(cwd, rules, scope_all=False, range_spec=None, words=()):
             told.append(f"the files the working tree changed ({len(paths)}), as they are")
         else:
             told.append("nothing changed in the working tree, so no file was read (--all reads the whole tree)")
+    skipped = [p for p in paths if never_read(p, never)]
+    if skipped:
+        told.append(f"{len(skipped)} file(s) of bale's never read: " + ", ".join(skipped[:6])
+                    + (" ..." if len(skipped) > 6 else ""))
     for path in paths:
+        if never_read(path, never):
+            continue
         if binary_by_name(path, suffixes):
             debug(f"{path}: binary by name; skipped")
             continue
@@ -271,20 +435,31 @@ def check(cwd, rules, scope_all=False, range_spec=None, words=()):
         read += 1
         debug(f"read {path}" + (f" at {at}" if at else ""))
         hits += hits_in_text(text, compiled, path)
+    texts = []
     for w in words:
         try:
-            text = pathlib.Path(w).read_text(encoding="utf-8", errors="replace")
+            texts.append((str(w), pathlib.Path(w).read_text(encoding="utf-8", errors="replace")))
         except OSError as exc:
             raise CheckError(f"--words {w}: {exc}")
+    texts += [(str(label), str(text)) for label, text in words_text]
+    exempt, templates, rev = set(), [], template_rev or "HEAD"
+    if texts and in_git:
+        exempt, templates, rev = pr_template_lines(top, rev)
+    for label, text in texts:
         read += 1
-        debug(f"read the words in {w}")
-        hits += hits_in_text(text, compiled, str(w))
+        debug(f"read the words in {label}")
+        hits += hits_in_text(text, compiled, label, exempt if templates else None)
+        if templates:
+            kept = sum(1 for l in text.splitlines() if l.strip() and l.rstrip() in exempt)
+            told.append(f"{label}: {kept} line(s) are the repository's pull-request template's as it holds them "
+                        f"({', '.join(templates)} at {rev[:12] if len(rev) == 40 else rev}), and are not held to the phrasing rule")
     told.append(f"{read} file(s) read")
     return hits, told
 
 
 def render(hits):
-    return [f"{label}:{n}: {kind}: {what!r} in: {shown}" for label, n, kind, what, shown in hits]
+    return [f"{label}:{n}: {kind}: {what if kind == 'character' else repr(what)} in: {shown}"
+            for label, n, kind, what, shown in hits]
 
 
 def main(argv=None):
@@ -293,6 +468,12 @@ def main(argv=None):
     ap.add_argument("--all", action="store_true", help="the whole tree, not only what changed")
     ap.add_argument("--range", dest="range_spec", help="A..B: the files the range changed and its commit messages")
     ap.add_argument("--words", action="append", default=[], help="a text checked as it is (repeatable)")
+    ap.add_argument("--words-json", help="[[label, text], ...]: words that travel as one argument")
+    ap.add_argument("--template-rev", help="where the repo's pull-request templates are read (default: HEAD)")
+    ap.add_argument("--files-only", action="store_true", help="with --range, not the commit messages")
+    ap.add_argument("--never", action="append", default=[], help="a path never read, nor anything under it")
+    ap.add_argument("--letterhead", help="the office's letterhead directory: its forbidden list, and the characters "
+                                         "it refuses by default, less what it lifts")
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--rules", help="share/letterhead.toml, or a file of its shape")
     g.add_argument("--rules-json", help="the rules as one JSON object (how they travel to a host)")
@@ -313,12 +494,21 @@ def main(argv=None):
                 raise CheckError("no rules: give --rules FILE or --rules-json JSON (the install's share/letterhead.toml)")
             rules = load_rules_toml(here)
         rules.setdefault("forbidden", [])
+        if a.letterhead:
+            apply_letterhead(rules, a.letterhead)
         for f in a.forbidden:
             try:
                 rules["forbidden"] += forbidden_lines(pathlib.Path(f).read_text(encoding="utf-8", errors="replace"))
             except OSError as exc:
                 raise CheckError(f"--forbidden {f}: {exc}")
-        hits, told = check(a.directory, rules, a.all, a.range_spec, a.words)
+        words_text = []
+        if a.words_json:
+            try:
+                words_text = [(str(l), str(t)) for l, t in json.loads(a.words_json)]
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise CheckError(f"--words-json is not [[label, text], ...]: {exc}")
+        hits, told = check(a.directory, rules, a.all, a.range_spec, a.words, a.files_only, a.never,
+                           words_text, a.template_rev)
     except CheckError as exc:
         print(f"[office] error: letterhead: {exc}", file=sys.stderr)
         return 2

@@ -3422,11 +3422,19 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             # it: the folder and the hung items, named, because include
             # groups do not fire under --context.
             hung = [h for h in oh.space_paths(manifest, "hung") if (office_root / h).exists()]
+            # The letterhead rides with a session on a project with an
+            # audience (0.25.0): its voice page and forbidden list are what
+            # text that leaves for that audience is written to.
+            letterhead = ["letterhead"] if (entry is not None and entry.get("audience")
+                                            and (office_root / "letterhead").is_dir()
+                                            and "letterhead" not in hung) else []
             carried.append(context_into_tray(rd, tray, office_root,
                                               [folder, *hung, *([chapter] if chapter and chapter not in hung else []),
-                                               *riding],
+                                               *letterhead, *riding],
                                               f"the office: {folder} and the hung items"
                                               + (f", {project}'s handbook chapter" if chapter else "")
+                                              + (f", the letterhead (its voice page first: {project} has an audience)"
+                                                 if letterhead else "")
                                               + (f", and {len(riding)} unsorted drop(s)" if riding else "")))
         elif riding and bundle:
             # An office bundle: the drops ride beside it, as their own

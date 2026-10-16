@@ -111,20 +111,26 @@ Three boundaries hold that line, each with a guard.
    Some offices sit next to data that must never be shipped; their
    profile says which, and a session honors it before anything else.
 2. What leaves the office, into a project or to a person. Guards: the
-   letterhead, where an office has one, for anything that goes out, and
-   its check, `office letterhead check`, which names every line that
-   holds what the letterhead refuses (the names of models, vendors and
-   products; tell-tale phrasing an assistant writes; bale's own marks;
-   and the office's forbidden words, letterhead/forbidden.txt, when it
-   has them); `office deliver`, the one way a project's landed work
-   reaches its audience's git host: a branch of curated commits in the
-   occupant's words, made from the audience's base, holding no bale
-   commit, merge, tag or branch and no file bale's exclude list names,
-   checked by the letterhead before anything is pushed, and never the
-   workbench branch itself, which the push guard in the clone keeps from
-   being pushed to the audience by hand; and the rule that office context
-   informs a session but never lands in a project. Every project session
-   an office packs carries that rule as a constraint: "Office context
+   letterhead, where an office has one, for anything that goes out: its
+   voice page, the occupant's style rule in his words (section 4 says
+   who reads it), and its check, `office letterhead check`, which names
+   every line that holds what the letterhead refuses (the names of
+   models, vendors and products; tell-tale phrasing an assistant writes,
+   a repository's own pull-request template's lines aside; bale's own
+   marks; the office's forbidden words, letterhead/forbidden.txt; and by
+   default the em dash, the en dash and the ellipsis, section 5);
+   `office deliver`, the one way a project's landed work reaches its
+   audience's git host: a branch of curated commits in the occupant's
+   words, made from the audience's base, holding no bale commit, merge,
+   tag or branch and no file bale's exclude list names, checked by the
+   letterhead, each commit shown whole and asked once, every one carrying
+   the project's declared author as author and committer, and never the
+   workbench branch itself; the push guard in the clone, which lets
+   nothing reach the audience but that one delivery branch (no tag, no
+   bale branch, no other ref); `office land`'s review, which says what
+   deliver would refuse and refuses nothing; and the rule that office
+   context informs a session but never lands in a project. Every project
+   session an office packs carries that rule as a constraint: "Office context
    informs this session but never lands in this project." Deliberation,
    candid notes and private versions stay in the office even when a
    session read them to do the work.
@@ -225,6 +231,12 @@ A session is packed where it lands.
   what; `facts:` is `none` or one or more lines for the project's
   handbook chapter, each starting with `- `; `#### Brief` is present
   when `folder:` is `new` and may be present otherwise.
+- A session that writes text for a project with an audience reads the
+  office's letterhead first, as it reads the profile: the voice page,
+  letterhead/voice.md (an empty, marked place means no words yet), and
+  the forbidden list, which ride beside its request (0.25.0). What it
+  writes for the audience holds no em dash, en dash or ellipsis unless
+  the letterhead lifts one.
 - A session writes what the office keeps for it at the end of its
   notes.md, and `office land` files it, so a project session never
   writes the office: each light block it sent and the occupant's answer
@@ -446,7 +458,15 @@ hook) reaches the occupant as bale asks it; the office answers none. It
 reads how the landing ended from bale's records, not from bale's words,
 and hands the occupant whatever bale printed to carry (the relay), whole.
 Only after bale has applied the session does it run the project's
-after-land actions (section 10). It asks nothing about ratification, on
+after-land actions (section 10). Before them, on a project with an
+audience (0.25.0), it reviews what the session landed against the
+letterhead, as deliver will read it: the files the landing changed
+(applied/SID's first parent to the tag, bale's own files aside, never
+bale's commit messages, which never travel) and the folder's delivery.md
+words, the pull-request template's lines exempt as at delivery; and says
+in a line what deliver would refuse, each line named, so a fix can ride
+the next session before the occupant tries to deliver. It refuses
+nothing there, and a review that cannot run is a line. It asks nothing about ratification, on
 any path: when land ends, the planner has not read the relay, so an
 answer there would record nothing. A HOLD, a refusal or a clarification
 lands nothing: it runs nothing after, and names the next line.
@@ -605,11 +625,21 @@ here, not on the host), squashes it onto the audience's base in a
 temporary worktree, names the applied sessions it covers and whose
 folders they belong to (sessions of other folders ride in the same
 delivery, said, and the occupant may stop there), runs the letterhead
-check on the diff and the words, shows the diff's stat, the sessions, the
-author, the branch and the words, asks once, and pushes that branch and
-nothing else; the folder's History gains a dated `delivered` line, and
-the review's URL is printed where the git host's shape is known. A second
-delivery for the same folder adds to the same branch.
+check on the diff and the words (the repository's pull-request template
+read from the audience's base, its lines exempt from the phrasing rule),
+makes the commits, authored and committed as the project's declared
+author, and shows each one whole as it will be pushed (its subject and
+body, author and committer, the files it touches and the letterhead's
+verdict on it) with the diff's stat, the sessions and the branch; asks
+once; checks every commit's author and committer against the declared
+author; and pushes that branch and nothing else, with no tag following
+it. A project with an audience and no declared author is asked for it
+once on a terminal, since it is a fact only the occupant knows, and keeps
+it (`--author` is the twin, and sets the field); piped, deliver refuses
+and names the flag; the clone's own identity is never used. The folder's
+History gains a dated `delivered` line, and the review's URL is printed
+where the git host's shape is known. A second delivery for the same
+folder adds to the same branch.
 
 ## 5. Spaces
 
@@ -639,7 +669,7 @@ spaces is share/spaces.toml.
 | clipboards/ | one per recurring meeting | renovation | no | no |
 | calendar/ | when things happen, and what actually happened | renovation | yes | no |
 | rolodex/ | how to deal with each person | renovation | no | no |
-| letterhead/ | how anything leaving the office must look and sound | renovation | no | no |
+| letterhead/ | how anything leaving the office must look and sound: the voice page, the forbidden list | no; arrives with the first project given an audience | no | no |
 | drafting-table/ | blueprints for work too big for one folder, and the ledgers around them: rulings, evidence, watches, riders, the agenda | renovation | no | a list |
 | in-tray/ | drops waiting to be sorted | no; arrives with the first drop | no | no |
 
@@ -767,7 +797,46 @@ messages sent, is the folder's, not the handbook's.
 Rolodex. One card per person, as a guide for responding to them.
 
 Letterhead. The rules for anything that leaves the office: code style,
-prose style, what must never appear, and the occupant's voice.
+prose style, what must never appear, and the occupant's voice. Three
+pages, from the install's templates (0.25.0): README.md, its front page;
+voice.md, the voice page, the occupant's style rule for text that leaves
+the office, in his words, which the template carries as an empty place
+plainly marked (`<!-- EMPTY: ... -->`) and office-src never writes; and
+forbidden.txt, the forbidden list, one fixed string per line, refused by
+the letterhead check. In an office that has a letterhead the check also
+refuses three characters by default, with no line in the office needed
+to turn it on: the em dash (U+2014), the en dash (U+2013) and the
+ellipsis character (U+2026), each named in a refusal by its name, as the
+check names its other refusals. The forbidden list lifts one with a line
+of its own, in this form, kept to the byte but for case and spacing
+(values illustrative):
+
+  ```
+  lift: em dash
+  lift: en dash
+  lift: ellipsis
+  ```
+
+and every check that reads a lift says so; a lift that names anything
+else stops the check, said. A repository's own pull-request template is
+not the occupant's writing: when words fill it, each line that is a line
+of one of the repository's templates as the repository holds it (the
+audience's base, for a delivery; HEAD, for the check by hand) is not held
+to the phrasing rule, while every other rule reads it, and the lines the
+words add, or a template line changed, are held to all of it. Which files
+are templates is read from the repository, by the places git hosts look
+for one (GitHub's, GitLab's and Azure DevOps'). The list's template names the three as
+present by default. The letterhead arrives with the first project given
+an audience (`office projects add` or `set --audience`), as the in-tray
+arrives with the first drop: its pages from the install's templates, the
+floor plan's entry as the catalog declares it and bale.toml's trigger,
+each only when missing, committed alone. A letterhead from an earlier
+release gets the voice page's place through `office upgrade`, which
+writes a missing page and never rewrites one, and `office status` names
+its absence, and a voice page that holds no words yet, with the line
+that adds it; an office that has a project with an audience and no
+letterhead is named the same way. No hand writes these pages but the
+occupant's words in the voice page, through a session in the office.
 
 Drafting table. Blueprints for work too big for one folder, one arc
 each, with the ledgers a planning sitting rules in: the rulings ledger,
@@ -1001,8 +1070,8 @@ Kinds:
 | init | script; writes bale.toml, asks which projects the office watches, asks the profile's questions, opens the founding folder and sends the founding session out through start | yes | occupant |
 | found | script: the founding door for an office that exists: the profile's questions (only what the founding folder does not keep), the founding folder, the founding session out through start | yes | plumbing |
 | survey | script | yes | plumbing |
-| status | script, read-only | yes | plumbing |
-| upgrade | script; when a migration needs judgment, opens its folder and sends the renovation session out through start | yes | plumbing |
+| status | script, read-only: the office against the install, and (0.25.0) the letterhead, its voice page and each audience clone's push guard, an older one named with the line that replaces it | yes | plumbing |
+| upgrade | script; when a migration needs judgment, opens its folder and sends the renovation session out through start; with or without a migration, brings the letterhead's missing pages and the current push guard (0.25.0) | yes | plumbing |
 | where, default | script: which office a command acts on | yes | plumbing |
 | note | script: append a dated line to the notepad | yes | occupant |
 | slip | script: drop a friction slip in the suggestion box, saying what it is about | yes | occupant |
@@ -1013,14 +1082,14 @@ Kinds:
 | close | script: move a folder to the filing cabinet, done, absorbed, split or retired | yes | occupant |
 | reopen | script: move a done folder back to the desk | yes | plumbing |
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes | plumbing |
-| projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace, a clone here brought there with --from), declare where it is, what rides with it and what runs after it lands, bring a host's bale level with this machine's (level-bale), render what bale records about them | yes | occupant |
+| projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace, a clone here brought there with --from), declare where it is, what rides with it and what runs after it lands, bring a host's bale level with this machine's (level-bale), render what bale records about them; a project with an audience is worked from a guarded clone on this machine, a host declared for it recorded as where it validates (validates_on), and the first one brings the letterhead | yes | occupant |
 | start | script: the one door for new work: with new, a job from the occupant's words (--words the twin), its folder minted through open's code and its session sent out in one motion; bare on a terminal, offer the planner's bundles in the downloads no session has opened, by key, and send a bundle whose brief carries a LANDS line where it says, asking neither where nor which job; with --planner, a read-only planner sitting from the occupant's words (--words, --about PROJECT or --in-office the twins), its folder minted or picked by key, what rides gathered and said in its brief; before any sitting, the in-tray's sort offered first when drops wait (--sort-first, --no-sort-first); pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; with --sort, send the standalone sort; send a folder out with its goal and brief.md when it has them; record it in the folder, file the sitting's page and the planner's ratifications its brief carries, gather what to attach in one out tray, and put the opener on the clipboard last | yes | occupant |
-| land | script: bring a session back: bale's apply in its repo, how it ended, the folder's walkthrough and delivery pages filed from the response, then its Sort on each drop's page, its questions and answers in the folder, its facts in the handbook and its Structure over the folder's provisional fields, and office moves when a drop was sorted, the project's after-land actions, the folder closed when its one session landed and the founding folder when the founding has, the watches that fired, what became of each action, and last the relay to carry on the clipboard; it asks nothing about ratification; or end a read-only sitting the office sent out | yes | occupant |
+| land | script: bring a session back: bale's apply in its repo, how it ended, the folder's walkthrough and delivery pages filed from the response, then its Sort on each drop's page, its questions and answers in the folder, its facts in the handbook and its Structure over the folder's provisional fields, and office moves when a drop was sorted, on a project with an audience the letterhead's review of what landed (what deliver would refuse, said, nothing refused), the project's after-land actions, the folder closed when its one session landed and the founding folder when the founding has, the watches that fired, what became of each action, and last the relay to carry on the clipboard; it asks nothing about ratification; or end a read-only sitting the office sent out | yes | occupant |
 | withdraw | script: close a session the office sent out and that was never worked (no response in the downloads, no apply begun), named by its folder and asked once (--yes the twin): bale's unlock with reason abandoned where it is open, and a withdrawn line in its folder's History; a folder that recorded it alone is said with the line that closes it | yes | occupant |
 | relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes | plumbing |
 | probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), stdin closed, once its purpose header has been shown and the occupant said yes; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes | plumbing |
-| deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, checked by the letterhead, asked once, recorded in the folder | yes | occupant |
-| letterhead check | script, read-only: name every line in a tree, a range or a file that holds what the letterhead refuses | yes | plumbing |
+| deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, checked by the letterhead, each commit shown whole and asked once, authored and committed as the declared author (asked once and kept when none is declared, --author the twin), recorded in the folder | yes | occupant |
+| letterhead check | script, read-only: name every line in a tree, a range or a file that holds what the letterhead refuses (in an office with a letterhead, the dashes and the ellipsis by default, a lift said; a pull-request template's lines exempt from the phrasing rule) | yes | plumbing |
 | tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes | occupant |
 | moves | script: apply the in-tray's sorted drops (a folder minted through open's code for folder: new, or folder N; the page moved in whole with its brief, its History line, its goal and its tell), then the desk moves a sitting or a sort wrote, through open's, close's and the gate flags' own code, ticking each and writing a minted number onto its blueprint's decomposition line; stops at the first line it cannot apply | yes | plumbing |
 | blueprint open, blueprint ratify | script: draft a blueprint from the template; write its charter's ratified line | yes | plumbing |
@@ -1335,14 +1404,38 @@ twins): `audience`, the name of the remote in the workbench clone that
 points at the audience's git host (a project with none, home-office's
 say, leaves it unset, and `office deliver` refuses it by name);
 `author`, the identity the audience expects on the delivery commits,
-`Name <email>` (unset, deliver authors as the clone's own identity, read
-where the clone is); and `base`, the audience branch deliveries branch
-from (unset, the audience remote's HEAD branch, read from the clone).
+`Name <email>`, carried by every commit deliver makes or pushes as both
+author and committer (0.25.0: unset, deliver asks for it once on a
+terminal, a fact only the occupant knows, and keeps it; piped, it refuses
+and names `--author`; the clone's own identity is never used silently);
+and `base`, the audience branch deliveries branch from (unset, the
+audience remote's HEAD branch, read from the clone). A fourth is
+`validates_on` (0.25.0), a host as `--host` takes one: where a project
+with an audience validates, never where it is worked. A project with an
+audience is worked and delivered from a guarded clone on the occupant's
+machine by default (ruling 2 of the front-door arc): `office projects
+add` with `--audience` takes PATH as that clone here, and a host declared
+with it (`--host`, or `--validates-on`) is recorded as `validates_on`;
+`--worked-on-host` keeps the repo worked on its host, as before, and a
+host answered on a terminal is that, and said. Projects already declared
+on a host keep working as they did, and nothing validates on a host yet
+(bale's remote validation runner is S3's).
 Declaring an audience installs the push guard in the clone's .git/hooks,
-outside what git tracks: a pre-push hook that refuses any push to the
-audience from the clone that `office deliver` did not make, naming
-deliver, which pushes one delivery branch and nothing else, with the
-branch named in OFFICE_DELIVERY for the guard to read. The delivery is
+outside what git tracks: a pre-push hook that lets nothing reach the
+audience from the clone but the one delivery branch `office deliver`
+pushes, with the branch named in OFFICE_DELIVERY for the guard to read:
+no tag (bale's applied/ tags or any other), no bale branch, no other
+ref, no deletion, whatever the push's form (`--tags`, `--all`,
+`--mirror`, a refspec, a tag by name), and the audience known by its
+remote's name or by any URL that is the same repository (scheme, user,
+port, a trailing .git aside), read from the clone's config as it stands.
+Each refusal names deliver. A push with `--no-verify` runs no hook at
+all: the guard keeps a slip out, never a deliberate act. The guard
+carries its version on a `guard_version=N` line; a guard an earlier
+release installed (0.17.0's, which wrote none) is named by `office
+status` with the line that replaces it, and `office upgrade` and `office
+projects set` replace it, as they install a missing one; a hook the
+office did not write is said and never replaced. The delivery is
 built on the occupant's machine, where the audience answers with his
 credentials: for a project on a host the landed commits come here as a
 git bundle through the project's shell, into a temporary repo removed
@@ -1501,7 +1594,10 @@ Each office's floor plan records the release it was built from
 A release is breaking exactly when it ships a migration. Additive
 releases need nothing done in any office, and the tool tolerates every
 older office shape; it never refuses an office for lacking something
-optional.
+optional. What an additive release adds to an office it brings without a
+migration: `office upgrade` writes it when it is missing, never rewriting
+what is there, and `office status` names it (0.25.0: the letterhead's
+pages and the push guards).
 
 `office upgrade` runs the pending migrations in order. It rehearses them
 first on a scratch clone of the office, then runs them for real and
