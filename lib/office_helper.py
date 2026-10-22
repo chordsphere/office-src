@@ -2572,6 +2572,15 @@ DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 PLAN_ONE_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) (.+)$")
 PLAN_SERIES_RE = re.compile(r"^- every (mon|tue|wed|thu|fri|sat|sun|day|weekday) (\d{2}:\d{2}) (.+)$", re.I)
 RECORD_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))? (.+)$")
+# A meeting's line names what it concerns at its end (0.26.0,
+# lib/office_meeting.py): shown apart from its title.
+ABOUT_RE = re.compile(r" \[about: ([^\]]*)\]$")
+
+
+def plan_title(text):
+    """(title, about words) of a plan line's text."""
+    m = ABOUT_RE.search(text)
+    return (text[:m.start()].strip(), m.group(1)) if m else (text.strip(), "")
 
 
 def read_bullets(path):
@@ -2590,7 +2599,9 @@ def week_report(calendar, today, now_hhmm, tz):
     (DAY is mon..sun, day or weekday). calendar/record.md holds what
     happened: `- YYYY-MM-DD [HH:MM] title: what happened`. A planned
     item in the past with no record that day starting with its title is
-    a gap. Bullets that fit neither shape are reported, never dropped."""
+    a gap. A meeting's line (0.26.0) carries `[about: ...]` at its end,
+    shown after its title, and a meeting whose prep is out says so.
+    Bullets that fit neither shape are reported, never dropped."""
     today = dt.date.fromisoformat(today)
     monday = today - dt.timedelta(days=today.weekday())
     week = [monday + dt.timedelta(days=i) for i in range(7)]
@@ -2607,14 +2618,14 @@ def week_report(calendar, today, now_hhmm, tz):
         if m:
             d = dt.date.fromisoformat(m.group(1))
             if d in week:
-                items.append((d, m.group(2), m.group(3).strip()))
+                items.append((d, m.group(2), *plan_title(m.group(3))))
             continue
         m = PLAN_SERIES_RE.match(line)
         if m:
             which = m.group(1).lower()
             for d in week:
                 if which == "day" or (which == "weekday" and d.weekday() < 5) or which == DAYS[d.weekday()]:
-                    items.append((d, m.group(2), m.group(3).strip()))
+                    items.append((d, m.group(2), *plan_title(m.group(3))))
             continue
         unreadable.append(f"plan.md line {n}: {line}")
     records = []
@@ -2625,18 +2636,18 @@ def week_report(calendar, today, now_hhmm, tz):
             continue
         records.append((dt.date.fromisoformat(m.group(1)), m.group(2) or "", m.group(3).strip()))
     used, gaps = set(), 0
-    for d, hhmm, title in sorted(items):
+    for d, hhmm, title, about in sorted(items):
         match = next((i for i, r in enumerate(records)
                       if r[0] == d and i not in used and r[2].lower().startswith(title.lower())), None)
         if match is not None:
             used.add(match)
-            state = "recorded"
+            state = "prep out" if records[match][2][len(title):].startswith(": prep out, ") else "recorded"
         elif (d, hhmm) < (today, now_hhmm):
             state = "GAP: nothing recorded"
             gaps += 1
         else:
             state = "planned"
-        lines.append(f"{DAYS[d.weekday()].title()} {d} {hhmm} {title} [{state}]")
+        lines.append(f"{DAYS[d.weekday()].title()} {d} {hhmm} {title}{f' (about {about})' if about else ''} [{state}]")
     if not items:
         lines.append("nothing planned this week")
     extra = [r for i, r in enumerate(records) if i not in used and r[0] in week]

@@ -39,6 +39,7 @@ tour = ["test_front_door.TestTourPiped.test_piped_it_never_plays_and_refuses_to_
 note = ["test_office.TestCapture.test_note_appends_dated_lines_and_commits_only_the_page"]
 slip = ["test_drafting_table.TestSlipTitle.test_a_slip_from_a_numbered_list_is_titled_by_its_words"]
 drop = ["test_drop.TestDrop.test_a_drop_is_one_page_committed_alone_and_the_in_tray_arrives_with_it"]
+meeting = ["test_meetings_view.TestAMeetingAskedOnce.test_one_sentence_records_it_and_piped_the_flags_give_the_rest"]
 open = ["test_office.TestFolders.test_open_refuses_a_duplicate"]
 desk = ["test_office.TestFolders.test_desk_lists_next_moves"]
 week = ["test_office.TestWeek.test_week_reads_the_office_calendar"]

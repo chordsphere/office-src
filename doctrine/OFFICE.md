@@ -88,8 +88,11 @@ sent out, it ends the sitting with bale's unlock instead. `office start
 its goal, what rides gathered by the office and said, and the in-tray's
 sort offered first when drops wait; a planner's bundle whose brief names
 where it lands (its LANDS line) goes out asking neither where nor which
-job; and `office withdraw` closes a session he sent out and will never
-run, named by its folder and asked once. The
+job; `office withdraw` closes a session he sent out and will never run,
+named by its folder and asked once; and `office meeting` records a meeting
+from his words, once, its prep, a sitting briefed from what landed since
+the last one, sent by key when it is near (`office start --prep`), and
+what arises in it reaching the in-tray as drops. The
 office runs bale when you ask, as your hands at the terminal; bale asks its
 own questions and only you answer them. It never schedules a session,
 never hands one to a model and never carries pastes. bale carries the
@@ -118,7 +121,8 @@ Three boundaries hold that line, each with a guard.
    models, vendors and products; tell-tale phrasing an assistant writes,
    a repository's own pull-request template's lines aside; bale's own
    marks; the office's forbidden words, letterhead/forbidden.txt; and by
-   default the em dash, the en dash and the ellipsis, section 5);
+   default the em dash, the en dash and the ellipsis, the template's lines
+   aside again, section 5);
    `office deliver`, the one way a project's landed work reaches its
    audience's git host: a branch of curated commits in the occupant's
    words, made from the audience's base, holding no bale commit, merge,
@@ -439,6 +443,83 @@ every session does. The sort is not offered while one is out or while an
 open session holds the in-tray (each said), and a sort that does not go
 out is said and the sitting goes on.
 
+A meeting is a view over the work (0.26.0), never a job: no folder is
+minted for it. `office meeting`, the occupant's verb and the home screen's
+m key, takes it in his words, one sentence, and writes its line in the
+calendar's plan (section 5): when it happens, read from his words (a date,
+a day, today or tomorrow, every DAY, daily, weekdays, a time; a bare hour
+from 1 to 6 is the afternoon, said), its title (his words, less when) and
+what it concerns (the projects his words name). It asks only when his
+words do not say when, or name none of the office's projects, and "the
+office itself" is an answer; a series is one line, never asked for again.
+`--words`, `--when`, `--about PROJECT` and `--in-office` are the twins, and
+piped it asks nothing.
+
+A meeting is near from 24 hours before it starts until 4 hours after. The
+home screen shows each near meeting whose prep has not gone out among what
+waits, with a key that sends its prep, `office start --prep MEETING`
+(MEETING its `YYYY-MM-DD HH:MM title`, or words that name one near): a
+read-only sitting from the office, through the planner sitting's
+gathering, its goal the meeting's words and its brief the office's, from
+the install's templates/prep-brief.md. No folder records it: the calendar's
+record line does, by its id. What rides, said on the screen and first in
+its brief, one line each with why, inside bale's caps as for any sitting:
+the calendar; what every sitting carries (the drafting table with its
+digest, the hung items, the unsorted drops); each project's handbook
+chapter; the folder.md of each folder on the desk on what it concerns;
+the walkthrough.md of each folder, on the desk or in the filing cabinet,
+that `office land` filed since the last meeting that concerned that
+project (by the record's time; for a first meeting, in the 14 days before
+it), newest first, every landed session counting whether or not a meeting
+asked for it; and the drops tied to that last meeting, wherever they are
+now, with the folders they became. The window is the meeting's, not the
+last sitting's. The same sitting serves before the meeting and during it,
+and nothing else is opened for the meeting. It is not offered the sort
+first: a meeting is near, and the drops ride with it.
+
+What arises in the meeting the sitting writes down in one block, kept to
+the byte as a Sort is, and current as the meeting goes; its BEGIN line
+names the sitting's id, each item is a `### ` line in the occupant's words
+(the drop's first line), a `- project:` line (one of the office's
+projects, `the office`, or `none`) and, after a blank line, whatever else
+was said, verbatim (values illustrative):
+
+  ```
+  --- ARISING BEGIN 2026-10-25-weekly-review-prep-001 ---
+
+  ### Update the report with the new criteria
+
+  - project: alpha
+
+  The review asked for the new criteria from next week.
+
+  --- ARISING END ---
+  ```
+
+A block with no item says nothing arose; of several blocks in one text the
+last counts. The sitting offers it as a file, arising-SID.md. `office land
+SID` ends the sitting with bale's unlock, as for any sitting, and first
+reads the block, at most one paste or one file, never retyped: `--arising
+FILE` (`-` for stdin, `none` for nothing), else arising-SID.md in the
+downloads, else, on a terminal, the clipboard once he has copied it;
+piped with none of them it refuses and names the flag, and a block that
+does not read (another sitting's, a line outside an item, an item with no
+project line) stops land with the sitting open. Then it rewrites the
+meeting's record line as held, writes each item as a drop in the in-tray
+(`office drop`'s page, its via the file or the clipboard), tied to the
+meeting by the record's `arose:`, commits them together and says in one
+line what it filed. A drop the occupant makes himself while the meeting's
+prep is out, from an hour before it starts until 12 hours after, is tied
+to it by `dropped:`. The next meeting on those projects carries these
+drops, and the folders they became, in its prep.
+
+A prep's brief tells the sitting that it may author one cleanup session
+for the meeting's projects when it finds their documentation messy,
+disorganized or too wordy: a planner's bundle beside the briefing, its
+brief carrying its LANDS line, which the occupant sends from his home
+screen or deletes. It is offered, never required, and needs no separate
+maintenance session; it is the cleanup the verbs table says is built.
+
 The folder records the id of every session that worked on its job.
 `bale pack --json` reports the id, so nobody types it: `office start`
 records it in the folder's Sessions section, and a session packed by
@@ -458,7 +539,8 @@ hook) reaches the occupant as bale asks it; the office answers none. It
 reads how the landing ended from bale's records, not from bale's words,
 and hands the occupant whatever bale printed to carry (the relay), whole.
 Only after bale has applied the session does it run the project's
-after-land actions (section 10). Before them, on a project with an
+after-land actions (section 10). A meeting's prep it ends as a sitting,
+then records the meeting held and files what arose (above). Before them, on a project with an
 audience (0.25.0), it reviews what the session landed against the
 letterhead, as deliver will read it: the files the landing changed
 (applied/SID's first parent to the tag, bale's own files aside, never
@@ -626,7 +708,8 @@ temporary worktree, names the applied sessions it covers and whose
 folders they belong to (sessions of other folders ride in the same
 delivery, said, and the occupant may stop there), runs the letterhead
 check on the diff and the words (the repository's pull-request template
-read from the audience's base, its lines exempt from the phrasing rule),
+read from the audience's base, its lines exempt from the phrasing rule
+and the three characters),
 makes the commits, authored and committed as the project's declared
 author, and shows each one whole as it will be pushed (its subject and
 body, author and committer, the files it touches and the letterhead's
@@ -652,8 +735,9 @@ when the host does not answer. `office init` builds the base spaces. The others 
 renovation session when real work asks for them, except the drafting
 table, whose pages hold no judgment until a sitting writes them: it
 arrives with the first verb that writes it; the in-tray, which
-arrives with the first `office drop`; and the handbook, which arrives
-with the first fact `office land` files. The install's catalog of
+arrives with the first `office drop`; the handbook, which arrives
+with the first fact `office land` files; and the calendar, which arrives
+with the first meeting `office meeting` records (0.26.0). The install's catalog of
 spaces is share/spaces.toml.
 
 | path | what it does | base | hung | filed |
@@ -666,8 +750,8 @@ spaces is share/spaces.toml.
 | suggestion-box/ | friction slips | yes | no | no |
 | drawer/ | the office's own tools: probes, survey steps | yes | no | no |
 | handbook/ | the private layer of documentation | no; arrives with the first fact filed | front page | no |
-| clipboards/ | one per recurring meeting | renovation | no | no |
-| calendar/ | when things happen, and what actually happened | renovation | yes | no |
+| clipboards/ | retired (0.26.0): a series is a line in the calendar's plan, its items drops | renovation | no | no |
+| calendar/ | when things happen, and what actually happened: the meetings | no; arrives with the first meeting | yes | no |
 | rolodex/ | how to deal with each person | renovation | no | no |
 | letterhead/ | how anything leaving the office must look and sound: the voice page, the forbidden list | no; arrives with the first project given an audience | no | no |
 | drafting-table/ | blueprints for work too big for one folder, and the ledgers around them: rulings, evidence, watches, riders, the agenda | renovation | no | a list |
@@ -742,23 +826,44 @@ folder and the desk moves not yet applied. A gate that names nothing, or a
 cycle of gates, is an error line naming the folders, and no folder is
 ever dropped from the desk.
 
-Clipboards. A recurring meeting gets a clipboard because it never ends:
-the series (purpose, attendees, cadence, which chapters it concerns), the
-running action items on top, and one dated sheet per occurrence. Action
-items that are real work become their own folders.
+Clipboards (retired, 0.26.0). A recurring meeting no longer gets a
+clipboard, and none is made: its series is one line in the calendar's
+plan, its running items are the drops tied to it and the folders they
+became, which its next prep carries, and the work that arises is a folder
+through the one door. A clipboards/ space a renovation made stays as it
+is; nothing writes it.
 
-Calendar. Series, one-offs, and a record of what actually happened.
-Because it is hung, a session can compare what should have happened with
-what was recorded and raise one question about a gap. Times are local
-time in the floor plan's timezone; bale's clock is UTC. Two pages hold
-it, one bullet per line. calendar/plan.md says what should happen: a
-one-off is `- YYYY-MM-DD HH:MM title`, a series is `- every DAY HH:MM
-title`, where DAY is mon to sun, day or weekday. calendar/record.md says
-what happened: `- YYYY-MM-DD HH:MM title: what happened`, the time
-optional. `office week` lays this week's plan against the record: a
-planned item in the past with no record that day starting with its title
-is a gap. Bullets that fit neither shape are reported, never dropped. An
-office without a calendar is told so, with the renovation that adds one.
+Calendar. Series, one-offs, and a record of what actually happened: the
+meetings, as a view over the work (0.26.0). Because it is hung, a session
+can compare what should have happened with what was recorded and raise
+one question about a gap. Times are local time in the floor plan's
+timezone; bale's clock is UTC. It arrives with the first meeting `office
+meeting` records, as the in-tray arrives with the first drop: its two
+pages from the install's templates (calendar-plan.md, calendar-record.md),
+the floor plan's entry as the catalog declares it and bale.toml's
+trigger, each only when missing. Two pages hold it, one bullet per line.
+calendar/plan.md says what should happen: a one-off is `- YYYY-MM-DD HH:MM
+title`, a series is `- every DAY HH:MM title`, where DAY is mon to sun,
+day or weekday; a meeting's line ends with what it concerns, `[about:
+alpha, beta]` (`the office` for the office itself), and a line without
+one concerns the office. calendar/record.md says what happened: `-
+YYYY-MM-DD HH:MM title: what happened`, the time optional; for a meeting
+the office writes the line, in this form, kept to the byte (values
+illustrative):
+
+  ```
+  - 2026-10-26 09:00 weekly review: prep out, 2026-10-25-weekly-review-prep-001 [about: alpha, beta]
+  - 2026-10-26 09:00 weekly review: held, 2026-10-25-weekly-review-prep-001; arose: in-tray/2026-10-26-update-the-report.md; dropped: in-tray/2026-10-26-call-back.md [about: alpha, beta]
+  ```
+
+`office start --prep` writes the first when the meeting's prep goes out,
+and `office land` rewrites it as the second when the sitting ends (section
+4); `arose:` and `dropped:` are there only when they name a drop. `office
+week` lays this week's plan against the record: a planned item in the
+past with no record that day starting with its title is a gap, and a
+meeting whose prep is out says so. Bullets that fit neither shape are
+reported, never dropped. An office without a calendar is told that it
+arrives with the first meeting.
 
 Handbook. Only the private layer. Shareable technical documentation
 belongs in the projects (README, docs/), and a chapter points at it
@@ -822,8 +927,9 @@ else stops the check, said. A repository's own pull-request template is
 not the occupant's writing: when words fill it, each line that is a line
 of one of the repository's templates as the repository holds it (the
 audience's base, for a delivery; HEAD, for the check by hand) is not held
-to the phrasing rule, while every other rule reads it, and the lines the
-words add, or a template line changed, are held to all of it. Which files
+to the phrasing rule or to the three characters (0.26.0), while names,
+bale's marks and the forbidden list read it, and the lines the words add,
+or a template line changed, are held to all of it. Which files
 are templates is read from the repository, by the places git hosts look
 for one (GitHub's, GitLab's and Azure DevOps'). The list's template names the three as
 present by default. The letterhead arrives with the first project given
@@ -978,7 +1084,9 @@ goal the Sort's, the source `drop`); for `folder: N`, folder N on the desk
 whole, the folder's brief.md is written from the Brief (its text, nothing
 added), the History gains `- DATE dropped: drops/NAME.md, sorted by SID`,
 the goal is written when the folder has none, and the `tell:` goes on the
-folder's Next, which `office desk` shows, until the meeting spaces exist.
+folder's Next, which `office desk` shows, and which the next meeting on
+the folder's project reads in its prep, the folder's page riding with it
+(0.26.0).
 An open session forecasting the in-tray, the desk or the folder stops that
 page's move, named, and the rest go on. Fact lines in a Sort follow an
 empty `- facts:` line, one `- ` line each. `office start
@@ -1075,21 +1183,22 @@ Kinds:
 | where, default | script: which office a command acts on | yes | plumbing |
 | note | script: append a dated line to the notepad | yes | occupant |
 | slip | script: drop a friction slip in the suggestion box, saying what it is about | yes | occupant |
-| drop | script: capture a message or a thread as one in-tray page, with an optional free-text project | yes | occupant |
+| drop | script: capture a message or a thread as one in-tray page, with an optional free-text project; while a meeting is on with its prep out, tied to that meeting in the calendar's record | yes | occupant |
+| meeting | script (0.26.0): a meeting, said once in the occupant's words, when it happens and what it concerns, asked only when his words do not say when or name none of the office's projects (--words, --when, --about PROJECT, --in-office the twins); one line in the calendar's plan, a series never asked for again; the calendar arrives with the first; no folder | yes | occupant |
 | open | script: start a numbered folder on the desk, or a candidate, or one born done in the filing cabinet; on a terminal, from the occupant's words (the title, the Asked section and the goal office start takes, each worked-out field marked provisional); with --goal, the goal; the code office start new mints a folder through | yes | plumbing |
 | desk | script: in flight, ready in order, parked under what each waits for, candidates | yes | occupant |
-| week | script: this week's calendar and its gaps | yes | plumbing |
+| week | script: this week's calendar and its gaps, and a meeting whose prep is out | yes | plumbing |
 | close | script: move a folder to the filing cabinet, done, absorbed, split or retired | yes | occupant |
 | reopen | script: move a done folder back to the desk | yes | plumbing |
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes | plumbing |
 | projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace, a clone here brought there with --from), declare where it is, what rides with it and what runs after it lands, bring a host's bale level with this machine's (level-bale), render what bale records about them; a project with an audience is worked from a guarded clone on this machine, a host declared for it recorded as where it validates (validates_on), and the first one brings the letterhead | yes | occupant |
-| start | script: the one door for new work: with new, a job from the occupant's words (--words the twin), its folder minted through open's code and its session sent out in one motion; bare on a terminal, offer the planner's bundles in the downloads no session has opened, by key, and send a bundle whose brief carries a LANDS line where it says, asking neither where nor which job; with --planner, a read-only planner sitting from the occupant's words (--words, --about PROJECT or --in-office the twins), its folder minted or picked by key, what rides gathered and said in its brief; before any sitting, the in-tray's sort offered first when drops wait (--sort-first, --no-sort-first); pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; with --sort, send the standalone sort; send a folder out with its goal and brief.md when it has them; record it in the folder, file the sitting's page and the planner's ratifications its brief carries, gather what to attach in one out tray, and put the opener on the clipboard last | yes | occupant |
-| land | script: bring a session back: bale's apply in its repo, how it ended, the folder's walkthrough and delivery pages filed from the response, then its Sort on each drop's page, its questions and answers in the folder, its facts in the handbook and its Structure over the folder's provisional fields, and office moves when a drop was sorted, on a project with an audience the letterhead's review of what landed (what deliver would refuse, said, nothing refused), the project's after-land actions, the folder closed when its one session landed and the founding folder when the founding has, the watches that fired, what became of each action, and last the relay to carry on the clipboard; it asks nothing about ratification; or end a read-only sitting the office sent out | yes | occupant |
+| start | script: the one door for new work: with new, a job from the occupant's words (--words the twin), its folder minted through open's code and its session sent out in one motion; bare on a terminal, offer the planner's bundles in the downloads no session has opened, by key, and send a bundle whose brief carries a LANDS line where it says, asking neither where nor which job; with --planner, a read-only planner sitting from the occupant's words (--words, --about PROJECT or --in-office the twins), its folder minted or picked by key, what rides gathered and said in its brief; before any sitting, the in-tray's sort offered first when drops wait (--sort-first, --no-sort-first); pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; with --sort, send the standalone sort; with --prep, a meeting's prep, recorded in the calendar and in no folder; send a folder out with its goal and brief.md when it has them; record it in the folder, file the sitting's page and the planner's ratifications its brief carries, gather what to attach in one out tray, and put the opener on the clipboard last | yes | occupant |
+| land | script: bring a session back: bale's apply in its repo, how it ended, the folder's walkthrough and delivery pages filed from the response, then its Sort on each drop's page, its questions and answers in the folder, its facts in the handbook and its Structure over the folder's provisional fields, and office moves when a drop was sorted, on a project with an audience the letterhead's review of what landed (what deliver would refuse, said, nothing refused), the project's after-land actions, the folder closed when its one session landed and the founding folder when the founding has, the watches that fired, what became of each action, and last the relay to carry on the clipboard; it asks nothing about ratification; or end a read-only sitting the office sent out, and for a meeting's prep record the meeting held and file what arose as drops (--arising FILE) | yes | occupant |
 | withdraw | script: close a session the office sent out and that was never worked (no response in the downloads, no apply begun), named by its folder and asked once (--yes the twin): bale's unlock with reason abandoned where it is open, and a withdrawn line in its folder's History; a folder that recorded it alone is said with the line that closes it | yes | occupant |
 | relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes | plumbing |
 | probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), stdin closed, once its purpose header has been shown and the occupant said yes; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes | plumbing |
 | deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, checked by the letterhead, each commit shown whole and asked once, authored and committed as the declared author (asked once and kept when none is declared, --author the twin), recorded in the folder | yes | occupant |
-| letterhead check | script, read-only: name every line in a tree, a range or a file that holds what the letterhead refuses (in an office with a letterhead, the dashes and the ellipsis by default, a lift said; a pull-request template's lines exempt from the phrasing rule) | yes | plumbing |
+| letterhead check | script, read-only: name every line in a tree, a range or a file that holds what the letterhead refuses (in an office with a letterhead, the dashes and the ellipsis by default, a lift said; a pull-request template's lines exempt from the phrasing rule and the three characters) | yes | plumbing |
 | tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes | occupant |
 | moves | script: apply the in-tray's sorted drops (a folder minted through open's code for folder: new, or folder N; the page moved in whole with its brief, its History line, its goal and its tell), then the desk moves a sitting or a sort wrote, through open's, close's and the gate flags' own code, ticking each and writing a minted number onto its blueprint's decomposition line; stops at the first line it cannot apply | yes | plumbing |
 | blueprint open, blueprint ratify | script: draft a blueprint from the template; write its charter's ratified line | yes | plumbing |
@@ -1103,9 +1212,8 @@ Kinds:
 | work | office session: answer, draft, probe, decide, deliver | yes, via start | session |
 | build | project session: change a project for a folder, and write the folder's walkthrough and delivery pages at the end of its notes.md | yes, via start | session |
 | sort | office session: the standalone sort, belonging to no folder: read every unsorted drop, write one Sort subsection each, a Brief for every new folder, facts in a Handbook section and, with a drafting table, the moves the desk needs on its moves page | yes, via start | session |
-| prep | office session: a briefing for a meeting | not yet | session |
-| meeting | office session held open during a meeting | not yet | session |
-| cleanup | office session: keep the office as designed | not yet | session |
+| prep | office session (0.26.0): a meeting's prep, a read-only sitting from the office that briefs the occupant from what landed on the meeting's projects since the last meeting on them and serves during the meeting, held open until office land ends it; no folder; what arose filed as drops when it ends | yes, via start --prep and the home screen | session |
+| cleanup | office session: keep the office as designed; the cleanup built is one a meeting's prep may offer for its projects' documentation, a planner's bundle beside the briefing with its LANDS line, sent or deleted by the occupant (0.26.0); a scheduled, unattended cleanup of the office is not yet | the prep's offered bundle, yes; the scheduled kind, not yet | session |
 | blueprint close | office session: a sitting scoped to one blueprint, landing its close report and a notepad page | yes, via office blueprint close | plumbing |
 | renovate | office session: change the design | by hand | session |
 
@@ -1147,7 +1255,8 @@ share/verbs.toml declares. The occupant's own (`occupant`) are the home
 screen and what he uses: the two instant captures (`office note`,
 `office drop`), the friction slip, a new job from his words with its
 session out (`office start new`, the one door), a planner sitting from
-his words (`office start --planner`), sending a job on the desk out and
+his words (`office start --planner`), a meeting from his words (`office
+meeting`), sending a job on the desk out and
 bringing a session back (`office start`, `office land`), withdrawing one
 never worked (`office withdraw`), the desk, closing a job, delivering it,
 adding a project, the tour and a new office. `office help` lists them, one line each in plain words, with a
@@ -1176,11 +1285,14 @@ a key: the page's Next move first, marked, then a response in the
 downloads for a session that is out, a planner's bundle in the downloads
 no session has opened, each unsorted drop and the sort, the desk moves
 a sitting decided, an office out of step with the install, and a
-read-only sitting a folder records, which only he can say is over. A
-session is named by its folder, never by its id. Keys for a new job, a
-planner sitting from his words (p), sending a session out, bringing one
-back (while a session is out), a note, a drop, the whole desk and help
-are always there, and a key that withdraws a session never worked (w)
+read-only sitting a folder records, which only he can say is over; a
+meeting near now whose prep has not gone out comes right after the Next
+line's move, and a meeting's prep that is out comes last, ended by its
+key (0.26.0). A session is named by its folder, never by its id (a prep
+by its meeting). Keys for a new job, a planner sitting from his words (p),
+a meeting in his words (m), sending a session out, bringing one back
+(while a session is out), a note, a drop, the whole desk and help are
+always there, and a key that withdraws a session never worked (w)
 while one is out with no response and no apply begun. Choosing a key runs the code the verb
 already runs, with its arguments filled in, as a command of its own,
 and asks only what that verb must; when it ends, a key brings the home
@@ -1416,8 +1528,11 @@ audience is worked and delivered from a guarded clone on the occupant's
 machine by default (ruling 2 of the front-door arc): `office projects
 add` with `--audience` takes PATH as that clone here, and a host declared
 with it (`--host`, or `--validates-on`) is recorded as `validates_on`;
-`--worked-on-host` keeps the repo worked on its host, as before, and a
-host answered on a terminal is that, and said. Projects already declared
+`--worked-on-host` keeps the repo worked on its host, as before. On a
+terminal the same default holds (0.26.0): a host answered before the
+audience is, once the project has an audience, where it validates, and
+the wizard asks the clone's path here; working it on the host is chosen
+by key, never had by answering in order. Projects already declared
 on a host keep working as they did, and nothing validates on a host yet
 (bale's remote validation runner is S3's).
 Declaring an audience installs the push guard in the clone's .git/hooks,

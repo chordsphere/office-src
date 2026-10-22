@@ -20,9 +20,9 @@ checked outside any office) the characters are not refused.
 A repository's own pull-request template is not the occupant's writing:
 when words are checked in a git repo, each line of the words that is a
 line of one of the repo's pull-request templates, as the repo holds it
-(at HEAD, or --template-rev), is not held to the phrasing rule. Every
-other rule still reads it, and a template line that was changed is an
-ordinary line. Which files are templates is read from the repo, by the
+(at HEAD, or --template-rev), is not held to the phrasing rule or to the
+three characters (0.26.0). Names, bale's marks and the forbidden list
+still read it, and a template line that was changed is an ordinary line. Which files are templates is read from the repo, by the
 places git hosts look for one (PR_TEMPLATE_PLACES).
 
 What it reads, in order of what it was told:
@@ -63,6 +63,13 @@ import subprocess
 import sys
 
 RULE_SECTIONS = ("names", "phrasing", "marks")
+# What a line of a repository's own pull-request template, as the repo
+# holds it, is not held to: the phrasing rule (0.25.0) and the three
+# characters (0.26.0, the exception to session 3's decision 3), since its
+# words are the repository's and a template the occupant cannot change
+# would refuse every delivery that fills it.
+TEMPLATE_EXEMPT_KINDS = ("phrasing", "character")
+
 # The places git hosts look for a repository's pull-request template
 # (GitHub, GitLab, Azure DevOps), as lower-case paths: a file whose
 # directory and name match one of the single-file shapes, or any .md or
@@ -207,12 +214,14 @@ def hits_in_text(text, compiled, label, exempt=None):
     """Every hit in a text: (label, line number, kind, what matched, the
     line, shown short). A character's hit names the character, not the
     match. A line in exempt (a pull-request template's line, as the repo
-    holds it) is not held to the phrasing rule."""
+    holds it) is not held to the phrasing rule or to the three characters
+    (0.26.0): it is the repository's, not the occupant's. Names, bale's
+    marks and the forbidden list still read it."""
     out = []
     for n, line in enumerate(text.splitlines(), 1):
         templated = exempt is not None and line.rstrip() in exempt
         for kind, what, rx in compiled:
-            if templated and kind == "phrasing":
+            if templated and kind in TEMPLATE_EXEMPT_KINDS:
                 continue
             m = rx.search(line)
             if m:
@@ -379,7 +388,8 @@ def check(cwd, rules, scope_all=False, range_spec=None, words=(), files_only=Fal
     gives them, told as the lines the check says about what it read.
     words are files, words_text (label, text) pairs; both are words, and
     in a git repo the lines of its pull-request templates at template_rev
-    (HEAD when not given) are not held to the phrasing rule there."""
+    (HEAD when not given) are not held to the phrasing rule or the three
+    characters there."""
     cwd = str(pathlib.Path(cwd).resolve())
     compiled = compile_rules(rules)
     suffixes = rules.get("binary") or []
@@ -452,7 +462,8 @@ def check(cwd, rules, scope_all=False, range_spec=None, words=(), files_only=Fal
         if templates:
             kept = sum(1 for l in text.splitlines() if l.strip() and l.rstrip() in exempt)
             told.append(f"{label}: {kept} line(s) are the repository's pull-request template's as it holds them "
-                        f"({', '.join(templates)} at {rev[:12] if len(rev) == 40 else rev}), and are not held to the phrasing rule")
+                        f"({', '.join(templates)} at {rev[:12] if len(rev) == 40 else rev}), and are not held to the phrasing "
+                        "rule or the three characters")
     told.append(f"{read} file(s) read")
     return hits, told
 

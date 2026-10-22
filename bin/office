@@ -1665,6 +1665,19 @@ for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
   mapfile -t paths <<< "$out"
   page="${paths[0]}"
   log "dropped $page${project:+ (project: $project)}, unsorted"
+  # A drop made while a meeting is on and its prep is out is tied to it
+  # (0.26.0): the calendar's record names it, so the next meeting on those
+  # projects sees it in its prep. Said, never asked.
+  local tied trc=0
+  [ ! -d "$root/calendar" ] || { tied="$(meetx tie "$root" --page "$page" --tz "$tz" 2>"$tmp/tie.err")" || trc=$?; }
+  case "$trc" in
+    0) if [ -n "${tied:-}" ]; then
+         paths+=("${tied%%$'\t'*}")
+         log "tied to the meeting ${tied#*$'\t'}, which is on now with its prep out"
+       fi ;;
+    3) debug "no meeting is on with its prep out, so the drop is tied to none" ;;
+    *) warn "the calendar could not be read to tie this drop to a meeting ($(tail -n 1 "$tmp/tie.err")); the drop stands, tied to none" ;;
+  esac
   # The page alone, like a note; the in-tray's arrival, when this drop
   # brought it, in the same commit.
   commit_paths "$root" "office drop: $(basename "$page" .md)" "${paths[@]}" || true
@@ -2033,8 +2046,9 @@ usage_week() {
 usage: office week
 Lays this week's plan (calendar/plan.md) against what happened
 (calendar/record.md), in the office's timezone: a planned item in the past
-with no record that day is a gap. An office without a calendar is told
-which renovation adds one. It only reads.
+with no record that day is a gap, and a meeting whose prep is out says so.
+An office without a calendar is told that it arrives with the first
+meeting (office meeting). It only reads.
 Examples:
   office week
   office tour                                  (a throwaway office with a calendar gap to look at)
@@ -2046,12 +2060,155 @@ cmd_week() {
   case "${1:-}" in -h|--help) usage_week; return 0 ;; esac
   root="$(resolve_office)" || exit 1
   if ! has_space "$root" calendar; then
-    printf 'this office has no calendar. A renovation adds one: an office session that adds the calendar space to the floor plan (doctrine section 5).\n'
+    printf 'this office has no calendar yet. It arrives with the first meeting: office meeting records one, in your words (doctrine section 5).\n'
     return 0
   fi
   tz="$(office_tz "$root")"
   helper week "$root/calendar" --today "$(office_date "$tz")" --now "$(office_time "$tz")" --tz "$tz" \
     || die "could not read the calendar in $root/calendar"
+}
+
+# --- a meeting, asked once (0.26.0) ------------------------------------------------------
+#
+# A meeting is a view over the work, not a job: no folder is minted for it.
+# office meeting (the home screen's m key) takes it in his words and writes
+# one line in the calendar's plan: when it happens, its title, and the
+# projects it concerns. It asks only when his words do not say when, or
+# name none of the office's projects; a series is one line, never asked for
+# again. lib/office_meeting.py reads the words and keeps the calendar.
+
+MEETING_PY="$OFFICE_SRC/lib/office_meeting.py"
+meetx() { pylib "$MEETING_PY" "$@"; }
+MEETING_HELP="The meeting in one sentence, as you would say it: when it happens and what it is about, for instance: weekly review every Monday at 9 about alpha and beta. The office reads when from it (a date, a day, tomorrow, every Monday, weekdays, a time) and the projects it concerns from the projects your words name, and asks only what they do not say. Nothing else: no title (it is your words, less when), no folder."
+WHEN_HELP="When the meeting happens, in words (tomorrow at 2pm, Friday 10:30, every Monday at 9, weekdays at 9:30) or as the calendar writes it (2026-10-30 14:00, every mon 09:00). Times are in the office's timezone. A bare hour from 1 to 6 is the afternoon unless you say am."
+
+usage_meeting() {
+  cat <<'USAGE'
+usage: office meeting [WORDS... | --words TEXT] [--when WHEN] [--about PROJECT]... [--in-office] [--title TITLE]
+Records a meeting, said once in your words: when it happens and what it is
+about, in one sentence ("weekly review every Monday at 9 about alpha and
+beta"). The office reads when from your words, and the projects it
+concerns from the projects they name, and writes one line in the
+calendar's plan, calendar/plan.md (the calendar arrives with the first
+meeting). It asks only when your words do not say when, or name none of
+the office's projects. A meeting said with every, each, daily or weekdays
+recurs, and is never asked for again. No folder is made: a meeting is a
+view over the work, and what arises in it reaches the in-tray as drops.
+From a day before each one the home screen offers its prep by key: a
+read-only sitting briefed from what landed on those projects since the
+last meeting on them (office start --prep sends it). The same sitting
+serves during the meeting; office land ends it, records the meeting held
+and files what arose. Times are local, in the floor plan's timezone.
+Piped, it asks nothing: the flags give what the words do not.
+  WORDS, --words TEXT  the meeting, in your words (asked on a terminal)
+  --when WHEN          when it happens, standing over what the words say:
+                       YYYY-MM-DD HH:MM, every DAY HH:MM (DAY mon to sun, day
+                       or weekday), or words such as "tomorrow at 2pm"
+  --about PROJECT      a project it concerns (repeatable), over what the words name
+  --in-office          it concerns the office itself
+  --title TITLE        its title (by default your words, less when it happens)
+Examples:
+  office meeting
+  office meeting weekly review every Monday at 9 about alpha and beta
+  office meeting --words "alpha review" --when "2026-10-30 14:00"
+  office meeting --words "planning with the team" --when "every thu 10:00" --in-office
+USAGE
+}
+
+cmd_meeting() {
+  local words="" when="" title="" abouts=() in_office=0 root tz tmp out key value a ans held rc
+  local m_title="" m_when="" m_need="" m_words="" named=() notes=() names list pvals=() pn args=() line paths=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --words) [ $# -ge 2 ] || die "--words needs the meeting, in your words (office meeting --help)"; words="$2"; shift 2 ;;
+      --when) [ $# -ge 2 ] || die "--when needs when it happens: YYYY-MM-DD HH:MM, every DAY HH:MM, or words"; when="$2"; shift 2 ;;
+      --about) [ $# -ge 2 ] || die "--about needs a project the meeting concerns (office projects lists them)"; abouts+=("$2"); shift 2 ;;
+      --in-office) in_office=1; shift ;;
+      --title) [ $# -ge 2 ] || die "--title needs the meeting's title"; title="$2"; shift 2 ;;
+      -h|--help) usage_meeting; return 0 ;;
+      -*) usage_meeting >&2; die "office meeting does not know $1; the flags above are what it takes" ;;
+      *) words="${words:+$words }$1"; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ -z "${words//[[:space:]]/}" ]; then
+    can_ask || die "a meeting is said in your words: office meeting WORDS, or --words TEXT (when it happens and what it is about); piped input is never asked, and nothing was written"
+    ask words "The meeting, in your words: when it happens and what it is about (--words)" "" 1 "$MEETING_HELP"
+  fi
+  tz="$(office_tz "$root")"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/office-meeting.XXXXXXXX")" || die "no temporary directory for the meeting"
+  TMP_PATHS+=("$tmp")
+  printf '%s\n' "$words" > "$tmp/words" || die "could not keep your words"
+  # Read the words, and ask when they do not say when (a plain answer is
+  # read the same way, and stands over the words).
+  while :; do
+    out="$(meetx read "$root" --text-file "$tmp/words" --today "$(office_date "$tz")" --now "$(office_time "$tz")" \
+             ${when:+--when "$when"})" || {
+      if [ -n "$when" ] && can_ask; then printf '  that says no day and no time this office can read; ? explains the question\n' >&2; when=""; continue; fi
+      die "your words could not be read (the line above says why); nothing was written"
+    }
+    named=(); notes=(); m_title=""; m_when=""; m_need=""; m_words=""
+    while IFS=$'\t' read -r key value; do
+      case "$key" in
+        title) m_title="$value" ;; when) m_when="$value" ;; need) m_need="$value" ;; words) m_words="$value" ;;
+        concern) named+=("$value") ;; note) notes+=("$value") ;;
+      esac
+    done <<< "$out"
+    [ -n "$m_need" ] || break
+    if ! can_ask; then
+      if [ "$m_need" = time ]; then die "your words say the day and not the time: --when HH:MM (or --when \"YYYY-MM-DD HH:MM\"); piped input is never asked, and nothing was written"; fi
+      die "your words do not say when it happens: --when \"YYYY-MM-DD HH:MM\" or --when \"every DAY HH:MM\"; piped input is never asked, and nothing was written"
+    fi
+    if [ "$m_need" = time ]; then
+      ask ans "What time it starts (--when)" "" 1 "$WHEN_HELP"
+    else
+      ask ans "When it happens: a day and a time, or every DAY at a time (--when)" "" 1 "$WHEN_HELP"
+    fi
+    when="$ans"
+  done
+  for line in "${notes[@]}"; do log "$line"; done
+  [ -z "$title" ] || m_title="$title"
+  # What it concerns: --about or --in-office as given, else the projects his
+  # words name, else asked by key (the office itself an answer); an office
+  # that scopes no project concerns itself, unasked.
+  names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+  list="$(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')"
+  local about=()
+  if [ "${#abouts[@]}" -gt 0 ] || [ "$in_office" = 1 ]; then
+    for a in "${abouts[@]}"; do
+      printf '%s\n' "$names" | grep -qxF -- "$a" || die "--about $a: no such project in this office (it scopes: ${list:-none}); nothing was written"
+      about+=("$a")
+    done
+    [ "$in_office" = 0 ] || about+=("the office")
+  elif [ "${#named[@]}" -gt 0 ]; then
+    about=("${named[@]}")
+  elif [ -z "$names" ]; then
+    about=("the office")
+  else
+    can_ask || die "your words name none of this office's projects ($list): --about PROJECT, or --in-office for the office itself; piped input is never asked, and nothing was written"
+    while IFS= read -r pn; do [ -n "$pn" ] && pvals+=("$pn" "$pn"); done <<< "$names"
+    pvals+=("the office" "the office itself")
+    printf "Your words name none of this office's projects:\n" >&2
+    pick ans "What the meeting concerns, by its key (--about PROJECT, or --in-office)" \
+      "The meeting's prep carries what landed on what it concerns since the last meeting on it, the handbook chapter and the folders on the desk; the office itself gathers the folders that name no project. Another project is --about once more." \
+      "" 0 "${pvals[@]}"
+    about=("$ans")
+  fi
+  held="$(reader writers "$root" calendar/plan.md 2>/dev/null)"; rc=$?
+  if [ "$rc" = 3 ]; then
+    printf '%s\n' "$held" | sed 's/^/[office]   /' >&2
+    die "an open session holds the calendar's plan (the one-writer rule), so the meeting is not written beside it; nothing was written"
+  fi
+  args=(--when "$m_when" --title "$m_title")
+  for a in "${about[@]}"; do args+=(--about "$a"); done
+  out="$(meetx record "$root" "${args[@]}")" || die "the meeting could not be recorded (the line above says why); nothing was written"
+  line="$(printf '%s\n' "$out" | sed -n 's/^line\t//p')"
+  mapfile -t paths < <(printf '%s\n' "$out" | grep -v '^line	' | grep .)
+  [ "${#paths[@]}" -eq 0 ] || commit_paths "$root" "office meeting: $m_title, ${m_words:-$m_when}" "${paths[@]}" || true
+  printf 'Recorded: %s, %s (%s); it concerns %s.\n' "$m_title" "${m_words:-$m_when}" "$tz" "$(printf '%s\n' "${about[@]}" | paste -sd, - | sed 's/,/, /g')"
+  printf '  %s\n' "$line"
+  printf 'From a day before it, your home screen offers its prep by key (office start --prep sends it).\n'
 }
 
 # Moving a folder is not rewriting it: the bytes move, git keeps the
@@ -3610,6 +3767,7 @@ usage: office start new [--words TEXT] [--in-office | --on PROJECT] [--goal TEXT
        office start --drop PAGE [--title TITLE] [--lane LANE] [--size SIZE] [--goal TEXT] [--slug SLUG]
                     [--write PATH]... [--include PATH]... [--leave-out PATH]... [--no-rides]
        office start --sort
+       office start --prep [MEETING]
 A planner sitting from your words (office start --planner, the home
 screen's p key): you say what you want a planner for, and a read-only
 sitting goes out, recorded in a folder (one on the desk, by key, or new,
@@ -3730,6 +3888,19 @@ on the desk or in the filing cabinet, and says so.
                  Refused while another sort is out, while an open session
                  holds the in-tray, and when no drop is unsorted
   --planner      a read-only planner sitting from your words (above)
+  --prep [MEETING]
+                 a meeting's prep (0.26.0): a read-only sitting from the
+                 office, its goal the meeting's words, no folder (the
+                 calendar's record names it). It carries what landed on
+                 the meeting's projects since the last meeting on them (the
+                 14 days before it, for a first), each project's handbook
+                 chapter, its folders on the desk, the unsorted drops and
+                 the drops tied to the last meeting with the folders they
+                 became, each said with why, and its brief carries the
+                 arising block the sitting writes and the cleanup it may
+                 offer. MEETING is YYYY-MM-DD HH:MM TITLE (office week shows
+                 them) or words naming one near now; none, the one near
+                 (asked by key when several are). office land SID ends it
   --about PROJECT
                  what a planner sitting concerns, one project each time it
                  is given (--in-office: the office itself); default: the
@@ -3784,6 +3955,8 @@ Examples:
   office start --sort
   office start --planner                       (asks what you want a planner for, and the folder by key)
   office start new --planner --words "Plan the alpha release" --sort-first
+  office start --prep                          (the meeting near now: its prep)
+  office start --prep "2026-10-30 14:00 alpha review"
   office start fix-login --planner --words "Is the login fix the right order?" --about alpha
 The out tray is ~/out-tray/SID unless this machine's
 ~/.config/office-src/machine.toml sets out_tray. On WSL the tray opens in
@@ -4254,6 +4427,87 @@ if r["opener"] is not None:
   return 0
 }
 
+# --- a meeting's prep (0.26.0) -----------------------------------------------------------
+#
+# office start --prep [MEETING], the home screen's key for a meeting that is
+# near: a read-only sitting sent from the office, through the planner
+# sitting's gathering (lib/office_planner.py, by way of lib/office_meeting.py),
+# its goal the meeting's words, briefed from what landed on its projects since
+# the last meeting on them. No folder records it: the calendar's record does,
+# by its id, and office land ends it, records the meeting held and files what
+# arose. Reads and sets cmd_start's root.
+
+start_prep() {
+  local tz day out k key words choices=() tmp includes=() path why tray_root sid tray opener title slug held rc paths=()
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"
+  out="$(meetx resolve "$root" --tz "$tz" ${PREP_WANT:+--want "$PREP_WANT"})" \
+    || die "no prep went out (the line above says why); nothing was written"
+  key=""; title=""
+  while IFS=$'\t' read -r k path words; do
+    case "$k" in key) key="$path"; title="$words" ;; choice) choices+=("$path" "$words") ;; esac
+  done <<< "$out"
+  if [ -z "$key" ]; then
+    if ! can_ask; then
+      printf '%s\n' "$out" | sed -n 's/^choice\t\([^\t]*\)\t.*/[office]   \1/p' >&2
+      die "$(( ${#choices[@]} / 2 )) meetings are near: name one: office start --prep 'YYYY-MM-DD HH:MM TITLE'; piped input is never asked, and nothing was written"
+    fi
+    printf 'Meetings near now:\n' >&2
+    pick key "Which meeting's prep goes out, by its key (office start --prep MEETING)" \
+      "Each meeting the calendar plans from a day before it until four hours after it starts, whose prep has not gone out. Its prep is a read-only sitting that briefs you on what landed since the last meeting on its projects, and stays with you during it." \
+      "" 0 "${choices[@]}"
+  fi
+  held="$(reader writers "$root" calendar/record.md 2>/dev/null)"; rc=$?
+  if [ "$rc" = 3 ]; then
+    printf '%s\n' "$held" | sed 's/^/[office]   /' >&2
+    die "an open session holds the calendar's record (the one-writer rule), so the prep is not sent beside it; nothing was written"
+  fi
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/office-prep-brief.XXXXXXXX")" || die "no temporary directory for the prep's brief"
+  TMP_PATHS+=("$tmp")
+  out="$(meetx gather "$root" --key "$key" --tz "$tz" --day "$day" --brief-out "$tmp/README.md" --includes-out "$tmp/includes")" \
+    || die "what rides with the prep could not be gathered (the line above says why); nothing was packed"
+  title="$(printf '%s\n' "$out" | sed -n 's/^meeting\t\([^\t]*\)\t.*/\1/p')"
+  while IFS= read -r path; do [ -n "$path" ] && includes+=(--include "$path"); done < "$tmp/includes"
+  printf 'What rides with the prep for %s, and why (its brief says the same, first):\n' "$title" >&2
+  while IFS=$'\t' read -r path why; do
+    [ -n "$path" ] && [ "$path" != meeting ] && printf '  %s: %s\n' "$path" "$why" >&2
+  done <<< "$out"
+  slug="$(short_slug "$title")"; slug="$(slugify "${slug:-meeting}-prep")"
+  tray_root="$(machine_setting out_tray "$HOME/out-tray")"
+  case "$tray_root" in "~"|"~/"*) tray_root="$HOME${tray_root#\~}" ;; esac
+  log "packing the prep for $key in the office: a read-only sitting, no folder"
+  out="$(reader start "$root" - --where office --goal "$title" --slug "$slug" --read-only "${includes[@]}" \
+           --brief "$tmp/README.md" --tray-root "$tray_root")" || exit 1
+  sid="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sid"])')" || die "could not read what office start packed"
+  tray="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tray"])')"
+  printf '%s' "$out" | python3 -c 'import json,sys
+for w in json.load(sys.stdin)["warnings"]:
+    print(w)' | while IFS= read -r why; do warn "$why"; done
+  if mapfile -t paths < <(meetx prep-out "$root" --key "$key" --sid "$sid" --tz "$tz") && [ "${#paths[@]}" -gt 0 ]; then
+    commit_paths "$root" "office start --prep: $key, its prep $sid" "${paths[@]}" || true
+  else
+    warn "the calendar's record could not say $sid is the prep for $key (the line above says why); office land $sid ends it all the same once that line is written"
+  fi
+  printf 'Packed %s for the meeting %s (its prep; the calendar records it, and no folder).\n\n' "$sid" "$title"
+  printf 'Out tray: %s\n' "$tray"
+  printf '%s' "$out" | python3 -c 'import json,sys
+r = json.load(sys.stdin)
+for line in r["carried"]:
+    print("  " + line)'
+  printf '\nAttach every file in the out tray to a fresh chat, then paste the opener:\n\n'
+  opener="$(printf '%s' "$out" | python3 -c 'import json,sys
+r = json.load(sys.stdin)
+if r["opener"] is not None:
+    print("\n".join(r["opener"]))')"
+  if [ -z "$opener" ]; then
+    warn "bale printed no opener between its scissor lines; the session is open, and bale status shows it"
+    return 0
+  fi
+  printf -- '--8<-- session opener --8<--\n%s\n--8<-- end session opener --8<--\n' "$opener"
+  printf '\nThe same sitting serves before the meeting and during it. When the meeting is over: office land %s ends it, records the meeting held and files what arose as drops.\n' "$sid"
+  start_desktop "$tray" "$opener"
+  return 0
+}
+
 # --- a planner sitting from his words (0.24.0) -------------------------------------
 #
 # office start --planner (the home screen's p key; office start new
@@ -4500,7 +4754,8 @@ cmd_start() {
   local leave_out=() no_rides=0 carry=() carry_none=0 bundle_given="" slug_flag=0
   local root name md status lane lane_project lane_paths names cls ans tz day out sid tray tray_root rel about="" args=() v
   local packed_flags=() drop="" drop_title="" drop_lane="" drop_size="" drop_title_given="" sort=0 others=() said_words="" words_given=0
-  local planner=0 abouts=() sort_first="" in_office_given=0
+  local planner=0 abouts=() sort_first="" in_office_given=0 prep=0
+  PREP_WANT=""
   START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_BUNDLE_FOUND=""; START_DROP_PAGE=""
   PLANNER_FILE=""; PLANNER_CONCERNS=(); PLANNER_WHY=""
   while [ $# -gt 0 ]; do
@@ -4514,6 +4769,10 @@ cmd_start() {
                      --write) writes+=("$2"); set_w=1 ;; --include) includes+=("$2") ;; esac
         packed_flags+=("$1"); shift 2 ;;
       --sort) sort=1; shift ;;
+      --prep) prep=1
+              # A meeting may follow: its key (YYYY-MM-DD HH:MM TITLE) or
+              # words that name one near now; none, the one near.
+              if [ $# -ge 2 ] && [[ "$2" != -* ]]; then PREP_WANT="$2"; shift 2; else shift; fi ;;
       --planner) planner=1; shift ;;
       --about) [ $# -ge 2 ] || die "--about needs the project the sitting concerns (office projects lists them)"
                abouts+=("$2"); shift 2 ;;
@@ -4553,6 +4812,21 @@ cmd_start() {
     warn_if_unfounded "$root"
     command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office start runs bale pack"
     start_sort
+    return $?
+  fi
+  if [ "$prep" = 1 ]; then
+    # A meeting's prep (0.26.0): a read-only sitting with the office's own
+    # goal (the meeting's words), includes and brief, recorded in the
+    # calendar and in no folder, so it takes nothing else.
+    [ -z "$want$where$drop$bundle$drop_title$drop_lane$drop_size$said_words$sort_first" ] && [ "${#packed_flags[@]}" -eq 0 ] \
+      && [ "$no_rides" = 0 ] && [ "${#leave_out[@]}" -eq 0 ] && [ "${#carry[@]}" -eq 0 ] && [ "$carry_none" = 0 ] \
+      && [ "$planner" = 0 ] && [ "${#abouts[@]}" -eq 0 ] && [ "$sort" = 0 ] \
+      || die "--prep sends a meeting's prep, with the meeting's words as its goal and what rides gathered by the office, so it takes nothing but the meeting: office start --prep [MEETING]"
+    root="$(resolve_office)" || exit 1
+    require_current "$root"
+    warn_if_unfounded "$root"
+    command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office start runs bale pack"
+    start_prep
     return $?
   fi
   [ "$read_only" = 0 ] || [ "$set_w" = 0 ] || die "--read-only forecasts nothing, so it takes no --write"
@@ -5123,7 +5397,7 @@ sys.exit(0 if norm(sys.argv[1]) == norm(sys.argv[2]) else 1)' "$tmp/text" "$tmp/
 usage_land() {
   cat <<'USAGE'
 usage: office land [SID | FOLDER | RESPONSE] [--sid SID] [--folder FOLDER] [--response FILE]
-                   [--ratified [--except TEXT] | --not-now] [--close | --leave-open]
+                   [--ratified [--except TEXT] | --not-now] [--close | --leave-open] [--arising FILE]
 Brings a session back. It finds the response for a session the office has
 out, runs bale apply in the repo the session belongs to (a project, or the
 office itself; bale retry when bale held the session), and says how it
@@ -5141,7 +5415,14 @@ check, and said; a copy that cannot be confirmed is said, and the block
 printed again. Given a read-only sitting the
 office sent out (by its id or its folder), land ends it instead: bale
 unlock in its repo and an `ended` line in the folder's History; the
-folder stays as it is. An after-land action runs only through office
+folder stays as it is. Given a meeting's prep (office start --prep), land
+ends it the same way, then records the meeting held in the calendar and
+files what arose in it as drops in the in-tray, tied to the meeting: from
+the sitting's arising block, read from --arising FILE (- for stdin, none
+when nothing arose), else arising-SID.md in your downloads, else, on a
+terminal, the clipboard once you have copied the block; one line says what
+it filed. A block that does not read stops land with the sitting open.
+An after-land action runs only through office
 land: a session applied by hand with bale apply runs none.
 After an applied landing, when the folder records that session alone, the
 job is finished: on a terminal land closes the folder, done, in the same
@@ -5195,6 +5476,8 @@ newest is passed to bale by its path, and land says so.
                    calls (a brief's RATIFIED line does this; nothing asks)
   --except TEXT    ...except TEXT: what was corrected, and where it went
   --not-now        changes nothing (land asks nothing about ratification)
+  --arising FILE   a meeting's prep: the sitting's arising block (- for stdin,
+                   none when nothing arose)
   --close          close a finished folder with the landing, without asking
   --leave-open     leave it open, without asking (office close closes it later)
 Under the hood: bale apply TARBALL (bale retry for a held session) in the
@@ -5208,6 +5491,7 @@ Examples:
   office land 2026-10-05-fix-login-001
   office land fix-login --ratified
   office land 2026-10-05-plan-wave-office-001  (a read-only sitting: ends it)
+  office land 2026-10-25-weekly-review-prep-001 --arising ~/Downloads/arising-2026-10-25-weekly-review-prep-001.md
   office land 2026-10-05-fix-login-001 --response "$HOME/Downloads/response-2026-10-05-fix-login-001 (1).tar.gz"
   office land fix-login --ratified --close
 USAGE
@@ -5353,9 +5637,11 @@ cmd_land() {
   local want="" sid="" folder="" response="" ratify="" except="" has_except=0 root tmp plan capture
   local out n line words verb repo label code day tz md name space rc=0 ans relays i
   local host="" dl_args=() d default help_more
-  LAND_CLOSE=""
+  LAND_CLOSE=""; LAND_ARISING=""
   while [ $# -gt 0 ]; do
     case "$1" in
+      --arising) [ $# -ge 2 ] || die "--arising needs the meeting's arising block: a file, - for stdin, or none"
+                 LAND_ARISING="$2"; shift 2 ;;
       --close) [ "$LAND_CLOSE" != leave ] || die "--close and --leave-open contradict each other"; LAND_CLOSE=close; shift ;;
       --leave-open) [ "$LAND_CLOSE" != close ] || die "--close and --leave-open contradict each other"; LAND_CLOSE=leave; shift ;;
       --sid|--folder|--response|--except)
@@ -5494,6 +5780,15 @@ cmd_land() {
   # ends it (the ruling of sitting 2026-10-03-plan-4b-sitting-001): bale
   # unlock in its repo, and the folder's History line. Nothing runs
   # after it and nothing is ratified.
+  # A meeting's prep (0.26.0) is a sitting the calendar records: what arose
+  # in the meeting is read first (a file, the downloads or one paste), so a
+  # block that does not read stops land before the sitting is closed.
+  local prep=""
+  if [ "$verb" = unlock ]; then
+    prep="$(meetx prep-of "$root" --sid "$sid" 2>/dev/null)" || prep=""
+    [ -z "$prep" ] || land_arising "$root" "$sid" "$tmp"
+  fi
+  [ -z "$LAND_ARISING" ] || [ -n "$prep" ] || die "--arising goes with a meeting's prep: $sid is not one, and nothing was landed"
   if [ "$verb" = unlock ]; then
     [ -z "$ratify$except" ] || log "a sitting lands nothing, so nothing is ratified"
     log "ending the read-only sitting $sid ($label; $(plan_field "$plan" folders | paste -sd, - | sed 's/,/, /g')): bale unlock $sid, in $repo"
@@ -5502,7 +5797,8 @@ cmd_land() {
     printf '%s' "$out" | python3 -c 'import json,sys
 for l in json.load(sys.stdin)["told"]:
     print(l)' | while IFS= read -r line; do log "$line"; done
-    return 0
+    [ -z "$prep" ] || land_held "$root" "$sid" "$day" "$tz"
+    return $?
   fi
   log "landing $sid ($label; $(plan_field "$plan" folders | paste -sd, - | sed 's/,/, /g; s/^$/no folder records it/')): bale $verb $(plan_field "$plan" tarball), in $repo"
   [ -z "$host" ] || log "$label is on $host: the response travels there, bale runs in its repo there with this terminal, and the temporary directory it travels in is removed after"
@@ -5609,6 +5905,71 @@ for l in json.load(sys.stdin)["told"]:
   after_land_summary "$repo"
   carry_relays "$landed" 1
   return "$rc"
+}
+
+# land_arising ROOT SID TMP: what arose in a meeting, from its prep's
+# arising block (0.26.0), at most one paste or one file, never retyped:
+# --arising FILE (- for stdin, none for nothing), else arising-SID.md in the
+# downloads, else on a terminal the clipboard once he has copied the block.
+# Sets ARISING_FILE (empty when nothing arose) and ARISING_VIA, a drop's via.
+# A block that does not read stops land with the sitting still open.
+ARISING_HELP="The prep sitting writes what arose in the meeting as one block, from its line --- ARISING BEGIN SID --- to its line --- ARISING END ---, and offers it as a file named arising-SID.md; saved in your downloads, land finds it on its own. Otherwise copy the block from the chat (the last time the sitting printed it), then press return here: the office reads the clipboard. Each item becomes a drop in the in-tray, tied to the meeting. none: nothing arose."
+land_arising() {
+  local root="$1" sid="$2" tmp="$3" dl=() d found ans rc
+  ARISING_FILE=""; ARISING_VIA="stdin"
+  case "$LAND_ARISING" in
+    none) log "--arising none: nothing arose in the meeting"; return 0 ;;
+    -) [ ! -t 0 ] || die "--arising - reads the block from stdin, and stdin is this terminal: give it as a file, or copy it and give no --arising"
+       cat > "$tmp/arising" || die "could not read the block from stdin"
+       ARISING_FILE="$tmp/arising"; ARISING_VIA="stdin" ;;
+    "") ;;
+    *) [ -f "$LAND_ARISING" ] || die "--arising $LAND_ARISING: no such file; nothing was landed"
+       ARISING_FILE="$LAND_ARISING"; ARISING_VIA="file $(basename -- "$LAND_ARISING")" ;;
+  esac
+  if [ -z "$ARISING_FILE" ] && downloads_known; then
+    while IFS= read -r d; do [ -n "$d" ] && dl+=(--dir "$d"); done <<< "$DOWNLOADS"
+    found="$(homex copies --name "arising-$sid.md" "${dl[@]}" 2>/dev/null | head -n 1 | cut -f1)"
+    if [ -n "$found" ]; then
+      ARISING_FILE="$found"; ARISING_VIA="file $(basename -- "$found")"
+      log "what arose in the meeting: $found, in your downloads"
+    fi
+  fi
+  if [ -z "$ARISING_FILE" ]; then
+    can_ask || die "a meeting's sitting ends with what arose in it: --arising FILE (the sitting's arising-$sid.md), --arising - for stdin, or --arising none; piped input is never asked, and the sitting is still open"
+    paste_setting "office land reads what arose in the meeting from the clipboard" \
+      "save the sitting's arising-$sid.md in your downloads, or give it: office land $sid --arising FILE"
+    while :; do
+      ask ans "Copy the sitting's arising block, then press return; none if nothing arose (--arising)" "" 0 "$ARISING_HELP"
+      if [ "$ans" = none ]; then log "nothing arose in the meeting, as you said"; return 0; fi
+      timeout 15 bash -c "$PASTE" < /dev/null > "$tmp/arising" 2> "$tmp/paste.err"; rc=$?
+      if [ "$rc" != 0 ]; then
+        printf '  the clipboard could not be read: %s exited %s (%s); copy the block again, or answer none\n' "$PASTE" "$rc" "$(tail -n 1 "$tmp/paste.err")" >&2
+        continue
+      fi
+      if meetx arising-check "$root" --sid "$sid" --file "$tmp/arising" >/dev/null; then
+        ARISING_FILE="$tmp/arising"; ARISING_VIA="clipboard"; break
+      fi
+      printf '  the clipboard holds no block that reads (the line above says why): copy it again, or answer none\n' >&2
+    done
+  fi
+  meetx arising-check "$root" --sid "$sid" --file "$ARISING_FILE" >/dev/null \
+    || die "the arising block does not read (the line above says why); nothing was filed, and the sitting is still open: office land $sid --arising FILE once it reads"
+}
+
+# land_held ROOT SID DAY TZ: after a meeting's sitting has ended, the meeting
+# recorded held in the calendar and each item that arose written as a drop
+# in the in-tray, tied to it, committed together; said in one line.
+land_held() {
+  local root="$1" sid="$2" day="$3" tz="$4" out paths=() said
+  if ! out="$(meetx held "$root" --sid "$sid" ${ARISING_FILE:+--file "$ARISING_FILE"} --via "$ARISING_VIA" \
+                --day "$day" --time "$(office_time "$tz")")"; then
+    warn "the sitting is closed, but the meeting could not be recorded held (the line above says why): what arose is in ${ARISING_FILE:-no file}, and office drop FILE drops it by hand"
+    return 1
+  fi
+  said="$(printf '%s\n' "$out" | sed -n 's/^said\t//p')"
+  mapfile -t paths < <(printf '%s\n' "$out" | grep -v '^said	' | grep .)
+  [ "${#paths[@]}" -eq 0 ] || commit_paths "$root" "office land: the meeting of $(printf '%s' "$prep" | cut -f1) held" "${paths[@]}" || true
+  printf '%s\n' "$said"
 }
 
 # carry_relays OUTCOME AT_END: the blocks bale printed for a person to
@@ -6242,6 +6603,42 @@ bring_clone() {
   log "$from was not changed; once you are satisfied with the clone on $host, you can remove it (the office never does)"
 }
 
+# workbench_here: on a terminal, once a project given a host has an
+# audience, where it is worked, by key: here, from a guarded clone, the host
+# kept as where it validates (the default), or on the host (--worked-on-host).
+# Here asks the clone's path on this machine and checks it as add checks
+# any path, the audience a remote it has. Reads and sets cmd_projects_add's
+# own variables.
+WORKBENCH_HELP="A project whose audience reads what it holds is worked from a clone on this machine, guarded so that only office deliver reaches the audience, and the host you named is kept as where it validates (validates_on), as office projects add --audience REMOTE --host HOST records it piped. The other key keeps the repo you named on the host as the workbench, worked there through its shell, as before 0.25.0 (--worked-on-host)."
+WORKBENCH_PATH_HELP="The top of the project's git clone on this machine, absolute or under a home directory (~/...): the workbench sessions are packed from and landed in. It must have the audience's remote, and bale must run there (a .bale/ directory or a bale.toml, or the office prepares it)."
+workbench_here() {
+  local ans lpath lfound lfacts
+  printf '%s has an audience, so it is worked from a guarded clone on this machine by default, and %s is kept as where it validates:\n' "$name" "$host" >&2
+  pick ans "Where $name is worked, by its key (--worked-on-host works it on $host)" "$WORKBENCH_HELP" here 0 \
+    here "on this machine, from a guarded clone; $host is where it validates (the default)" \
+    host "on $host, the repo at $path there (--worked-on-host)"
+  if [ "$ans" = host ]; then
+    worked_there=1
+    log "$name is worked on $host, as you chose (its twin: --host $host --worked-on-host)"
+    return 0
+  fi
+  while :; do
+    ask lpath "Path to $name's clone on this machine, the workbench (--path)" "" 1 "$WORKBENCH_PATH_HELP"
+    case "$lpath" in "~"|"~/"*) lpath="$HOME${lpath#\~}" ;; esac
+    lfound=""; lfacts=""
+    check_project lfound "$lpath" "" "" "" "$prepare" || continue
+    clone_facts lfacts "$lpath" "" "" "" || continue
+    if [ -z "$(clone_fact "$lfacts" remote "$audience")" ]; then
+      printf '  the clone at %s has no remote named %s (it has: %s)\n' "$lpath" "$audience" "$(clone_fact "$lfacts" remotes)" >&2
+      continue
+    fi
+    break
+  done
+  validates="$(helper check-audience-key validates_on "$host")" || exit 1
+  path="$lpath"; found="$lfound"; facts="$lfacts"; host=""; shell=""; connect=""; set_h=0
+  log "$name is worked on this machine at $path, from a guarded clone, and $validates is kept as where it validates (the twin: office projects add $name $path --audience $audience --host $validates)"
+}
+
 cmd_projects_add() {
   local name="" path="" root default missing=() rides=() afters=() set_r=0 set_a=0 args=()
   local host="" shell="" connect="" set_h=0 prepare=no found="" hargs=() from="" from_set=0 dirty_ok=no rc
@@ -6336,8 +6733,12 @@ cmd_projects_add() {
         clone_facts facts "$path" "$host" "$shell" "$connect" || true
         ask_audience_keys audience author base "$name" "$facts"
         set_aud=1
-        if [ -n "$audience" ] && [ -n "$host" ]; then
-          log "$name is worked on $host, as you answered (its twin: --host $host --worked-on-host); a project with an audience is worked on this machine by default, its host kept for validation: office projects add $name PATH-HERE --audience $audience --host $host"
+        # A project with an audience is worked on this machine by default,
+        # its host kept as where it validates, as the piped flags do (0.26.0,
+        # the exception to session 3's decision 10): working it on the host
+        # is chosen by key, never had by answering the questions in order.
+        if [ -n "$audience" ] && [ -n "$host" ] && [ "$worked_there" = 0 ]; then
+          workbench_here
         fi
       fi
       if [ "$set_r" = 0 ]; then ask_declaration rides "$name" ride; set_r=1; fi
@@ -6673,7 +7074,8 @@ where); the diff and the words go through the letterhead check (the
 office's letterhead: in an office that has one, the em dash, the en dash
 and the ellipsis are refused by default; the lines of the repository's
 own pull-request template, as the audience holds it, are not held to the
-phrasing rule), and one hit refuses the delivery with nothing pushed;
+phrasing rule or the three characters), and one hit refuses the delivery
+with nothing pushed;
 then the commits are made and each is shown whole, as it will be pushed:
 its subject and body, its author and committer, the files it touches and
 the letterhead's verdict on it, with the diff's stat, the sessions
@@ -6866,7 +7268,8 @@ dirty tree changed, as they are; else the whole tree, with --all or when
 the directory is not a git repo (said so). --words FILE checks a text as
 it is (a delivery's words); in a git repo, a line of the words that is a
 line of the repo's own pull-request template, as HEAD holds it, is not
-held to the phrasing rule (every other rule still reads it). Binary
+held to the phrasing rule or the three characters (names, bale's marks
+and the forbidden list still read it). Binary
 files are skipped by name and by a NUL byte; OFFICE_DEBUG=1 names every
 file read.
   PATH             a tree on this machine (default: here)
@@ -7350,8 +7753,9 @@ print("founding session, with you, section by section.\n")
 for s in shape["section"]:
     print(f"## {s['heading']}\n\nThe tour's sample. In a real office this says: {s['asks']}\n")
 PY
-  # A renovation adds the calendar to a real office; the tour adds it so
-  # office week has something to show.
+  # In a real office the calendar arrives with the first meeting (office
+  # meeting, 0.26.0); the tour writes one by hand so office week has
+  # something to show.
   printf '\n[spaces.calendar]\npath = "calendar"\nhung = true\nfiled = false\n' >> "$office/$MANIFEST_REL" || return 1
   tz="$(OFFICE_ROOT="$office" office_tz "$office")"; today="$(office_date "$tz")"
   # The gap is planned for yesterday, or, on a Monday, for the first
@@ -7802,6 +8206,8 @@ usage: office [VERB [args]]
                             desk and its session out, in one go
   office start --planner    a planner sitting, in your own words: what rides
                             with it gathered for you, the sort offered first
+  office meeting            a meeting, in your own words: when it is and what
+                            it is about; its prep is offered when it is near
   office start              send a session out: a job on the desk, or a
                             planner's bundle from your downloads
   office land               bring a session back: its response applied, and
@@ -7862,6 +8268,9 @@ Capture a thought or a friction
   office drop [FILE]        a message or a thread, from the clipboard, a file or stdin,
                             as one page in the in-tray (--project, in any words); the
                             sessions start sends out carry it until it is sorted
+  office meeting [WORDS]    a meeting, said once in your words: when it happens and
+                            the projects it concerns, a line in the calendar's plan;
+                            a series is never asked for again
 
 Start a job, and finish one
   office open               a numbered folder on the desk, and no session yet (office
@@ -7912,6 +8321,10 @@ Send a session out
   office start --planner    a read-only planner sitting from your words (--words
                             TEXT): the folder by key or new, what rides gathered
                             and said, the in-tray's sort offered first
+  office start --prep [MEETING]
+                            a meeting's prep: a read-only sitting briefed from what
+                            landed on its projects since the last meeting on them,
+                            recorded in the calendar and in no folder
 
 Bring one back
   office land [SID]         applies the response in the right repo, says how it ended,
@@ -7920,7 +8333,9 @@ Bring one back
                             pages in the folder, the Sort on each drop, the answers and
                             the handbook's facts, moves the sorted drops, and ends
                             saying how each step went;
-                            given a read-only sitting's id, ends the sitting
+                            given a read-only sitting's id, ends the sitting;
+                            a meeting's prep, ended, records the meeting held and
+                            files what arose as drops (--arising FILE)
   office withdraw [FOLDER]  closes a session sent out and never worked (no response,
                             no apply begun): bale unlock with reason abandoned where
                             it is open, asked once, and a line in the folder
@@ -7975,7 +8390,7 @@ EOF
 }
 
 # The verbs office help VERB explains, each through its own --help.
-HELP_VERBS=" init found survey status upgrade where default note slip drop open desk week close reopen sessions projects start land withdraw tour version moves blueprint rider riders agenda rulings evidence watches digest deliver letterhead relay probe "
+HELP_VERBS=" init found survey status upgrade where default note slip drop meeting open desk week close reopen sessions projects start land withdraw tour version moves blueprint rider riders agenda rulings evidence watches digest deliver letterhead relay probe "
 # The two-word verbs, as office help VERB WORD (or VERB-WORD, the key
 # share/verbs.toml gives them) explains them.
 HELP_PAIRS=" blueprint-open blueprint-ratify blueprint-close rider-add rider-carry rider-consumed agenda-add watches-check letterhead-check "
@@ -8035,6 +8450,7 @@ main() {
     note) cmd_note "$@" ;;
     slip) cmd_slip "$@" ;;
     drop) cmd_drop "$@" ;;
+    meeting) cmd_meeting "$@" ;;
     open) cmd_open "$@" ;;
     desk) cmd_desk "$@" ;;
     week) cmd_week "$@" ;;

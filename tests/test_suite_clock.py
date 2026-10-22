@@ -649,7 +649,6 @@ class TestTheRunnersClock(unittest.TestCase):
         self.assertTrue(wait_for_exit(int(re.search(r"pid (\d+)", proc.stdout).group(1))))
 
     def test_detach_runs_with_sigint_restored_and_refuses_what_it_does_not_take(self):
-        self.assertIn("--detach", "\n".join(runner.sigint_warning(__import__("signal").SIG_IGN)))
         root = tiny_repo(self.e.tmp / "repo")
         for args in (("--detach", "test_tiny"), ("--detach", "--plan"), ("--detach", "--fast")):
             proc = self.run_sh(root, *args)

@@ -26,7 +26,8 @@ as curated commits:
   letterhead check (the office's letterhead: its forbidden list, and the
   dashes and the ellipsis it refuses by default; the lines of the
   repository's own pull-request template, as the audience holds it, are
-  not held to the phrasing rule), and the words become one commit
+  not held to the phrasing rule or the three characters), and the words
+  become one commit
   (several when delivery.md marks them) authored and committed as the
   project's declared `author` (0.25.0: asked once on a terminal and
   kept when none is declared; the clone's own identity is never used).
@@ -603,7 +604,8 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
         shown_stat = stat if len(stat) <= STAT_LINES else stat[:STAT_LINES - 1] + [f"  ... {len(stat) - STAT_LINES + 1} more line(s)", stat[-1]]
         # 8. The letterhead check: the diff as staged, and the words, the
         # lines of the repository's pull-request template as the audience
-        # holds it (at the delivery's start) aside from the phrasing rule.
+        # holds it (at the delivery's start) aside from the phrasing rule
+        # and the three characters (0.26.0).
         try:
             rules = office_rules(office_root)
             hits, told = olh.check(str(worktree), rules, words=[str(delivery_md)], template_rev=start_sha)

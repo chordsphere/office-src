@@ -959,10 +959,12 @@ class TestWeek(unittest.TestCase):
         self.e = Env(self)
         self.root = self.e.init()
 
-    def test_no_calendar_names_the_renovation(self):
+    def test_no_calendar_names_the_meeting_it_arrives_with(self):
+        # Since 0.26.0 the calendar arrives with the first meeting, as the
+        # in-tray arrives with the first drop; no renovation is needed.
         out = self.e.run("week", cwd=self.root, check=0).stdout
         self.assertIn("no calendar", out)
-        self.assertIn("renovation", out)
+        self.assertIn("arrives with the first meeting: office meeting", out)
 
     def test_plan_against_record(self):
         cal = pathlib.Path(tempfile.mkdtemp())
@@ -1074,7 +1076,9 @@ DRAFTING_LANDS = {
 # floor plan, bale.toml) and land the page they were run for.
 # A verb a space arrives with lands what it always writes, not the space:
 # drop its page; projects (0.25.0, the letterhead) the floor plan.
-ARRIVAL_LANDS = {"drop": ["in-tray/{date}-{slug}.md"], "projects": ["floor-plan/manifest.toml"]}
+# meeting (0.26.0) the calendar's plan.
+ARRIVAL_LANDS = {"drop": ["in-tray/{date}-{slug}.md"], "projects": ["floor-plan/manifest.toml"],
+                 "meeting": ["calendar/plan.md"]}
 # Blueprint section 3's attended and trigger columns for the drafting
 # table's scripts that are not attended and manual alone.
 DRAFTING_RUNS = {

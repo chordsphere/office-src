@@ -523,7 +523,7 @@ class TestDoctrineAndDeclarations(unittest.TestCase):
         self.assertIn("| in-tray/ | drops waiting to be sorted | no; arrives with the first drop | no | no |",
                       self.doctrine)
         self.assertIn("| drop | script: capture a message or a thread as one in-tray page, with an optional "
-                      "free-text project | yes |", self.doctrine)
+                      "free-text project; while a meeting is on", self.doctrine)
         self.assertIn("dropped", h.HISTORY_VERBS)
         # The release says so, and the readme.
         self.assertGreaterEqual(h.compare_versions((REPO / "VERSION").read_text().strip(), "0.19.0"), 0)

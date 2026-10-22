@@ -260,10 +260,21 @@ class TestHelpByTask(unittest.TestCase):
 
 def run_on_a_pty(argv, cwd, env, steps, limit=60):
     """Run on a pty; steps is a list of (marker, action) where action is
-    bytes to type or a signal number to send. Returns (code, screen)."""
+    bytes to type or a signal number to send. Returns (code, screen).
+
+    The program starts as a terminal's foreground program does, with
+    SIGINT and SIGQUIT at their defaults (0.26.0). A run started in the
+    background from a non-interactive shell (`tests/run.sh &`, or a
+    sandbox's background command) ignores both, the child would inherit
+    that, and a shell cannot trap a signal it inherited ignored: the tour's
+    interrupt trap was never set, Ctrl-C did nothing, and the tour waited
+    at its pause until the test gave up, beside the whole suite only
+    because the whole suite was what ran in the background."""
     pid, fd = pty.fork()
     if pid == 0:
         try:
+            for sig in (signal.SIGINT, signal.SIGQUIT):
+                signal.signal(sig, signal.SIG_DFL)
             os.chdir(cwd)
             os.execve(argv[0], argv, env)
         finally:
@@ -398,6 +409,11 @@ class TestTourOnATerminal(TourCase):
         return [str(self.e.office_bin), "tour", *extra]
 
     def test_an_interrupt_deletes_the_office_and_says_so(self):
+        # Run as a background start runs the suite, SIGINT ignored here
+        # (0.26.0): the program on the terminal still gets Ctrl-C, as it
+        # does at the occupant's terminal, however the run was started.
+        before = signal.signal(signal.SIGINT, signal.SIG_IGN)
+        self.addCleanup(signal.signal, signal.SIGINT, before)
         code, seen = run_on_a_pty(self.argv(), self.real, self.e.env,
                                   [(b"[return: the next step; q: end the tour]", b"\n"),
                                    (b"== Step 1 of 6", None),

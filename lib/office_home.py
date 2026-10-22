@@ -63,6 +63,7 @@ import office_helper as oh  # noqa: E402
 import office_bale as ob  # noqa: E402
 import office_drop as odrop  # noqa: E402
 import office_sort as osort  # noqa: E402
+import office_meeting as om  # noqa: E402
 
 BUNDLE_EXT = ".bale-bundle"
 # A bundle downloaded longer ago than this is not offered: a planner's
@@ -139,6 +140,7 @@ class Names:
     by its slug. The folders are read once."""
 
     def __init__(self, office_root):
+        self.root = office_root
         self.naming = ob.folders_naming(office_root)
         self.folders = {}
         for f in oh.read_folders(office_root):
@@ -158,6 +160,13 @@ class Names:
             return self.folder_words(rels[0])
         if osort.is_sort_sid(sid):
             return "the in-tray's sort"
+        try:
+            prep = om.prep_of(self.root, sid)
+        except (OSError, oh.HelperError) as exc:
+            debug(f"the calendar could not be read to name {sid}: {exc}")
+            prep = None
+        if prep:
+            return f"the prep for {prep['title']}"
         return slug_of(sid)
 
 
@@ -382,13 +391,15 @@ def drop_items(groups, projects):
     return out
 
 
-def home_items(skew, founded, out, groups, projects, slips, behind, bundles, names, directories, now, sittings=()):
+def home_items(skew, founded, out, groups, projects, slips, behind, bundles, names, directories, now, sittings=(),
+               meetings=()):
     """The waiting list, in order: the Next line's move first (marked),
-    then each response in the downloads, each unopened bundle, each
-    unsorted drop and the sort, the desk moves, the office out of step
-    with the install, and last each read-only sitting a folder records,
-    which only he can say is over. A move already in the list is not
-    repeated."""
+    then each meeting near now whose prep is still to send (0.26.0), each
+    response in the downloads, each unopened bundle, each unsorted drop
+    and the sort, the desk moves, the office out of step with the
+    install, and last each read-only sitting a folder records and each
+    meeting's prep that is out, which only he can say is over. A move
+    already in the list is not repeated."""
     command, why = ob.next_move(skew, founded, out, groups, projects, slips, behind)
     kind, argv = command_argv(command)
     items = []
@@ -396,6 +407,10 @@ def home_items(skew, founded, out, groups, projects, slips, behind, bundles, nam
         items.append(item(f"Upgrade this office to the installed office-src: {why}", argv))
     elif skew in ("ahead", "unreadable") and argv == ["status"]:
         items.append(item(f"See what is out of step: {why}", argv))
+    # A meeting near now (lib/office_meeting.py NEAR_BEFORE, NEAR_AFTER):
+    # its prep, by key, never the Next line (a meeting is not a job).
+    items += [item(f"Send the prep for {om.occurrence_words(m)}: it briefs you on what landed since the last one",
+                   ["start", "--prep", m["key"]]) for m in meetings if m["state"] == "due"]
     items += response_items(out, names, directories, now)
     items += [item(f"Start the planner's bundle {b['stem']} (saved {age_words(b['at'], now)})",
                    ["start", "--bundle", str(b["path"])]) for b in bundles]
@@ -411,6 +426,8 @@ def home_items(skew, founded, out, groups, projects, slips, behind, bundles, nam
     # over (doctrine section 7): never the Next line, but a key that ends it.
     items += [item(f"End the sitting {names.of(s['sid'])} ({'the office' if s['label'] == ob.OFFICE_LABEL else s['label']}), "
                    "once it is over", ["land", s["sid"]]) for s in sittings]
+    items += [item(f"End the prep for {m['title']} once the meeting is over: land records it held and files what "
+                   "arose", ["land", m["sid"]]) for m in meetings if m["state"] == "prep out"]
     # The Next line's move, first: an item above when it is one, else its
     # own line in the Next line's words. "office start new" and "office
     # desk" are the keys every screen has, so they are not repeated.
@@ -443,6 +460,8 @@ FIXED_KEYS = (
     # for, and nothing else; its folder is minted from his words, as the o
     # key's is (office start --planner offers the desk's folders by key).
     ("p", "a planner sitting, in your words", "office", ["start", "new", "--planner"]),
+    # A meeting, said once in his words (0.26.0): when, and what it is about.
+    ("m", "a meeting, in your words", "office", ["meeting"]),
     ("s", "send a session out", "office", ["start"]),
     ("l", "bring one back", "office", ["land"]),
     # Shown only while a session is out that was never worked (0.24.0).
@@ -539,8 +558,13 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
     sittings = [x for x in every if x["read_only"] and x["folders"]]
     rows = project_rows(rd, office_root, names, now, tz)
     bundles = waiting_bundles(rd, office_root, directories, now) if directories else []
+    try:
+        meetings = om.near(office_root, tz or dt.timezone.utc, now)
+    except (OSError, ValueError, oh.HelperError) as exc:
+        debug(f"the calendar could not be read for the meetings near now: {exc}")
+        meetings = []
     items = home_items(skew, founded, out, groups, projects, ob.count_slips(office_root), behind, bundles, names,
-                       directories, now, sittings)
+                       directories, now, sittings, meetings)
     # The sessions out that were never worked: the w key's (office withdraw).
     try:
         offered, _, _ = ob.withdraw_view(rd, office_root, directories)
