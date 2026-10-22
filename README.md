@@ -21,6 +21,7 @@ which ships with every office session.
 | drop a friction slip | `office slip TEXT` |
 | start a job, in your own words, and send its session out | `office start new` |
 | ask a planner something, in your own words, with the context gathered for it | `office start --planner` |
+| say a meeting once: when it is and what it is about; its prep is offered when it is near | `office meeting` |
 | send a session out for a job on the desk, or a planner's bundle from your downloads | `office start` |
 | bring the session back | `office land` |
 | close a session you sent out and will never run | `office withdraw` |
@@ -48,7 +49,7 @@ help VERB`) explains one verb, with examples.
 `office help` lists your own verbs, one line each in plain words: the
 home screen, `note` and `drop` (the instant captures), `slip`, `start`
 (with `start new`, the one door for new work, and `start --planner`, a
-planner sitting from your words), `land`, `withdraw`, `desk`, `close`,
+planner sitting from your words), `meeting`, `land`, `withdraw`, `desk`, `close`,
 `deliver`, `projects add`, `tour` and `init`, with what a folder is (one job, what was asked in your words and
 the sessions that worked on it) and what a project is (a repo whose
 audience may read it, with the office holding what is around it). The
@@ -180,6 +181,41 @@ Drop, start, land: a routine ask needs no planner. When a session's Sort
 lands, `office land` files it on the drop's page, and a drop sorted into
 a folder (a new one, or folder N) moves there with its brief: the next
 `office start N` asks nothing the folder already knows.
+
+### Meetings: a view over the work
+
+    office meeting weekly review every Monday at 9 about alpha and beta   # said once; a series is never asked again
+    office meeting --words "alpha review" --when "2026-10-30 14:00"     # ...what the words do not say, as a flag
+    office start --prep                              # the prep of the meeting near now (the home screen's key)
+    office land 2026-10-25-weekly-review-prep-001    # after the meeting: held, and what arose filed as drops
+
+A meeting is not a job, and it gets no folder (0.26.0). `office meeting`
+(the home screen's `m` key) takes it in one sentence of yours and writes
+one line in the calendar's plan: when it happens (a date, a day, today or
+tomorrow, every Monday, weekdays, a time), its title (your words, less
+when) and what it concerns (the projects your words name). It asks only
+when your words do not say when, or name none of the office's projects;
+`--when`, `--about PROJECT` and `--in-office` are the twins, and piped it
+asks nothing. The calendar arrives with the first meeting, and `office
+week` shows this week's.
+
+From a day before a meeting until four hours after it starts, the home
+screen offers its prep by key (`office start --prep`): a read-only
+sitting, its goal the meeting's words, that briefs you from what landed
+on its projects since the last meeting on them (the 14 days before it,
+for a first one), with each project's handbook chapter, its folders on
+the desk, the unsorted drops and the drops that arose last time with the
+folders they became; the screen and its brief list what rode and why.
+Ask it anything before the meeting and during it; nothing else is opened.
+It writes what arises in one block and offers it as a file,
+`arising-SID.md`. After the meeting, `office land` ends the sitting,
+finds that file in your downloads (or reads the block from the clipboard
+once you copy it, or `--arising FILE`), records the meeting held and
+files each item as a drop in the in-tray, tied to the meeting, saying in
+one line what it filed. A drop you make yourself during the meeting is
+tied to it too, and the next meeting on those projects sees them all, and
+their folders, in its prep. The prep may also offer a cleanup of the
+projects' documentation, as a planner's bundle you send or delete.
 
 ### Start a job, and finish one
 
@@ -1082,7 +1118,8 @@ session applied in that project. In order, each step logged:
   through the letterhead check, the office's letterhead with it (the
   dashes and the ellipsis refused by default; the lines of the
   repository's own pull-request template, as the audience's base holds
-  them, exempt from the phrasing rule); one hit refuses the delivery,
+  them, exempt from the phrasing rule and, since 0.26.0, the three
+  characters); one hit refuses the delivery,
   with nothing pushed.
 - The words become one commit (several when `delivery.md` has several
   Commit sections, each but the last naming on a `paths:` line what it
@@ -1167,7 +1204,10 @@ words) and its forbidden list, from the install's templates; a session
 on a project with an audience carries it and reads the voice page before
 it writes. The check never writes it. In a git repo, a line of `--words`
 that is a line of the repo's own pull-request template, as HEAD holds
-it, is not held to the phrasing rule.
+it, is not held to the phrasing rule or (0.26.0) the three characters:
+its words are the repository's, and a template you cannot change would
+otherwise refuse every delivery that fills it. Names, bale's marks and the
+forbidden list still read it, and a template line you change is yours.
 The suite's own text rules read the same list, so office-src's text is
 held to it too. Scope: the files a range changed and its commit messages
 (`--range A..B`, which is how deliver checks a delivery's diff); else the
@@ -1326,8 +1366,11 @@ machine (0.25.0): with `--audience`, `add` takes PATH as that clone here,
 and a host declared with it (`--host HOST`, or `--validates-on HOST`) is
 recorded as `validates_on`, where the project validates, never where it
 is worked (nothing validates there yet). `--worked-on-host` keeps the
-repo worked on its host, as before; a host answered on a terminal is
-that, and said. Projects already declared on a host work as they did.
+repo worked on its host, as before. On a terminal the same default holds
+(0.26.0): once a project you gave a host has an audience, the wizard
+offers by key where it is worked, here (the default, asking the clone's
+path on this machine, the host kept as where it validates) or on the
+host. Projects already declared on a host work as they did.
 
     office projects add beta ~/work/beta --audience origin --host me@workhost   # worked here, validates on workhost Walking in shows the sessions
 open in those projects and the folder whose Sessions section names each.
@@ -1369,8 +1412,10 @@ matches the floor plan.
 | lib/office_sort.py | the return of a sort (0.20.0): a notes.md's Sort, Questions and answers and Handbook sections read (fence-aware) and filed; a sorted drop's move into its folder; the handbook's arrival, its chapters and office status's handbook line; the standalone sort's brief and id |
 | lib/office_watches.py | the watches: the query catalog, the register and its log, the check and its fired records |
 | lib/office_digest.py | the digest: the sitting-open page, every section computed |
+| lib/office_planner.py | a planner sitting from the occupant's words: what it concerns, and what the office gathers for it |
+| lib/office_meeting.py | meetings (0.26.0): his words read for when and what, the calendar's plan and record lines, the meetings near now, a prep's gathering and brief, the arising block, the meeting held, a drop tied |
 | share/watch-queries.toml | every query a watch can evaluate: the bale surface it reads, the value, how it compares, or the datum bale does not stamp yet |
-| templates/ | profile, folder, clipboard series and sheet, handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), each made into a page the first time a verb writes it; the folder's two pages, walkthrough.md and delivery.md, which ride with every build session; the in-tray's front page (in-tray-README.md) and the brief office start --drop sends (drop-brief.md); the handbook's front page (handbook-README.md) and chapter (handbook-chapter.md), and the brief office start --sort sends (sort-brief.md); the letterhead's front page, voice page and forbidden list (letterhead-README.md, letterhead-voice.md, letterhead-forbidden.txt) |
+| templates/ | profile, folder, clipboard series and sheet (retired with the clipboards, 0.26.0), handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), each made into a page the first time a verb writes it; the folder's two pages, walkthrough.md and delivery.md, which ride with every build session; the in-tray's front page (in-tray-README.md) and the brief office start --drop sends (drop-brief.md); the handbook's front page (handbook-README.md) and chapter (handbook-chapter.md), and the brief office start --sort sends (sort-brief.md); the letterhead's front page, voice page and forbidden list (letterhead-README.md, letterhead-voice.md, letterhead-forbidden.txt); the calendar's two pages (calendar-plan.md, calendar-record.md) and a meeting's prep brief (prep-brief.md) |
 | migrations/ | one file per breaking release; format in migrations/README.md |
 | RELEASES.md | release notes |
 | tests/ | the test suite; run.sh (with runner.py) runs it side by side |
@@ -1473,11 +1518,16 @@ time. The cache is checked against each source as always, nothing but
 the runner writes it, and it goes with the scratch directory; in everyday
 use there is none and nothing changes.
 
-Run the suite in the foreground, or with `--detach`. A background job
-started from a non-interactive shell (`nohup tests/run.sh &`) inherits SIGINT ignored,
-every process it starts ignores Ctrl-C, and the terminal tests that check
-what an interrupt does then fail for that reason; the runner says so at
-the start of such a run, naming them.
+The suite runs the same in the foreground, in the background and with
+`--detach`. A background job started from a non-interactive shell
+(`nohup tests/run.sh &`, or a sandbox's background command) inherits
+SIGINT ignored, and every process it starts would too; since 0.26.0 the
+pty helper the tour's terminal tests drive starts its program with SIGINT
+and SIGQUIT at their defaults, as a terminal does, so the interrupt test
+checks what Ctrl-C does however the run was started. Until then that test
+failed in such a run, and only there (the shell could not trap a signal it
+inherited ignored), and the runner warned of it at the start; the warning
+is retired with the cause.
 
 The suite builds offices, installs and synthetic migrations under
 temporary directories and never touches your home directory or offices,

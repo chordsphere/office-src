@@ -54,7 +54,11 @@ check run first, one question before anything leaves, the delivery
 recorded in the folder), `office letterhead check` for what the
 letterhead refuses in any tree, `office open`, `desk`, `close` and `reopen` for folders (numbered,
 with statuses, gates and a History, and a desk that orders itself),
-`office week` for the calendar, and `office sessions` to record which
+`office week` for the calendar, `office meeting` to say a meeting once
+in your words (when, and what it concerns; its prep, a sitting briefed
+from what landed since the last one, offered by key when it is near, and
+what arises filed as drops when `office land` ends it), and `office
+sessions` to record which
 sessions worked on a job and see how each one went. `office projects` names the
 projects an office scopes, declares what rides beside each one's
 sessions and what runs after they land, and shows what bale records
@@ -162,6 +166,30 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Recent changes
 
+- 0.26.0 (session 2026-10-22-meetings-view-001): meetings as a view
+  over the work, the front-door arc's last session.
+  - `office meeting` (the home screen's `m` key) takes a meeting in one
+    sentence of yours and writes one line in the calendar's plan: when,
+    its title, the projects it concerns. It asks only when your words do
+    not say when or name no project; a series is never asked again. No
+    folder is made. The calendar arrives with the first meeting.
+  - From a day before a meeting the home screen offers its prep by key
+    (`office start --prep`): a read-only sitting briefed from what landed
+    on its projects since the last meeting on them, their chapters, their
+    folders, the drops, and what arose last time. It serves during the
+    meeting too. No folder records it; the calendar's record does.
+  - `office land` ends it: the meeting recorded held, and what the
+    sitting wrote as arising filed as drops in the in-tray, tied to the
+    meeting, from a file in your downloads or one copy, never retyped. A
+    drop you make during the meeting is tied too. The next meeting's prep
+    carries them and their folders.
+  - The prep may offer a cleanup of its projects' documentation, as a
+    bundle you send or delete. Clipboards are retired.
+  - A repository's own pull-request template is exempt from the three
+    characters too; on a terminal, `office projects add` works a project
+    with an audience here by default, the host chosen by key; the tour's
+    interrupt test holds in a run started in the background.
+  - Additive: no migration.
 - 0.25.0 (session 2026-10-16-clean-delivery-001): clean delivery, the
   front-door arc's third session. The audience line now holds by
   default, not by your care.
@@ -684,6 +712,11 @@ For the worker first. bale gives a session's validation two minutes
 
 ## Known problems
 
+- `office meeting` reads when from English words: a slash date is
+  month/day (11/3 is the 3rd of November), and a bare hour from 1 to 6
+  is the afternoon; each reading it was not told outright is said on the
+  screen, and `--when` stands over it. A meeting is removed from the
+  plan by editing calendar/plan.md (no verb removes one yet).
 - The push guard is a git hook: a push made with `--no-verify` runs no
   hook and passes it. It keeps a slip out, not a deliberate act; the
   doctrine says so (section 10).

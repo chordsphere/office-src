@@ -4,6 +4,89 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.26.0
+
+Additive: no migration, nothing to do in any office. A meeting is a view
+over the work: said once in your words, its prep briefed from what landed
+since the last one, what arises in it queued for after as drops, and a
+cleanup of its projects' documentation offered by design. A repository's
+own pull-request template is exempt from the three characters as well,
+the terminal wizard works a project with an audience on this machine by
+default, and the tour's interrupt test holds however the suite was
+started. Every flag sets its field as before, and piped input is never
+asked anything.
+
+A meeting, asked once. `office meeting` (the home screen's `m` key) takes
+a meeting in one sentence of yours, "weekly review every Monday at 9
+about alpha and beta", and writes one line in the calendar's plan: when
+it happens, its title (your words, less when) and the projects it
+concerns, `[about: alpha, beta]`. It asks only when your words do not say
+when, or name none of the office's projects (the office itself is an
+answer); `--words`, `--when`, `--about PROJECT` and `--in-office` are the
+twins. A series is one line, never asked for again. No folder is made.
+The calendar arrives with the first meeting, from the install's new
+templates/calendar-plan.md and calendar-record.md, as the in-tray arrives
+with the first drop; times are local, in the floor plan's timezone.
+
+Its prep. From a day before a meeting until four hours after it starts,
+the home screen offers its prep by key (`office start --prep [MEETING]`):
+a read-only sitting from the office, through the planner sitting's
+gathering, its goal the meeting's words and its brief the install's new
+templates/prep-brief.md. It carries what landed on the meeting's
+projects since the last meeting on them (the 14 days before it, for a
+first), every landed session counting, with each project's handbook
+chapter, its folders on the desk, the unsorted drops and the drops tied
+to the last meeting with the folders they became, each said with why. No
+folder records it: the calendar's record line names it, `prep out`. The
+same sitting serves during the meeting.
+
+What arises, queued for after. The sitting writes what arises in one
+arising block, pinned to the byte in the doctrine, and offers it as a
+file, arising-SID.md. `office land SID` reads it (`--arising FILE`, the
+downloads, or the clipboard once you copy it; never retyped), ends the
+sitting with bale's unlock, rewrites the record line as `held` and files
+each item as a drop in the in-tray, tied to the meeting, saying in one
+line what it filed. A block that does not read stops land with the
+sitting open. A drop you make yourself while the meeting is on with its
+prep out is tied to it as well. The next meeting on those projects
+carries them, and the folders they became, in its prep. `office week`
+shows a meeting's projects and a prep that is out.
+
+A cleanup rides along. The prep's brief tells the sitting it may author
+one cleanup session for the meeting's projects when their documentation
+is messy, disorganized or too wordy: a planner's bundle beside the
+briefing, with its LANDS line, which you send or delete. The scheduled,
+unattended cleanup of the office stays "not yet".
+
+The doctrine says what a meeting is now: the verbs table's `meeting` (a
+script on your surface) and `prep` (an office session, built) rows, the
+calendar paragraph (its arrival, the `[about: ...]` suffix and the
+record lines the office writes), the clipboards retired (no clipboard is
+made; a series is a line in the plan, its running items drops), and a
+Sort's `tell:` kept on the folder's Next, which the next meeting's prep
+reads. The withdrawn design's capture verb, rolodex, owed tells and
+declared ride-alongs are not built.
+
+A template's own dashes. The lines of a repository's own pull-request
+template, as the repository holds them, are exempt from the em dash, the
+en dash and the ellipsis too, not only from the phrasing rule; the lines
+the words add, and a template line changed, are still checked, and names,
+bale's marks and the forbidden list still read every line.
+
+The workbench, on a terminal too. `office projects add` on a terminal,
+once a project given a host has an audience, offers by key where it is
+worked: on this machine from a guarded clone (the default; it asks the
+clone's path here and records the host as `validates_on`), or on the host
+(`--worked-on-host`). Answering the questions in order no longer works it
+on the host.
+
+The tour's interrupt test. It failed only in a run started in the
+background (SIGINT ignored, which every process it starts inherits, and a
+shell cannot trap a signal it inherited ignored). The pty helper now
+starts the tour with SIGINT and SIGQUIT at their defaults, as a terminal
+does, and the test runs itself with SIGINT ignored; the runner's warning
+about such runs is retired with the cause.
+
 ## 0.25.0
 
 Additive: no migration. Landing and delivery hold the audience line by

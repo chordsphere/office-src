@@ -543,26 +543,20 @@ class TestAHomeRelativePathOnAHost(unittest.TestCase):
 # --- 5. the riders: the runner's warning, the README's line ---------------------------------------
 
 class TestTheRunnerWarnsOfAnIgnoredInterrupt(unittest.TestCase):
-    def test_ignored_sigint_names_the_interrupt_tests(self):
-        lines = runner.sigint_warning(signal.SIG_IGN)
-        text = "\n".join(lines)
-        self.assertIn("SIGINT is ignored", text)
-        for name in runner.INTERRUPT_TESTS:
-            self.assertIn(name, text)
-        self.assertIn("in the foreground", text)
-        self.assertIsNone(runner.sigint_warning(signal.SIG_DFL))
+    """0.26.0 retired the warning with its cause: the pty helper the tour's
+    interrupt test drives starts its program with SIGINT at its default
+    (tests/test_front_door.py run_on_a_pty), and that test runs itself with
+    SIGINT ignored, as a background start runs it."""
 
-    def test_the_named_tests_exist(self):
-        for name in runner.INTERRUPT_TESTS:
-            module, cls, test = name.split(".")
-            self.assertTrue(hasattr(getattr(__import__(module), cls), test), name)
-
-    def test_a_run_started_with_sigint_ignored_warns(self):
+    def test_a_run_started_with_sigint_ignored_no_longer_warns(self):
         proc = subprocess.run([sys.executable, "-B", "-c",
                                "import signal, subprocess, sys; signal.signal(signal.SIGINT, signal.SIG_IGN); "
                                "sys.exit(subprocess.run([sys.executable, '-B', sys.argv[1], 'no_such_module']).returncode)",
                                str(REPO / "tests" / "runner.py")], capture_output=True, text=True, timeout=60)
-        self.assertIn("[run] warning: SIGINT is ignored", proc.stderr)
+        self.assertNotIn("SIGINT is ignored", proc.stderr)
+        self.assertFalse(hasattr(runner, "sigint_warning"))
+        helper = (REPO / "tests" / "test_front_door.py").read_text()
+        self.assertIn("signal.signal(sig, signal.SIG_DFL)", helper)
 
     def test_the_readme_says_to_run_the_suite_in_the_foreground(self):
         readme = " ".join((REPO / "README.md").read_text().split())

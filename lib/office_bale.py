@@ -51,6 +51,7 @@ import office_door as odoor  # noqa: E402
 import office_host as ohost  # noqa: E402
 import office_drop as odrop  # noqa: E402
 import office_sort as osort  # noqa: E402
+import office_meeting as om  # noqa: E402
 
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 CONSUMPTION = INSTALL / "share" / "bale-consumption.toml"
@@ -792,11 +793,15 @@ def in_flight(rd, office_root, now=None):
                 # Next line, since nothing in the office knows when a
                 # sitting is over. A sitting no folder records is not
                 # the office's to end.
-                ends = f" (office land {sid} when the sitting is over)" if read_only and folders else ""
+                prep = om.prep_of(office_root, sid) if label == OFFICE_LABEL and read_only else None
+                ends = f" (office land {sid} when the sitting is over)" if read_only and (folders or prep) else ""
                 # The standalone sort belongs to no folder: it is the
-                # in-tray's session (0.20.0).
+                # in-tray's session (0.20.0); a meeting's prep is the
+                # calendar's (0.26.0).
                 target = ", ".join(folders) or ("the in-tray (the standalone sort)"
-                                                if label == OFFICE_LABEL and osort.is_sort_sid(sid) else "no folder")
+                                                if label == OFFICE_LABEL and osort.is_sort_sid(sid) else
+                                                f"the meeting {prep['title']} ({prep['date']} {prep['time']}), its prep"
+                                                if prep else "no folder")
                 if d is None:
                     lines.append(f"{label}: {sid} open, with no record in bale's telemetry yet -> {target}{ends}")
                     continue
@@ -4065,7 +4070,7 @@ def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None, d
                               "project it scopes (office start sends one out)"] + problems)
     landable = [x for x in found if not x["read_only"]]
     if not landable:
-        return sitting_plan(found, None if bare else tarball, problems, response if bare else None)
+        return sitting_plan(found, None if bare else tarball, problems, response if bare else None, office_root)
     if len(landable) > 1:
         raise LandError(["more than one session is out; name one: office land SID"]
                         + [f"  {x['sid']}  ({x['label']}; {', '.join(x['folders']) or 'no folder records it'})"
@@ -4143,17 +4148,20 @@ def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None, d
     return plan
 
 
-def sitting_plan(found, tarball, problems, bare=None):
+def sitting_plan(found, tarball, problems, bare=None, office_root=None):
     """The plan for ending a read-only sitting, named by its id or its
     folder: land runs bale unlock in its repo (through the shell, for a
-    project on a host), and nothing else. Only a sitting a folder records
-    is the office's to end (one started by hand in a project is that
-    project's business), and a sitting has no response to land."""
+    project on a host), and nothing else. Only a sitting a folder records,
+    or a meeting's prep the calendar records (0.26.0, which no folder
+    does), is the office's to end (one started by hand in a project is
+    that project's business), and a sitting has no response to land."""
     if len(found) > 1:
         raise LandError(["more than one read-only sitting is open for that folder; name one: office land SID"]
                         + [f"  {x['sid']}  ({x['label']})" for x in found])
     x = found[0]
-    if not x["folders"]:
+    prep = (office_root is not None and x["label"] == OFFICE_LABEL
+            and om.prep_of(office_root, x["sid"]) is not None)
+    if not x["folders"] and not prep:
         raise LandError([f"{x['sid']} is a read-only session no folder records, so it is not a sitting the office sent "
                          f"out and office land does not end it; bale unlock {x['sid']}, in {x['place']}, ends it by hand"])
     if tarball is not None or bare is not None:
@@ -4216,8 +4224,9 @@ def end_sitting(rd, office_root, plan, day):
             continue
         told.append(f"{rel}: History: {day} ended: {sid}")
     names = ", ".join(plan["folders"])
-    words = (f"Ended: the sitting {sid} is closed in {plan['label']}; it landed nothing, by design. "
-             f"{names} stays as it was: closing a folder is yours (office close FOLDER).")
+    words = f"Ended: the sitting {sid} is closed in {plan['label']}; it landed nothing, by design."
+    if names:
+        words += f" {names} stays as it was: closing a folder is yours (office close FOLDER)."
     return words, told
 
 

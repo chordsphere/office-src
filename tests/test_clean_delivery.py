@@ -476,7 +476,8 @@ class TestTheWorkbenchHere(unittest.TestCase):
 class TestTheRecord(unittest.TestCase):
     def test_the_release_and_the_doctrine(self):
         version = (REPO / "VERSION").read_text().strip()
-        self.assertEqual(version, "0.25.0")
+        # 0.25.0 or later (0.26.0's own record is tests/test_meetings_view.py's).
+        self.assertGreaterEqual(h.compare_versions(version, "0.25.0"), 0)
         self.assertIn("## 0.25.0", (REPO / "RELEASES.md").read_text())
         doctrine = (REPO / "doctrine" / "OFFICE.md").read_text()
         for words in ("lift: em dash", "voice page", "pull-request template", "validates_on", "guard_version",
