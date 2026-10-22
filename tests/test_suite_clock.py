@@ -10,8 +10,9 @@ test file that names the machine's own temporary directory, expands ~,
 reads HOME itself, reads the kernel's version (the WSL check) or looks a
 program up on the PATH, outside Env, fails TestNoTestReadsTheMachine,
 unless the line is one of ALLOWED, each with its reason: text a fake host
-runs under its own HOME and TMPDIR, or paths a probe printed that the
-fixtures replay. An allowance that no longer matches anything fails too,
+runs under its own HOME and TMPDIR. (The paths a probe printed, which the
+land fake swaps out of what it replays, are read from each fixture's own
+cwd since 0.27.0, so no test file names them.) An allowance that no longer matches anything fails too,
 so the list cannot outlive what it excuses.
 
 The office's own source is held to the same two reads (0.20.1), since a
@@ -45,7 +46,7 @@ import time
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from test_office import REPO, WSL_KERNEL, Env, h  # noqa: E402
+from test_office import FAKES, REPO, WSL_KERNEL, Env, fake_program, h  # noqa: E402
 
 import runner  # noqa: E402
 
@@ -68,9 +69,6 @@ RULE = (
 # (module, the span allowed, why). The span is blanked before the rule
 # reads the line; nothing else on the line is excused.
 ALLOWED = (
-    ("test_land", r"/t[m]p/office-probe\.\w+",
-     "the directories a probe's bale ran in on the machine it captured from, as the fixtures hold them: the fake "
-     "bale swaps them out of the text it replays, and nothing reads them"),
     ("test_out_trip_to_host", r"\$H[O]ME/\.local/bin",
      "the fake host's own upgrade.sh: the fake ssh runs it with the host's HOME, under the case's temporary tree"),
     ("test_out_trip_to_host", r"\$\{TMPDIR:-/t[m]p\}",
@@ -117,8 +115,8 @@ def breaches(paths, allowed=ALLOWED):
 # What the office looks up on the PATH that is the suite's own: a fake in
 # the test's tree, first on its PATH. (name, why)
 FAKED = (
-    ("bale", "the suite's fake bale (tests/test_land.py, tests/test_start.py), first on the PATH of every test that "
-             "runs one, from the test's own tree; tests/test_read_side.py takes it away to say bale is missing"),
+    ("bale", "the suite's fake bale (tests/fakes/, run by a program in the test's own tree), first on the PATH of "
+             "every test that runs one; tests/test_read_side.py takes it away to say bale is missing"),
 )
 
 # (source file's name, the span allowed, why): lookups by a variable, and
@@ -126,12 +124,10 @@ FAKED = (
 SOURCE_ALLOWED = (
     ("office", r'command -[v] "\$t" >/dev/null 2>&1 \|\| die "\$t is required',
      "require_tools itself: each name its callers give it is checked as a lookup of its own"),
-    ("office", r'command -[v] "\$t"(?! >/dev/null 2>&1 \|\| die)',
-     "the survey's Tools facts (tool_version over bale, git, python3, R, quarto, node): what this machine holds "
-     "is the survey's whole point; the suite asserts the facts' shape from facts it makes, never what a machine has"),
-    ("office", r"command -[v] office\b",
-     "the survey's office-src on_path fact: which office this machine's PATH runs, recorded on the survey page, "
-     "asserted by no test"),
+    ("office", r'command -[v] "\$name" 2>/dev/null',
+     "survey_which, the survey's door (0.27.0): its Tools facts (bale, git, python3, R, quarto, node) and which "
+     "bale and office the PATH runs, looked up on the PATH only when OFFICE_SURVEY_PATH is unset; every Env and "
+     "every job sets it to \"\", so no test reaches this line"),
     ("office_helper", r"shutil\.wh[i]ch\(name, path=dirs\)",
      "desktop_which, the door itself: it searches OFFICE_DESKTOP_PATH, which every Env points at its own desktop"),
     ("office_helper", r'(?<![\w.])wh[i]ch\((?:"powershell\.exe"|tool)\)',
@@ -217,7 +213,9 @@ def entry_call(verb):
 
 
 def test_files():
-    return sorted(TESTS.glob("test*.py"))
+    """Every test module, and the fake programs' modules they run
+    (tests/fakes/, 0.27.0): a fake runs under the test's Env too."""
+    return sorted(TESTS.glob("test*.py")) + sorted((TESTS / "fakes").glob("*.py"))
 
 
 class TestNoTestReadsTheMachine(unittest.TestCase):
@@ -251,11 +249,13 @@ class TestNoTestReadsTheMachine(unittest.TestCase):
         self.assertEqual([b.split(":")[1] for b in breaches([f], allowed=())[0]], ["4"])
         g = d / "test_land.py"
         g.write_text('a = "/t' 'mp/office-probe.ab12/x"\nb = "/t' 'mp/office-probe.ab12/x", "/t' 'mp"\n')
-        found, stale = breaches([g], allowed=ALLOWED)
+        # The allowance test_land held until 0.27.0, as an example.
+        allowed = (("test_land", r"/t[m]p/office-probe\.\w+", "a probe's paths, as the fixtures hold them"),)
+        found, stale = breaches([g], allowed=allowed)
         self.assertEqual([b.split(":")[1] for b in found], ["2"])
         self.assertEqual(stale, [])
         g.write_text("nothing here\n")
-        self.assertEqual([a[0] for a in breaches([g], allowed=ALLOWED)[1]], ["test_land"])
+        self.assertEqual([a[0] for a in breaches([g], allowed=allowed)[1]], ["test_land"])
 
     def test_env_gives_each_test_its_own_home_tmpdir_config_and_downloads(self):
         a, b = Env(self), Env(self)
@@ -289,7 +289,8 @@ class TestNoTestReadsTheMachine(unittest.TestCase):
         base = {"PATH": "/usr/bin:/bin", "HOME": "/home/someone", "TMPDIR": "/var/x", "XDG_DOWNLOAD_DIR": "/d",
                 "XDG_CONFIG_HOME": "/home/someone/.config", "OFFICE_ROOT": "/home/someone/office",
                 "OFFICE_DEBUG": "1", "OFFICE_TEST_JOBS": "2", "LC_ALL": "C.UTF-8",
-                "OFFICE_DESKTOP_PATH": "/mnt/c/WINDOWS/system32", "OFFICE_PROC_VERSION": "/x/version"}
+                "OFFICE_DESKTOP_PATH": "/mnt/c/WINDOWS/system32", "OFFICE_PROC_VERSION": "/x/version",
+                "OFFICE_SURVEY_PATH": "/usr/local/bin", "OFFICE_CONTAINER_MARKER": "/x/marker"}
         env = runner.isolated_env(base, e.tmp / "job")
         for key in ("HOME", "TMPDIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
                     "GIT_CONFIG_GLOBAL"):
@@ -305,6 +306,9 @@ class TestNoTestReadsTheMachine(unittest.TestCase):
         # clipboard or opens a file manager, whatever the caller said.
         self.assertEqual((env["OFFICE_PROC_VERSION"], env["OFFICE_DESKTOP_PATH"]), ("", ""))
         self.assertEqual(runner.DESKTOP_VARS, {"OFFICE_PROC_VERSION": "", "OFFICE_DESKTOP_PATH": ""})
+        # No tool for the survey to find, and no container marker (0.27.0).
+        self.assertEqual((env["OFFICE_SURVEY_PATH"], env["OFFICE_CONTAINER_MARKER"]), ("", ""))
+        self.assertEqual(runner.SURVEY_VARS, {"OFFICE_SURVEY_PATH": "", "OFFICE_CONTAINER_MARKER": ""})
         # This very test runs in such a job when the runner runs it: its
         # TMPDIR (and HOME beside it) is the runner's scratch, not the one
         # the runner was started with. Under bare unittest discover there
@@ -408,6 +412,72 @@ class TestTheDesktopDoors(unittest.TestCase):
         proc = subprocess.run([sys.executable, "-B", str(REPO / "lib" / "office_helper.py"), "paste-command",
                                str(machine), "--candidate"], env=wsl, capture_output=True, text=True, timeout=30)
         self.assertEqual((proc.returncode, proc.stdout), (3, ""), proc.stderr)
+
+
+def recording_tool(d, name, line):
+    """A program d/name that prints line to --version and records that it
+    ran, as d/ran-NAME; returns d."""
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(f"#!/bin/sh\necho ran >> '{d / ('ran-' + name)}'\necho '{line}'\n")
+    (d / name).chmod(0o755)
+    return d
+
+
+class TestTheSurveysDoors(unittest.TestCase):
+    """The survey's own reads of the machine (0.27.0), each from one place
+    the environment steers, as the desktop's are: the tools it records and
+    the bale and office the PATH runs (OFFICE_SURVEY_PATH, through
+    survey_which) and the container marker (OFFICE_CONTAINER_MARKER,
+    through container_marker)."""
+
+    def setUp(self):
+        self.e = Env(self)
+        self.tools = recording_tool(self.e.tmp / "tools", "node", "v20.0.0")
+        (self.tools / "quarto").write_text("not a program\n")
+        self.elsewhere = recording_tool(self.e.tmp / "elsewhere", "node", "v18.0.0")
+
+    def bash(self, call, env):
+        return subprocess.run(["bash", "-c", "VERSION_TIMEOUT=5\n" + office_functions(
+            "survey_which", "container_marker", "tool_version") + call], env=env,
+            capture_output=True, text=True, timeout=30)
+
+    def test_the_env_and_every_job_look_for_no_tool_and_no_marker(self):
+        self.assertEqual((self.e.env["OFFICE_SURVEY_PATH"], self.e.env["OFFICE_CONTAINER_MARKER"]), ("", ""))
+        # Even with a tool first on the PATH, the Env's survey finds none and runs none.
+        env = dict(self.e.env, PATH=f"{self.tools}{os.pathsep}{self.e.env['PATH']}")
+        proc = self.bash('tool_version node; echo; survey_which git || echo "git: none"; container_marker || echo no',
+                         env)
+        self.assertEqual(proc.stdout, "not found\ngit: none\nno\n", proc.stderr)
+        self.assertFalse((self.tools / "ran-node").exists())
+
+    def test_a_tool_is_found_only_where_the_door_looks_and_the_found_one_runs(self):
+        env = dict(self.e.env, PATH=f"{self.elsewhere}{os.pathsep}{self.e.env['PATH']}",
+                   OFFICE_SURVEY_PATH=f"{self.e.tmp / 'empty'}{os.pathsep}{os.pathsep}{self.tools}")
+        proc = self.bash("tool_version node; echo; tool_version quarto; echo; survey_which node", env)
+        self.assertEqual(proc.stdout, f"v20.0.0 ({self.tools / 'node'})\nnot found\n{self.tools / 'node'}\n",
+                         proc.stderr)
+        self.assertTrue((self.tools / "ran-node").exists())
+        self.assertFalse((self.elsewhere / "ran-node").exists())
+        # Unset, the door is the PATH, as the survey read it before 0.27.0.
+        env.pop("OFFICE_SURVEY_PATH")
+        proc = self.bash("tool_version node", env)
+        self.assertEqual(proc.stdout, f"v18.0.0 ({self.elsewhere / 'node'})", proc.stderr)
+
+    def test_the_container_marker_is_the_one_file_the_environment_names(self):
+        marker = self.e.tmp / "marker"
+        marker.write_text("")
+        for value, container in ((str(marker), True), ("", False), (str(self.e.tmp / "absent"), False)):
+            env = dict(self.e.env, OFFICE_CONTAINER_MARKER=value)
+            self.assertEqual(self.bash("container_marker", env).returncode, 0 if container else 1, value)
+
+    def test_the_survey_reads_the_machine_only_through_its_doors(self):
+        body = re.search(r"^gather_facts\(\) \{\n.*?^\}\n", (REPO / "bin" / "office").read_text(encoding="utf-8"),
+                         re.M | re.S).group(0)
+        self.assertNotIn("comm" "and -v", body)
+        self.assertNotIn("/.dock" "erenv", body)
+        self.assertIn("container_marker", body)
+        self.assertIn("survey_which bale", body)
+        self.assertIn("survey_which office", body)
 
 
 class TestTheOfficeReadsTheDesktopThroughItsDoors(unittest.TestCase):
@@ -889,6 +959,36 @@ class TestTheRunsBytecodeCache(unittest.TestCase):
             self.assertIn("office-tests-scratch.", self.e.env.get("PYTHONPYCACHEPREFIX", ""))
         else:
             self.assertNotIn("PYTHONPYCACHEPREFIX", self.e.env)
+
+    def test_the_fakes_are_compiled_into_it_and_a_fake_program_reads_them_there(self):
+        # 0.27.0: the fake bales are modules under tests/fakes/, compiled
+        # with the rest, and the program a test writes is three lines that
+        # import one and run it with the test's config.
+        runner.seed_bytecode(self.prefix)
+        for source in sorted(FAKES.glob("*.py")):
+            self.assertTrue(runner.cached_pyc(self.prefix, source).is_file(), source.name)
+        env = dict(self.e.env, PYTHONPYCACHEPREFIX=str(self.prefix), PYTHONDONTWRITEBYTECODE="1")
+        where = subprocess.run([sys.executable, "-S", "-c", "import sys; sys.path.insert(0, sys.argv[1]); "
+                                "import pack_bale; print(pack_bale.__cached__)", str(FAKES)], env=env,
+                               capture_output=True, text=True, timeout=60)
+        self.assertEqual(pathlib.Path(where.stdout.strip()), runner.cached_pyc(self.prefix, FAKES / "pack_bale.py"),
+                         where.stderr)
+        (self.e.tmp / "bin").mkdir()
+        program = fake_program(self.e.tmp / "bin" / "bale", "small_bales", "old")
+        self.assertTrue(program.read_text().startswith("#!"))
+        self.assertLessEqual(len(program.read_text().splitlines()), 6)
+        for argv, code, out in ((["--version"], 0, "bale 0.4.40\n"), (["status"], 97, "")):
+            proc = subprocess.run([str(program), *argv], env=env, capture_output=True, text=True, timeout=60)
+            self.assertEqual((proc.returncode, proc.stdout), (code, out), proc.stderr)
+        # The config travels as plain values, and the function's return is the exit.
+        calls = self.e.tmp / "calls.jsonl"
+        fake_program(self.e.tmp / "bin" / "replay", "replay_bale", config={"routes": {"*": str(self.e.tmp)},
+                                                                            "calls": str(calls)})
+        proc = subprocess.run([str(self.e.tmp / "bin" / "replay"), "x"], env=env, cwd=self.e.tmp,
+                              capture_output=True, text=True, timeout=60)
+        self.assertEqual(proc.returncode, 97, proc.stderr)
+        self.assertIn("the probe captured no line for bale x", proc.stderr)
+        self.assertEqual(json.loads(calls.read_text())[1], ["x"])
 
     def test_the_command_runs_a_module_as_its_script_would(self):
         """bin/office's pylib: __name__ is __main__, sys.argv[0] the module's

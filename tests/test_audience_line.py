@@ -25,7 +25,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from test_office import REPO, Env, h  # noqa: E402
+from test_office import REPO, Env, h, kept_setup  # noqa: E402
 from test_start import on_a_terminal  # noqa: E402
 from test_land import LandCase, response_tarball  # noqa: E402
 from test_project_on_host import DOWN, HOST, FakeSsh  # noqa: E402
@@ -107,12 +107,16 @@ class AudienceCase(unittest.TestCase):
     for the audience's git host, holding main; a workbench clone of it
     with one applied session landed the way bale lands one (its work on
     bale/SID, merged as `Merge bale SID`, tagged applied/SID, its record
-    swept), recorded in the folder; the folder's delivery.md."""
+    swept), recorded in the folder; the folder's delivery.md. The world,
+    hosted or not, is built once per process and copied for each test
+    (tests/test_office.py kept_setup, 0.27.0)."""
 
     hosted = False
 
     def setUp(self):
-        self.e = Env(self)
+        kept_setup(self, f"test_audience_line.AudienceCase-hosted-{self.hosted}", AudienceCase.build_world)
+
+    def build_world(self):
         self.root = self.e.init("home")
         self.e.found(self.root)
         self.audience = self.e.tmp / "audience.git"

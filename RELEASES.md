@@ -4,6 +4,51 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.27.0
+
+Additive: no migration, nothing to do in any office, and nothing an
+office does changes. This release is about the test suite's time: in
+the worker's two-core sandbox the whole suite went from 1,146 to
+822 seconds, and the fast tier from 66.2 to 59.6, with
+every test kept and eight added.
+
+A case's world, built once. Most of the suite's time was each test
+building the same world again before it ran one command of its own: an
+office made by `office init`, founded, a project added, a folder opened,
+a fake bale beside them. A case whose setUp builds such a world (the
+land, start, audience, hosted and watch cases, and the plain office
+most of test_office and test_desk_verbs start from) now builds it once
+per job, and every test gets a copy at the same path, with what the
+setUp set, made before the test and removed after it
+(tests/test_office.py `kept_setup`). A world built on an earlier day is
+built again.
+
+The fake bales as fixed modules. The fakes that pack, apply and replay
+are modules under tests/fakes/, no longer script texts written into
+every test's tree and compiled on every call. The `bale` a test puts on
+its PATH is a three-line program that imports one with the test's
+config, so the runner's bytecode cache holds the fake's code; the land
+fake hands `--version`, `status` and its packs to the packing fake in
+its own process instead of starting the interpreter again, and loads
+what a verb needs where that verb starts. A `bale --version` that took
+84 ms takes 24. The land fake reads the directory each capture was made
+in from the capture's own `cwd` (the rider from 0.21.0's queue), which
+retires the suite rule's largest allowance.
+
+The survey's last reads of the machine, made steerable. `office survey`
+looks for the tools it records, and for the bale and office on the
+PATH, only in the directories `OFFICE_SURVEY_PATH` lists when it is set,
+and takes its container marker from `OFFICE_CONTAINER_MARKER`; unset, it
+reads the PATH and `/.dockerenv` exactly as before. Every test's `Env`
+and every job of the runner set both empty, so no survey in the suite
+runs a program of the machine's for its version (its R, node, bale or
+installed office) or searches a WSL machine's Windows directories on the
+PATH.
+
+The terminal helper. `on_a_terminal` in tests/test_start.py starts its
+program with SIGINT and SIGQUIT at their defaults, as `run_on_a_pty` has
+since 0.26.0 (the rider from session 4).
+
 ## 0.26.0
 
 Additive: no migration, nothing to do in any office. A meeting is a view

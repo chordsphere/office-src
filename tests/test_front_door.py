@@ -335,7 +335,7 @@ class TourCase(unittest.TestCase):
         self.tmpdir = self.e.tmpdir
         self.real = self.e.init("real")
         self.e.run(cwd=self.real, check=0)        # a walk-in, so there is a record to keep
-        self.fake.calls.unlink(missing_ok=True)   # init's survey asked bale its version; the tour must not
+        self.fake.calls.unlink(missing_ok=True)   # the walk-in asked bale; the tour must not
         self.before = self.snapshot()
 
     def snapshot(self):

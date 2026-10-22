@@ -1418,7 +1418,7 @@ matches the floor plan.
 | templates/ | profile, folder, clipboard series and sheet (retired with the clipboards, 0.26.0), handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), each made into a page the first time a verb writes it; the folder's two pages, walkthrough.md and delivery.md, which ride with every build session; the in-tray's front page (in-tray-README.md) and the brief office start --drop sends (drop-brief.md); the handbook's front page (handbook-README.md) and chapter (handbook-chapter.md), and the brief office start --sort sends (sort-brief.md); the letterhead's front page, voice page and forbidden list (letterhead-README.md, letterhead-voice.md, letterhead-forbidden.txt); the calendar's two pages (calendar-plan.md, calendar-record.md) and a meeting's prep brief (prep-brief.md) |
 | migrations/ | one file per breaking release; format in migrations/README.md |
 | RELEASES.md | release notes |
-| tests/ | the test suite; run.sh (with runner.py) runs it side by side |
+| tests/ | the test suite; run.sh (with runner.py) runs it side by side; tests/fakes/ holds the fake bales as modules (0.27.0), each run through a three-line program a test writes in its own tree |
 
 Nothing here is copied into an office except the profile stub, which is
 the office's own from the moment it is written.
@@ -1527,7 +1527,28 @@ and SIGQUIT at their defaults, as a terminal does, so the interrupt test
 checks what Ctrl-C does however the run was started. Until then that test
 failed in such a run, and only there (the shell could not trap a signal it
 inherited ignored), and the runner warned of it at the start; the warning
-is retired with the cause.
+is retired with the cause. Since 0.27.0 the pty helper the other terminal
+tests drive (`on_a_terminal`, tests/test_start.py) starts its program the
+same way.
+
+Since 0.27.0 the suite builds less and starts less, and no test checks
+less. A case whose setUp builds a world (an office made by `office
+init`, founded, a project added, a folder opened, a fake bale beside
+them: `LandCase`, `StartCase`, `AudienceCase`, `HostedCase`, `WatchCase`
+and the plain `Office`) builds it once per job, with `kept_setup` in
+tests/test_office.py, and every test of the case gets a copy of it at the
+same path, with the attributes the setUp set, made before the test and
+removed after it, as the Env's directory always was; a world built on an
+earlier day is built again. And the fake bales are fixed modules under
+tests/fakes/ (`pack_bale`, `land_bale`, `replay_bale`, `small_bales`), not
+script texts formatted into every test's tree: the `bale` a test puts on
+its PATH is a three-line program that imports one with the test's config,
+so the runner's bytecode cache holds the fake's code, and the land fake
+hands `--version`, `status` and its packs to the packing fake in its own
+process rather than starting the interpreter again; a call that took 84
+ms takes 24. The land fake reads the directory each capture was made in
+from the capture's own `cwd`, so no test file names a probe's paths, and
+`tests/test_suite_clock.py`'s rule reads tests/fakes/ with the tests.
 
 The suite builds offices, installs and synthetic migrations under
 temporary directories and never touches your home directory or offices,
@@ -1545,6 +1566,15 @@ each `Env` says the machine is not WSL (`OFFICE_PROC_VERSION` empty) and
 gives the test a desktop directory of its own as the only place the
 office looks for `clip.exe`, `explorer.exe` or a clipboard reader
 (`OFFICE_DESKTOP_PATH`), and the runner sets both for every job besides.
+Since 0.27.0 the survey's own reads are steered the same way: the tools it
+records, and which bale and office the PATH runs, are looked for only in
+the directories `OFFICE_SURVEY_PATH` lists (empty: none, so every tool is
+"not found" and none is run for its version), and the container marker is
+the file `OFFICE_CONTAINER_MARKER` names (empty: none). Each `Env` and every
+job set both empty, so no survey a test runs starts your R, node, bale or
+office, or searches a WSL machine's Windows directories on the PATH;
+unset, as in everyday use, the survey reads the PATH and `/.dockerenv` as
+before.
 The tests that imitate WSL write a kernel version string of their own
 and put fake Windows programs in their own tree. `tests/test_suite_clock.py`
 fails the suite on a test file that reads the kernel's version or looks
@@ -1553,7 +1583,7 @@ either except through those two doors: every program `bin/office` and
 `lib/` look up on the PATH is one the runner declares (git, python3, a
 shell, the coreutils, iconv), the suite's fake bale, or a desktop program
 found through the door.
-bale need not be installed, and no real ssh ever runs: the read side's tests put a fake bale first
+bale need not be installed, and no real ssh ever runs (the fakes' code is tests/fakes/): the read side's tests put a fake bale first
 on the PATH that replays real bale output captured by a probe, kept in
 the development record, and refuses anything it did not capture; the
 hosted-project tests put a fake ssh first on the PATH too, which asserts

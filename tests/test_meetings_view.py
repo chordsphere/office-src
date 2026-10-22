@@ -518,8 +518,10 @@ class TestTheWorkbenchWizardOnATerminal(HostedCase):
 
 class TestTheRecord(unittest.TestCase):
     def test_the_release_the_doctrine_and_the_catalog(self):
+        # 0.26.0 or later, as every other release's record test reads it
+        # (it was pinned to 0.26.0 exactly, which the next release broke).
         version = (REPO / "VERSION").read_text().strip()
-        self.assertEqual(version, "0.26.0")
+        self.assertGreaterEqual(h.compare_versions(version, "0.26.0"), 0)
         self.assertIn("## 0.26.0", (REPO / "RELEASES.md").read_text())
         self.assertIn("0.26.0", (REPO / "README.md").read_text())
         doctrine = " ".join((REPO / "doctrine/OFFICE.md").read_text().split())

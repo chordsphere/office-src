@@ -155,6 +155,11 @@ DECLARED_TOOLS = ("git", "python3", "bash", "sh", "iconv") + COREUTILS
 # desktop_tool read these): not WSL, and no desktop program anywhere. An
 # Env gives each test a desktop directory of its own in their place.
 DESKTOP_VARS = {"OFFICE_PROC_VERSION": "", "OFFICE_DESKTOP_PATH": ""}
+# What every job is told of the tools the survey records (0.27.0; bin/office
+# survey_which and container_marker read these): no directory to look in,
+# so no survey runs a program of the machine's for its version, and no
+# container marker. An Env sets the same.
+SURVEY_VARS = {"OFFICE_SURVEY_PATH": "", "OFFICE_CONTAINER_MARKER": ""}
 # The variable that names the run's bytecode cache to every job, and so
 # to every command a test runs (tests/test_office.py Env passes it on).
 PYCACHE_VAR = "PYTHONPYCACHEPREFIX"
@@ -307,7 +312,8 @@ def isolated_env(base, root, pycache=None):
     root: its own HOME (with an empty global git config), TMPDIR and XDG
     config, data, state and cache directories; no Windows users' homes to
     scan for downloads (OFFICE_WINDOWS_USERS empty), a machine that is not
-    WSL with no desktop program on it (DESKTOP_VARS), and no XDG variable
+    WSL with no desktop program on it (DESKTOP_VARS), a survey that looks
+    for no tool and no container marker (SURVEY_VARS), and no XDG variable
     of the caller's (XDG_DOWNLOAD_DIR among them); none of the caller's
     OFFICE_ settings but the job count. PATH and the locale stay: the suite
     needs the programs DECLARED_TOOLS names, and reads nothing else
@@ -328,7 +334,7 @@ def isolated_env(base, root, pycache=None):
     if pycache is not None:
         env[PYCACHE_VAR] = str(pycache)
     env.update({k: str(v) for k, v in dirs.items()})
-    env.update({"HOME": str(home), "TMPDIR": str(tmp), "OFFICE_WINDOWS_USERS": "", **DESKTOP_VARS,
+    env.update({"HOME": str(home), "TMPDIR": str(tmp), "OFFICE_WINDOWS_USERS": "", **DESKTOP_VARS, **SURVEY_VARS,
                 "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": str(gitconfig),
                 "PYTHONDONTWRITEBYTECODE": "1", "OFFICE_TESTS_UNDER_RUNNER": "1"})
     return env
@@ -347,8 +353,9 @@ def cached_pyc(prefix, source):
 
 def seed_bytecode(prefix, dirs=None):
     """Make the run's bytecode cache at prefix and return how many modules
-    it compiled: every .py at the top of each of dirs (default: lib/ and
-    tests/) compiled once, and a link to the compiled code the interpreter
+    it compiled: every .py at the top of each of dirs (default: lib/,
+    tests/ and tests/fakes/, the fake programs' modules, 0.27.0) compiled
+    once, and a link to the compiled code the interpreter
     already holds for its standard library and for the modules it loads as
     it starts (site's), since a cache prefix is the only place it looks
     once one is set. A module that does not compile is skipped and said
@@ -368,7 +375,7 @@ def seed_bytecode(prefix, dirs=None):
 
     # The tree's own modules first: a link below never stands in for one.
     compiled = 0
-    for d in (dirs if dirs is not None else (TESTS.parent / "lib", TESTS)):
+    for d in (dirs if dirs is not None else (TESTS.parent / "lib", TESTS, TESTS / "fakes")):
         for source in sorted(pathlib.Path(d).glob("*.py")):
             try:
                 cfile = cached_pyc(prefix, source)
@@ -403,7 +410,7 @@ def run_cache(scratch):
     except OSError as exc:
         say(f"warning: no bytecode cache this run ({exc}); every module compiles as it is imported")
         return None
-    say(f"the office's modules and the tests, {n} in all, compiled once into {prefix}")
+    say(f"the office's modules, the tests and their fakes, {n} in all, compiled once into {prefix}")
     return prefix
 
 

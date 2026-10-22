@@ -26,7 +26,7 @@ import types
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from test_office import REPO, Env, h  # noqa: E402
+from test_office import REPO, Env, fake_program, h, kept_setup  # noqa: E402
 from test_read_side import (FIXTURES, APPLIED, OPEN_SITTING, OPEN_WORKER,  # noqa: E402
                             FakeBale, make_project)
 from test_start import FakePackBale, on_a_terminal  # noqa: E402
@@ -92,13 +92,6 @@ eval "cmd=$last"
 exec bash -c "$cmd"
 '''
 
-OLD_BALE = '''#!/usr/bin/env python3
-# The bale on an older host: 0.4.40 to --version, nothing else.
-import sys
-if sys.argv[1:] == ["--version"]:
-    print("bale 0.4.40"); sys.exit(0)
-print("old fake bale: only --version is answered", file=sys.stderr); sys.exit(97)
-'''
 
 
 class FakeSsh:
@@ -112,8 +105,7 @@ class FakeSsh:
         self.expect(targets, prefix)
         old = self.dir / "hosts" / OLD / "bin"
         old.mkdir(parents=True)
-        (old / "bale").write_text(OLD_BALE)
-        (old / "bale").chmod(0o755)
+        fake_program(old / "bale", "small_bales", "old")  # the bale on an older host: 0.4.40, --version alone
         # Every host the suite knows has a TMPDIR of its own, so what the
         # office leaves in a host's temporary directory can be seen.
         for t in targets:
@@ -323,12 +315,13 @@ class TestPlaceAndShell(unittest.TestCase):
 
 # --- the verb, through the office ------------------------------------------------------------
 
-def hosted_world(owner, host=HOST):
+def hosted_world(owner, host=HOST, e=None):
     """An office scoping two projects that bale answers the same captures
     for: `here`, on this machine, and `far`, the same throwaway repo
     declared on a host and read through the fake ssh. A folder records
-    the open worker and an applied session."""
-    e = Env(owner)
+    the open worker and an applied session. e, when given, is the Env to
+    build in (a kept world's), else a new one."""
+    e = e if e is not None else Env(owner)
     w = types.SimpleNamespace(e=e)
     w.ssh = FakeSsh(e.tmp)
     w.proj = make_project(e.tmp, "office-src")
@@ -353,9 +346,15 @@ def hosted_world(owner, host=HOST):
 
 
 class HostedCase(unittest.TestCase):
+    """hosted_world, built once per process and copied for each test
+    (tests/test_office.py kept_setup, 0.27.0)."""
+
     def setUp(self):
-        w = hosted_world(self)
-        self.e, self.ssh, self.proj, self.fake, self.root, self.folder = w.e, w.ssh, w.proj, w.fake, w.root, w.folder
+        kept_setup(self, "test_project_on_host.HostedCase", HostedCase.build_world)
+
+    def build_world(self):
+        w = hosted_world(self, e=self.e)
+        self.ssh, self.proj, self.fake, self.root, self.folder = w.ssh, w.proj, w.fake, w.root, w.folder
 
     def run_office(self, *args, **kw):
         self.ssh.reset()

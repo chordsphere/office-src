@@ -27,7 +27,7 @@ import time
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from test_office import REPO, Env, PATCH, h  # noqa: E402
+from test_office import REPO, Env, PATCH, h, kept_setup  # noqa: E402
 from test_read_side import FIXTURES, OPEN_WORKER, FakeBale, fixture_records, path_without_bale  # noqa: E402
 
 import office_bale as ob  # noqa: E402
@@ -50,13 +50,33 @@ def sessions_of(text):
 
 
 class Office:
-    """A founded office, and the verbs run in it with stdin piped."""
+    """A founded office, and the verbs run in it with stdin piped. The
+    plain one (no keywords for office init) is built once per process and
+    copied for each test (tests/test_office.py kept_setup, 0.27.0), so it
+    is made in setUp or at the top of a test, once per test, and sets the
+    test's e; one with keywords is built for its test alone."""
 
     def __init__(self, test, **kw):
-        self.e = Env(test)
-        self.root = self.e.init(**kw)
-        self.e.found(self.root)
+        if kw:
+            self.e = Env(test)
+            self.root = self.e.init(**kw)
+            self.e.found(self.root)
+        else:
+            kept_setup(test, "test_desk_verbs.Office", Office.build_world)
+            self.e, self.root = test.e, test.office_root
         self.test = test
+
+    @staticmethod
+    def build_world(test):
+        test.office_root = test.e.init()
+        test.e.found(test.office_root)
+
+    @classmethod
+    def over(cls, test, e, root):
+        """An Office over a founded office a test's own kept world built."""
+        o = cls.__new__(cls)
+        o.e, o.root, o.test = e, root, test
+        return o
 
     def run(self, *args, check=0, **kw):
         return self.e.run(*args, cwd=self.root, check=check, **kw)
