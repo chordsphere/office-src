@@ -255,19 +255,54 @@ warn_if_unfounded() {
 
 fact() { printf '%s\t%s\t%s\n' "$1" "$2" "$3"; }
 
+# The survey's own lookups (0.27.0): which tools this machine holds (the
+# Tools facts), which bale and which office its PATH runs. survey_which
+# NAME prints the path of the program NAME, found in the directories
+# OFFICE_SURVEY_PATH lists when it is set ("" lists none: every tool is
+# not found, and nothing is run for its version), and as the shell finds
+# it on PATH when it is not; nothing, and status 1, when there is none.
+# The suite's Env sets it to "", so no survey a test runs starts a
+# program of the machine's (its R, its node, its own bale and office) or
+# searches a WSL machine's Windows directories on the PATH; a test that
+# wants a tool recorded puts one in a directory of its own and names it.
+# Unset, the survey reads the PATH exactly as before.
+survey_which() {
+  local name="$1" dir dirs=()
+  if [ -z "${OFFICE_SURVEY_PATH+set}" ]; then
+    command -v "$name" 2>/dev/null
+    return
+  fi
+  IFS=: read -r -a dirs <<< "$OFFICE_SURVEY_PATH"
+  for dir in "${dirs[@]}"; do
+    [ -n "$dir" ] || continue
+    if [ -f "$dir/$name" ] && [ -x "$dir/$name" ]; then
+      printf '%s\n' "$dir/$name"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# The survey's container marker (0.27.0): the file whose presence makes
+# the machine class "container", OFFICE_CONTAINER_MARKER's when that is set
+# ("" for none), else /.dockerenv. The suite's Env sets it to "".
+container_marker() {
+  local marker="${OFFICE_CONTAINER_MARKER-/.dockerenv}"
+  [ -n "$marker" ] && [ -f "$marker" ]
+}
+
+# The tool's version line and the path it ran from; the program that runs
+# is the one survey_which found, so a tool found is the tool asked.
 tool_version() {
-  local t="$1" out
-  if ! command -v "$t" >/dev/null 2>&1; then printf 'not found'; return; fi
-  case "$t" in
-    R) out="$(timeout "$VERSION_TIMEOUT" R --version 2>&1 | head -n 1)" ;;
-    *) out="$(timeout "$VERSION_TIMEOUT" "$t" --version 2>&1 | head -n 1)" ;;
-  esac
+  local t="$1" path out
+  if ! path="$(survey_which "$t")" || [ -z "$path" ]; then printf 'not found'; return; fi
+  out="$(timeout "$VERSION_TIMEOUT" "$path" --version 2>&1 | head -n 1)"
   [ -n "$out" ] || out="no version output (or timed out after ${VERSION_TIMEOUT}s)"
-  printf '%s (%s)' "$out" "$(command -v "$t")"
+  printf '%s (%s)' "$out" "$path"
 }
 
 gather_facts() {
-  local root="$1" os tz mounts n step name out
+  local root="$1" os tz mounts n step name out found
   fact Survey surveyed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   fact Survey office_root "$root"
 
@@ -276,7 +311,7 @@ gather_facts() {
   fact Machine os "${os:-unknown (no /etc/os-release)}"
   fact Machine kernel "$(uname -srm 2>/dev/null)"
   if on_wsl; then fact Machine class "WSL"
-  elif [ -f /.dockerenv ]; then fact Machine class "container"
+  elif container_marker; then fact Machine class "container"
   else fact Machine class "host (not WSL, no container marker)"; fi
   fact Machine login_shell "${SHELL:-unset}"
   fact Machine bash "$BASH_VERSION"
@@ -298,15 +333,15 @@ gather_facts() {
     [ "$n" -gt 40 ] && fact Mounts truncated "$n mount points, showing 40"
   fi
 
-  if command -v bale >/dev/null 2>&1; then
-    fact bale on_path "$(command -v bale)"
-    fact bale install "$(readlink -f "$(command -v bale)")"
+  if found="$(survey_which bale)" && [ -n "$found" ]; then
+    fact bale on_path "$found"
+    fact bale install "$(readlink -f "$found")"
   else
     fact bale on_path "not found"
   fi
   fact office-src install "$OFFICE_SRC"
   fact office-src version "$(install_version)"
-  fact office-src on_path "$(command -v office 2>/dev/null || printf 'not on PATH')"
+  fact office-src on_path "$(survey_which office || printf 'not on PATH')"
 
   if [ -d "$root/drawer/survey" ]; then
     for step in "$root"/drawer/survey/*; do

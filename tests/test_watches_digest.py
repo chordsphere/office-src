@@ -31,7 +31,7 @@ import tomllib
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from test_office import REPO, h  # noqa: E402
+from test_office import REPO, h, kept_setup  # noqa: E402
 from test_read_side import FIXTURES, FakeBale, literal_key_reads, resolve  # noqa: E402
 from test_desk_verbs import Office, office_status_fixture  # noqa: E402
 from test_start import FakePackBale, tar_names  # noqa: E402
@@ -468,22 +468,28 @@ def project_repo(tmp, name, env):
 
 
 class WatchCase(unittest.TestCase):
-    """A founded office whose projects replay the probe's captures."""
+    """A founded office whose projects replay the probe's captures. The
+    world, for each set of projects and registry, is built once per process
+    and copied for each test (tests/test_office.py kept_setup, 0.27.0)."""
 
     projects = ("office-src", "ironwood", "bale-src")
     registry = None
 
     def setUp(self):
-        self.o = Office(self)
-        self.e = self.o.e
-        self.root = self.o.root
+        kept_setup(self, f"test_watches_digest.WatchCase-{'-'.join(self.projects)}-{self.registry}",
+                   WatchCase.build_world)
+        self.o = Office.over(self, self.e, self.root)
+
+    def build_world(self):
+        self.root = self.e.init()
+        self.e.found(self.root)
         routes = {}
         self.proj = {}
         for name in self.projects:
             p = project_repo(self.e.tmp, name, self.e.env)
             self.proj[name] = p
             routes[str(p)] = f"watches/{name}"
-            self.o.run("projects", "add", name, str(p))
+            self.e.run("projects", "add", name, str(p), cwd=self.root, check=0)
         if self.registry:
             (self.root / ".bale").mkdir(exist_ok=True)
             routes[str(self.root)] = self.registry

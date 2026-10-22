@@ -31,7 +31,7 @@ import unittest
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from test_office import REPO, Env, h  # noqa: E402
+from test_office import REPO, Env, fake_program, h  # noqa: E402
 
 import office_bale as ob  # noqa: E402  (lib/ is on sys.path through test_office)
 
@@ -66,42 +66,21 @@ def fixture_line(setname, argv):
     raise KeyError(argv)
 
 
-FAKE_BALE = '''#!/usr/bin/env python3
-# A fake bale for the read side's tests: replays lines a probe captured
-# from a real bale, keyed by argv and the directory it runs in. Anything
-# else is refused with exit 97.
-import json, os, pathlib, sys
-ROUTES = json.loads({routes!r})
-argv = sys.argv[1:]
-cwd = os.path.realpath(os.getcwd())
-with open({calls!r}, "a", encoding="utf-8") as log:
-    log.write(json.dumps([cwd, argv]) + "\\n")
-for d in ([ROUTES[cwd]] if cwd in ROUTES else []) + [ROUTES["*"]]:
-    for f in sorted(pathlib.Path(d).glob("*.json")):
-        rec = json.loads(f.read_text(encoding="utf-8"))
-        if rec["argv"] == argv:
-            for line in rec["stdout"]:
-                print(line)
-            for line in rec["stderr"]:
-                print(line, file=sys.stderr)
-            sys.exit(rec["exit"])
-print("fake bale: the probe captured no line for bale " + " ".join(argv) + " in " + cwd, file=sys.stderr)
-sys.exit(97)
-'''
 
 
 class FakeBale:
-    """A directory holding the fake bale; `routes` maps a project
-    directory to the fixture set replayed there."""
+    """A directory holding the fake bale (tests/fakes/replay_bale.py),
+    which replays lines a probe captured from a real bale, keyed by argv
+    and the directory it runs in; `routes` maps a project directory to
+    the fixture set replayed there, and anything else is refused with
+    exit 97."""
 
     def __init__(self, tmp, routes):
         self.dir = pathlib.Path(tempfile.mkdtemp(prefix="fake-bale-", dir=tmp))
         self.calls = self.dir / "calls.jsonl"
         table = {os.path.realpath(k): str(FIXTURES / v) for k, v in routes.items()}
         table["*"] = str(FIXTURES / "anywhere")
-        script = self.dir / "bale"
-        script.write_text(FAKE_BALE.format(routes=json.dumps(table), calls=str(self.calls)))
-        script.chmod(0o755)
+        fake_program(self.dir / "bale", "replay_bale", config={"routes": table, "calls": str(self.calls)})
 
     def path(self, base):
         return f"{self.dir}{os.pathsep}{base}"

@@ -29,7 +29,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from test_office import REPO, Env, h  # noqa: E402
+from test_office import REPO, Env, fake_program, h  # noqa: E402
 from test_start import FakePackBale, git_repo, on_a_terminal, tar_names  # noqa: E402
 from test_land import LandCase, bundle_file  # noqa: E402
 from test_project_on_host import DOWN, HOST, OLD, FakeSsh, git, manifest_of  # noqa: E402
@@ -89,17 +89,6 @@ class TestTheAttendedForm(unittest.TestCase):
         self.assertEqual(local.attended_argv("cd /srv/p && true")[-1], "cd /srv/p && true")
 
 
-# A bale that asks one question on its stdin, as apply's walkthrough does.
-ASKING_BALE = r'''#!/usr/bin/env python3
-import sys
-if sys.argv[1:2] == ["apply"]:
-    sys.stdout.write("Merge the session? [y/N] "); sys.stdout.flush()
-    answer = sys.stdin.readline().strip()
-    print("answered:" + (answer or "(nothing: stdin closed)"))
-    print("terminal:" + ("yes" if sys.stdin.isatty() else "no"))
-    sys.exit(0 if answer else 3)
-print("asking fake bale: only apply", file=sys.stderr); sys.exit(97)
-'''
 
 INTERACT_DRIVER = r'''import sys
 sys.path.insert(0, {lib!r})
@@ -116,8 +105,7 @@ class AttendedCase(FakeSshCase):
         self.repo = git_repo(self.e.tmp / "far")
         bindir = self.e.tmp / "asking-bale"
         bindir.mkdir()
-        (bindir / "bale").write_text(ASKING_BALE)
-        (bindir / "bale").chmod(0o755)
+        fake_program(bindir / "bale", "small_bales", "asking")  # asks one question on its stdin, as apply does
         self.env = dict(self.e.env, PATH=self.ssh.path(f"{bindir}{os.pathsep}{self.e.env['PATH']}"))
         self.capture = self.e.tmp / "capture.txt"
 
@@ -404,7 +392,7 @@ def fake_install(root, version, user_files=None, extra=None):
     (root / "bin").mkdir(parents=True)
     (root / "docs").mkdir()
     (root / "bin" / "VERSION").write_text(version + "\n")
-    (root / "bin" / "bale").write_text(INSTALL_BALE)
+    fake_program(root / "bin" / "bale", "small_bales", "install")  # --version from the VERSION beside it
     (root / "docs" / "AGENT.md").write_text(f"docs of {version}\n")
     (root / "install.sh").write_text(INSTALL_SH)
     (root / "upgrade.sh").write_text(UPGRADE_SH)
@@ -419,14 +407,6 @@ def fake_install(root, version, user_files=None, extra=None):
     return root
 
 
-INSTALL_BALE = r'''#!/usr/bin/env python3
-import json, pathlib, sys
-here = pathlib.Path(__file__).resolve().parent
-v = (here / "VERSION").read_text().strip()
-if sys.argv[1:] == ["--version"]:
-    print("bale " + v); sys.exit(0)
-print("install fake bale " + v + ": only --version", file=sys.stderr); sys.exit(97)
-'''
 
 INSTALL_SH = r'''#!/usr/bin/env bash
 # The fake install.sh: records how it ran, as bale's would finish an install.

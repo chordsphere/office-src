@@ -101,8 +101,10 @@ pastes.
 ## The suite's clock
 
 For the worker first. bale gives a session's validation two minutes
-(TARBALL.md 7.6), and the whole suite takes far longer (679 tests; about
-18 minutes on a two-core sandbox, 4 jobs at a time). So, since 0.17.1:
+(TARBALL.md 7.6), and the whole suite takes far longer (914 tests at
+0.27.0; 822 seconds on a two-core sandbox, 4 jobs at a time,
+where 0.26.0's 906 took 1,146; the fast tier 59.6 seconds). So,
+since 0.17.1:
 
 - Every validation.sh runs the fast tier, `tests/run.sh --fast`, plus
   what the session touched, named after it (`tests/run.sh --fast
@@ -163,9 +165,50 @@ For the worker first. bale gives a session's validation two minutes
   shows it as one `Suite:` line whenever it is not `OK`, including a
   `RUNNING` more than an hour old. A worker on office-src can ask for it
   in a probe.
+- Since 0.27.0 a case's world is built once per job. A case whose setUp
+  builds an office, a project, a folder and a fake bale (`LandCase`,
+  `StartCase`, `AudienceCase`, `HostedCase`, `WatchCase`, the plain
+  `Office` of test_desk_verbs, and `built_office` in test_office) calls
+  `kept_setup(test, key, build)` (tests/test_office.py): the first test
+  of the key builds into `test.e` at a fixed place, and every later test
+  gets a copy of the directory at the same path and a copy of the
+  attributes the build set. A build works only through `test.e`, keeps
+  no reference to the test and registers no cleanup; a world whose
+  shape varies by a class attribute puts it in the key. A test that
+  needs a world of its own builds it in its body, as before.
+- The fake bales are modules under tests/fakes/ (`pack_bale`,
+  `land_bale`, `replay_bale`, `small_bales`); a test's `bale` is the
+  program `fake_program(path, module, function, config)` writes, three
+  lines that import the module and call it with the test's config. A
+  fake's code changes in its module; its state and calls stay in the
+  test's tree. The land fake swaps each capture's own `cwd` out of what
+  it replays, so no test file names a probe's directory. The rule reads
+  tests/fakes/ with the tests, and the runner compiles them into its
+  cache.
+- The survey's tools and container marker are steered as the desktop is
+  (0.27.0): `OFFICE_SURVEY_PATH` (the directories it looks for tools in;
+  "" none) and `OFFICE_CONTAINER_MARKER` ("" none), both empty in every
+  Env and job. A test that wants a tool recorded names a directory of its
+  own (test_office's TestStatusAndSurvey shows how).
 
 ## Recent changes
 
+- 0.27.0 (session 2026-10-22-suite-time-002): the suite's time, the
+  first session after the front-door arc. Nothing you use changes.
+  - The whole suite took 822 seconds in the worker's sandbox,
+    from 1,146 (906 tests then, 914 now, none dropped); the fast tier
+    59.6, from 66.2. On your machine expect the detached run's
+    verdict to drop by about the same share, roughly a quarter.
+  - The tests build each kind of office world once per job and copy it
+    for every test, instead of building it again for each.
+  - The fake bales are fixed modules: a call that took 84 ms takes 24.
+  - The survey's last reads of the machine (its tools, the bale and
+    office on the PATH, the container marker) are steerable, and the
+    suite steers them away: no test runs a program of your machine's.
+  - Two riders: the terminal helper starts its program with Ctrl-C at
+    its default, and the land fake takes each capture's paths from the
+    capture.
+  - Additive: no migration.
 - 0.26.0 (session 2026-10-22-meetings-view-001): meetings as a view
   over the work, the front-door arc's last session.
   - `office meeting` (the home screen's `m` key) takes a meeting in one

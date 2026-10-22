@@ -21,6 +21,7 @@ import pty
 import re
 import select
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
@@ -30,7 +31,7 @@ import tomllib
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from test_office import REPO, WSL_KERNEL, Env, h  # noqa: E402
+from test_office import REPO, WSL_KERNEL, Env, fake_program, h, kept_setup  # noqa: E402
 
 import office_bale as ob  # noqa: E402  (lib/ is on sys.path through test_office)
 
@@ -48,162 +49,22 @@ def all_pack_fixtures():
     return sorted(PACK_FIXTURES.glob("*.json"))
 
 
-FAKE_PACK_BALE = r'''#!/usr/bin/env python3
-# A fake bale that packs, for office start's tests. Every line it prints
-# is built from lines the out-and-in probe captured from a real bale, with
-# the session id, the paths and the goal swapped in. It keeps the open
-# sessions per directory in its own state file, never in .bale/ beyond the
-# outbox, and refuses anything it was not built for with exit 97.
-import argparse, datetime, io, json, os, pathlib, re, subprocess, sys, tarfile
-FIX = pathlib.Path({fixtures!r})
-STATE = pathlib.Path({state!r})
-CALLS = pathlib.Path({calls!r})
-argv = sys.argv[1:]
-cwd = os.path.realpath(os.getcwd())
-with CALLS.open("a", encoding="utf-8") as log:
-    log.write(json.dumps([cwd, argv]) + "\n")
-def fx(label):
-    return json.loads((FIX / (label + ".json")).read_text(encoding="utf-8"))
-def load():
-    return json.loads(STATE.read_text()) if STATE.is_file() else {{"repos": {{}}, "fail": []}}
-def save(s):
-    STATE.write_text(json.dumps(s))
-state = load()
-repo = state["repos"].setdefault(cwd, {{"sessions": [], "scopes": {{}}, "outbox": []}})
-if argv == ["--version"]:
-    print("bale " + os.environ.get("FAKE_BALE_VERSION", "0.4.45")); sys.exit(0)
-if argv == ["status", "--json"]:
-    line = json.loads(fx("office-status")["stdout"][0])
-    line["sid"] = repo["sessions"][0] if repo["sessions"] else None
-    line["sessions"] = repo["sessions"]; line["scopes"] = repo["scopes"]; line["outbox"] = repo["outbox"]
-    # The light pointer at applied history (0.22.0, the home screen): the
-    # land fake appends each session it applies.
-    applied = repo.get("applied") or []
-    line["applied"] = {{"count": len(applied), "latest": applied[-1] if applied else None}}
-    line["repo"]["root"] = cwd
-    print(json.dumps(line)); sys.exit(0)
-if not argv or argv[0] != "pack":
-    print("fake bale: not built for bale " + " ".join(argv), file=sys.stderr); sys.exit(97)
-ap = argparse.ArgumentParser(prog="bale pack")
-ap.add_argument("goal", nargs="?"); ap.add_argument("--context", action="store_true")
-ap.add_argument("--slug"); ap.add_argument("--include", action="append", default=[])
-ap.add_argument("--write", action="append", default=[]); ap.add_argument("--constraint", action="append", default=[])
-ap.add_argument("--readme-file"); ap.add_argument("--no-readme", action="store_true")
-ap.add_argument("--work-class"); ap.add_argument("--read-only", action="store_true")
-ap.add_argument("--json", action="store_true")
-a = ap.parse_args(argv[1:])
-if not a.json:
-    print("fake bale: built for --json packs only", file=sys.stderr); sys.exit(97)
-def files_of(root, includes):
-    root = pathlib.Path(root)
-    git = subprocess.run(["git", "-C", str(root), "rev-parse", "--show-toplevel"], capture_output=True, text=True)
-    if git.returncode == 0:
-        out = subprocess.run(["git", "-C", str(root), "ls-files", "-co", "--exclude-standard", "."],
-                             capture_output=True, text=True).stdout.split()
-    else:
-        out = [str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()]
-    out = [f for f in out if not f.startswith(".bale/") and "/.bale/" not in f]
-    if includes:
-        keep = list(includes)
-        # The include group, as bale.toml declares it: when an include
-        # touches a trigger, the pulls ship too (never under --context).
-        cfg = root / "bale.toml"
-        if cfg.is_file() and not a.context:
-            import tomllib
-            pack = tomllib.loads(cfg.read_text()).get("pack", {{}})
-            if pack.get("include_group") and any(i.split("/")[0] in pack.get("include_group_triggers", []) for i in includes):
-                keep += pack.get("include_group_pulls", [])
-        out = [f for f in out if any(f == i or f.startswith(i.rstrip("/") + "/") for i in keep)]
-    return sorted(out), git.returncode == 0
-outbox = pathlib.Path(cwd) / ".bale" / "outbox"
-if a.context:
-    for flag in ("goal", "slug", "readme_file", "work_class"):
-        if getattr(a, flag):
-            print("fake bale: --context refuses a session-only flag", file=sys.stderr); sys.exit(2)
-    name = pathlib.Path(cwd).name
-    files, git = files_of(cwd, a.include)
-    outbox.mkdir(parents=True, exist_ok=True)
-    tb = outbox / ("context-" + name + ".tar.gz")
-    total = 0
-    with tarfile.open(tb, "w:gz") as t:
-        for f in files:
-            t.add(pathlib.Path(cwd) / f, arcname=name + "/" + f); total += (pathlib.Path(cwd) / f).stat().st_size
-    line = json.loads(fx("office-context-whole")["stdout"][0])
-    line.update(tarball=str(tb), directory=cwd, tree_name=name, context_files=len(files), total_bytes=total, git=git)
-    print(json.dumps(line, separators=(",", ":")))
-    print("[bale] context pack of " + cwd + " — no session is opened", file=sys.stderr)
-    sys.exit(0)
-if not a.goal or not a.slug:
-    print("[bale] error: piped, a goal and --slug are required", file=sys.stderr); sys.exit(1)
-if not a.readme_file and not a.no_readme:
-    print("[bale] error: no README prose; --no-readme acknowledges it", file=sys.stderr); sys.exit(1)
-for p in a.write + a.include:
-    if not (pathlib.Path(cwd) / p).exists():
-        print("[bale] error: forecast or include names no existing path: " + p, file=sys.stderr); sys.exit(1)
-mine = [] if a.read_only else (a.write or a.include or [""])
-def hit(x, y):
-    x, y = x.strip("/"), y.strip("/")
-    return x == "" or y == "" or x == y or x.startswith(y + "/") or y.startswith(x + "/")
-for sid in repo["sessions"]:
-    theirs = repo["scopes"][sid] or []
-    pairs = [(m, t) for m in mine for t in theirs if hit(m, t)]
-    if pairs:
-        err = fx("office-second-pack")["stderr"][-1]
-        err = err.replace("2026-10-02-probe-office-work-001", sid).replace("(notepad ~ notepad)",
-              "(" + ", ".join(m + " ~ " + t for m, t in pairs) + ")")
-        for l in fx("office-second-pack")["stderr"][:-1]:
-            print(l, file=sys.stderr)
-        print(err, file=sys.stderr); sys.exit(1)
-if "pack" in state["fail"]:
-    print("[bale] error: the fake was told to refuse this pack", file=sys.stderr); sys.exit(1)
-day = os.environ.get("FAKE_BALE_DAY") or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
-n = 1 + sum(1 for s in repo["outbox"] if s.startswith("request-" + day + "-" + a.slug + "-"))
-sid = day + "-" + a.slug + "-" + format(n, "03d")
-outbox.mkdir(parents=True, exist_ok=True)
-tb = outbox / ("request-" + sid + ".tar.gz")
-files, _ = files_of(cwd, a.include)
-manifest = {{"session_id": sid, "goal": a.goal, "constraints": a.constraint, "resolved_scope": mine if mine != [""] else ["."],
-            "readme": {{"path": "README.md"}} if a.readme_file else None,
-            "work_class": a.work_class or "mixed", "context_included": ["context/" + f for f in files]}}
-with tarfile.open(tb, "w:gz") as t:
-    data = json.dumps(manifest).encode()
-    info = tarfile.TarInfo("request-001/manifest.json"); info.size = len(data)
-    t.addfile(info, io.BytesIO(data))
-    if a.readme_file:
-        t.add(a.readme_file, arcname="request-001/README.md")
-    for f in files:
-        t.add(pathlib.Path(cwd) / f, arcname="request-001/context/" + f)
-repo["sessions"].append(sid); repo["scopes"][sid] = [] if a.read_only else mine; repo["outbox"].append(tb.name)
-save(state)
-label = "project-pack" if a.readme_file else "office-pack"
-cap = fx(label)
-old = json.loads(cap["stdout"][0])
-line = dict(old)
-oldsid, oldroot = old["sid"], old["tarball"].split("/.bale/")[0]
-line.update(sid=sid, tarball=str(tb), log=cwd + "/.bale/logs/" + sid + ".log",
-            session_dir=cwd + "/.bale/sessions/" + sid, context_files=len(files))
-print(json.dumps(line))
-oldgoal = re.search(r"Goal, verbatim from the request manifest: (.*)$", "\n".join(cap["stderr"]), re.M).group(1)
-for l in cap["stderr"]:
-    l = l.replace(oldsid, sid).replace(oldroot, cwd)
-    if l.startswith("Goal, verbatim from the request manifest: "):
-        l = l.replace(oldgoal, a.goal)
-    print(l, file=sys.stderr)
-sys.exit(0)
-'''
 
 
 class FakePackBale:
-    """A directory holding the fake bale; its state and calls live beside it."""
+    """A directory holding the fake bale that packs (tests/fakes/pack_bale.py);
+    its state and calls live beside it."""
 
     def __init__(self, tmp):
         self.dir = pathlib.Path(tempfile.mkdtemp(prefix="fake-pack-bale-", dir=tmp))
         self.state = self.dir / "state.json"
         self.calls = self.dir / "calls.jsonl"
-        script = self.dir / "bale"
-        script.write_text(FAKE_PACK_BALE.format(fixtures=str(PACK_FIXTURES), state=str(self.state),
-                                                calls=str(self.calls)))
-        script.chmod(0o755)
+        fake_program(self.dir / "bale", "pack_bale", config=self.config(self.state, self.calls))
+
+    @staticmethod
+    def config(state, calls):
+        """The packing fake's config: its fixtures, its state file and its calls file."""
+        return {"fixtures": str(PACK_FIXTURES), "state": str(state), "calls": str(calls)}
 
     def path(self, base):
         return f"{self.dir}{os.pathsep}{base}"
@@ -250,10 +111,19 @@ def on_a_terminal(test, argv, cwd, env, script):
     """Run the office command on a pty, answering each prompt in script:
     a list of (marker the screen must show, line to type, or None to type
     nothing). Returns
-    (exit code, everything the screen showed)."""
+    (exit code, everything the screen showed).
+
+    The program starts as a terminal's foreground program does, with
+    SIGINT and SIGQUIT at their defaults (0.27.0), as run_on_a_pty in
+    tests/test_front_door.py has started the tour since 0.26.0: a run
+    started in the background from a non-interactive shell ignores both,
+    and without this every program a test drives here would inherit that,
+    so a trap it sets on an interrupt could never fire."""
     pid, fd = pty.fork()
     if pid == 0:
         try:
+            for sig in (signal.SIGINT, signal.SIGQUIT):
+                signal.signal(sig, signal.SIG_DFL)
             os.chdir(cwd)
             os.execve(argv[0], argv, env)
         finally:
@@ -694,10 +564,14 @@ class StartCase(unittest.TestCase):
     """An office scoping one project, alpha, that declares three
     ride-alongs (a directory inside another repo, a plain directory and a
     file outside git) and an after-land action; one folder on the desk,
-    its lane on alpha. bale is the fake that packs."""
+    its lane on alpha. bale is the fake that packs. The world is built
+    once per process and copied for each test (tests/test_office.py
+    kept_setup, 0.27.0)."""
 
     def setUp(self):
-        self.e = Env(self)
+        kept_setup(self, "test_start.StartCase", StartCase.build_world)
+
+    def build_world(self):
         self.fake = FakePackBale(self.e.tmp)
         self.e.env["PATH"] = self.fake.path(self.e.env["PATH"])
         self.root = self.e.init("home")
@@ -890,6 +764,32 @@ class TestStartRefusals(StartCase):
                           extra={"PATH": path_without_bale()})
         self.assertEqual(proc.returncode, 1)
         self.assertIn("bale is not on PATH", proc.stderr)
+
+
+class TestTheTerminalHelperOnATerminal(unittest.TestCase):
+    """on_a_terminal starts its program as a terminal's foreground program
+    starts (0.27.0): SIGINT and SIGQUIT at their defaults, whatever this
+    process ignores, as a run in the background ignores both."""
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
+
+    def test_the_program_starts_with_sigint_and_sigquit_at_their_defaults(self):
+        e = Env(self)
+        script = e.tmp / "dispositions"
+        script.write_text(f"#!{sys.executable}\nimport signal\n"
+                          # Python takes over SIGINT at its start only when it was not ignored.
+                          "print('SIGINT', 'default' if signal.getsignal(signal.SIGINT) in "
+                          "(signal.SIG_DFL, signal.default_int_handler) else 'not')\n"
+                          "print('SIGQUIT', 'default' if signal.getsignal(signal.SIGQUIT) == signal.SIG_DFL else 'not')\n")
+        script.chmod(0o755)
+        saved = {sig: signal.signal(sig, signal.SIG_IGN) for sig in (signal.SIGINT, signal.SIGQUIT)}
+        try:
+            code, screen = on_a_terminal(self, [str(script)], e.tmp, e.env, [])
+        finally:
+            for sig, handler in saved.items():
+                signal.signal(sig, handler)
+        self.assertEqual(code, 0, screen)
+        self.assertIn("SIGINT default", screen)
+        self.assertIn("SIGQUIT default", screen)
 
 
 class TestStartOnATerminal(StartCase):

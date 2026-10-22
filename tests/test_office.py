@@ -8,7 +8,9 @@ home directory, config or offices. Run with:
     PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 """
 
+import atexit
 import contextlib
+import copy
 import datetime as dt
 import os
 import pathlib
@@ -18,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import time
 import tomllib
 import unittest
 from unittest import mock
@@ -40,6 +43,29 @@ def later(minor, patch=0):
 
 NEXT, AFTER = later(1), later(2)   # the next two synthetic breaking releases
 PATCH = later(0, 5)                # a synthetic additive release past this one
+
+
+# The suite's fake programs, as fixed modules (0.27.0): tests/fakes/.
+FAKES = REPO / "tests" / "fakes"
+
+
+def fake_program(path, module, function="main", config=None):
+    """Write path: a program that runs tests/fakes/MODULE.py's FUNCTION
+    with this test's config (a dict of plain values) and its arguments,
+    and exits with what that returns. The program is three lines; the
+    fake's code is the module, compiled once into the runner's bytecode
+    cache rather than on every call, as a script text was. It starts the
+    interpreter that runs the suite, without the site packages (-S), which
+    no fake uses. Returns path."""
+    path = pathlib.Path(path)
+    interpreter = f"{sys.executable} -S" if sys.executable and not re.search(r"\s", sys.executable) \
+        else "/usr/bin/env python3"
+    path.write_text(f"#!{interpreter}\n"
+                    "# One of the suite's fake programs: its code is tests/fakes/, its config this test's.\n"
+                    f"import sys\nsys.path.insert(0, {str(FAKES)!r})\nimport {module}\n"
+                    f"sys.exit({module}.{function}({config!r}, sys.argv[1:]))\n", encoding="utf-8")
+    path.chmod(0o755)
+    return path
 
 
 # A WSL kernel's version string, as WSL2's kernel reports it: a test that
@@ -69,15 +95,24 @@ class Env:
     clipboard reader, and first on the PATH, so what a test puts there is
     what runs; empty, the office finds none). The machine is never WSL to
     a test (OFFICE_PROC_VERSION empty) unless the test imitates it with a
-    file of its own. Nothing of the running machine's reaches a test
+    file of its own; the survey looks for no tool and no container marker
+    (OFFICE_SURVEY_PATH and OFFICE_CONTAINER_MARKER empty) unless the test
+    names its own. Nothing of the running machine's reaches a test
     through them, and tests/test_suite_clock.py fails the suite on a test
     file that names the machine's own (its temporary directory, its HOME,
     its kernel's version, a program looked up on its PATH) anywhere but
     here. For a helper called in this process rather than through the
-    command, this_process() lends it the same."""
+    command, this_process() lends it the same.
 
-    def __init__(self, test):
-        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="office-test-"))
+    at, when given, is the directory the Env makes and works in, in place
+    of a new temporary one; it must not exist yet (kept_setup's place)."""
+
+    def __init__(self, test, at=None):
+        if at is None:
+            self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="office-test-"))
+        else:
+            self.tmp = pathlib.Path(at)
+            self.tmp.mkdir(parents=True)
         test.addCleanup(shutil.rmtree, self.tmp, True)
         self.home = self.tmp / "home"
         self.home.mkdir()
@@ -114,6 +149,13 @@ class Env:
             # powershell.exe are on a WSL machine's PATH).
             "OFFICE_PROC_VERSION": "",
             "OFFICE_DESKTOP_PATH": str(self.desktop),
+            # The survey's own reads of the machine (bin/office: survey_which
+            # and container_marker, 0.27.0): it looks for no tool, so it runs
+            # none for its version (the machine's R, node, bale or office, or
+            # a fake bale on this test's PATH), and sees no container marker.
+            # A test that wants a tool recorded names a directory of its own.
+            "OFFICE_SURVEY_PATH": "",
+            "OFFICE_CONTAINER_MARKER": "",
         }
         # The runner's bytecode cache for this run (tests/runner.py,
         # seed_bytecode), when the runner made one: compiled code of the
@@ -187,6 +229,73 @@ class Env:
             if body is not None:
                 (inst / "migrations" / action).write_text(body)
         return inst / "bin" / "office"
+
+
+# --- a case's setUp, built once per process and copied for each test (0.27.0) ---
+#
+# Most of the suite's time was each test building the same world again:
+# an office made by office init, founded, a project added, a folder opened,
+# a fake bale beside them; two seconds and more of the office's own
+# commands, before the test ran one of its own. A case whose setUp builds
+# such a world builds it once per process now, and every test of the case
+# gets a copy of what it built, at the same path (so every path written
+# into the office, the repos and the fake's state still holds), with the
+# attributes the setUp set. Each test still starts from the world its setUp
+# describes, untouched by any other test; the copy is made before each test
+# and removed after it, as the Env's directory always was. The tests of one
+# job run one after another, so one place per case serves them all.
+
+_KEPT_ROOT = []   # this process's directory for the kept worlds, made at first use
+_KEPT = {}        # key: (the days it was built on, its template, the attributes its setUp set)
+
+
+def kept_day():
+    """The local and the UTC day: a world built on another day is built
+    again, since a folder's name and an out tray's carry the day."""
+    return time.strftime("%Y-%m-%d"), time.strftime("%Y-%m-%d", time.gmtime())
+
+
+def kept_setup(test, key, build):
+    """test's setUp through a kept world: the first test of key in this
+    process gets test.e, an Env at the world's place, and build(test) builds
+    on it; what that left (the directory, and the attributes it set on the
+    test) is kept as the world's template. Every later test of key gets a
+    copy of the directory at the same place and a copy of those attributes.
+    build must do all its work through test.e and in test.e.tmp, keep no
+    reference to the test, and register no cleanup of its own: a kept world
+    is a directory and plain attributes, and nothing else is copied."""
+    if not _KEPT_ROOT:
+        root = pathlib.Path(tempfile.mkdtemp(prefix="office-kept-"))
+        atexit.register(shutil.rmtree, root, True)
+        _KEPT_ROOT.append(root)
+    root = _KEPT_ROOT[0]
+    name = re.sub(r"[^\w.-]", "-", key)
+    place, template = root / name, root / (name + ".template")
+    shutil.rmtree(place, ignore_errors=True)   # what an earlier test left, had its cleanup not run
+    kept = _KEPT.get(key)
+    if kept is not None and kept[0] != kept_day():
+        kept = None
+    if kept is None:
+        day = kept_day()
+        before = set(vars(test))
+        test.e = Env(test, at=place)
+        build(test)
+        attrs = {k: v for k, v in vars(test).items() if k not in before}
+        shutil.rmtree(template, ignore_errors=True)
+        shutil.copytree(place, template, symlinks=True)
+        _KEPT[key] = (day, template, copy.deepcopy(attrs))
+        return
+    _, template, attrs = kept
+    shutil.copytree(template, place, symlinks=True)
+    test.addCleanup(shutil.rmtree, place, True)
+    for k, v in copy.deepcopy(attrs).items():
+        setattr(test, k, v)
+
+
+def built_office(test):
+    """The plain office most cases start from, as a kept world: office init
+    with --no-founding, at test.root."""
+    test.root = test.e.init()
 
 
 # --- helper units -----------------------------------------------------------
@@ -481,8 +590,7 @@ class TestInit(unittest.TestCase):
 
 class TestFindingTheOffice(unittest.TestCase):
     def setUp(self):
-        self.e = Env(self)
-        self.root = self.e.init()
+        kept_setup(self, "test_office.an-office", built_office)
 
     def test_walks_up_from_a_subdirectory(self):
         sub = self.root / "desk" / "a" / "b"
@@ -519,8 +627,7 @@ class TestFindingTheOffice(unittest.TestCase):
 
 class TestStatusAndSurvey(unittest.TestCase):
     def setUp(self):
-        self.e = Env(self)
-        self.root = self.e.init()
+        kept_setup(self, "test_office.an-office", built_office)
 
     def test_status_unfounded_then_founded(self):
         out = self.e.run("status", cwd=self.root, check=0).stdout
@@ -556,6 +663,42 @@ class TestStatusAndSurvey(unittest.TestCase):
         self.assertNotIn("- class: WSL\n", page.read_text())
         self.assertIn("- changed machine.class: WSL to ", page.read_text())
 
+    def test_the_tools_are_recorded_only_from_the_directories_the_environment_names(self):
+        # 0.27.0: under the Env the survey looks for no tool, so it runs
+        # none (a recording bale first on the PATH is never asked its
+        # version) and records each as not found; pointed at a directory,
+        # it records what is there, by the path it ran.
+        d = self.e.tmp / "tools"
+        d.mkdir()
+        for name, line in (("bale", "bale 9.9.9"), ("node", "v20.0.0")):
+            (d / name).write_text(f"#!/bin/sh\necho ran >> '{d / 'ran'}'\necho '{line}'\n")
+            (d / name).chmod(0o755)
+        page = self.root / "floor-plan" / "survey.md"
+        self.e.run("survey", "--no-commit", cwd=self.root, extra={"PATH": f"{d}{os.pathsep}{self.e.env['PATH']}"},
+                   check=0)
+        text = page.read_text()
+        for tool in ("bale", "git", "python3", "R", "quarto", "node"):
+            self.assertIn(f"- {tool}: not found\n", text)
+        self.assertIn("- on_path: not found\n", text)
+        self.assertIn("- on_path: not on PATH\n", text)
+        self.assertFalse((d / "ran").exists())
+        self.e.run("survey", "--no-commit", cwd=self.root, extra={"OFFICE_SURVEY_PATH": str(d)}, check=0)
+        text = page.read_text()
+        self.assertIn(f"- bale: bale 9.9.9 ({d / 'bale'})\n", text)
+        self.assertIn(f"- node: v20.0.0 ({d / 'node'})\n", text)
+        self.assertIn(f"- on_path: {d / 'bale'}\n", text)
+        self.assertIn("- git: not found\n", text)
+        self.assertEqual((d / "ran").read_text(), "ran\nran\n")
+
+    def test_the_container_class_is_read_from_the_one_steerable_marker(self):
+        marker = self.e.tmp / "dockerenv"
+        marker.write_text("")
+        page = self.root / "floor-plan" / "survey.md"
+        self.e.run("survey", "--no-commit", cwd=self.root, extra={"OFFICE_CONTAINER_MARKER": str(marker)}, check=0)
+        self.assertIn("- class: container\n", page.read_text())
+        self.e.run("survey", "--no-commit", cwd=self.root, check=0)
+        self.assertIn("- class: host (not WSL, no container marker)\n", page.read_text())
+
     def test_office_survey_steps(self):
         steps = self.root / "drawer" / "survey"
         steps.mkdir()
@@ -586,8 +729,7 @@ MIGRATION_ADD_SPACE = "mkdir -p handbook && printf 'front page\\n' > handbook/RE
 
 class TestUpgrade(unittest.TestCase):
     def setUp(self):
-        self.e = Env(self)
-        self.root = self.e.init()
+        kept_setup(self, "test_office.an-office", built_office)
 
     def stamp(self):
         return tomllib.loads((self.root / "floor-plan/manifest.toml").read_text())["office"]
@@ -745,8 +887,7 @@ class TestUpgrade(unittest.TestCase):
 
 class TestCapture(unittest.TestCase):
     def setUp(self):
-        self.e = Env(self)
-        self.root = self.e.init()
+        kept_setup(self, "test_office.an-office", built_office)
 
     def page(self):
         pages = sorted((self.root / "notepad").glob("????-??-??.md"))
@@ -798,8 +939,7 @@ class TestCapture(unittest.TestCase):
 
 class TestFolders(unittest.TestCase):
     def setUp(self):
-        self.e = Env(self)
-        self.root = self.e.init()
+        kept_setup(self, "test_office.an-office", built_office)
         self.e.found(self.root)
 
     def open(self, *args, **kw):
@@ -907,8 +1047,7 @@ class TestFolders(unittest.TestCase):
 
 class TestSessions(unittest.TestCase):
     def setUp(self):
-        self.e = Env(self)
-        self.root = self.e.init()
+        kept_setup(self, "test_office.an-office", built_office)
         self.e.found(self.root)
         self.folder = self.e.run("open", "job", cwd=self.root, check=0).stdout.strip()
 
@@ -956,8 +1095,7 @@ class TestPackReport(unittest.TestCase):
 
 class TestWeek(unittest.TestCase):
     def setUp(self):
-        self.e = Env(self)
-        self.root = self.e.init()
+        kept_setup(self, "test_office.an-office", built_office)
 
     def test_no_calendar_names_the_meeting_it_arrives_with(self):
         # Since 0.26.0 the calendar arrives with the first meeting, as the
@@ -997,8 +1135,7 @@ class TestWeek(unittest.TestCase):
 
 class TestWalkingIn(unittest.TestCase):
     def setUp(self):
-        self.e = Env(self)
-        self.root = self.e.init()
+        kept_setup(self, "test_office.an-office", built_office)
 
     def test_walking_in_shows_the_room(self):
         self.e.run("open", "job", cwd=self.root, check=0)
@@ -1028,8 +1165,7 @@ class TestWalkingIn(unittest.TestCase):
 
 class TestIncludeGroup(unittest.TestCase):
     def setUp(self):
-        self.e = Env(self)
-        self.root = self.e.init()
+        kept_setup(self, "test_office.an-office", built_office)
 
     def test_init_writes_a_group_of_spaces_and_hung_items(self):
         group = tomllib.loads((self.root / "bale.toml").read_text())["pack"]
@@ -1300,8 +1436,7 @@ class TestCatalogs(unittest.TestCase):
 
 class TestStatusReportsTheCatalogs(unittest.TestCase):
     def setUp(self):
-        self.e = Env(self)
-        self.root = self.e.init()
+        kept_setup(self, "test_office.an-office", built_office)
 
     def test_status_says_the_installed_catalogs_hold(self):
         out = self.e.run("status", cwd=self.root, check=0).stdout
