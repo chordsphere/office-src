@@ -45,14 +45,10 @@ import datetime as dt
 import os
 import pathlib
 import sys
-import tomllib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import office_helper as oh  # noqa: E402
 import office_drafting as od  # noqa: E402
-import office_bale as ob  # noqa: E402
-import office_watches as ow  # noqa: E402
-import office_drop as odrop  # noqa: E402
 
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 PAGE = f"{od.SPACE}/digest.md"
@@ -77,6 +73,7 @@ def git(root, *args):
     """git's stdout in root (the office, or a project: here, or through
     the shell of the host a project declares), or None when git refuses
     (not a repo, no such commit)."""
+    import office_bale as ob
     return ob.git_lines(root, *args)
 
 
@@ -85,6 +82,7 @@ def git(root, *args):
 def window(root):
     """The window's start: a dict with when (aware), base (the commit the
     office is compared against), and words saying how it was found."""
+    import office_watches as ow
     filings = ow.sitting_filings(root)
     if filings:
         when, page, sha, subject, _ = filings[-1]
@@ -106,6 +104,7 @@ def window(root):
 # --- sections ----------------------------------------------------------------------------
 
 def versions(rd, root, here):
+    import office_bale as ob
     out = ["## Versions", ""]
     try:
         manifest = oh.read_toml(pathlib.Path(root) / "floor-plan" / "manifest.toml")
@@ -134,6 +133,7 @@ def versions(rd, root, here):
 def release(rd, cwd):
     """The project's latest release: the last commit that changed a
     VERSION file, the version it wrote, and the session that wrote it."""
+    import office_bale as ob
     text = git(cwd, "log", "-1", "--format=%H%x09%cI%x09%s", "--name-only", "--", ob.VERSION_FILE,
                f"*/{ob.VERSION_FILE}")
     if not text or not text.strip():
@@ -149,6 +149,7 @@ def release(rd, cwd):
 
 
 def epoch(rd, cwd):
+    import office_bale as ob
     agg = rd.aggregate(cwd)
     epochs = rd.key(agg, "stats", "doc_epochs") or {}
     # bale keys an epoch by the digest of the contract docs its sessions
@@ -170,6 +171,7 @@ def epoch(rd, cwd):
 def sessions_since(rd, root, label, p, start):
     """One line per place: what landed, held, bailed or closed since the
     window's start, and what is open now, from the dossiers."""
+    import office_bale as ob
     try:
         cwd = ob.readable(p)
         open_now = rd.open_sessions(cwd)
@@ -271,6 +273,7 @@ def folders_moved(root, base):
 def drafting_added(root, base):
     """What the sittings and the scripts added to the drafting table
     since the base: counted by record, base against now."""
+    import office_watches as ow
     t = od.Table(root)
     page = lambda name: base_lines(root, base, f"{od.SPACE}/{name}")  # noqa: E731
     ruling_key = lambda r: (r["id"], r["kind"], r.get("day"), r["line"])  # noqa: E731
@@ -329,6 +332,7 @@ def since_section(rd, root, here, win):
 
 
 def watch_sections(result):
+    import office_watches as ow
     out = ["## Watches", ""]
     lines = result["watch_lines"] or (
         [f"no watches register in this office yet: only a sitting writes watches, on {ow.REGISTER}"]
@@ -344,6 +348,7 @@ def watch_sections(result):
 
 
 def desk_section(rd, root, today):
+    import office_bale as ob
     out = ["## The desk", ""]
     flight, bad, flying = ob.in_flight(rd, root)
     table = od.Table(root)
@@ -372,6 +377,7 @@ def in_tray_section(root):
     name, with the project it names when it names one: the office's name
     for it when the drop's words resolve to one of its projects, else the
     words as given. "none" when the in-tray is empty or not there."""
+    import office_drop as odrop
     out = ["## The in-tray", ""]
     drops = odrop.unsorted(root)
     if not drops:
@@ -444,6 +450,8 @@ def render(rd, root, now, tz_name):
     """(text, bad): the whole page, and whether a place could not be
     read. Each section stands alone: one that fails says why on the page
     and the rest are still written."""
+    import office_bale as ob
+    import office_watches as ow
     root = pathlib.Path(root)
     tz = ow.zone(tz_name)
     today = now.astimezone(tz).date().isoformat()
@@ -468,7 +476,7 @@ def render(rd, root, now, tz_name):
         nonlocal bad
         try:
             got = fn(*args)
-        except (ob.BaleError, oh.HelperError, OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+        except (ob.BaleError, oh.HelperError, OSError, ValueError) as exc:  # a TOMLDecodeError is a ValueError
             bad = True
             return [f"## {fn.__name__.replace('_', ' ')}", "", f"- could not be written: {exc}"]
         if isinstance(got, tuple):
@@ -483,7 +491,7 @@ def render(rd, root, now, tz_name):
         result = ow.check(rd, root, tz_name, filings=win["filings"])
         bad = bad or bool(result["bad"])
         out += watch_sections(result) + [""]
-    except (oh.HelperError, OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+    except (oh.HelperError, OSError, ValueError) as exc:  # a TOMLDecodeError is a ValueError
         bad = True
         out += ["## Watches", "", f"- could not be checked: {exc}", "", "## Standing lines", "",
                 "- could not be computed (the watches' error above)", ""]
@@ -508,6 +516,7 @@ def write(root, text):
 
 
 def main(argv=None):
+    import office_bale as ob
     ap = argparse.ArgumentParser(prog="office_digest.py", description=__doc__.split("\n\n")[0])
     ap.add_argument("root")
     ap.add_argument("--tz", required=True, help="the office's timezone")
@@ -531,7 +540,7 @@ def main(argv=None):
     except oh.HelperError as exc:
         log(f"error: {exc}")
         return 1
-    except (OSError, ValueError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, ValueError, UnicodeDecodeError) as exc:  # a TOMLDecodeError is a ValueError
         log(f"error: {exc.__class__.__name__}: {exc}")
         return 2
 

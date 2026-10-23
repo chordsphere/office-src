@@ -101,10 +101,10 @@ pastes.
 ## The suite's clock
 
 For the worker first. bale gives a session's validation two minutes
-(TARBALL.md 7.6), and the whole suite takes far longer (914 tests at
-0.27.0; 822 seconds on a two-core sandbox, 4 jobs at a time,
-where 0.26.0's 906 took 1,146; the fast tier 59.6 seconds). So,
-since 0.17.1:
+(TARBALL.md 7.6), and the whole suite takes far longer (919 tests at
+0.28.0; 866 seconds on a two-core sandbox, 4 jobs at a time,
+where 0.27.0's 914 took 1,245 on the same sandbox; the fast tier
+64.1 seconds). So, since 0.17.1:
 
 - Every validation.sh runs the fast tier, `tests/run.sh --fast`, plus
   what the session touched, named after it (`tests/run.sh --fast
@@ -190,9 +190,38 @@ since 0.17.1:
   "" none) and `OFFICE_CONTAINER_MARKER` ("" none), both empty in every
   Env and job. A test that wants a tool recorded names a directory of its
   own (test_office's TestStatusAndSurvey shows how).
+- Since 0.28.0 the office's Python helpers start light. A helper call
+  (`bin/office pylib`, 25 to 45 of them per start or land) was about 60
+  ms in a two-core sandbox, three quarters of it importing: every lib/
+  module imported its heavy standard modules and its siblings at the top.
+  Now each function imports what it uses where it starts (the top of a
+  module holds argparse, datetime, os, pathlib, re, sys and
+  office_helper; office_bale keeps office_host), the patterns at a
+  module's top are `office_helper.LazyPattern`s compiled on first use,
+  office_helper and office_bale build only the named subcommand's parser
+  (`OneSubcommand`), and `pylib` starts Python with `-S`. A small call
+  went from 85 ms to 42 in the worker's sandbox. `TestTheHelpersStart`
+  in tests/test_suite_clock.py holds every module to it: a new module
+  keeps its heavy imports and its siblings in the functions that use
+  them, writes its top-level patterns as LazyPatterns, and needs nothing
+  of site-packages (zoneinfo's tzdata fallback is the one exception, and
+  the zone falls back to UTC as it already did).
 
 ## Recent changes
 
+- 0.28.0 (session 2026-10-22-helper-imports-003): the helpers' start, the
+  second session after the front-door arc. Nothing you use changes.
+  - A small helper call took 42 ms where it took 85 in the worker's
+    sandbox (about 30 where 60 in suite-time's); `office status` makes 17
+    of them, a start about 11, a land about 45, so every command you run
+    returns sooner, and the whole suite took 866 seconds there
+    where 0.27.0's took 1,245 (914 tests then, 919 now, none dropped);
+    the fast tier 64.1, from 85.4.
+  - Each lib/ module imports its heavy standard modules and its siblings
+    where they are used; its top-level patterns compile on first use;
+    office_helper and office_bale build one subcommand's parser; and
+    `pylib` runs Python with `-S`.
+  - Additive: no migration.
 - 0.27.0 (session 2026-10-22-suite-time-002): the suite's time, the
   first session after the front-door arc. Nothing you use changes.
   - The whole suite took 822 seconds in the worker's sandbox,

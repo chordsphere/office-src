@@ -32,15 +32,10 @@ internal error, and 3 when a check found problems (the lines say which).
 
 import argparse
 import datetime as dt
-import fnmatch
-import json
 import os
 import pathlib
 import re
-import shlex
-import subprocess
 import sys
-import tomllib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import office_helper as oh  # noqa: E402
@@ -76,40 +71,40 @@ CHARTER_PLACEHOLDER = ("(not written yet: what the arc is for and what done mean
 DASH = r"(?:-|—|–|·)"
 ARROW = r"(?:->|→)"
 DATE = r"\d{4}-\d{2}-\d{2}"
-SID_TOKEN_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*-\d{3})\b")
+SID_TOKEN_RE = oh.LazyPattern(r"\b(\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*-\d{3})\b")
 ID_PART = r"\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*"
 
-RIDER_HEAD_RE = re.compile(rf"^### rider (\d+)\s*{DASH}\s*(.+?)\s*$")
-POINTER_RE = re.compile(rf"^- rider (\d+)\s*{ARROW}\s*folder (\d+)\s*$")
+RIDER_HEAD_RE = oh.LazyPattern(rf"^### rider (\d+)\s*{DASH}\s*(.+?)\s*$")
+POINTER_RE = oh.LazyPattern(rf"^- rider (\d+)\s*{ARROW}\s*folder (\d+)\s*$")
 RIDER_STATUSES = ("queued", "carried", "consumed", "moot", "stands")
-RIDER_STATE_RE = re.compile(rf"^- ({DATE}) (queued|carried|consumed|moot|stands):(?: (.*))?$")
-FIELD_RE = re.compile(r"^- ([a-z][a-z -]*?): (.*)$")
+RIDER_STATE_RE = oh.LazyPattern(rf"^- ({DATE}) (queued|carried|consumed|moot|stands):(?: (.*))?$")
+FIELD_RE = oh.LazyPattern(r"^- ([a-z][a-z -]*?): (.*)$")
 
-AGENDA_HEAD_RE = re.compile(rf"^## agenda (\d+)\s*{DASH}\s*(.+?)\s*$")
-DISPOSED_RE = re.compile(rf"^- ({DATE}) agenda (\d+)\s*{ARROW}\s*(.+?)\s*$")
+AGENDA_HEAD_RE = oh.LazyPattern(rf"^## agenda (\d+)\s*{DASH}\s*(.+?)\s*$")
+DISPOSED_RE = oh.LazyPattern(rf"^- ({DATE}) agenda (\d+)\s*{ARROW}\s*(.+?)\s*$")
 
-RULING_HEAD_RE = re.compile(rf"^## ({ID_PART})(?:\s+{DASH}\s+(derived)\s+{DASH}\s+({DATE}))?\s*$")
-ENTRY_HEAD_RE = re.compile(r"^## (\d+)\.\s+(.+?)\s*$")
-EVENT_HEAD_RE = re.compile(rf"^## (\d+)\s*{DASH}\s*(occurrence|derived)\s*{DASH}\s*({DATE})\s*$")
+RULING_HEAD_RE = oh.LazyPattern(rf"^## ({ID_PART})(?:\s+{DASH}\s+(derived)\s+{DASH}\s+({DATE}))?\s*$")
+ENTRY_HEAD_RE = oh.LazyPattern(r"^## (\d+)\.\s+(.+?)\s*$")
+EVENT_HEAD_RE = oh.LazyPattern(rf"^## (\d+)\s*{DASH}\s*(occurrence|derived)\s*{DASH}\s*({DATE})\s*$")
 ATTRIBUTIONS = ("planner", "worker", "operator", "courier")
-WATCH_HEAD_RE = re.compile(rf"^## W(\d+)\s*{DASH}\s*(.+?)\s*$")
+WATCH_HEAD_RE = oh.LazyPattern(rf"^## W(\d+)\s*{DASH}\s*(.+?)\s*$")
 
-RATIFIED_LINE_RE = re.compile(rf"^- ratified: ({DATE})(?:, (.*))?$")
-DECOMP_RE = re.compile(rf"^- (.+?)(?:\s+{ARROW}\s+(.+?))?\s*$")
-DECOMP_FOLDER_RE = re.compile(r"^folder (\d+)$")
+RATIFIED_LINE_RE = oh.LazyPattern(rf"^- ratified: ({DATE})(?:, (.*))?$")
+DECOMP_RE = oh.LazyPattern(rf"^- (.+?)(?:\s+{ARROW}\s+(.+?))?\s*$")
+DECOMP_FOLDER_RE = oh.LazyPattern(r"^folder (\d+)$")
 
-MOVE_RE = re.compile(rf"^- \[( |x|X)\] ({DATE}) (.*?)\s*$")
-MOVE_DONE_RE = re.compile(rf"\s+{ARROW}\s+folder (\d+)\s*$")
+MOVE_RE = oh.LazyPattern(rf"^- \[( |x|X)\] ({DATE}) (.*?)\s*$")
+MOVE_DONE_RE = oh.LazyPattern(rf"\s+{ARROW}\s+folder (\d+)\s*$")
 
 # MASTER.md's own forms: they survive in filed MASTER.md content and
 # nowhere new (the blueprint's section 1.7). Named here so the seam is
 # visible; Table.resolve_master is where their mapping goes the day an
 # office files MASTER.md content, and nothing calls it before then.
 MASTER_FORMS = (
-    ("row", re.compile(r"\brow (\d+)\b")),
-    ("board", re.compile(r"\bboard (\d+)\b")),
-    ("section 5, this date", re.compile(r"(?:§|section )5, (\d{4}-\d{2}-\d{2})")),
-    ("section 6 entry", re.compile(r"(?:§|section )6 entry (\d+)")),
+    ("row", oh.LazyPattern(r"\brow (\d+)\b")),
+    ("board", oh.LazyPattern(r"\bboard (\d+)\b")),
+    ("section 5, this date", oh.LazyPattern(r"(?:§|section )5, (\d{4}-\d{2}-\d{2})")),
+    ("section 6 entry", oh.LazyPattern(r"(?:§|section )6 entry (\d+)")),
 )
 
 
@@ -209,6 +204,7 @@ def add_space_to_floor_plan(manifest, entry, space=SPACE):
     Returns False when the floor plan already has it. The result is
     parsed back: everything the floor plan said before must read the
     same, and the new table must read as the catalog's."""
+    import tomllib
     path = pathlib.Path(manifest)
     text = path.read_text(encoding="ascii")
     before = tomllib.loads(text)
@@ -238,6 +234,7 @@ def add_include_trigger(bale_toml, trigger):
     """Add a trigger to bale.toml's include group, every other byte kept.
     Returns True when added, False when already there, None when there is
     no include group to add it to (office status reports that)."""
+    import tomllib
     path = pathlib.Path(bale_toml)
     if not path.is_file():
         return None
@@ -800,6 +797,7 @@ def glob_static_prefix(glob):
 def glob_touches(glob, entry):
     """Does a forecast entry (a path, a directory covering what is under
     it, or the whole tree) touch a rider's path glob?"""
+    import fnmatch
     g = glob.strip().strip("/")
     e = entry.strip().strip("/")
     if e in ("", "."):
@@ -824,7 +822,7 @@ def rider_line(r, t):
 # A rides glob may name its project first, the way a lane does
 # ("office-src: bin/"): only a pack on that project carries it. A bare
 # glob rides a pack anywhere whose forecast touches it.
-RIDES_PROJECT_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*):\s*(\S.*)$")
+RIDES_PROJECT_RE = oh.LazyPattern(r"^([A-Za-z0-9][A-Za-z0-9._-]*):\s*(\S.*)$")
 
 
 def rides_parts(rides):
@@ -1081,18 +1079,18 @@ def render_evidence(root, n=None):
 # --- the citation check --------------------------------------------------------------
 
 CITE_RES = (
-    ("folder", re.compile(r"\bfolders? (\d+(?:, ?\d+)*)\b")),
-    ("blueprint", re.compile(rf"\bblueprint ({ID_PART})\b")),
-    ("ruling", re.compile(rf"\bruling ({ID_PART})\b")),
-    ("evidence", re.compile(r"\bevidence (\d+)\b")),
-    ("watch", re.compile(r"\bwatch W(\d+)\b")),
-    ("rider", re.compile(r"\brider (\d+)\b")),
-    ("agenda", re.compile(r"\bagenda (\d+)\b")),
+    ("folder", oh.LazyPattern(r"\bfolders? (\d+(?:, ?\d+)*)\b")),
+    ("blueprint", oh.LazyPattern(rf"\bblueprint ({ID_PART})\b")),
+    ("ruling", oh.LazyPattern(rf"\bruling ({ID_PART})\b")),
+    ("evidence", oh.LazyPattern(r"\bevidence (\d+)\b")),
+    ("watch", oh.LazyPattern(r"\bwatch W(\d+)\b")),
+    ("rider", oh.LazyPattern(r"\brider (\d+)\b")),
+    ("agenda", oh.LazyPattern(r"\bagenda (\d+)\b")),
     # A notepad page is dated: notepad/DATE.md or notepad/DATE-SLUG.md
     # (a placeholder such as notepad/PAGE.md is no citation).
-    ("notepad", re.compile(r"\b(notepad/\d{4}-\d{2}-\d{2}(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?\.md)\b")),
+    ("notepad", oh.LazyPattern(r"\b(notepad/\d{4}-\d{2}-\d{2}(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?\.md)\b")),
 )
-WATCH_LOG_RE = re.compile(rf"^- {DATE} W(\d+) ")
+WATCH_LOG_RE = oh.LazyPattern(rf"^- {DATE} W(\d+) ")
 
 
 def citations_in(lines, rel):
@@ -1343,6 +1341,7 @@ class MoveError(oh.HelperError):
 def parse_move(text, lineno, t):
     """One pending move's words as a dict: verb, folder (for the verbs
     that act on one), keys. Raises MoveError naming what does not read."""
+    import shlex
     try:
         words = shlex.split(text, posix=True)
     except ValueError as exc:
@@ -1644,7 +1643,7 @@ def main(argv=None):
     except oh.HelperError as exc:
         log(f"error: {exc}")
         return 1
-    except (OSError, ValueError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, ValueError, UnicodeDecodeError) as exc:  # a TOMLDecodeError is a ValueError
         log(f"error: {exc.__class__.__name__}: {exc}")
         return 2
 
@@ -1710,6 +1709,7 @@ def dispatch(a):
     elif a.cmd == "blueprint-ratify":
         emit(blueprint_ratify(a.root, a.id, a.day, a.words, a.sid), [f"blueprint {a.id}'s charter is ratified"])
     elif a.cmd == "blueprint-close-plan":
+        import json
         plan = close_plan(a.root, a.id)
         if a.brief:
             pathlib.Path(a.brief).write_text(close_brief(plan), encoding="utf-8")
@@ -1723,6 +1723,7 @@ def dispatch(a):
         print("\n".join(lines))
         return 3 if problems else 0
     elif a.cmd == "moves-plan":
+        import json
         moves, errors = pending_moves(a.root)
         if errors:
             print("\n".join(errors))
