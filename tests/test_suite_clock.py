@@ -1011,6 +1011,146 @@ class TestTheRunsBytecodeCache(unittest.TestCase):
                                                     str(lib), "1"])
 
 
+# The standard modules lib/ imports where they are used, never at the top
+# (0.28.0): each costs milliseconds to load, and most helper calls use
+# none of them. What counts is what a module loads beyond KEPT: the imports
+# every module keeps at its top, runpy (bin/office pylib's own), and what
+# those load themselves on this interpreter, read once as the baseline.
+# shutil rides with argparse and fnmatch with pathlib; on Python 3.12 and
+# before pathlib loads urllib.parse and runpy's importlib.util loads
+# threading, which is why the baseline is measured, never listed. A module
+# that needs a heavy module at the top (a constant built from it) is named
+# in HEAVY_AT_TOP with the reason; none does today.
+HEAVY = ("subprocess", "tarfile", "tempfile", "tomllib", "json", "shlex", "hashlib", "threading", "zoneinfo", "urllib")
+HEAVY_AT_TOP = {}
+KEPT = "import argparse, datetime, os, pathlib, re, runpy, shutil, sys"
+# Which office modules importing each lib/ module loads: itself, and the
+# siblings it needs at the top. office_helper is the base nearly every
+# module builds on; office_bale reads hosted projects through office_host
+# in most of its functions; office_watches and office_digest name the
+# drafting table's pages from office_drafting's constants; office_deliver
+# builds its error class on office_bale's.
+SIBLINGS_AT_TOP = {
+    "office_helper": set(), "office_host": set(), "office_letterhead": set(),
+    "office_bale": {"office_helper", "office_host"},
+    "office_deliver": {"office_helper", "office_host", "office_bale"},
+    "office_digest": {"office_helper", "office_drafting"},
+    "office_watches": {"office_helper", "office_drafting"},
+}
+LIB = REPO / "lib"
+PYLIB_CODE = ('import runpy, sys; sys.path.insert(0, sys.argv.pop(1)); '
+              'runpy.run_module(sys.argv.pop(1), run_name="__main__", alter_sys=True)')
+
+
+def modules_loaded(stderr):
+    """The modules an -X importtime run loaded, by name."""
+    return {line.split("|")[-1].strip() for line in stderr.splitlines()
+            if line.startswith("import time:") and line.count("|") == 2 and "imported package" not in line}
+
+
+class TestTheHelpersStart(unittest.TestCase):
+    """0.28.0: a helper call loads what it uses. Each lib/ module imports
+    its heavy standard modules and its siblings where they are used, and
+    bin/office starts its Python without site (-S)."""
+
+    def setUp(self):
+        self.e = Env(self)
+
+    def imported(self, module=None, code=None):
+        """The modules this interpreter loads for `import MODULE` from lib/,
+        or for `code`, under -S as bin/office runs it."""
+        code = code or "import sys; sys.path.insert(0, sys.argv[1]); __import__(sys.argv[2])"
+        proc = subprocess.run([sys.executable, "-B", "-P", "-S", "-X", "importtime", "-c", code, str(LIB), module or ""],
+                              env=self.e.env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
+        return modules_loaded(proc.stderr)
+
+    def heavy_in(self, loaded):
+        """The heavy modules in `loaded` beyond what KEPT loads on this
+        interpreter (the baseline, read once per class)."""
+        if not hasattr(type(self), "baseline"):
+            type(self).baseline = self.imported(code=KEPT)
+        return sorted(m for m in loaded - self.baseline if m.split(".")[0] in HEAVY)
+
+    def test_every_module_imports_its_heavy_standard_modules_and_its_siblings_where_they_are_used(self):
+        for source in sorted(LIB.glob("office_*.py")):
+            loaded = self.imported(source.stem)
+            self.assertEqual(self.heavy_in(loaded), sorted(HEAVY_AT_TOP.get(source.stem, ())),
+                             f"{source.name} imports at the top")
+            siblings = {m for m in loaded if m.startswith("office_")} - {source.stem}
+            self.assertEqual(siblings, SIBLINGS_AT_TOP.get(source.stem, {"office_helper"}), source.name)
+
+    def test_a_small_read_loads_none_of_them_and_a_call_that_needs_one_loads_it(self):
+        # The command's own start, as bin/office runs it, plus -X importtime.
+        def run(*argv):
+            return subprocess.run([sys.executable, "-B", "-P", "-S", "-X", "importtime", "-c", PYLIB_CODE, str(LIB), *argv],
+                                  env=self.e.env, cwd=self.e.tmp, capture_output=True, text=True, timeout=60)
+        proc = run("office_helper", "vercmp", "0.27.0", "0.28.0")
+        self.assertEqual((proc.returncode, proc.stdout), (0, "-1\n"), proc.stderr[-2000:])
+        loaded = modules_loaded(proc.stderr)
+        self.assertEqual(self.heavy_in(loaded) + sorted(m for m in loaded if m.startswith("office_host")), [],
+                         sorted(loaded))
+        self.assertNotIn("site", loaded)
+        manifest = self.e.tmp / "m.toml"
+        manifest.write_text('[office]\nbuilt_from = "0.27.0"\n')
+        proc = run("office_helper", "stamp", str(manifest), "built_from")
+        self.assertEqual((proc.returncode, proc.stdout), (0, "0.27.0\n"), proc.stderr[-2000:])
+        self.assertIn("tomllib", modules_loaded(proc.stderr))
+
+    def test_a_pattern_at_the_top_of_a_module_compiles_when_first_used(self):
+        p = h.LazyPattern(r"^a(\d)$", re.I)
+        self.assertIsNone(p._compiled)
+        self.assertEqual(p.match("A1").group(1), "1")
+        self.assertIsNotNone(p._compiled)
+        self.assertEqual((p.pattern, p.flags & re.I, p.sub("x", "a2"), repr(p)), (r"^a(\d)$", re.I, "x",
+                                                                                      "LazyPattern('^a(\\\\d)$')"))
+        self.assertIsNone(p.search("b"))
+        # Every pattern at the top of a module that imports office_helper is
+        # one; office_host and office_letterhead import nothing of the office
+        # and keep re.compile for their few.
+        for source in sorted(LIB.glob("office_*.py")):
+            tree = ast.parse(source.read_text(encoding="utf-8"))
+            calls = [n for node in tree.body if not isinstance(node, (ast.FunctionDef, ast.ClassDef))
+                     for n in ast.walk(node) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                     and isinstance(n.func.value, ast.Name) and n.func.value.id == "re" and n.func.attr == "compile"]
+            if source.stem in ("office_host", "office_letterhead"):
+                self.assertTrue(calls, source.name)
+            else:
+                self.assertEqual([n.lineno for n in calls], [], f"{source.name} compiles a pattern at the top")
+
+    def test_a_call_that_names_its_subcommand_builds_that_parser_alone(self):
+        import office_bale as ob
+        for mod, argv, out in ((h, ["vercmp", "1.0.0", "2.0.0"], ("cmd", "vercmp")),
+                               (ob, ["desk", "/x", "--today", "2026-10-22"], ("cmd", "desk"))):
+            one, found = mod.build_parser(h.subcommand_named(argv))
+            whole, found_all = mod.build_parser()
+            self.assertEqual((found, found_all), (True, True))
+            self.assertEqual(len(one._subparsers._group_actions[0].choices), 1)
+            self.assertGreater(len(whole._subparsers._group_actions[0].choices), 20)
+            self.assertEqual(getattr(one.parse_args(argv), out[0]), out[1])
+            # Its usage names every subcommand, as the whole parser's does.
+            self.assertEqual(one.format_usage(), whole.format_usage())
+            self.assertFalse(mod.build_parser("no-such-subcommand")[1])
+        self.assertEqual([h.subcommand_named(a) for a in ([], ["-h"], ["--x", "y"], ["stamp", "m"])],
+                         [None, None, None, "stamp"])
+        skipped = h.SkippedParser()
+        self.assertIs(skipped.add_argument("--x", action="store_true").set_defaults(fn=None), skipped)
+        self.assertIs(skipped.add_mutually_exclusive_group(required=True).add_argument("--y"), skipped)
+
+    def test_the_command_starts_its_python_without_site(self):
+        text = (REPO / "bin" / "office").read_text()
+        line = next(l for l in text.splitlines() if l.lstrip().startswith("python3 ") and "runpy" in l)
+        self.assertIn(" -S ", line)
+        lib = self.e.tmp / "install" / "lib"
+        lib.mkdir(parents=True)
+        (lib / "office_site_mod.py").write_text(
+            "import sys, json, tomllib\n"
+            "print(sys.flags.no_site, 'site' in sys.modules, any(p.endswith('-packages') for p in sys.path))\n")
+        proc = subprocess.run(["bash", "-c", office_functions("pylib") + 'pylib "$OFFICE_SRC/lib/office_site_mod.py"'],
+                              env=dict(self.e.env, OFFICE_SRC=str(lib.parent)), capture_output=True, text=True, timeout=60)
+        self.assertEqual((proc.returncode, proc.stdout), (0, "1 False False\n"), proc.stderr)
+
+
 class TestTheRecord(unittest.TestCase):
     def test_the_version_the_releases_and_the_readme(self):
         version = (REPO / "VERSION").read_text().strip()

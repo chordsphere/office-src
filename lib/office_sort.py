@@ -41,18 +41,12 @@ internal error, and 3 when a check found problems (the lines say which).
 """
 
 import argparse
-import datetime as dt
-import json
 import pathlib
 import re
-import subprocess
 import sys
-import tomllib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import office_helper as oh  # noqa: E402
-import office_drafting as od  # noqa: E402
-import office_drop as odrop  # noqa: E402
 
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 TEMPLATES = INSTALL / "templates"
@@ -64,24 +58,24 @@ BALE_TOML_REL = "bale.toml"
 # office land can tell it from any other session open in the office.
 SORT_SLUG = "in-tray-sort"
 SORT_GOAL = "Sort the in-tray's drops"
-SORT_SID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-" + re.escape(SORT_SLUG) + r"-\d{3}$")
+SORT_SID_RE = oh.LazyPattern(r"^\d{4}-\d{2}-\d{2}-" + re.escape(SORT_SLUG) + r"-\d{3}$")
 SORT_BRIEF_TEMPLATE = "sort-brief.md"
 
 SORT_FIELDS = ("project", "folder", "goal", "size", "tell", "facts")
-SORT_KEY_RE = re.compile(r"^- ([a-z]+):(?: (.*))?$")
-QA_LINE_RE = re.compile(r"^- \d{4}-\d{2}-\d{2} \S.*$")
+SORT_KEY_RE = oh.LazyPattern(r"^- ([a-z]+):(?: (.*))?$")
+QA_LINE_RE = oh.LazyPattern(r"^- \d{4}-\d{2}-\d{2} \S.*$")
 # A Structure line (0.23.0): `- KEY: VALUE`, the key one of the fields a
 # folder may mark provisional.
-STRUCTURE_LINE_RE = re.compile(r"^- ([a-z]+): ?(.*)$")
-HEADING_RE = re.compile(r"^(#{1,6}) (.+?)\s*$")
-FENCE_RE = re.compile(r"^\s*(```|~~~)")
+STRUCTURE_LINE_RE = oh.LazyPattern(r"^- ([a-z]+): ?(.*)$")
+HEADING_RE = oh.LazyPattern(r"^(#{1,6}) (.+?)\s*$")
+FENCE_RE = oh.LazyPattern(r"^\s*(```|~~~)")
 
 HANDBOOK = "handbook"
 HANDBOOK_FRONT = "README.md"
 HANDBOOK_FRONT_TEMPLATE = "handbook-README.md"
 CHAPTER_TEMPLATE = "handbook-chapter.md"
-FACT_LINE_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2}): (.+) \((\S+)\)$")
-CHAPTER_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*\.md$")
+FACT_LINE_RE = oh.LazyPattern(r"^- (\d{4}-\d{2}-\d{2}): (.+) \((\S+)\)$")
+CHAPTER_NAME_RE = oh.LazyPattern(r"^[A-Za-z0-9][A-Za-z0-9_-]*\.md$")
 
 
 def log(msg):
@@ -161,6 +155,7 @@ def parse_sort(name, body, brief_level=4):
     is kept to the byte (doctrine section 4). brief_level is the Brief's
     heading level: 4 in notes.md, 3 on a drop's page, where page_sort
     reads it back with name None."""
+    import office_drop as odrop
     out = {"name": name, "field_lines": [], "fields": {}, "facts": [], "brief": None, "problems": [],
            "ignored": 0}
     if name is not None and not odrop.PAGE_NAME_RE.match(name):
@@ -285,6 +280,7 @@ def parse_notes(text):
 def sort_section(sort, sid, day):
     """The lines office land appends to a drop's page: the office's first
     line, then the subsection's fields verbatim, then its Brief."""
+    import office_drop as odrop
     lines = [odrop.SORT_HEADING, "", f"- sorted: {day}, by {sid}", *sort["field_lines"]]
     if sort["brief"] is not None:
         lines += ["", "### Brief", "", *sort["brief"]]
@@ -294,6 +290,7 @@ def sort_section(sort, sid, day):
 def page_sort(sort_lines):
     """A filed Sort section read back (the lines after `## Sort`): sid,
     day, fields, brief (lines or None), problems."""
+    import office_drop as odrop
     lines = trimmed(sort_lines or [])
     out = {"sid": None, "day": None, "fields": {}, "facts": [], "brief": None, "problems": []}
     if not lines or not odrop.SORTED_LINE_RE.match(lines[0]):
@@ -310,6 +307,7 @@ def page_sort(sort_lines):
 def find_page(root, name, folder=None):
     """A drop's page by name: in the in-tray, or in the landed folder's
     drops/ (space/name); its path relative to the office, or None."""
+    import office_drop as odrop
     root = pathlib.Path(root)
     for rel in [f"{odrop.SPACE}/{name}"] + ([f"{folder}/drops/{name}"] if folder else []):
         if (root / rel).is_file() and pathlib.PurePosixPath(rel).name != odrop.FRONT_PAGE:
@@ -322,6 +320,7 @@ def file_sort(root, sort, sid, day, folder=None):
     state is filed, already (sorted before, left as it is), missing (no
     such page: said, never invented), or refused (the subsection or the
     page does not read)."""
+    import office_drop as odrop
     name = sort["name"]
     if sort["problems"]:
         return "refused", None, f"### {name} is not filed: " + "; ".join(sort["problems"])
@@ -345,6 +344,7 @@ def file_sort(root, sort, sid, day, folder=None):
 # --- the handbook ----------------------------------------------------------------------
 
 def handbook_entry():
+    import office_drafting as od
     return od.catalog_entry(space=HANDBOOK)
 
 
@@ -352,6 +352,7 @@ def add_include_pull(bale_toml, pull):
     """Add a pull to bale.toml's include group, every other byte kept:
     True when added, False when there already, None when there is no
     group to add it to (office status says so)."""
+    import tomllib
     path = pathlib.Path(bale_toml)
     if not path.is_file():
         return None
@@ -375,6 +376,7 @@ def handbook_arrive(root):
     the install's template, the floor plan's entry as the catalog
     declares it (the front page hung), bale.toml's trigger and the hung
     pull, each only when missing. Returns (changed paths, words)."""
+    import office_drafting as od
     root = pathlib.Path(root)
     entry = handbook_entry()
     changed, words = [], []
@@ -535,6 +537,7 @@ def file_notes(root, notes_text, sid, day, folder=None, project_names=()):
     """Everything office land files from one notes.md, beyond the two
     pages. Returns (said lines, changed paths). folder is the landed
     folder (space/name) or None (a standalone sort)."""
+    import office_drop as odrop
     root = pathlib.Path(root)
     notes = parse_notes(notes_text)
     said, changed = [], []
@@ -652,6 +655,7 @@ def move_plans(root, project_names=()):
     """One plan per sorted drop still in the in-tray, oldest first: a dict
     page, name, sid, kind (new or into), folder (int for into), title,
     slug, lane, size, goal, problem (None, or why the page stays)."""
+    import office_drop as odrop
     root = pathlib.Path(root)
     names = list(project_names)
     out = []
@@ -690,6 +694,7 @@ def place(root, page_rel, folder_rel, day, sid=None):
     History line, brief.md from the Sort's Brief (the section's text,
     nothing added), the goal when the folder has none, and the tell on
     its Next. Returns (changed paths, words)."""
+    import office_drop as odrop
     root = pathlib.Path(root)
     src = root / page_rel
     parsed = odrop.parse_page(src.read_text(encoding="utf-8"))
@@ -733,6 +738,7 @@ def drops_waited(root, drops):
     session recorded in a folder (office start's `office sessions: SID
     in ...` commit) after the commit that dropped the page. From git, so
     it is what happened, not what a clock says."""
+    import subprocess
     root = pathlib.Path(root)
 
     def git(*args):
@@ -763,6 +769,8 @@ def render_sort_brief(root, desk_text, drafting=None):
     every unsorted drop between its DROP markers, the desk as office desk
     prints it, and the formats. drafting says whether the office has a
     drafting table (its moves page is the session's to write)."""
+    import office_drafting as od
+    import office_drop as odrop
     root = pathlib.Path(root)
     drafting = (root / od.SPACE).is_dir() if drafting is None else drafting
     blocks = []
@@ -843,6 +851,7 @@ def main(argv=None):
                 print(c)
             return 0
         if a.cmd == "pending":
+            import office_drop as odrop
             return 0 if odrop.sorted_waiting(a.root) else 3
         if a.cmd == "brief":
             desk = pathlib.Path(a.desk_file).read_text(encoding="utf-8")

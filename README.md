@@ -1393,8 +1393,8 @@ matches the floor plan.
 
 | path | what |
 |---|---|
-| bin/office | the command (bash) |
-| lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library) |
+| bin/office | the command (bash); `pylib` starts each Python helper as a module, with -B, -P and (0.28.0) -S |
+| lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library); since 0.28.0 the LazyPattern and OneSubcommand every module's start leans on |
 | lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after |
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
 | lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for, the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray |
@@ -1549,6 +1549,23 @@ process rather than starting the interpreter again; a call that took 84
 ms takes 24. The land fake reads the directory each capture was made in
 from the capture's own `cwd`, so no test file names a probe's paths, and
 `tests/test_suite_clock.py`'s rule reads tests/fakes/ with the tests.
+
+Since 0.28.0 the office's Python helpers start light, and no verb's
+output changes. Every `office` command starts several of them (`bin/office
+pylib`: `office status` 17, a start about 11, a land about 45), and each
+was about 60 ms in a sandbox, three quarters of it importing standard
+modules the call never used. Each lib/ module now imports its heavy
+standard modules (subprocess, tarfile, tempfile, tomllib, json, shlex,
+hashlib, threading, zoneinfo, urllib) and its sibling modules in the
+functions that use them; the patterns at a module's top are
+`office_helper.LazyPattern`s, compiled the first time one is used;
+office_helper and office_bale build only the parser of the subcommand a
+call names (`OneSubcommand`; a call that names none, a flag or an unknown
+name builds them all, so argparse's usage and errors read as before); and
+`pylib` starts Python with `-S`, since lib/ is standard library only. A
+small call went from 85 ms to 42 in the worker's sandbox, and the whole
+suite from 1,245 seconds to 866. `TestTheHelpersStart` in
+tests/test_suite_clock.py holds every module to the rule.
 
 The suite builds offices, installs and synthetic migrations under
 temporary directories and never touches your home directory or offices,

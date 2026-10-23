@@ -84,8 +84,6 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import office_helper as oh  # noqa: E402
-import office_drafting as od  # noqa: E402
-import office_drop as odrop  # noqa: E402
 
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 TEMPLATES = INSTALL / "templates"
@@ -117,18 +115,18 @@ DAY_NAMES = {"mon": "Monday", "tue": "Tuesday", "wed": "Wednesday", "thu": "Thur
              "sat": "Saturday", "sun": "Sunday", "day": "day", "weekday": "weekday"}
 
 ABOUT = r"(?: \[about: ([^\]]*)\])?"
-PLAN_ONE_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) (.+?)" + ABOUT + r"$")
-PLAN_SERIES_RE = re.compile(r"^- every (mon|tue|wed|thu|fri|sat|sun|day|weekday) (\d{2}:\d{2}) (.+?)" + ABOUT + r"$")
-RECORD_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) ([^:]+?): (prep out|held), "
+PLAN_ONE_RE = oh.LazyPattern(r"^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) (.+?)" + ABOUT + r"$")
+PLAN_SERIES_RE = oh.LazyPattern(r"^- every (mon|tue|wed|thu|fri|sat|sun|day|weekday) (\d{2}:\d{2}) (.+?)" + ABOUT + r"$")
+RECORD_RE = oh.LazyPattern(r"^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) ([^:]+?): (prep out|held), "
                        r"(\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*-\d{3})((?:; (?:arose|dropped): [^;\[]*)*)"
                        + ABOUT + r"$")
-CANON_ONE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})$")
-CANON_SERIES_RE = re.compile(r"^every (mon|tue|wed|thu|fri|sat|sun|day|weekday) (\d{2}:\d{2})$")
-KEY_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) (.+)$")
+CANON_ONE_RE = oh.LazyPattern(r"^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})$")
+CANON_SERIES_RE = oh.LazyPattern(r"^every (mon|tue|wed|thu|fri|sat|sun|day|weekday) (\d{2}:\d{2})$")
+KEY_RE = oh.LazyPattern(r"^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) (.+)$")
 
-ARISING_BEGIN_RE = re.compile(r"^--- ARISING BEGIN (\S+) ---$")
+ARISING_BEGIN_RE = oh.LazyPattern(r"^--- ARISING BEGIN (\S+) ---$")
 ARISING_END = "--- ARISING END ---"
-ARISING_PROJECT_RE = re.compile(r"^- project: (.+)$")
+ARISING_PROJECT_RE = oh.LazyPattern(r"^- project: (.+)$")
 NO_PROJECT = "none"
 
 
@@ -176,28 +174,28 @@ MONTH_WORDS = {"january": 1, "jan": 1, "february": 2, "feb": 2, "march": 3, "mar
 ORD = r"(?:st|nd|rd|th)?"
 
 SERIES_PATTERNS = (
-    (re.compile(r"\b(?:every|each)\s+(weekday|day)s?\b", re.I), lambda m: m.group(1).lower()),
-    (re.compile(r"\b(?:every|each)\s+(?:week\s+on\s+)?" + DAYNAME_ANY + r"s?\b", re.I),
+    (oh.LazyPattern(r"\b(?:every|each)\s+(weekday|day)s?\b", re.I), lambda m: m.group(1).lower()),
+    (oh.LazyPattern(r"\b(?:every|each)\s+(?:week\s+on\s+)?" + DAYNAME_ANY + r"s?\b", re.I),
      lambda m: DAY_WORDS[m.group(1).lower()]),
-    (re.compile(r"\bweekly\s+on\s+" + DAYNAME_ANY + r"s?\b", re.I), lambda m: DAY_WORDS[m.group(1).lower()]),
-    (re.compile(r"\bdaily\b", re.I), lambda m: "day"),
-    (re.compile(r"\b(?:on\s+)?weekdays\b", re.I), lambda m: "weekday"),
-    (re.compile(r"\bon\s+" + DAYNAME_FULL + r"s\b", re.I), lambda m: DAY_WORDS[m.group(1).lower()]),
+    (oh.LazyPattern(r"\bweekly\s+on\s+" + DAYNAME_ANY + r"s?\b", re.I), lambda m: DAY_WORDS[m.group(1).lower()]),
+    (oh.LazyPattern(r"\bdaily\b", re.I), lambda m: "day"),
+    (oh.LazyPattern(r"\b(?:on\s+)?weekdays\b", re.I), lambda m: "weekday"),
+    (oh.LazyPattern(r"\bon\s+" + DAYNAME_FULL + r"s\b", re.I), lambda m: DAY_WORDS[m.group(1).lower()]),
 )
 
-DATE_ISO_RE = re.compile(r"\b(?:on\s+)?(\d{4})-(\d{2})-(\d{2})\b", re.I)
-DATE_RELATIVE_RE = re.compile(r"\b(today|tonight|tomorrow)\b", re.I)
-DATE_DAY_MONTH_RE = re.compile(r"\b(?:on\s+)?(?:the\s+)?(\d{1,2})" + ORD + r"\s+(?:of\s+)?" + MONTHNAME
+DATE_ISO_RE = oh.LazyPattern(r"\b(?:on\s+)?(\d{4})-(\d{2})-(\d{2})\b", re.I)
+DATE_RELATIVE_RE = oh.LazyPattern(r"\b(today|tonight|tomorrow)\b", re.I)
+DATE_DAY_MONTH_RE = oh.LazyPattern(r"\b(?:on\s+)?(?:the\s+)?(\d{1,2})" + ORD + r"\s+(?:of\s+)?" + MONTHNAME
                                + r"\.?(?:,?\s+(\d{4}))?\b", re.I)
-DATE_MONTH_DAY_RE = re.compile(r"\b(?:on\s+)?" + MONTHNAME + r"\.?\s+(\d{1,2})" + ORD + r"(?:,?\s+(\d{4}))?\b", re.I)
-DATE_SLASH_RE = re.compile(r"\b(?:on\s+)?(\d{1,2})/(\d{1,2})(?:/(\d{4}|\d{2}))?\b", re.I)
-DATE_WEEKDAY_RE = re.compile(r"\b(?:(?:on|next|this)\s+)+" + DAYNAME_ANY + r"\b|\b" + DAYNAME_FULL + r"\b", re.I)
+DATE_MONTH_DAY_RE = oh.LazyPattern(r"\b(?:on\s+)?" + MONTHNAME + r"\.?\s+(\d{1,2})" + ORD + r"(?:,?\s+(\d{4}))?\b", re.I)
+DATE_SLASH_RE = oh.LazyPattern(r"\b(?:on\s+)?(\d{1,2})/(\d{1,2})(?:/(\d{4}|\d{2}))?\b", re.I)
+DATE_WEEKDAY_RE = oh.LazyPattern(r"\b(?:(?:on|next|this)\s+)+" + DAYNAME_ANY + r"\b|\b" + DAYNAME_FULL + r"\b", re.I)
 
-TIME_NOON_RE = re.compile(r"\b(?:at\s+)?(noon|midday)\b", re.I)
-TIME_AMPM_RE = re.compile(r"\b(?:at\s+)?(\d{1,2})(?:[:.](\d{2}))?\s*([ap])\.?\s?m\b\.?", re.I)
-TIME_CLOCK_RE = re.compile(r"\b(?:at\s+)?([01]?\d|2[0-3]):([0-5]\d)\b", re.I)
-TIME_OCLOCK_RE = re.compile(r"\b(?:at\s+)?(\d{1,2})\s+o'?clock\b", re.I)
-TIME_BARE_RE = re.compile(r"\bat\s+(\d{1,2})\b(?![:/.\-]\d)", re.I)
+TIME_NOON_RE = oh.LazyPattern(r"\b(?:at\s+)?(noon|midday)\b", re.I)
+TIME_AMPM_RE = oh.LazyPattern(r"\b(?:at\s+)?(\d{1,2})(?:[:.](\d{2}))?\s*([ap])\.?\s?m\b\.?", re.I)
+TIME_CLOCK_RE = oh.LazyPattern(r"\b(?:at\s+)?([01]?\d|2[0-3]):([0-5]\d)\b", re.I)
+TIME_OCLOCK_RE = oh.LazyPattern(r"\b(?:at\s+)?(\d{1,2})\s+o'?clock\b", re.I)
+TIME_BARE_RE = oh.LazyPattern(r"\bat\s+(\d{1,2})\b(?![:/.\-]\d)", re.I)
 
 
 def afternoon(hour, notes, said, minute=0):
@@ -609,6 +607,7 @@ def arrive(root):
     install's templates, the floor plan's entry as the catalog declares it
     and bale.toml's trigger, each only when missing. Returns (changed
     paths, words for the log)."""
+    import office_drafting as od
     root = pathlib.Path(root)
     entry = od.catalog_entry(space=SPACE)
     changed, words = [], []
@@ -715,6 +714,7 @@ def where_drop(root, name):
     wherever it is now: in the in-tray, or moved whole into a folder's
     drops/ (on the desk or in the filing cabinet); (None, None) when it is
     nowhere."""
+    import office_drop as odrop
     root = pathlib.Path(root)
     if (root / odrop.SPACE / name).is_file():
         return f"{odrop.SPACE}/{name}", None
@@ -734,6 +734,7 @@ def gather_prep(root, o, tz, names=None, today=None):
     meeting, with the folders they became. Returns (entries, windows):
     windows says each concern's window, in words."""
     import office_planner as op
+    import office_sort as osort
     root = pathlib.Path(root)
     names = op.project_names(root) if names is None else names
     concerns = concerns_of(o["about"], names)
@@ -743,7 +744,7 @@ def gather_prep(root, o, tz, names=None, today=None):
     for c in concerns:
         if c == op.OFFICE:
             continue
-        rel = op.osort.chapter_rel(c)
+        rel = osort.chapter_rel(c)
         if (root / rel).is_file():
             out.append(op.entry(rel, f"{c}'s handbook chapter: what the office knows of {c} that its repo does not say",
                                 "chapter"))
@@ -829,6 +830,7 @@ def render_brief(o, tz_name, day, rides, left, windows):
 
 def write_prep(root, key, tz, tz_name, day, brief_out, includes_out):
     """The prep's brief and includes, written; returns the ride lines."""
+    import office_drafting as od
     import office_planner as op
     o = planned(root, key, tz)
     if o is None:
@@ -862,6 +864,7 @@ def parse_arising(text, names=()):
     line's session id, each item a dict heading, project (None for none),
     body; problems are the lines that do not read, each named. (None, [],
     [why], 0) when the text holds no block."""
+    import office_drop as odrop
     lines = odrop.normalize_text(text).split("\n")
     blocks, at = [], None
     for i, line in enumerate(lines):
@@ -949,6 +952,7 @@ def hold(root, sid, items, via, day, time):
     """The meeting whose prep is sid, recorded held, and each item written
     as a drop (odrop.write_drop: the in-tray arriving first when it must),
     tied to it. Returns (record, changed paths, drops written)."""
+    import office_drop as odrop
     root = pathlib.Path(root)
     r = prep_of(root, sid)
     if r is None:
@@ -1005,6 +1009,7 @@ def read_text_file(path):
 
 
 def cmd_read(a):
+    import office_drop as odrop
     import office_planner as op
     text = odrop.normalize_text(read_text_file(a.text_file))
     if not text.strip():

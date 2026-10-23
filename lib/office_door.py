@@ -39,8 +39,8 @@ RENOVATION_SOURCE = "office upgrade"
 ANSWERS_FILE = "answers.md"
 LEFT_LINE = "Left to the founding session: a plain return at the question, or no flag."
 NOT_ASKED_LINE = "Not asked: the founding session writes it (the date and its own session id)."
-TZ_LINE_RE = re.compile(r"^Timezone: (\S+) \((resolves here|does not resolve here)(?:: (.*))?\)\s*$")
-ANSWERED_RE = re.compile(r"^Answered (\d{4}-\d{2}-\d{2}) through (office \w+)\.\s*$")
+TZ_LINE_RE = oh.LazyPattern(r"^Timezone: (\S+) \((resolves here|does not resolve here)(?:: (.*))?\)\s*$")
+ANSWERED_RE = oh.LazyPattern(r"^Answered (\d{4}-\d{2}-\d{2}) through (office \w+)\.\s*$")
 
 
 def log(msg):

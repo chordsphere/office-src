@@ -46,15 +46,11 @@ import datetime as dt
 import os
 import pathlib
 import re
-import subprocess
 import sys
-import tomllib
-import zoneinfo
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import office_helper as oh  # noqa: E402
 import office_drafting as od  # noqa: E402
-import office_bale as ob  # noqa: E402
 
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 CATALOG = INSTALL / "share" / "watch-queries.toml"
@@ -65,8 +61,8 @@ VALUE_KINDS = ("share", "sum", "count", "class-rate", "class-basis")
 STANDING_KINDS = ("class-rate", "class-basis")
 COMPARES = ("above", "at-least")
 LOG_VERBS = ("opened", "fired", "not-fired", "re-armed", "reworded", "closed")
-LOG_RE = re.compile(rf"^- ({od.DATE}) W(\d+) ({'|'.join(LOG_VERBS)}):(?: (.*))?$")
-EVALUATES_RE = re.compile(r"^query\s+([a-z0-9][a-z0-9-]*)$")
+LOG_RE = oh.LazyPattern(rf"^- ({od.DATE}) W(\d+) ({'|'.join(LOG_VERBS)}):(?: (.*))?$")
+EVALUATES_RE = oh.LazyPattern(r"^query\s+([a-z0-9][a-z0-9-]*)$")
 CLASSES = "classes"
 CLASS_ROW = "classes.*"
 # An eye-watch no sitting has looked at for this many sittings is
@@ -94,6 +90,7 @@ class Catalog:
     declared to carry is a defect in office-src, refused here."""
 
     def __init__(self, path=CATALOG, consumption=None):
+        import office_bale as ob
         self.path = pathlib.Path(path)
         data = oh.read_toml(self.path)
         self.queries = data.get("queries")
@@ -298,6 +295,7 @@ def sitting_filings(root):
     in the notepad (notepad/DATE-SLUG.md, the shape office start files,
     a day page notepad/DATE.md aside), by the commit that added it,
     oldest first. None when the office is not a git repo."""
+    import subprocess
     root = pathlib.Path(root)
     proc = subprocess.run(["git", "-C", str(root), "log", "--diff-filter=A", "--format=C%x09%H%x09%cI%x09%s",
                            "--name-only", "--", "notepad"], capture_output=True, text=True, timeout=60)
@@ -323,6 +321,7 @@ def sittings_after(filings, day, tz):
 
 
 def zone(name):
+    import zoneinfo
     try:
         return zoneinfo.ZoneInfo(name)
     except (zoneinfo.ZoneInfoNotFoundError, ValueError):
@@ -336,6 +335,7 @@ def places(root):
     """[(label, project dict)]: the office's own registry first (when bale
     keeps one there), then each project the office scopes; a project
     that cannot be read is still listed, and says why when read."""
+    import office_bale as ob
     out = []
     own = ob.office_registry(root)
     if own is not None:
@@ -391,6 +391,7 @@ def crosses(value, limit, compare):
 
 def observe(rd, q, agg):
     """A standing query's words over one aggregate: per work class."""
+    import office_bale as ob
     classes = rd.reach(agg, "stats", CLASSES)[0] or {}
     if not classes:
         return "no classed sessions in bale's records"
@@ -427,6 +428,7 @@ def check(rd, root, tz_name, catalog=None, filings=None):
     watch_lines, standing_lines, fired ({number: [(label, words)]}),
     problems (records that do not read), bad (places not read), page
     (whether watches.md exists), eyes ({number: sittings since})."""
+    import office_bale as ob
     root = pathlib.Path(root)
     tz = zone(tz_name)
     catalog = catalog or Catalog()
@@ -614,6 +616,7 @@ def render_watches(root, show_all=False, catalog=None):
 # --- the command line ------------------------------------------------------------------
 
 def main(argv=None):
+    import office_bale as ob
     ap = argparse.ArgumentParser(prog="office_watches.py", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("list"); p.add_argument("root"); p.add_argument("--all", action="store_true")
@@ -657,7 +660,7 @@ def main(argv=None):
     except oh.HelperError as exc:
         log(f"error: {exc}")
         return 1
-    except (OSError, ValueError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, ValueError, UnicodeDecodeError) as exc:  # a TOMLDecodeError is a ValueError
         log(f"error: {exc.__class__.__name__}: {exc}")
         return 2
 

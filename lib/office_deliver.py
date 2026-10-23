@@ -58,21 +58,15 @@ review office land makes of a landed session (land_review).
 """
 
 import argparse
-import json
 import os
 import pathlib
 import re
-import shlex
-import shutil
 import sys
-import tempfile
-import urllib.parse
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import office_helper as oh  # noqa: E402
 import office_host as ohost  # noqa: E402
 import office_bale as ob  # noqa: E402
-import office_letterhead as olh  # noqa: E402
 
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 RULES = INSTALL / "share" / "letterhead.toml"
@@ -123,6 +117,7 @@ def office_rules(office_root):
     """The letterhead check's rules as this office makes them: the
     install's list, and, when the office has a letterhead, its forbidden
     list and the characters it refuses by default, less what it lifts."""
+    import office_letterhead as olh
     rules = olh.load_rules_toml(RULES)
     return olh.apply_letterhead(rules, pathlib.Path(office_root) / LETTERHEAD, LETTERHEAD)
 
@@ -197,6 +192,7 @@ def guard_line(project, place, facts):
 def status_lines(office_root):
     """office status's letterhead and push-guard lines, read-only. A
     clone that cannot be read (a host that does not answer) is a line."""
+    import office_letterhead as olh
     root = pathlib.Path(office_root)
     lines = []
     audience = audience_projects(root)
@@ -317,6 +313,7 @@ def review_url(url, branch, base, title=None, body=None):
     instance named github.*, or a GitLab host): the compare page with the
     branch, and the review's title and body as the page takes them. None
     when the shape is not known."""
+    import urllib.parse
     parsed = parse_remote_url(url)
     if parsed is None:
         return None
@@ -374,6 +371,7 @@ def sids_in_subjects(consumption, subjects):
 def mirror_here(prefix="office-deliver-"):
     """A temporary bare repo on this machine, the mirror a hosted
     project's delivery is built in."""
+    import tempfile
     tmp = tempfile.mkdtemp(prefix=prefix)
     repo = pathlib.Path(tmp) / "mirror.git"
     g(tmp, "init", "-q", "--bare", str(repo))
@@ -388,6 +386,9 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
     worktree with the squash staged; the diff's stat; the letterhead
     check's hits. Raises DeliverError when it cannot go on, having
     removed what it made."""
+    import shlex
+    import tempfile
+    import office_letterhead as olh
     office_root = pathlib.Path(office_root).resolve()
     rel, md = find_folder(office_root, folder)
     parsed = oh.parse_folder(md.read_text(encoding="utf-8"))
@@ -658,6 +659,7 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
 def abandon(plan_, quiet=False):
     """Remove what plan() made on this machine: the worktree, the office's
     refs in the repo, the temporary mirror. Never raises."""
+    import shutil
     told = []
     repo = plan_.get("repo")
     worktree = plan_.get("worktree")
@@ -685,6 +687,7 @@ def commit_words(worktree, words, author):
     """The delivery's commit(s) in the worktree, from the words: one per
     Commit section, each but the last taking the paths it names. Returns
     the commits' shas, oldest first."""
+    import tempfile
     name, email = oh.split_author(author)
     # Both halves of the identity, and over any GIT_AUTHOR_* in the
     # environment: the audience sees the author, and nobody else.
@@ -721,6 +724,7 @@ def read_commits(worktree, start, rules):
     touches (status and path) and the letterhead's verdict on it (its
     message and the files it changed, at its version). Returns (shown,
     hits across them)."""
+    import office_letterhead as olh
     log_ = g(worktree, "log", "--reverse", "--format=%H%x00%an <%ae>%x00%cn <%ce>%x00%B%x1e", f"{start}..HEAD").stdout
     shown, all_hits = [], []
     for rec in log_.split("\x1e"):
@@ -829,6 +833,9 @@ def check_in_project(office_root, project, scope_all=False, range_spec=None, wor
     nothing there; the hits come back on stdout. words_text, (label,
     text) pairs, travel as one argument too, so words reach a host.
     Returns (exit code, stdout, stderr)."""
+    import json
+    import shlex
+    import office_letterhead as olh
     office_root = pathlib.Path(office_root).resolve()
     projects = {p["name"]: p for p in ob.office_projects(office_root) or []}
     entry = projects.get(project)
@@ -913,6 +920,7 @@ def land_review(office_root, project, sid, folder_rel=None):
 # --- command line ------------------------------------------------------------------------------
 
 def main(argv=None):
+    import json
     ap = argparse.ArgumentParser(prog="office_deliver.py", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("plan", help="everything up to the question; the plan as JSON into --plan")

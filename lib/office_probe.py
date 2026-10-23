@@ -36,29 +36,26 @@ several open sessions the probe is for (they are printed, one per line).
 """
 
 import argparse
-import json
 import pathlib
 import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import office_helper as oh  # noqa: E402
-import office_bale as ob  # noqa: E402
-import office_host as ohost  # noqa: E402
 
 OFFICE = "office"
 OUTPUT_DIR = "probe-output"
 # The sentinels and the trailer of the block's output (TARBALL.md 4.2; the
 # crafter's skeleton prints them so).
-BEGIN_LINE_RE = re.compile(r"^=+ PROBE BEGIN\b")
-END_LINE_RE = re.compile(r"^=+ PROBE END\b")
-TRAILER_RE = re.compile(r"^--- integrity: (\d+) lines? ---$")
+BEGIN_LINE_RE = oh.LazyPattern(r"^=+ PROBE BEGIN\b")
+END_LINE_RE = oh.LazyPattern(r"^=+ PROBE END\b")
+TRAILER_RE = oh.LazyPattern(r"^--- integrity: (\d+) lines? ---$")
 # The block's own words, read from its text.
 BEGIN_WORD = "PROBE BEGIN"
-HEADER_SLUG_RE = re.compile(r"^#\s*PROBE\s+([a-z0-9][a-z0-9-]*)\s*:", re.I)
-TEXT_SLUG_RE = re.compile(r"PROBE BEGIN ([a-z0-9][a-z0-9-]*)")
-READ_ONLY_RE = re.compile(r"\bread[- ]only\b", re.I)
-NOT_READ_ONLY_RE = re.compile(r"\bnot\s+read[- ]only\b", re.I)
+HEADER_SLUG_RE = oh.LazyPattern(r"^#\s*PROBE\s+([a-z0-9][a-z0-9-]*)\s*:", re.I)
+TEXT_SLUG_RE = oh.LazyPattern(r"PROBE BEGIN ([a-z0-9][a-z0-9-]*)")
+READ_ONLY_RE = oh.LazyPattern(r"\bread[- ]only\b", re.I)
+NOT_READ_ONLY_RE = oh.LazyPattern(r"\bnot\s+read[- ]only\b", re.I)
 EXIT_ASK_SID = 5
 
 
@@ -184,6 +181,7 @@ def place_record(place):
 
 
 def place_from(record):
+    import office_host as ohost
     if record.get("host"):
         return ohost.Place(record["path"], record["host"], record["shell"], record["connect"], record.get("name"))
     return ohost.Place(record["path"], name=record.get("name"))
@@ -192,6 +190,7 @@ def place_from(record):
 def lane_of(office_root, folder_rel):
     """The project the folder's lane names, when the office scopes it, else
     None (a lane is `project: paths`)."""
+    import office_bale as ob
     md = pathlib.Path(office_root) / folder_rel / "folder.md"
     folder = oh.parse_folder(md.read_text(encoding="utf-8"))
     projects = ob.office_projects(office_root) or []
@@ -202,6 +201,8 @@ def where_it_runs(office_root, project):
     """(Place, label, words) for the project, or the office root for the
     office itself. Raises ProbeError for a project the office does not
     scope or cannot read."""
+    import office_bale as ob
+    import office_host as ohost
     if project == OFFICE:
         return ohost.Place(str(pathlib.Path(office_root).resolve()), name=OFFICE), OFFICE, "in the office root"
     projects = ob.office_projects(office_root)
@@ -230,6 +231,8 @@ def plan(office_root, folder_rel, project, block_file, sid=None, rd=None):
     its output under that session. Returns the plan, or raises ProbeError;
     raises AskSid with the candidates when several are open and nothing
     says which."""
+    import office_bale as ob
+    import office_host as ohost
     rd = rd or ob.Reader()
     block = read_block(pathlib.Path(block_file).read_text(encoding="utf-8", errors="replace"))
     place, label, words = where_it_runs(office_root, project)
@@ -317,6 +320,7 @@ def run(plan_data, block_file, tray_root, screen=None):
     (the office's backstop stopped it), found, closed, block (lines),
     count, trailer, words (the count's line), carried (the out tray
     path, or None), carry_problem."""
+    import office_host as ohost
     place = place_from(plan_data["place"])
     block = read_block(pathlib.Path(block_file).read_text(encoding="utf-8", errors="replace"))
     log(f"running the probe {plan_data['where']}, stdin closed; its output follows, whole")
@@ -355,6 +359,7 @@ def run(plan_data, block_file, tray_root, screen=None):
 # --- the command line ---------------------------------------------------------------------
 
 def main(argv=None):
+    import json
     p = argparse.ArgumentParser(prog="office_probe.py", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     q = sub.add_parser("lane", help="the project the folder's lane names, when the office scopes it; else nothing")

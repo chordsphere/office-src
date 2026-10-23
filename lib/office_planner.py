@@ -55,15 +55,10 @@ import argparse
 import os
 import pathlib
 import re
-import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import office_helper as oh  # noqa: E402
-import office_drafting as od  # noqa: E402
-import office_drop as odrop  # noqa: E402
-import office_sort as osort  # noqa: E402
-import office_watches as ow  # noqa: E402
 
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 TEMPLATES = INSTALL / "templates"
@@ -113,6 +108,7 @@ def goal_of(text):
     open makes a folder's goal (every line as one, a line without its own
     stop joined with a semicolon), a leading dash or list marker left off
     since bale reads a goal first."""
+    import office_drop as odrop
     said = [" ".join(l.split()) for l in odrop.normalize_text(text).splitlines() if l.strip()]
     if not said:
         raise oh.HelperError("the words are empty")
@@ -137,6 +133,7 @@ def concerns_folder(f, concerns, names):
 
 
 def git(root, *args):
+    import subprocess
     proc = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, timeout=60)
     if proc.returncode != 0:
         debug(f"git {' '.join(args)} in {root}: {proc.stderr.strip()}")
@@ -150,6 +147,7 @@ def last_sitting(root):
     lib/office_digest.py): the page's name, the sitting's pages that are
     there now (sitting_pages), and that filing (when, page, commit,
     subject, key); (None, [], None) when no sitting's page is filed yet."""
+    import office_watches as ow
     filings = ow.sitting_filings(root) or []
     if not filings:
         return None, [], None
@@ -213,6 +211,7 @@ def gather(root, concerns, own=None, names=None):
     docstring), each an entry dict: path (relative to the office), why,
     kind and, for what landed, when. own is the sitting's own folder
     (space/name), which rides whole and is not gathered again."""
+    import office_sort as osort
     root = pathlib.Path(root)
     names = project_names(root) if names is None else names
     out = []
@@ -289,6 +288,8 @@ def fit(root, entries, base, budget=(BUDGET_FILES, BUDGET_BYTES)):
 def every_sitting_carries(root, own):
     """What rides with every sitting the office sends, beside what it
     gathers: (paths, ride lines) for the brief's list and the budget."""
+    import office_drafting as od
+    import office_drop as odrop
     root = pathlib.Path(root)
     lines, paths = [], []
     if own:
@@ -331,6 +332,7 @@ def render_brief(words, concerns, folder, folder_words, day, rides, left, why=""
     his words verbatim as a quoted block, what they concern and how that
     was found, and what rides, one line each, with anything left out for
     bale's caps said after it."""
+    import office_drop as odrop
     said = odrop.normalize_text(words).strip("\n").splitlines()
     quoted = "\n".join(f"> {l.rstrip()}" if l.strip() else ">" for l in said)
     ride_lines = [f"- {path}: {why_}" for path, why_ in rides]

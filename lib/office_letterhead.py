@@ -55,11 +55,9 @@ python3 reads from stdin and the rules travel as one JSON argument
 """
 
 import argparse
-import json
 import os
 import pathlib
 import re
-import subprocess
 import sys
 
 RULE_SECTIONS = ("names", "phrasing", "marks")
@@ -279,6 +277,7 @@ def binary_by_name(name, suffixes):
 # --- what to read -----------------------------------------------------------------------
 
 def git(cwd, *args, check=True, binary=False):
+    import subprocess
     try:
         proc = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=not binary, timeout=120,
                               env=dict(os.environ, GIT_OPTIONAL_LOCKS="0"))
@@ -493,6 +492,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     try:
         if a.rules_json:
+            import json
             try:
                 rules = json.loads(a.rules_json)
             except json.JSONDecodeError as exc:
@@ -514,6 +514,7 @@ def main(argv=None):
                 raise CheckError(f"--forbidden {f}: {exc}")
         words_text = []
         if a.words_json:
+            import json
             try:
                 words_text = [(str(l), str(t)) for l, t in json.loads(a.words_json)]
             except (json.JSONDecodeError, TypeError, ValueError) as exc:

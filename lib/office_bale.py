@@ -33,25 +33,14 @@ least one project could not be read (the rendering says which and why).
 
 import argparse
 import datetime as dt
-import json
 import os
 import pathlib
 import re
-import shlex
-import shutil
-import subprocess
 import sys
-import tarfile
-import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import office_helper as oh  # noqa: E402
-import office_drafting as od  # noqa: E402
-import office_door as odoor  # noqa: E402
 import office_host as ohost  # noqa: E402
-import office_drop as odrop  # noqa: E402
-import office_sort as osort  # noqa: E402
-import office_meeting as om  # noqa: E402
 
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 CONSUMPTION = INSTALL / "share" / "bale-consumption.toml"
@@ -60,7 +49,7 @@ BALE_TIMEOUT = 60
 PACK_TIMEOUT = 600
 # Attempts that carry a response tarball: the ones a trust ledger counts.
 RESPONSE_COMMANDS = ("apply", "retry")
-OUTBOX_RE = re.compile(r"^request-(.+)\.tar\.gz$")
+OUTBOX_RE = oh.LazyPattern(r"^request-(.+)\.tar\.gz$")
 # A project's release file, at any depth (VERSION, bin/VERSION).
 VERSION_FILE = "VERSION"
 
@@ -173,9 +162,13 @@ class Reader:
     one rendering asks bale each question once. `touched` collects every
     (surface, key) read, which the suite compares with the manifest."""
 
-    def __init__(self, consumption=None, runner=subprocess.run):
+    def __init__(self, consumption=None, runner=None):
+        # runner: what runs a bale call, subprocess.run unless a test hands
+        # in its own; named here, not as the default, so a reader that runs
+        # nothing loads nothing of subprocess.
+        import subprocess
         self.consumption = consumption or Consumption()
-        self.runner = runner
+        self.runner = runner if runner is not None else subprocess.run
         self.touched = set()
         self._cache = {}
         self._installed = None
@@ -243,6 +236,7 @@ class Reader:
         return frontier
 
     def bale(self):
+        import shutil
         exe = shutil.which("bale")
         if exe is None:
             raise BaleError("missing", "bale is not on PATH; the read side runs bale's --json surfaces")
@@ -317,6 +311,7 @@ class Reader:
         is argvs that ride the same connection after bale, whatever bale
         said; their Runs are kept in self.also_runs, and what any of them
         printed with the office's prefix on stderr is passed on."""
+        import subprocess
         argv = self.consumption.argv(surface, **values)
         where = str(cwd) if cwd is not None else os.getcwd()
         shown = "bale " + " ".join(argv)
@@ -387,6 +382,8 @@ class Reader:
         command once bale exits, whatever it said; when bale exited on its
         own (not by a signal, not a lost connection) the scratch is told so,
         and its own removal is not needed."""
+        import shlex
+        import subprocess
         spec = self.consumption.surface(surface)
         if not spec.get("interactive"):
             raise BaleError("undeclared", f"bale {surface} is not declared interactive in {self.consumption.path.name}")
@@ -471,6 +468,7 @@ class Reader:
         return self.parse(surface, proc, shown, where), proc.stderr.splitlines()
 
     def parse(self, surface, proc, shown, where):
+        import json
         lines = [l for l in proc.stdout.splitlines() if l.strip()]
         spec = self.consumption.surface(surface)
         if spec.get("format") == "text":
@@ -769,6 +767,8 @@ def in_flight(rd, office_root, now=None):
     projects the office scopes and in the office's own repo, each mapped
     to the folder that names its sid; flying is the set of folders
     (space/name) some open session is mapped to."""
+    import office_sort as osort
+    import office_meeting as om
     now = now or dt.datetime.now(dt.timezone.utc)
     projects = office_projects(office_root)
     naming = folders_naming(office_root)
@@ -874,7 +874,7 @@ def writers_holding(rd, office_root, targets):
 
 FOLDER_TEMPLATE = INSTALL / "templates" / "folder.md"
 SIZE_RANK = {size: n for n, size in enumerate(oh.SIZES)}
-SUCCESSOR_RE = re.compile(r"folders?\s+([\d,\s]+)")
+SUCCESSOR_RE = oh.LazyPattern(r"folders?\s+([\d,\s]+)")
 
 
 def folder_line(f):
@@ -1017,6 +1017,7 @@ def classify_desk(folders, flying, since, table=None):
     error lines the Ready group carries. table, the drafting table's
     reader, resolves the gates that are not folders and gives the
     orphaned riders and the pending desk moves."""
+    import office_drafting as od
     by_number = oh.folders_by_number(folders)
     desk = [f for f in folders if f["space"] == "desk"]
     groups = {"flying": [], "open": [], "ready": [], "parked": {}, "candidates": [], "no_status": [],
@@ -1216,6 +1217,9 @@ def render_desk(rd, office_root, today, since=None, walk_in=False, now=None, gro
     a ready folder whose gate cleared on or after it says so. groups_out,
     a dict when given, receives the desk's groups (the Next line reads
     them, so the walk-in classifies the desk once)."""
+    import office_drafting as od
+    import office_drop as odrop
+    import office_sort as osort
     flight, bad, flying = in_flight(rd, office_root, now)
     table = od.Table(office_root)
     folders = oh.read_folders(office_root)
@@ -1279,6 +1283,7 @@ def blueprint_desk(table, folders, flying, since, bid, flight):
     """office desk --blueprint ID: the arc's member folders in the desk's
     own order, computed from their gates, then the members already filed.
     The blueprint states no order; this is the only place it is shown."""
+    import office_drafting as od
     b = table.blueprints().get(bid)
     if b is None:
         raise oh.HelperError(f"no blueprint {bid} on the drafting table")
@@ -1382,6 +1387,7 @@ def sessions_to_land(rd, office_root):
     folder records); a read-only sitting lands nothing and never counts.
     Each is open_anywhere's dict plus held, created and door (founding or
     renovation when a door's folder records it, else None)."""
+    import office_door as odoor
     every, problems = open_anywhere(rd, office_root)
     try:
         doors = odoor.door_folders(office_root)
@@ -1433,6 +1439,7 @@ def founding_folder(groups):
     """The founding folder among the desk's groups (one whose source is
     office init or office found), the highest-numbered; None when the
     desk holds none."""
+    import office_door as odoor
     seen = []
     for key in ("ready", "open", "flying", "candidates", "no_status", "misplaced"):
         seen += list(groups.get(key) or [])
@@ -1448,6 +1455,7 @@ def drop_move(drops, groups, projects):
     """(command, why) for the oldest unsorted drop the Next line can send
     out, or None (the rule 3b above). A drop whose project resolves waits
     while a session is in flight on a folder of that project's lane."""
+    import office_drop as odrop
     names = [p["name"] for p in projects or []]
     if not drops or not names:
         return None
@@ -1481,6 +1489,7 @@ def sort_move(drops, groups, projects):
     above): an unsorted drop with no project, or one that does not
     resolve, that has waited through one session; or an in-tray of
     SORT_PILE or more unsorted drops with nothing ready on the desk."""
+    import office_drop as odrop
     if not drops:
         return None
     names = [p["name"] for p in projects or []]
@@ -2012,6 +2021,7 @@ def opener_lines(stderr_lines, spec):
 
 def git_top(path):
     """The top of the git work tree holding path, or None."""
+    import subprocess
     p = pathlib.Path(path)
     where = p if p.is_dir() else p.parent
     try:
@@ -2046,12 +2056,14 @@ class Tray:
     place, renamed to the session id once the session is packed."""
 
     def __init__(self, root):
+        import tempfile
         self.root = pathlib.Path(root).expanduser()
         self.root.mkdir(parents=True, exist_ok=True)
         self.dir = pathlib.Path(tempfile.mkdtemp(prefix=".filling-", dir=self.root))
         self.files = []
 
     def take(self, src, name=None):
+        import shutil
         name = name or pathlib.Path(src).name
         stem, dot, ext = name.partition(".")
         n = 1
@@ -2077,6 +2089,7 @@ class Tray:
         return final
 
     def discard(self):
+        import shutil
         shutil.rmtree(self.dir, ignore_errors=True)
 
 
@@ -2093,6 +2106,8 @@ def scratch_context(rd, tray, source, what, name=None):
     """A context pack of a directory outside git, made from a scratch
     copy under the same name, so nothing is written into the original
     (the install's doctrine directory among them)."""
+    import shutil
+    import tempfile
     with tempfile.TemporaryDirectory(prefix="office-start-") as tmp:
         copy = pathlib.Path(tmp) / pathlib.Path(source).name
         shutil.copytree(source, copy, ignore=shutil.ignore_patterns(".bale", "__pycache__"))
@@ -2138,6 +2153,8 @@ def bundle_pack_argv(bundle):
     the office can read here (a bare name bale's own search finds is
     not), else None. The office reads it only to say what the bundle
     does; it never adds to it."""
+    import json
+    import tarfile
     p = pathlib.Path(bundle)
     if not p.is_file():
         return None
@@ -2274,6 +2291,8 @@ def bundle_brief(bundle):
     bundle.json's members.brief.path), as text; None when the bundle is
     not a file here, carries no brief, or cannot be read (said under
     OFFICE_DEBUG). The office reads it only for the LANDS line."""
+    import json
+    import tarfile
     p = pathlib.Path(bundle) if bundle else None
     if p is None or not p.is_file():
         return None
@@ -2450,6 +2469,7 @@ def survey_before_pack(office_root):
     """office survey --before-pack in the office: the survey page again,
     committed alone, never fatal (doctrine section 13). Its words go to
     stderr, since stdout is office start's one JSON line."""
+    import subprocess
     env = dict(os.environ, OFFICE_ROOT=str(office_root), PYTHONDONTWRITEBYTECODE="1")
     try:
         proc = subprocess.run([str(INSTALL / "bin" / "office"), "survey", "--before-pack"], env=env,
@@ -2467,6 +2487,7 @@ def digest_before_pack(office_root):
     before the pack): the sitting-open page written again and committed
     alone, never fatal. Its words go to stderr, since stdout is office
     start's one JSON line."""
+    import subprocess
     env = dict(os.environ, OFFICE_ROOT=str(office_root), PYTHONDONTWRITEBYTECODE="1")
     try:
         proc = subprocess.run([str(INSTALL / "bin" / "office"), "digest", "--before-pack"], env=env,
@@ -2499,6 +2520,7 @@ def bundle_read_only(bundle):
 def digest_written_at(office_root):
     """The written_at line of the office's digest page (UTC, as office
     digest stamps it), or None when there is no page or no such line."""
+    import office_drafting as od
     page = pathlib.Path(office_root) / od.SPACE / "digest.md"
     try:
         text = page.read_text(encoding="utf-8")
@@ -2513,6 +2535,7 @@ def digest_left_line(office_root, name, why):
     whose pack line it cannot read (why: the reason), so it cannot tell
     whether the bundle is a sitting and leaves the digest as it was: never
     a silent skip (doctrine section 4)."""
+    import office_drafting as od
     at = digest_written_at(office_root)
     page = (f"{od.SPACE}/digest.md as it was, written {at}" if at
             else f"{od.SPACE}/digest.md unwritten, as it was")
@@ -2871,6 +2894,7 @@ def start_riders(office_root, folder, where, project, writes=(), includes=(), re
     over the pack's forecast), for office start to offer before it packs.
     forecast is None when the office cannot read it, and then no rider
     is offered."""
+    import office_drafting as od
     forecast = start_forecast(office_root, folder, where, writes, includes, read_only, bundle)
     if not forecast:
         return forecast, []
@@ -2922,6 +2946,7 @@ def install_behind(office_root, install=None, source=False):
     does not scope, a source that is not a git work tree, or one level
     with the install. source, when given, is install_source's answer
     already read (False: read it here)."""
+    import subprocess
     found = install_source(office_root, install) if source is False else source
     if found is None:
         return None
@@ -2965,7 +2990,7 @@ def install_behind(office_root, install=None, source=False):
 # A RUNNING verdict older than this is reported: the whole suite takes
 # minutes, so a run that has said RUNNING for an hour has likely died.
 SUITE_RUNNING_STALE = dt.timedelta(hours=1)
-SUITE_RUNNING_RE = re.compile(r"^RUNNING since (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\b")
+SUITE_RUNNING_RE = oh.LazyPattern(r"^RUNNING since (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\b")
 
 
 def suite_state_dir(environ=None):
@@ -3176,6 +3201,11 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     bundle sends out a sitting, so the digest is written before it as
     before any other sitting (0.21.0). Every other check keeps reading
     the bundle where it was named, as before."""
+    import shutil
+    import tempfile
+    import office_drafting as od
+    import office_drop as odrop
+    import office_sort as osort
     office_root = pathlib.Path(office_root).resolve()
     manifest = oh.read_toml(office_root / "floor-plan" / "manifest.toml")
     projects = {p["name"]: p for p in oh.read_projects(manifest) or []}
@@ -3604,6 +3634,7 @@ def local_bale_install():
     directory above the bin/ the bale on PATH resolves into, which must
     hold bale's install scripts. Raises BaleError when it is not a
     release install the office can copy."""
+    import shutil
     exe = shutil.which("bale")
     if exe is None:
         raise BaleError("missing", "bale is not on PATH on this machine, so there is no bale to bring a host level with")
@@ -3620,6 +3651,7 @@ def release_tarball(root, dest):
     shape one (one top-level bale/ directory), holding every file of the
     install except user/, dot-entries at its top (.git, .bale) and
     caches. Returns the number of files."""
+    import tarfile
     root = pathlib.Path(root)
     n = 0
     with tarfile.open(dest, "w:gz") as t:
@@ -3697,6 +3729,7 @@ def level_bale(rd, office_root, name):
     the host's user/ (its global bale.toml and hook store), and say what
     was there and what is there now. Returns the lines to print; raises
     StartError when it cannot, having changed nothing it can avoid."""
+    import tempfile
     plan = level_plan(rd, office_root, name)
     place, here, there, facts = plan["place"], plan["here"], plan["there"], plan["facts"]
     if plan["state"] == "level":
@@ -3773,7 +3806,7 @@ def level_bale(rd, office_root, name):
 # shell does the asking and the after-land actions; this does the rest.
 
 # A response tarball's name, and a browser's second copy of it.
-RESPONSE_NAME_RE = re.compile(r"^response-(.+?)(?: \(\d+\))?\.tar\.gz$")
+RESPONSE_NAME_RE = oh.LazyPattern(r"^response-(.+?)(?: \(\d+\))?\.tar\.gz$")
 # The commits that leave office start's record of a session in a folder:
 # office sessions recording it, and office land putting it back.
 RECORD_SUBJECTS = ("office sessions: {sid} in ", "office land: {sid} recorded again in ")
@@ -3830,6 +3863,7 @@ def landable_out(x):
     """Whether an open session is one the office has out: a folder records
     it, or it is a standalone sort in the office's own registry (0.20.0);
     a read-only sitting lands nothing."""
+    import office_sort as osort
     return not x["read_only"] and bool(x["folders"] or (x["label"] == OFFICE_LABEL and osort.is_sort_sid(x["sid"])))
 
 
@@ -3845,6 +3879,7 @@ def sorts_out(rd, office_root):
     """The standalone sorts open in the office's own registry: their ids.
     [] when the office has no registry. Raises BaleError when it has one
     that cannot be read."""
+    import office_sort as osort
     own = office_registry(office_root)
     if own is None:
         return []
@@ -3854,6 +3889,8 @@ def sorts_out(rd, office_root):
 def responds_to(path):
     """The session a response tarball answers: its manifest's
     responds_to. The tarball is the worker's file, not bale's records."""
+    import json
+    import tarfile
     try:
         with tarfile.open(path) as t:
             for m in t.getmembers():
@@ -3870,6 +3907,7 @@ def responds_to(path):
 def git(root, *args, check=True, binary=False):
     """git in the office, its output as text (bytes with binary=True, for
     a page's exact bytes); a failure is a LandError naming the command."""
+    import subprocess
     proc = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=not binary, timeout=60)
     if check and proc.returncode != 0:
         err = proc.stderr.decode(errors="replace") if binary else proc.stderr
@@ -3994,6 +4032,7 @@ def printed_line(place, command):
     command where a hosted place is: the stored shell with the command
     quoted for the far side's login shell as well (an ssh prefix hands
     the far side one string)."""
+    import shlex
     words = shlex.split(place.shell)
     inner = shlex.quote(command)
     if words and words[0] == "ssh":
@@ -4155,6 +4194,7 @@ def sitting_plan(found, tarball, problems, bare=None, office_root=None):
     or a meeting's prep the calendar records (0.26.0, which no folder
     does), is the office's to end (one started by hand in a project is
     that project's business), and a sitting has no response to land."""
+    import office_meeting as om
     if len(found) > 1:
         raise LandError(["more than one read-only sitting is open for that folder; name one: office land SID"]
                         + [f"  {x['sid']}  ({x['label']})" for x in found])
@@ -4409,6 +4449,8 @@ def merge_record(root, rec, rel, md):
     opened): a three-way merge of the folder as packed, as recorded, and
     as landed. None when the two sides touched the same lines, and the
     record goes back as a new append instead."""
+    import tempfile
+    import subprocess
     with tempfile.TemporaryDirectory(prefix="office-land-") as tmp:
         t = pathlib.Path(tmp)
         (t / "packed").write_bytes(git(root, "show", f"{rec['commit']}^:{rel}", binary=True).stdout)
@@ -4564,6 +4606,7 @@ def land_after(plan, index):
     """The project's after-land action number index (1-based), run in its
     repo on its host, its output on this terminal: attended on a terminal,
     piped with stdin closed. Returns its exit code."""
+    import shlex
     command = plan["after_land"][index - 1]
     try:
         return ohost.run_streamed(plan_place(plan), f"bash -c {shlex.quote(command)}")
@@ -4722,6 +4765,7 @@ def start_check_main(a):
 def land_main(a):
     """The land-* subcommands: error lines on stderr and exit 1 when the
     office cannot go on; land-run exits with bale's own code."""
+    import json
     rd = Reader()
     try:
         if a.cmd == "land-out":
@@ -4765,17 +4809,23 @@ def land_main(a):
         return 1
 
 
-def main(argv=None):
+def build_parser(only=None):
+    """The command's parser; with `only`, a subcommand's name, the parser
+    holds that one subcommand (office_helper.OneSubcommand, 0.28.0).
+    Returns (parser, found): found is False when `only` names no
+    subcommand."""
     ap = argparse.ArgumentParser(prog="office_bale.py", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("in-flight"); p.add_argument("office")
+    one = oh.OneSubcommand(sub, only) if only is not None else None
+    add = one.add_parser if one else sub.add_parser
+    p = add("in-flight"); p.add_argument("office")
     p.add_argument("--now", help="an ISO timestamp to measure ages from (default: now)")
-    p = sub.add_parser("folder-sessions"); p.add_argument("office"); p.add_argument("folder_md")
-    p = sub.add_parser("ledger"); p.add_argument("office"); p.add_argument("--project")
-    p = sub.add_parser("landed"); p.add_argument("office"); p.add_argument("path"); p.add_argument("--project")
-    p = sub.add_parser("versions"); p.add_argument("office"); p.add_argument("--project")
-    p = sub.add_parser("status-lines"); p.add_argument("office")
-    p = sub.add_parser("desk"); p.add_argument("office"); p.add_argument("--today", required=True)
+    p = add("folder-sessions"); p.add_argument("office"); p.add_argument("folder_md")
+    p = add("ledger"); p.add_argument("office"); p.add_argument("--project")
+    p = add("landed"); p.add_argument("office"); p.add_argument("path"); p.add_argument("--project")
+    p = add("versions"); p.add_argument("office"); p.add_argument("--project")
+    p = add("status-lines"); p.add_argument("office")
+    p = add("desk"); p.add_argument("office"); p.add_argument("--today", required=True)
     p.add_argument("--since", help="the day of the previous walk-in (default: today)")
     p.add_argument("--walk-in", action="store_true", help="In flight and the first ready folders only")
     p.add_argument("--next-file", help="write the walk-in's Next line to this file")
@@ -4783,10 +4833,10 @@ def main(argv=None):
                    help="the office's version state, for the Next line")
     p.add_argument("--founded", choices=("yes", "no"), default="yes", help="whether the profile is complete")
     p.add_argument("--blueprint", help="only this blueprint's member folders, in the desk's order")
-    p = sub.add_parser("writers"); p.add_argument("office"); p.add_argument("paths", nargs="+")
-    p = sub.add_parser("sort-out", help="the standalone sorts open in the office's registry, one id per line")
+    p = add("writers"); p.add_argument("office"); p.add_argument("paths", nargs="+")
+    p = add("sort-out", help="the standalone sorts open in the office's registry, one id per line")
     p.add_argument("office")
-    p = sub.add_parser("start", help="pack a session for a folder and fill its out tray; one JSON line on stdout")
+    p = add("start", help="pack a session for a folder and fill its out tray; one JSON line on stdout")
     p.add_argument("office"); p.add_argument("folder", help="desk/NAME, or - for the standalone sort (no folder)")
     p.add_argument("--where", choices=("office", "project"), required=True)
     p.add_argument("--project", default=None, help="the project it is on, or the one an office session is about")
@@ -4807,31 +4857,31 @@ def main(argv=None):
     p.add_argument("--bundle-found", default=None,
                    help="the file bale's rehearsal found the bundle at this start (bundle-check's first line), "
                         "read only to tell whether a bundle named by a bare name sends out a sitting")
-    p = sub.add_parser("start-check", help="a project on a host answers, its bale is at the floor and its repo is "
+    p = add("start-check", help="a project on a host answers, its bale is at the floor and its repo is "
                                            "bale's, before start writes anything: HOST<tab>VERSION, or nothing for a "
                                            "project on this machine")
     p.add_argument("office"); p.add_argument("--project", required=True)
     for name, text in (("level-plan", "what office projects level-bale would do: STATE<tab>THERE<tab>HERE<tab>HOST, "
                                       "STATE one of level, behind, ahead, absent"),
                        ("level-bale", "install on the project's host the bale this machine runs, keeping its user/")):
-        p = sub.add_parser(name, help=text)
+        p = add(name, help=text)
         p.add_argument("office"); p.add_argument("--project", required=True)
-    p = sub.add_parser("bundle-check", help="bale open --check where the bundle would open; the path bale found")
+    p = add("bundle-check", help="bale open --check where the bundle would open; the path bale found")
     p.add_argument("office"); p.add_argument("--where", choices=("office", "project"), required=True)
     p.add_argument("--project"); p.add_argument("--bundle", required=True)
     p.add_argument("--checked", action="store_true",
                    help="bin/office has checked the project's host this start (start-check)")
-    p = sub.add_parser("start-riders", help="the riders a start's pack carries: N<tab>TITLE<tab>RIDES<tab>TOUCHED")
+    p = add("start-riders", help="the riders a start's pack carries: N<tab>TITLE<tab>RIDES<tab>TOUCHED")
     p.add_argument("office"); p.add_argument("folder", help="desk/NAME")
     p.add_argument("--where", choices=("office", "project"), required=True); p.add_argument("--project")
     p.add_argument("--include", action="append", default=[]); p.add_argument("--write", action="append", default=[])
     p.add_argument("--read-only", action="store_true"); p.add_argument("--bundle")
-    p = sub.add_parser("install-lines", help="the walk-in's lines about the install, when this office scopes its "
+    p = add("install-lines", help="the walk-in's lines about the install, when this office scopes its "
                                              "source: Install: BEHIND ... when the source moved past the install, "
                                              "Suite: ... when the latest detached run's verdict is not OK; nothing "
                                              "otherwise")
     p.add_argument("office")
-    p = sub.add_parser("bundle-where", help="where a bundle opens by default: DEFAULT<tab>WHY, or nothing")
+    p = add("bundle-where", help="where a bundle opens by default: DEFAULT<tab>WHY, or nothing")
     p.add_argument("office"); p.add_argument("--bundle", required=True); p.add_argument("--lane")
     for name, text in (("git-facts", "a clone's branch, identity, remotes and push guard, here or through a "
                                      "host's shell: one tab-separated line per fact"),
@@ -4845,56 +4895,66 @@ def main(argv=None):
                        ("clone-dirty", "the paths the working tree of the clone --from names changes, one per line"),
                        ("clone-to", "put a clone of --from at --path on the host, every branch and tag, then "
                                     "prepare it; the clone here is not changed")):
-        p = sub.add_parser(name, help=text)
+        p = add(name, help=text)
         p.add_argument("--path", required=True); p.add_argument("--host"); p.add_argument("--shell")
         p.add_argument("--connect"); p.add_argument("--name")
         if name.startswith("clone-"):
             p.add_argument("--from", dest="source", required=True)
         if name == "install-guard":
             p.add_argument("--audience", required=True); p.add_argument("--url", default="")
-    p = sub.add_parser("land-out", help="the sessions out: sid, where, folders; one per line")
+    p = add("land-out", help="the sessions out: sid, where, folders; one per line")
     p.add_argument("office")
-    p = sub.add_parser("land-plan", help="the one session to land and how, as JSON into --plan")
+    p = add("land-plan", help="the one session to land and how, as JSON into --plan")
     p.add_argument("office"); p.add_argument("--sid"); p.add_argument("--folder"); p.add_argument("--response")
     p.add_argument("--cwd", help="where a relative response path is read from (default: here)")
     p.add_argument("--plan", required=True)
     p.add_argument("--downloads", action="append", default=[],
                    help="a directory machine.toml's downloads lists (repeatable)")
     p.add_argument("--no-downloads", action="store_true", help="machine.toml sets no downloads")
-    p = sub.add_parser("land-end", help="end a read-only sitting: bale unlock, then the folder's History; one JSON line")
+    p = add("land-end", help="end a read-only sitting: bale unlock, then the folder's History; one JSON line")
     p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--day", required=True)
-    p = sub.add_parser("land-prepare", help="take the office's record out of an office session's folder")
+    p = add("land-prepare", help="take the office's record out of an office session's folder")
     p.add_argument("office"); p.add_argument("--plan", required=True)
-    p = sub.add_parser("land-run", help="bale apply or retry, the terminal's; exits with bale's code")
+    p = add("land-run", help="bale apply or retry, the terminal's; exits with bale's code")
     p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--capture", required=True)
     for name, text in (("land-after", "a hosted project's after-land action N, run on its host; exits with its code"),
                        ("land-after-line", "the line that reruns the after-land actions from N on")):
-        p = sub.add_parser(name, help=text)
+        p = add(name, help=text)
         p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--index", type=int, required=True)
-    p = sub.add_parser("find-download", help="a file by name in the downloads, the newest of its browser copies: "
+    p = add("find-download", help="a file by name in the downloads, the newest of its browser copies: "
                                              "its path, and on stderr which was taken")
     p.add_argument("--name", required=True); p.add_argument("--dir", action="append", default=[])
-    p = sub.add_parser("relay", help="bale relay SID - where the session is open, the planner's answer on its stdin")
+    p = add("relay", help="bale relay SID - where the session is open, the planner's answer on its stdin")
     p.add_argument("office"); p.add_argument("--sid", required=True); p.add_argument("--answer", required=True)
     p.add_argument("--cwd"); p.add_argument("--downloads", action="append", default=[])
-    p = sub.add_parser("land-outcome", help="what happened, from bale's records; one JSON line")
+    p = add("land-outcome", help="what happened, from bale's records; one JSON line")
     p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--capture", required=True)
     p.add_argument("--exit", type=int, required=True); p.add_argument("--day", required=True)
-    p = sub.add_parser("bundle-lands", help="where a bundle's brief says it lands (its LANDS line): place<tab>office "
+    p = add("bundle-lands", help="where a bundle's brief says it lands (its LANDS line): place<tab>office "
                                             "or place<tab>project<tab>NAME, folder<tab>NAME or folder<tab>new, "
                                             "words<tab>LINE, say<tab>WHY, or absent")
     p.add_argument("office"); p.add_argument("--bundle", required=True)
-    p = sub.add_parser("bundle-sitting", help="whether a bundle's pack line sends out a sitting: yes, no or unknown")
+    p = add("bundle-sitting", help="whether a bundle's pack line sends out a sitting: yes, no or unknown")
     p.add_argument("--bundle", required=True)
-    p = sub.add_parser("withdraw-list", help="the sessions out that can be withdrawn: SID<tab>LABEL<tab>FOLDERS<tab>"
+    p = add("withdraw-list", help="the sessions out that can be withdrawn: SID<tab>LABEL<tab>FOLDERS<tab>"
                                              "CREATED; those that cannot: kept<tab>SID<tab>WHY")
     p.add_argument("office"); p.add_argument("--dir", action="append", default=[])
     p.add_argument("--no-downloads", action="store_true", help="machine.toml sets no downloads")
-    p = sub.add_parser("withdraw", help="close a session that was never worked (bale unlock --reason abandoned), "
+    p = add("withdraw", help="close a session that was never worked (bale unlock --reason abandoned), "
                                         "then its folders' History; one JSON line")
     p.add_argument("office"); p.add_argument("--sid", required=True); p.add_argument("--day", required=True)
     p.add_argument("--dir", action="append", default=[])
     p.add_argument("--no-downloads", action="store_true", help="machine.toml sets no downloads")
+    if one:
+        sub.metavar = one.metavar()
+    return ap, (one.found if one else True)
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    ap, found = build_parser(oh.subcommand_named(argv))
+    if not found:
+        ap, _ = build_parser()
     a = ap.parse_args(argv)
     if a.cmd == "bundle-lands":
         got = bundle_lands(a.office, a.bundle)
@@ -4917,6 +4977,7 @@ def main(argv=None):
         print("unknown" if ro is None else ("yes" if ro else "no"))
         return 0
     if a.cmd in ("withdraw-list", "withdraw"):
+        import json
         downloads = None if a.no_downloads else a.dir
         rd = Reader()
         try:
@@ -5005,6 +5066,7 @@ def main(argv=None):
             log(f"warning: the riders this pack carries could not be read ({exc}); none is offered")
             return 0
         if forecast is None:
+            import office_drafting as od
             say = log if (pathlib.Path(a.office) / od.SPACE / "riders.md").is_file() else debug
             say("the office cannot read this bundle's forecast, so it offers no riders for it")
         for r in riders:
@@ -5046,6 +5108,7 @@ def main(argv=None):
             print(f"{found[0]}\t{found[1]}")
         return 0
     if a.cmd == "start":
+        import json
         try:
             result = start(Reader(), a.office, None if a.folder == "-" else a.folder, a.where, a.project, a.goal,
                            a.slug, a.include,

@@ -16,20 +16,40 @@ when record-session finds the id already recorded.
 
 import argparse
 import datetime as dt
-import fnmatch
 import os
 import pathlib
 import re
-import shutil
-import subprocess
 import sys
-import tarfile
-import tomllib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import office_host as ohost  # noqa: E402
 
-VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
+
+class LazyPattern:
+    """A regular expression compiled the first time it is used (0.28.0).
+    The patterns a module holds at its top used to compile as the module
+    loaded, about 5 ms for this module's and 9 ms for office_drafting's,
+    and a helper call uses a few of them. Takes what re.compile takes and
+    answers for the compiled pattern (match, search, fullmatch, sub,
+    findall, finditer, split, pattern, flags, ...), compiling on the
+    first; it is not a re.Pattern, so it is used through its own methods,
+    never handed to re.sub and the module functions, which lib/ never
+    does. Every pattern at the top of a module that imports this one is
+    a LazyPattern; tests/test_suite_clock.py holds the modules to it."""
+
+    __slots__ = ("_args", "_compiled")
+
+    def __init__(self, pattern, flags=0):
+        self._args, self._compiled = (pattern, flags), None
+
+    def __getattr__(self, name):
+        if self._compiled is None:
+            self._compiled = re.compile(*self._args)
+        return getattr(self._compiled, name)
+
+    def __repr__(self):
+        return f"LazyPattern({self._args[0]!r})"
+
+VERSION_RE = LazyPattern(r"^(\d+)\.(\d+)\.(\d+)$")
 MIGRATION_KINDS = ("script", "renovation")
 
 
@@ -58,6 +78,7 @@ def compare_versions(a, b):
 # --- floor plan -----------------------------------------------------------
 
 def read_toml(path):
+    import tomllib
     try:
         with open(path, "rb") as fh:
             return tomllib.load(fh)
@@ -169,8 +190,8 @@ def set_office_key(path, key, value, what="change"):
 
 # --- profile --------------------------------------------------------------
 
-HEADING_RE = re.compile(r"^##\s+(.+?)\s*$")
-COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
+HEADING_RE = LazyPattern(r"^##\s+(.+?)\s*$")
+COMMENT_RE = LazyPattern(r"<!--.*?-->", re.S)
 
 
 def profile_sections(text):
@@ -519,7 +540,7 @@ VERB_KEYS = ("lands", "attended", "trigger")
 # help lists, or the plumbing the office and its sessions use. Every built
 # script verb says which.
 SURFACES = ("occupant", "plumbing")
-PLACEHOLDER_RE = re.compile(r"\{[^{}]*\}")
+PLACEHOLDER_RE = LazyPattern(r"\{[^{}]*\}")
 
 
 def is_path_entry(entry):
@@ -621,6 +642,7 @@ def space_catalog_problems(catalog):
     space; and a hung path that is also filed (a hung filed page would
     ship into every session and be append-only at once, which is a
     deliberate line, not a default)."""
+    import fnmatch
     problems = []
     spaces = catalog.get("spaces")
     if not isinstance(spaces, dict) or not spaces:
@@ -662,7 +684,7 @@ def space_catalog_problems(catalog):
 
 # --- sessions in folders ----------------------------------------------------
 
-SID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*-\d{3}$")
+SID_RE = LazyPattern(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*-\d{3}$")
 # bale's key contract for `bale pack --json` (the format_pack_json
 # docstring in bale's bin/bale_report.py) names the session id `sid`, a
 # stable key; share/bale-consumption.toml records the read.
@@ -711,7 +733,7 @@ def folder_session_lines(folder_md):
 
 # --- projects this office scopes ------------------------------------------
 
-PROJECT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+PROJECT_NAME_RE = LazyPattern(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
 
 def expand_project_path(path):
@@ -732,6 +754,7 @@ def read_projects(manifest):
     Each entry is a dict: name, path (as written), resolved (a Path, or
     None) and problem (None, or why the entry cannot be read). A broken
     entry is reported, never dropped."""
+    import office_host as ohost
     table = manifest.get("projects")
     if table is None:
         return None
@@ -835,12 +858,12 @@ HOST_KEYS = ("host", "shell", "connect")
 #             clone on this machine by default (ruling 2 of the front-door
 #             arc). Recorded and rendered; nothing validates there yet.
 AUDIENCE_KEYS = ("audience", "author", "base", "validates_on")
-REMOTE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-AUTHOR_RE = re.compile(r"^(?P<name>[^<>]+?)\s*<(?P<email>[^<>@\s]+@[^<>@\s]+)>$")
+REMOTE_NAME_RE = LazyPattern(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+AUTHOR_RE = LazyPattern(r"^(?P<name>[^<>]+?)\s*<(?P<email>[^<>@\s]+@[^<>@\s]+)>$")
 # A branch name as git takes one: no space, no control character, none
 # of git's refused sequences; checked here so a bad value refuses at the
 # wizard, not at the push.
-BRANCH_BAD = re.compile(r"[\s~^:?*\[\\]|\.\.|@\{|^/|/$|^-|\.lock$|^\.|/\.|//|\.$")
+BRANCH_BAD = LazyPattern(r"[\s~^:?*\[\\]|\.\.|@\{|^/|/$|^-|\.lock$|^\.|/\.|//|\.$")
 
 
 def check_audience(name):
@@ -882,6 +905,7 @@ def check_base(name):
 
 def check_validates_on(host):
     """The host a project validates on, as --host takes one."""
+    import office_host as ohost
     try:
         return ohost.check_host(host)
     except ohost.HostError as exc:
@@ -931,6 +955,7 @@ def table_span(lines, name):
 def check_host_keys(host, shell=None, connect=None):
     """The three host keys as stored: the host checked, the shell and
     connect given or their defaults for that host."""
+    import office_host as ohost
     try:
         host = ohost.check_host(host)
         return {"host": host,
@@ -1063,6 +1088,7 @@ def check_project_dir(resolved):
     (a .bale/ directory) or is set up for (a bale.toml)? The text says
     which it found, or what is wrong. Existence checks only: nothing
     inside .bale/ is read."""
+    import subprocess
     p = pathlib.Path(resolved)
     if not p.exists():
         return False, f"no such directory on this machine: {p}"
@@ -1306,12 +1332,12 @@ STATE_VERBS = {"candidate": "candidate", "queued": "queued", "opened": "open",
                "reopened": "open", "done": "done", "absorbed": "absorbed",
                "split": "split", "retired": "retired"}
 
-ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$")
-FOLDER_REF_RE = re.compile(r"^(?:folder\s+|#)?(\d+)$", re.I)
-GATE_RE = re.compile(r"^(folder|agenda|blueprint|ruling)\s+(\S+)$", re.I)
-FIELD_LINE_RE = re.compile(r"^- ([a-z][a-z ]*?): (.*)$")
-HISTORY_LINE_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2}) ([a-z-]+):(?: (.*))?$")
-RATIFIED_RE = re.compile(r"^- (\S+) ratified (\d{4}-\d{2}-\d{2})(?:, except: (.*))?$")
+ID_RE = LazyPattern(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$")
+FOLDER_REF_RE = LazyPattern(r"^(?:folder\s+|#)?(\d+)$", re.I)
+GATE_RE = LazyPattern(r"^(folder|agenda|blueprint|ruling)\s+(\S+)$", re.I)
+FIELD_LINE_RE = LazyPattern(r"^- ([a-z][a-z ]*?): (.*)$")
+HISTORY_LINE_RE = LazyPattern(r"^- (\d{4}-\d{2}-\d{2}) ([a-z-]+):(?: (.*))?$")
+RATIFIED_RE = LazyPattern(r"^- (\S+) ratified (\d{4}-\d{2}-\d{2})(?:, except: (.*))?$")
 
 # What each field means, for the wizard's `?` and office open --help.
 FIELD_HELP = {
@@ -1805,7 +1831,7 @@ def file_structure(folder_md, pairs):
 # fenced block or inside a notepad page the brief carries is quoted text,
 # never a ratification.
 
-RATIFIED_MARK_RE = re.compile(r"^--- RATIFIED (\S+?)(?:, except: (.*\S))? ---$")
+RATIFIED_MARK_RE = LazyPattern(r"^--- RATIFIED (\S+?)(?:, except: (.*\S))? ---$")
 RATIFIED_MARK_PREFIX = "--- RATIFIED "
 
 
@@ -1872,7 +1898,7 @@ def brief_ratifications(text):
 # that does not read, or names a place or a folder the office does not
 # hold, is said, and that question comes back alone.
 
-LANDS_MARK_RE = re.compile(r"^--- LANDS (.+?), (?:folder (\d+)|(a new folder)) ---$")
+LANDS_MARK_RE = LazyPattern(r"^--- LANDS (.+?), (?:folder (\d+)|(a new folder)) ---$")
 LANDS_MARK_PREFIX = "--- LANDS "
 LANDS_OFFICE = "the office"
 
@@ -1945,9 +1971,9 @@ def cmd_ratifications(a):
 
 PAGE_SECTIONS = {"walkthrough": "Walkthrough", "delivery": "Delivery"}
 PAGE_FILES = {"walkthrough": "walkthrough.md", "delivery": "delivery.md"}
-TO_LINE_RE = re.compile(r"^(?:- )?to:\s*(.+?)\s*$", re.I)
-PATHS_LINE_RE = re.compile(r"^(?:- )?paths:\s*(.+?)\s*$", re.I)
-DELIVERED_RE = re.compile(r"^(?P<branch>\S+) on (?P<audience>\S+) of (?P<project>\S+): sessions (?P<sessions>.*?); "
+TO_LINE_RE = LazyPattern(r"^(?:- )?to:\s*(.+?)\s*$", re.I)
+PATHS_LINE_RE = LazyPattern(r"^(?:- )?paths:\s*(.+?)\s*$", re.I)
+DELIVERED_RE = LazyPattern(r"^(?P<branch>\S+) on (?P<audience>\S+) of (?P<project>\S+): sessions (?P<sessions>.*?); "
                           r"workbench (?P<workbench>[0-9a-f]{7,40}); delivery (?P<delivery>[0-9a-f]{7,40})$")
 SUBJECT_LIMIT = 72
 
@@ -2252,6 +2278,7 @@ def filed_pages(manifest):
 
 
 def git_out(root, *args, text=True):
+    import subprocess
     proc = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=text, timeout=120)
     if proc.returncode != 0:
         err = proc.stderr if text else proc.stderr.decode("utf-8", "replace")
@@ -2296,6 +2323,7 @@ def append_check(root, rel, insertion=False):
     to filed paper, made before it commits: office note runs it, and
     the drafting-table's recording verbs will. A root that is not a git
     repo has nothing filed to compare against, which is not a refusal."""
+    import subprocess
     root = pathlib.Path(root)
     inside = subprocess.run(["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
                             capture_output=True, text=True, timeout=30)
@@ -2320,6 +2348,7 @@ def filed_history_check(root):
     filed page does more than append at its end, and every uncommitted
     change that would. The net for a hand edit that went through
     neither bale nor a script (the blueprint's section 5.4)."""
+    import subprocess
     root = pathlib.Path(root)
     specs = filed_pages(read_toml(root / "floor-plan" / "manifest.toml"))
     counts = {"specs": specs, "commits": 0, "pages": 0}
@@ -2413,9 +2442,9 @@ def ascii_escape(text):
 # briefs from before this convention carry for office-src's own record,
 # are not these and are never filed.
 
-NOTEPAD_PAGE_BEGIN_RE = re.compile(r"^--- NOTEPAD PAGE BEGIN (.*) ---$")
+NOTEPAD_PAGE_BEGIN_RE = LazyPattern(r"^--- NOTEPAD PAGE BEGIN (.*) ---$")
 NOTEPAD_PAGE_END = "--- NOTEPAD PAGE END ---"
-SITTING_PAGE_RE = re.compile(r"^notepad/(\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
+SITTING_PAGE_RE = LazyPattern(r"^notepad/(\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 
 
 def sitting_page_path_problem(path):
@@ -2501,6 +2530,7 @@ def file_sitting_pages(root, text):
 def brief_from_request(tarball):
     """The README.md a request tarball shipped (its brief), as text, or
     None when it shipped none."""
+    import tarfile
     with tarfile.open(tarball) as t:
         for member in t.getmembers():
             if member.isfile() and re.fullmatch(r"[^/]+/README\.md", member.name):
@@ -2508,9 +2538,9 @@ def brief_from_request(tarball):
     return None
 
 
-TEMPLATE_KEY_RE = re.compile(r"\{\{([a-z_]+)\}\}")
+TEMPLATE_KEY_RE = LazyPattern(r"\{\{([a-z_]+)\}\}")
 # A field line in a template: `- label: {{key}}` and nothing else on it.
-TEMPLATE_FIELD_RE = re.compile(r"^- [a-z][a-z ]*: \{\{([a-z_]+)\}\}$")
+TEMPLATE_FIELD_RE = LazyPattern(r"^- [a-z][a-z ]*: \{\{([a-z_]+)\}\}$")
 
 
 def template_values(value):
@@ -2569,12 +2599,12 @@ def recent_notes(notepad, count):
 # --- the week -------------------------------------------------------------
 
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
-PLAN_ONE_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) (.+)$")
-PLAN_SERIES_RE = re.compile(r"^- every (mon|tue|wed|thu|fri|sat|sun|day|weekday) (\d{2}:\d{2}) (.+)$", re.I)
-RECORD_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))? (.+)$")
+PLAN_ONE_RE = LazyPattern(r"^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) (.+)$")
+PLAN_SERIES_RE = LazyPattern(r"^- every (mon|tue|wed|thu|fri|sat|sun|day|weekday) (\d{2}:\d{2}) (.+)$", re.I)
+RECORD_RE = LazyPattern(r"^- (\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))? (.+)$")
 # A meeting's line names what it concerns at its end (0.26.0,
 # lib/office_meeting.py): shown apart from its title.
-ABOUT_RE = re.compile(r" \[about: ([^\]]*)\]$")
+ABOUT_RE = LazyPattern(r" \[about: ([^\]]*)\]$")
 
 
 def plan_title(text):
@@ -3176,6 +3206,7 @@ def set_machine_downloads(machine_file, directories):
     when missing), as a top-level key ahead of any table, every other
     line left as it is. Refuses when the key is already set (it is asked
     once) or the result would not read back as the same list."""
+    import tomllib
     path = pathlib.Path(machine_file)
     if not directories:
         raise HelperError("downloads needs at least one directory")
@@ -3233,6 +3264,7 @@ def desktop_which(name, environ=None):
     program WSL puts on the PATH), or None: searched in the directories
     OFFICE_DESKTOP_PATH lists when it is set ("" lists none), on PATH when
     it is not. Every check for a desktop program goes through here."""
+    import shutil
     environ = os.environ if environ is None else environ
     dirs = environ.get(DESKTOP_PATH_ENV)
     if dirs is None:
@@ -3300,6 +3332,7 @@ def set_machine_string(machine_file, key, value, comment):
     missing), as a top-level key ahead of any table, every other line left
     as it is. Refuses when the key is already set (it is asked once) or
     the result would not read back as the same value."""
+    import tomllib
     path = pathlib.Path(machine_file)
     if "\n" in value or "\r" in value:
         raise HelperError(f"{key} is one line")
@@ -3452,51 +3485,106 @@ def cmd_week(a):
     print("\n".join(lines))
 
 
-def main(argv=None):
+# --- the command line ----------------------------------------------------------
+
+class OneSubcommand:
+    """A stand-in for a subparsers action while a module builds its parser
+    for a call that names its subcommand (0.28.0): that subcommand's
+    parser is built and every other is skipped. argparse builds a parser
+    per subcommand (about 6 ms for this module's 53, about 9 ms for
+    office_bale's), and a call runs one. Every name goes into `names`, so
+    the module can give the usage line the full list through the
+    action's metavar, as the choices would have; `found` says whether the
+    named subcommand exists, and a caller whose name was not found builds
+    the whole parser instead, so argparse's errors and help are as they
+    were."""
+
+    def __init__(self, sub, wanted):
+        self.sub, self.wanted, self.names, self.found = sub, wanted, [], False
+
+    def add_parser(self, name, **kwargs):
+        self.names.append(name)
+        if name != self.wanted:
+            return SkippedParser()
+        self.found = True
+        return self.sub.add_parser(name, **kwargs)
+
+    def metavar(self):
+        """What argparse would have written for the choices: every
+        subcommand, in the order they were added."""
+        return "{" + ",".join(self.names) + "}"
+
+
+class SkippedParser:
+    """What OneSubcommand.add_parser returns for a subcommand the call did
+    not name: it takes every call a parser takes (add_argument,
+    set_defaults, add_mutually_exclusive_group and the group's own
+    add_argument) and keeps nothing."""
+
+    def __getattr__(self, name):
+        return self
+
+    def __call__(self, *args, **kwargs):
+        return self
+
+
+def subcommand_named(argv):
+    """The subcommand a command line names (its first argument, when that
+    is not a flag), or None: then, and when the name is not a subcommand,
+    the module builds its whole parser."""
+    return argv[0] if argv and not argv[0].startswith("-") else None
+
+
+def build_parser(only=None):
+    """The command's parser; with `only`, a subcommand's name, the parser
+    holds that one subcommand (OneSubcommand). Returns (parser, found):
+    found is False when `only` names no subcommand."""
     ap = argparse.ArgumentParser(prog="office_helper.py")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    one = OneSubcommand(sub, only) if only is not None else None
+    add = one.add_parser if one else sub.add_parser
 
-    p = sub.add_parser("vercmp"); p.add_argument("left"); p.add_argument("right")
+    p = add("vercmp"); p.add_argument("left"); p.add_argument("right")
     p.set_defaults(fn=cmd_vercmp)
-    p = sub.add_parser("stamp"); p.add_argument("manifest")
+    p = add("stamp"); p.add_argument("manifest")
     p.add_argument("field", choices=("built_from", "migrated_to")); p.set_defaults(fn=cmd_stamp)
-    p = sub.add_parser("get"); p.add_argument("manifest"); p.add_argument("key")
+    p = add("get"); p.add_argument("manifest"); p.add_argument("key")
     p.add_argument("--default"); p.set_defaults(fn=cmd_get)
-    p = sub.add_parser("spaces"); p.add_argument("manifest")
+    p = add("spaces"); p.add_argument("manifest")
     p.add_argument("prop", choices=("hung", "filed")); p.set_defaults(fn=cmd_spaces)
-    p = sub.add_parser("render-manifest"); p.add_argument("catalog")
+    p = add("render-manifest"); p.add_argument("catalog")
     for f in ("name", "version", "built_at", "timezone"):
         p.add_argument(f"--{f.replace('_', '-')}", dest=f, required=True)
     p.set_defaults(fn=cmd_render_manifest)
-    p = sub.add_parser("base-spaces"); p.add_argument("catalog"); p.set_defaults(fn=cmd_base_spaces)
-    p = sub.add_parser("set-migrated"); p.add_argument("manifest"); p.add_argument("version")
+    p = add("base-spaces"); p.add_argument("catalog"); p.set_defaults(fn=cmd_base_spaces)
+    p = add("set-migrated"); p.add_argument("manifest"); p.add_argument("version")
     p.set_defaults(fn=cmd_set_migrated)
-    p = sub.add_parser("profile-check"); p.add_argument("profile"); p.add_argument("shape")
+    p = add("profile-check"); p.add_argument("profile"); p.add_argument("shape")
     p.set_defaults(fn=cmd_profile_check)
-    p = sub.add_parser("survey-render"); p.add_argument("--facts", required=True)
+    p = add("survey-render"); p.add_argument("--facts", required=True)
     p.add_argument("--previous", required=True); p.add_argument("--out", required=True)
     p.set_defaults(fn=cmd_survey_render)
-    p = sub.add_parser("survey-age"); p.add_argument("page")
+    p = add("survey-age"); p.add_argument("page")
     p.add_argument("--install", help="the installed office-src version, to compare with the one the survey records")
     p.set_defaults(fn=cmd_survey_age)
-    p = sub.add_parser("skew"); p.add_argument("office_version"); p.add_argument("install_version")
+    p = add("skew"); p.add_argument("office_version"); p.add_argument("install_version")
     p.add_argument("migrations"); p.set_defaults(fn=cmd_skew)
 
-    p = sub.add_parser("landed"); p.add_argument("version"); p.add_argument("migrations")
+    p = add("landed"); p.add_argument("version"); p.add_argument("migrations")
     p.add_argument("install_version"); p.add_argument("root"); p.set_defaults(fn=cmd_landed)
-    p = sub.add_parser("render-bale-toml"); p.add_argument("manifest"); p.add_argument("--root")
+    p = add("render-bale-toml"); p.add_argument("manifest"); p.add_argument("--root")
     p.add_argument("--pack-only", action="store_true"); p.set_defaults(fn=cmd_render_bale_toml)
-    p = sub.add_parser("include-group-check"); p.add_argument("manifest"); p.add_argument("bale_toml")
+    p = add("include-group-check"); p.add_argument("manifest"); p.add_argument("bale_toml")
     p.add_argument("root"); p.set_defaults(fn=cmd_include_group_check)
-    p = sub.add_parser("catalog-check"); p.add_argument("verbs"); p.add_argument("spaces")
+    p = add("catalog-check"); p.add_argument("verbs"); p.add_argument("spaces")
     p.set_defaults(fn=cmd_catalog_check)
-    p = sub.add_parser("pack-sid"); p.set_defaults(fn=cmd_pack_sid)
-    p = sub.add_parser("projects"); p.add_argument("manifest"); p.set_defaults(fn=cmd_projects)
-    p = sub.add_parser("project-add"); p.add_argument("manifest"); p.add_argument("name")
+    p = add("pack-sid"); p.set_defaults(fn=cmd_pack_sid)
+    p = add("projects"); p.add_argument("manifest"); p.set_defaults(fn=cmd_projects)
+    p = add("project-add"); p.add_argument("manifest"); p.add_argument("name")
     p.add_argument("path"); p.add_argument("--host"); p.add_argument("--shell"); p.add_argument("--connect")
     p.add_argument("--checked", help="what the check through the host's shell found, for the report")
     p.set_defaults(fn=cmd_project_add)
-    p = sub.add_parser("project-declare"); p.add_argument("manifest"); p.add_argument("name")
+    p = add("project-declare"); p.add_argument("manifest"); p.add_argument("name")
     p.add_argument("--ride", action="append"); p.add_argument("--no-rides", action="store_true")
     p.add_argument("--after-land", action="append"); p.add_argument("--no-after-land", action="store_true")
     p.add_argument("--host"); p.add_argument("--shell"); p.add_argument("--connect")
@@ -3505,90 +3593,99 @@ def main(argv=None):
         flag = key.replace("_", "-")
         p.add_argument(f"--{flag}", dest=key); p.add_argument(f"--no-{flag}", dest=f"no_{key}", action="store_true")
     p.set_defaults(fn=cmd_project_declare)
-    p = sub.add_parser("check-audience-key", help="one of the audience line's keys as it would be stored, or why not")
+    p = add("check-audience-key", help="one of the audience line's keys as it would be stored, or why not")
     p.add_argument("key", choices=AUDIENCE_KEYS); p.add_argument("value"); p.set_defaults(fn=cmd_check_audience_key)
-    p = sub.add_parser("lane-project", help="the project a folder's lane names, or nothing")
+    p = add("lane-project", help="the project a folder's lane names, or nothing")
     p.add_argument("folder_md"); p.set_defaults(fn=cmd_lane_project)
-    p = sub.add_parser("file-pages", help="file the Walkthrough and Delivery sections of a response's notes.md as the "
+    p = add("file-pages", help="file the Walkthrough and Delivery sections of a response's notes.md as the "
                                           "folder's walkthrough.md and delivery.md: one line per page, filed, "
                                           "rewritten or absent")
     p.add_argument("folder_dir"); p.add_argument("--response", required=True)
     p.add_argument("--sid", required=True); p.set_defaults(fn=cmd_file_pages)
-    p = sub.add_parser("delivery-words", help="read a folder's delivery.md and print it as JSON, or say what is wrong")
+    p = add("delivery-words", help="read a folder's delivery.md and print it as JSON, or say what is wrong")
     p.add_argument("delivery_md"); p.set_defaults(fn=cmd_delivery_words)
-    p = sub.add_parser("check-host-keys"); p.add_argument("host"); p.add_argument("--shell"); p.add_argument("--connect")
+    p = add("check-host-keys"); p.add_argument("host"); p.add_argument("--shell"); p.add_argument("--connect")
     p.set_defaults(fn=cmd_check_host_keys)
-    p = sub.add_parser("check-project-dir"); p.add_argument("path"); p.set_defaults(fn=cmd_check_project_dir)
-    p = sub.add_parser("project-spec"); p.add_argument("specs", nargs="+"); p.set_defaults(fn=cmd_project_spec)
-    p = sub.add_parser("check-declaration"); p.add_argument("kind", choices=("ride", "after-land"))
+    p = add("check-project-dir"); p.add_argument("path"); p.set_defaults(fn=cmd_check_project_dir)
+    p = add("project-spec"); p.add_argument("specs", nargs="+"); p.set_defaults(fn=cmd_project_spec)
+    p = add("check-declaration"); p.add_argument("kind", choices=("ride", "after-land"))
     p.add_argument("value"); p.set_defaults(fn=cmd_check_declaration)
-    p = sub.add_parser("project-facts"); p.add_argument("manifest"); p.add_argument("name")
+    p = add("project-facts"); p.add_argument("manifest"); p.add_argument("name")
     p.set_defaults(fn=cmd_project_facts)
-    p = sub.add_parser("record-session"); p.add_argument("folder_md"); p.add_argument("sid")
+    p = add("record-session"); p.add_argument("folder_md"); p.add_argument("sid")
     p.add_argument("--words"); p.add_argument("--day"); p.set_defaults(fn=cmd_record_session)
-    p = sub.add_parser("folder-asked", help="keep the occupant's words in a folder's Asked section")
+    p = add("folder-asked", help="keep the occupant's words in a folder's Asked section")
     p.add_argument("folder_md"); p.add_argument("--words-file", required=True); p.add_argument("--by", required=True)
     p.set_defaults(fn=cmd_folder_asked)
-    p = sub.add_parser("normalize-field"); p.add_argument("key"); p.add_argument("value")
+    p = add("normalize-field"); p.add_argument("key"); p.add_argument("value")
     p.set_defaults(fn=cmd_normalize_field)
-    p = sub.add_parser("field-help"); p.add_argument("key"); p.set_defaults(fn=cmd_field_help)
-    p = sub.add_parser("next-number"); p.add_argument("root"); p.set_defaults(fn=cmd_next_number)
-    p = sub.add_parser("folder-by-number"); p.add_argument("root"); p.add_argument("ref")
+    p = add("field-help"); p.add_argument("key"); p.set_defaults(fn=cmd_field_help)
+    p = add("next-number"); p.add_argument("root"); p.set_defaults(fn=cmd_next_number)
+    p = add("folder-by-number"); p.add_argument("root"); p.add_argument("ref")
     p.set_defaults(fn=cmd_folder_by_number)
-    p = sub.add_parser("folder-facts"); p.add_argument("folder_md"); p.set_defaults(fn=cmd_folder_facts)
-    p = sub.add_parser("folder-event"); p.add_argument("folder_md"); p.add_argument("--day", required=True)
+    p = add("folder-facts"); p.add_argument("folder_md"); p.set_defaults(fn=cmd_folder_facts)
+    p = add("folder-event"); p.add_argument("folder_md"); p.add_argument("--day", required=True)
     p.add_argument("--verb", required=True); p.add_argument("--text", required=True)
     p.add_argument("--status"); p.set_defaults(fn=cmd_folder_event)
-    p = sub.add_parser("folder-gate"); p.add_argument("folder_md"); p.add_argument("--key", required=True)
+    p = add("folder-gate"); p.add_argument("folder_md"); p.add_argument("--key", required=True)
     p.add_argument("--value", required=True); p.add_argument("--day", required=True); p.set_defaults(fn=cmd_folder_gate)
-    p = sub.add_parser("folder-set-field", help="write a field the command writes after the block (goal), when "
+    p = add("folder-set-field", help="write a field the command writes after the block (goal), when "
                                                 "the folder carries none; prints the line, or nothing")
     p.add_argument("folder_md"); p.add_argument("--key", required=True); p.add_argument("--value", required=True)
     p.set_defaults(fn=cmd_folder_set_field)
-    p = sub.add_parser("finished-folder", help="exit 0 when land offers to close the folder after SID landed; "
+    p = add("finished-folder", help="exit 0 when land offers to close the folder after SID landed; "
                                                "else 3 and why not")
     p.add_argument("folder_md"); p.add_argument("sid"); p.set_defaults(fn=cmd_finished_folder)
-    p = sub.add_parser("downloads", help="machine.toml's downloads, one per line (exit 3: not set); --set writes "
+    p = add("downloads", help="machine.toml's downloads, one per line (exit 3: not set); --set writes "
                                          "it; --candidates lists this machine's likely ones")
     p.add_argument("machine_file"); p.add_argument("--set", nargs="+"); p.add_argument("--candidates", action="store_true")
     p.set_defaults(fn=cmd_downloads)
-    p = sub.add_parser("paste-command", help="machine.toml's paste_command (exit 3: not set); --set writes it; "
+    p = add("paste-command", help="machine.toml's paste_command (exit 3: not set); --set writes it; "
                                              "--candidate prints this machine's likely one (exit 3: none)")
     p.add_argument("machine_file"); p.add_argument("--set"); p.add_argument("--candidate", action="store_true")
     p.set_defaults(fn=cmd_paste_command)
-    p = sub.add_parser("ratify"); p.add_argument("folder_md"); p.add_argument("sid")
+    p = add("ratify"); p.add_argument("folder_md"); p.add_argument("sid")
     p.add_argument("--day", required=True); p.add_argument("--except", dest="except_text")
     p.add_argument("--at-end", action="store_true", help="as the Sessions section's last line (a brief's ratification)")
     p.set_defaults(fn=cmd_ratify)
-    p = sub.add_parser("ratifications", help="the ratifications a brief carries, and the folders that record each "
+    p = add("ratifications", help="the ratifications a brief carries, and the folders that record each "
                                              "session: file SID FOLDER [EXCEPT], nowhere SID, or malformed - WHY")
     p.add_argument("root")
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--request", help="a request tarball: the ratifications its README.md carries")
     g.add_argument("--brief", help="a brief file")
     p.set_defaults(fn=cmd_ratifications)
-    p = sub.add_parser("folder-check"); p.add_argument("root"); p.set_defaults(fn=cmd_folder_check)
-    p = sub.add_parser("filed-check"); p.add_argument("root"); p.set_defaults(fn=cmd_filed_check)
-    p = sub.add_parser("folder-summary"); p.add_argument("folder_md"); p.add_argument("template")
+    p = add("folder-check"); p.add_argument("root"); p.set_defaults(fn=cmd_folder_check)
+    p = add("filed-check"); p.add_argument("root"); p.set_defaults(fn=cmd_filed_check)
+    p = add("folder-summary"); p.add_argument("folder_md"); p.add_argument("template")
     p.set_defaults(fn=cmd_folder_summary)
-    p = sub.add_parser("append-check"); p.add_argument("root"); p.add_argument("path")
+    p = add("append-check"); p.add_argument("root"); p.add_argument("path")
     p.add_argument("--insertion", action="store_true",
                    help="one run of bytes inserted anywhere, for a live page whose foot stays last")
     p.set_defaults(fn=cmd_append_check)
-    p = sub.add_parser("project-names"); p.add_argument("manifest"); p.set_defaults(fn=cmd_project_names)
-    p = sub.add_parser("ascii-escape"); p.set_defaults(fn=cmd_ascii_escape)
-    p = sub.add_parser("file-sitting-pages"); p.add_argument("root")
+    p = add("project-names"); p.add_argument("manifest"); p.set_defaults(fn=cmd_project_names)
+    p = add("ascii-escape"); p.set_defaults(fn=cmd_ascii_escape)
+    p = add("file-sitting-pages"); p.add_argument("root")
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--request", help="a request tarball: the pages its README.md carries")
     g.add_argument("--brief", help="a brief file")
     p.set_defaults(fn=cmd_file_sitting_pages)
-    p = sub.add_parser("render-template"); p.add_argument("template"); p.add_argument("values", nargs="*")
+    p = add("render-template"); p.add_argument("template"); p.add_argument("values", nargs="*")
     p.set_defaults(fn=cmd_render_template)
-    p = sub.add_parser("recent-notes"); p.add_argument("notepad"); p.add_argument("count", type=int)
+    p = add("recent-notes"); p.add_argument("notepad"); p.add_argument("count", type=int)
     p.set_defaults(fn=cmd_recent_notes)
-    p = sub.add_parser("week"); p.add_argument("calendar"); p.add_argument("--today", required=True)
+    p = add("week"); p.add_argument("calendar"); p.add_argument("--today", required=True)
     p.add_argument("--now", required=True); p.add_argument("--tz", required=True); p.set_defaults(fn=cmd_week)
+    if one:
+        sub.metavar = one.metavar()
+    return ap, (one.found if one else True)
 
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    ap, found = build_parser(subcommand_named(argv))
+    if not found:
+        ap, _ = build_parser()
     args = ap.parse_args(argv)
     try:
         return args.fn(args) or 0

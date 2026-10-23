@@ -44,9 +44,18 @@ debug() { [ "${OFFICE_DEBUG:-0}" = "1" ] && printf '[office] debug: %s\n' "$*" >
 # the office's modules again on every call was most of the suite's time.
 # With no cache, as in everyday use, nothing changes: the modules compile
 # as they load, and -B still writes nothing.
+#
+# -S (0.28.0): the interpreter starts without site, so no site-packages
+# directory is on sys.path and none is searched. lib/ is standard library
+# only, so nothing it imports is lost; and each module imports its heavy
+# standard modules where they are used, so a call that reads one file
+# loads little. The one standard module that can reach site-packages is
+# zoneinfo, for the tzdata package on a machine with no system zoneinfo
+# directory; there the office's zone names fall back to UTC, said under
+# OFFICE_DEBUG, as they already do for a name that does not resolve.
 pylib() {
   local mod="${1##*/}"; shift
-  python3 -B -P -c 'import runpy, sys; sys.path.insert(0, sys.argv.pop(1)); runpy.run_module(sys.argv.pop(1), run_name="__main__", alter_sys=True)' \
+  python3 -B -P -S -c 'import runpy, sys; sys.path.insert(0, sys.argv.pop(1)); runpy.run_module(sys.argv.pop(1), run_name="__main__", alter_sys=True)' \
     "$OFFICE_SRC/lib" "${mod%.py}" "$@"
 }
 helper() { pylib "$HELPER" "$@"; }

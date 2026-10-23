@@ -4,6 +4,53 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.28.0
+
+Additive: no migration, nothing to do in any office, and nothing an
+office does changes. This release is about the time the office's Python
+helpers take to start: every `office` command starts several (`office
+status` 17, a start about 11, a land about 45), and in the worker's
+two-core sandbox a small helper call went from 85 ms to 42, the whole
+suite from 1,245 seconds to 866 and the fast tier from 85.4 to
+64.1, with every test kept and five added.
+
+Imports where they are used. Each lib/ module imported its heavy standard
+modules (subprocess, tarfile, tempfile, tomllib, json, shlex, hashlib,
+threading, zoneinfo, urllib) and its sibling modules at the top, so a
+call that compared two versions loaded the same code as a start. Now a
+function imports what it uses where it starts, and the top of a module
+holds only what every call needs (argparse, datetime, os, pathlib, re,
+sys, and office_helper; office_bale keeps office_host, which most of its
+functions read hosted projects through). Three quarters of a helper
+call's import time was these modules.
+
+Patterns compiled when first used. The regular expressions a module
+holds at its top compiled as it loaded, about 5 ms in office_helper and
+9 in office_drafting, and a call uses a few of them; they are
+`office_helper.LazyPattern` now, compiled the first time one is used
+and answering for the compiled pattern after.
+
+One subcommand's parser. office_helper and office_bale built a parser
+for every subcommand (53 and 30) before reading which one the call
+named, about 6 and 9 ms; a call that names its subcommand now builds
+that one parser (`OneSubcommand`), and a call that names none, a flag or
+an unknown name builds them all, so argparse's usage, help and errors
+read as they did.
+
+`-S` in `pylib`. bin/office starts its Python without site: lib/ is
+standard library only, so nothing it imports is lost, and the start
+skips site's work and its search of site-packages. The one standard
+module that can reach site-packages is zoneinfo, for the tzdata package
+on a machine with no system zoneinfo directory; there the office's zone
+names fall back to UTC, said under OFFICE_DEBUG, as they already do for
+a name that does not resolve.
+
+Nothing the occupant sees changes: every verb's output, exit code and
+side effects are as they were, and the suite is the net. Tests:
+tests/test_suite_clock.py holds every lib/ module to the rule (which
+modules load at import, what a small read loads, the lazy patterns, the
+one-subcommand parser, and `-S` in `pylib`).
+
 ## 0.27.0
 
 Additive: no migration, nothing to do in any office, and nothing an

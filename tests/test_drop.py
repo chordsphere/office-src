@@ -276,8 +276,9 @@ class TestTheRideAlong(DropCase):
     def test_a_project_session_carries_them_in_the_offices_context(self):
         a = self.drop(project="alpha")
         b = self.drop("Another one\n")
-        # Oldest first; two dropped in the same minute go by name.
-        first, second = sorted([a, b], key=lambda r: pathlib.Path(r).name)
+        # Oldest first: by the dropped stamp (to the minute), then by name,
+        # as office_drop.drops orders them; the two may straddle a minute.
+        first, second = sorted([a, b], key=lambda r: (odrop.read_drop(self.root, r)["dropped"], pathlib.Path(r).name))
         proc = self.start("fix-login", "--on", "alpha", "--goal", "Fix the login redirect")
         tray = self.tray(proc)
         names = tar_names(tray / "context-home.tar.gz")

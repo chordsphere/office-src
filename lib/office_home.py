@@ -55,15 +55,10 @@ import datetime as dt
 import os
 import pathlib
 import re
-import shlex
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import office_helper as oh  # noqa: E402
-import office_bale as ob  # noqa: E402
-import office_drop as odrop  # noqa: E402
-import office_sort as osort  # noqa: E402
-import office_meeting as om  # noqa: E402
 
 BUNDLE_EXT = ".bale-bundle"
 # A bundle downloaded longer ago than this is not offered: a planner's
@@ -73,7 +68,7 @@ RECENT_DAYS = 14
 # The home screen's waiting list holds at most this many keyed things;
 # the rest are counted, and office desk lists them.
 MAX_ITEMS = 9
-COPY_RE = re.compile(r" \(\d+\)$")
+COPY_RE = oh.LazyPattern(r" \(\d+\)$")
 
 
 def debug(msg):
@@ -105,6 +100,7 @@ def age_words(then, now):
 
 def local_day(stamp, tz):
     """The office's local date of a UTC stamp (bale's clock is UTC)."""
+    import office_bale as ob
     when = ob.parse_stamp(stamp)
     if tz is not None:
         when = when.astimezone(tz)
@@ -140,6 +136,7 @@ class Names:
     by its slug. The folders are read once."""
 
     def __init__(self, office_root):
+        import office_bale as ob
         self.root = office_root
         self.naming = ob.folders_naming(office_root)
         self.folders = {}
@@ -155,6 +152,8 @@ class Names:
         return f"{oh.cite(f)}, {title}" if f.get("number") else title
 
     def of(self, sid):
+        import office_sort as osort
+        import office_meeting as om
         rels = self.naming.get(sid) or []
         if rels:
             return self.folder_words(rels[0])
@@ -182,6 +181,7 @@ def landed_at(view):
 def flight_words(rd, cwd, sid, read_only, names, now):
     """One session in flight, in words: its name, a sitting or held when it
     is, and how long ago it went out."""
+    import office_bale as ob
     name = names.of(sid)
     try:
         d = rd.dossier(cwd, sid)
@@ -200,6 +200,7 @@ def place_row(rd, cwd, names, now, tz):
     """(words, sessions) for one place the office reads: what is in flight
     there, or what last landed and when, or that nothing has. Raises
     BaleError when the place cannot be read."""
+    import office_bale as ob
     opened = rd.open_sessions(cwd)
     if opened:
         first = flight_words(rd, cwd, opened[0][0], opened[0][1], names, now)
@@ -221,6 +222,7 @@ def project_rows(rd, office_root, names, now, tz):
     """[(label, words)]: each project the office scopes, then the office
     itself when a session is open there. A project that cannot be read
     says why on its own line; the others are read all the same."""
+    import office_bale as ob
     projects = ob.office_projects(office_root)
     rows = []
     if not projects:
@@ -277,6 +279,7 @@ def downloaded_bundles(directories, now, days=RECENT_DAYS):
 def bundle_reading(path):
     """(slug, goal) of a bundle's stored pack line, read the way bale pack
     reads its flags; (None, None) when the office cannot read it."""
+    import office_bale as ob
     argv = ob.bundle_pack_argv(path)
     if argv is None:
         return None, None
@@ -297,6 +300,7 @@ def every_place(office_root):
     """[(label, where)] for the office's own registry and each project it
     scopes that can be read; a project that cannot is said under
     OFFICE_DEBUG and skipped."""
+    import office_bale as ob
     found, bad = ob.repos(office_root)
     for line in bad:
         debug(f"no bundle is looked for there: {line}")
@@ -308,6 +312,7 @@ def opened_from(rd, office_root, bundles):
     opened from it, else None) and slug and goal (its pack line's, or None).
     Only the sessions whose id carries the bundle's slug are read, each
     through its dossier's attempts[].bundle.stem."""
+    import office_bale as ob
     places = every_place(office_root) if bundles else []
     sids = {}
     for label, cwd in places:
@@ -354,6 +359,7 @@ def command_argv(command):
     office; anything else (the install's line) runs through bash. A word
     the Next line leaves for him to fill (`--lane LANE`) is left out: the
     verb asks it, by key."""
+    import shlex
     if command.startswith("office "):
         argv = shlex.split(command)[1:]
         if "--lane" in argv and argv[argv.index("--lane") + 1:argv.index("--lane") + 2] == ["LANE"]:
@@ -366,6 +372,7 @@ def command_argv(command):
 def response_items(out, names, directories, now):
     """A land item for each session out whose response is in the downloads:
     a file to offer, never a verdict (land asks bale)."""
+    import office_bale as ob
     items = []
     for s in out:
         name = f"response-{s['sid']}.tar.gz"
@@ -382,6 +389,7 @@ def response_items(out, names, directories, now):
 
 
 def drop_items(groups, projects):
+    import office_drop as odrop
     names = [p["name"] for p in projects or []]
     out = []
     for d in groups.get("drops") or []:
@@ -400,6 +408,8 @@ def home_items(skew, founded, out, groups, projects, slips, behind, bundles, nam
     install, and last each read-only sitting a folder records and each
     meeting's prep that is out, which only he can say is over. A move
     already in the list is not repeated."""
+    import office_bale as ob
+    import office_meeting as om
     command, why = ob.next_move(skew, founded, out, groups, projects, slips, behind)
     kind, argv = command_argv(command)
     items = []
@@ -541,6 +551,8 @@ def write_menu(path, menu):
 
 def home(rd, office_root, today, since, skew, founded, tz_name, directories, now, menu_file):
     """The home screen's lines, and its menu written to menu_file."""
+    import office_bale as ob
+    import office_meeting as om
     tz = zone(tz_name)
     names = Names(office_root)
     groups = {}
@@ -587,6 +599,7 @@ def words_reading(text, project_names):
     made from (the first line as typed), the goal (every line as one, kept
     ASCII) and the project, when exactly one of the office's projects is
     named in them as a word."""
+    import office_drop as odrop
     text = odrop.normalize_text(text)
     if not text.strip():
         raise oh.HelperError("the words are empty")
@@ -609,10 +622,12 @@ def words_reading(text, project_names):
 # --- the command line ------------------------------------------------------------------
 
 def now_from(a):
+    import office_bale as ob
     return ob.parse_stamp(a.now) if a.now else dt.datetime.now(dt.timezone.utc)
 
 
 def main(argv=None):
+    import office_bale as ob
     ap = argparse.ArgumentParser(prog="office_home.py", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("page", help="the home screen's sections, and its menu into --menu-file")

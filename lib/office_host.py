@@ -45,17 +45,10 @@ Standard library only. Logs to stderr with an [office] prefix; every
 shell call shows under OFFICE_DEBUG=1, as every bale call does.
 """
 
-import hashlib
 import os
 import pathlib
 import re
-import shlex
-import shutil
-import subprocess
 import sys
-import tarfile
-import tempfile
-import threading
 
 # The one connection before any step that needs the host: a short
 # timeout, never a prompt (BatchMode), and the command stops at a host
@@ -118,6 +111,7 @@ def shell_path(path):
     path (~/x, as office projects add takes one for a host) keeps its
     tilde meaning there, "$HOME"/'x', since a quoted ~ is a directory
     named ~."""
+    import shlex
     path = str(path)
     if path == "~":
         return '"$HOME"'
@@ -147,6 +141,7 @@ def check_host(text):
 def check_shell(text):
     """The shell prefix as stored: one line that splits into words, the
     last of which takes a command string (-c or -lc)."""
+    import shlex
     shell = (text or "").strip()
     if not shell:
         raise HostError("shell", "a shell prefix is empty")
@@ -193,6 +188,7 @@ class Place:
     def words(self):
         """The shell prefix as argv, with the office's ssh options when
         it starts with ssh."""
+        import shlex
         words = shlex.split(self.shell)
         if words and words[0] == "ssh":
             return [words[0], *SSH_OPTIONS, *words[1:]]
@@ -203,6 +199,7 @@ class Place:
         string travels shell-quoted, since the login shell on the far
         side parses the line again; a prefix that runs on this machine
         (docker exec ... bash -lc) gets it as one word."""
+        import shlex
         words = self.words()
         return [*words, shlex.quote(command) if words and words[0] == "ssh" else command]
 
@@ -237,6 +234,7 @@ class Place:
     def attended_argv(self, command):
         """The attended prefix with one command string appended, quoted
         as argv() quotes it."""
+        import shlex
         words = self.attended_words()
         return [*words, shlex.quote(command) if words and words[0] == "ssh" else command]
 
@@ -361,6 +359,8 @@ def reach(place, timeout=REACH_TIMEOUT):
     one line; a prefix already reached in this process (by this, or by
     the first batch of reads that went through: run_many counts its
     first connection as the reach) is not run again."""
+    import shlex
+    import subprocess
     if not place.hosted:
         return True
     _load_carried()
@@ -400,6 +400,7 @@ def _call_block(argv):
     line by line (O for stdout, E for stderr), ending with the O line
     that names its exit code. Each call is its own pipeline, so one
     call's lines are all out before the next call's start."""
+    import shlex
     cmd = shlex.join(argv)
     return (f"{{ {{ PYTHONDONTWRITEBYTECODE=1 {cmd} </dev/null; echo '{_RC.strip()} '\"$?\"; }} "
             f"2>&1 1>&3 3>&- | sed 's/^/{_E}/' >&4; }} 3>&1 | sed 's/^/{_O}/'")
@@ -415,6 +416,7 @@ def _script(place, argvs, chdir=True):
 
 def shown_argv(argv):
     """An argv for a debug line, each long word (a script) cut short."""
+    import shlex
     return " ".join(shlex.quote(w) if len(w) <= 48 else shlex.quote(w[:32]) + f"...({len(w)} chars)" for w in argv)
 
 
@@ -447,6 +449,7 @@ def run_many(place, argvs, timeout=RUN_TIMEOUT, chdir=True):
     that is not there, a host that does not answer and a shell that
     breaks are HostErrors; a command exiting non-zero is a Run with that
     code, for the caller to read."""
+    import subprocess
     place = as_place(place)
     argvs = [list(a) for a in argvs]
     if not argvs:
@@ -513,6 +516,7 @@ def run_many(place, argvs, timeout=RUN_TIMEOUT, chdir=True):
 def run_in(place, argv, timeout=RUN_TIMEOUT, env=None, chdir=True):
     """Run one argv where the place is: on this machine as a subprocess
     in that directory, or through the shell. Returns a Run."""
+    import subprocess
     place = as_place(place)
     if place.hosted:
         return run_many(place, [argv], timeout, chdir=chdir)[0]
@@ -653,6 +657,7 @@ _SHA_RE = re.compile(r"^([0-9a-f]{64})\s")
 
 
 def sha256_of(path):
+    import hashlib
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for block in iter(lambda: fh.read(1 << 20), b""):
@@ -665,6 +670,7 @@ def _raw(place, command, stdin=None, stdout=None, timeout=TRANSFER_TIMEOUT):
     shell lands, with bytes on stdin (a file object, or closed) and on
     stdout (a file object, or kept): (exit code, stdout bytes or None,
     stderr text). The host is reached first, once per process."""
+    import subprocess
     reach(place)
     argv = place.argv(command)
     debug(f"through {place.host}: {shown_argv(place.words())} {shown_argv([command])}")
@@ -690,6 +696,8 @@ def _last_words(text):
 def send_file(place, local, remote):
     """Copy a file from this machine to a path where the place is (on
     this machine, a copy), and hold the copy to the original's sha256."""
+    import shlex
+    import shutil
     place = as_place(place)
     want = sha256_of(local)
     if not place.hosted:
@@ -714,6 +722,8 @@ def fetch_file(place, remote, local):
     """Copy a file from where the place is to this machine, and hold the
     copy to the sha256 the far side reports for it. The sum travels on
     stderr, so stdout is the file's bytes and nothing else."""
+    import shlex
+    import shutil
     place = as_place(place)
     if not place.hosted:
         shutil.copyfile(remote, local)
@@ -800,6 +810,7 @@ class Scratch:
         """The shell words that remove the scratch where it is, saying so
         loudly on stderr when they cannot: for a command the last step
         runs anyway. Empty when the scratch was never made."""
+        import shlex
         if self._path is None:
             return ""
         q = shlex.quote(self._path)
@@ -840,6 +851,7 @@ def send_into_new_scratch(place, local, name):
     connection; (scratch path, the file's path there). The file is held to
     its sha256, as send_file holds one; a failure after the directory was
     made removes it before it raises."""
+    import shlex
     want = sha256_of(local)
     with open(local, "rb") as fh:
         rc, out, err = _raw(place, f"sh -c {shlex.quote(_SEND_NEW)} office-send {shlex.quote(name)}", stdin=fh)
@@ -875,6 +887,7 @@ def run_streamed(place, command, timeout=None):
     container's -it), so a question it asks reaches him; piped, the plain
     form with stdin closed. On this machine, bash -c in the place's
     directory with the terminal's own stdin. Returns the exit code."""
+    import subprocess
     place = as_place(place)
     if not place.hosted:
         if not pathlib.Path(place.path).is_dir():
@@ -895,6 +908,7 @@ def run_streamed(place, command, timeout=None):
 
 
 def make_scratch(place):
+    import tempfile
     place = as_place(place)
     if not place.hosted:
         return tempfile.mkdtemp(prefix=SCRATCH_PREFIX)
@@ -910,6 +924,7 @@ def make_scratch(place):
 def remove_scratch(place, path):
     """Remove a Scratch, and nothing else: the name must be one
     make_scratch gives."""
+    import shutil
     place = as_place(place)
     if not pathlib.PurePosixPath(path).name.startswith(SCRATCH_PREFIX) or not path.startswith("/"):
         raise HostError("refused", f"{path} is not a directory the office made, so it is not removed")
@@ -1137,6 +1152,8 @@ def run_feeding(place, argv, local_file, timeout=TRANSFER_TIMEOUT):
     machine on its stdin (bale relay SID - on a host reads the planner's
     answer that way): a Run. On this machine the file is the process's
     stdin; through the shell its bytes travel on the connection."""
+    import shlex
+    import subprocess
     place = as_place(place)
     if not place.hosted:
         if not pathlib.Path(place.path).is_dir():
@@ -1161,6 +1178,7 @@ def run_feeding(place, argv, local_file, timeout=TRANSFER_TIMEOUT):
 # --- a clone moved to its host (office projects add --from) ---------------------------------
 
 def _git(repo, *args, binary=False):
+    import subprocess
     env = dict(os.environ, GIT_OPTIONAL_LOCKS="0")
     try:
         proc = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=not binary,
@@ -1266,6 +1284,8 @@ def clone_to(place, local, facts=None):
     travels (the caller has asked about them). A failure after the new
     repo was made removes it, and the temporary bundle on the host is
     removed either way. Returns the lines to print."""
+    import shutil
+    import tempfile
     place = as_place(place)
     facts = facts or clone_facts(local)
     where = f"on {place.host}" if place.hosted else "on this machine"
@@ -1379,6 +1399,7 @@ def probe_command(place, block):
     """The one command string that runs a block where the place is: in its
     directory (exit 96 when that is not there), the block as bash -c's
     script, stdin closed."""
+    import shlex
     return (f"cd {shell_path(place.path)} || exit {_NO_DIR}\n"
             f"exec bash -c {shlex.quote(block)} office-probe </dev/null\n")
 
@@ -1390,6 +1411,8 @@ def run_probe(place, block, screen=None, timeout=None):
     comes and kept; its stderr goes to this terminal as it is. Returns
     (exit code, stdout text, whether the backstop stopped it). A path
     that is not there and a host that stopped answering are HostErrors."""
+    import subprocess
+    import threading
     place = as_place(place)
     timeout = timeout or probe_timeout()
     command = probe_command(place, block)
@@ -1468,6 +1491,10 @@ def carry_dir_here(place, name, dest):
     the files that arrive held to the count the far side reports. The
     original is left where it is (remove_dir_there removes it once the
     caller has what it carried). Returns the number of files carried."""
+    import shlex
+    import shutil
+    import tarfile
+    import tempfile
     place = as_place(place)
     name = _plain_name(name)
     dest = pathlib.Path(dest)
@@ -1513,6 +1540,7 @@ def carry_dir_here(place, name, dest):
 def remove_dir_there(place, name):
     """Remove the directory name (one plain name, never a path) from the
     place's directory: on this machine, or through the host's shell."""
+    import shutil
     place = as_place(place)
     name = _plain_name(name)
     if not place.hosted:

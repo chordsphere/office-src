@@ -46,14 +46,11 @@ internal error, and 3 when a check found problems (the lines say which).
 
 import argparse
 import datetime as dt
-import json
 import pathlib
-import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import office_helper as oh  # noqa: E402
-import office_drafting as od  # noqa: E402
 
 INSTALL = pathlib.Path(__file__).resolve().parent.parent
 TEMPLATES = INSTALL / "templates"
@@ -70,14 +67,14 @@ FIELDS = ("dropped", "project", "via", "status")
 NO_PROJECT = "none given"
 STATUSES = ("unsorted", "sorted")
 TEXT_HEADING = "## Text"
-VIA_RE = re.compile(r"^(clipboard|stdin|file \S.*)$")
-DROPPED_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})$")
-PAGE_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
-FIELD_RE = re.compile(r"^- ([a-z]+): (.*)$")
+VIA_RE = oh.LazyPattern(r"^(clipboard|stdin|file \S.*)$")
+DROPPED_RE = oh.LazyPattern(r"^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})$")
+PAGE_NAME_RE = oh.LazyPattern(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
+FIELD_RE = oh.LazyPattern(r"^- ([a-z]+): (.*)$")
 # The section office land appends when it files a Sort (0.20.0): its
 # first line names the day and the session.
 SORT_HEADING = "## Sort"
-SORTED_LINE_RE = re.compile(r"^- sorted: (\d{4}-\d{2}-\d{2}), by (\S+)$")
+SORTED_LINE_RE = oh.LazyPattern(r"^- sorted: (\d{4}-\d{2}-\d{2}), by (\S+)$")
 
 # The lines a drop's page sits between in the brief office start --drop
 # writes: notepad-style markers, but their own, so office start never
@@ -275,6 +272,7 @@ def arrive(root):
     """Make the in-tray arrive, or finish arriving: its front page, the
     floor plan's entry and bale.toml's trigger, each only when missing.
     Returns (changed paths, words for the log)."""
+    import office_drafting as od
     root = pathlib.Path(root)
     entry = od.catalog_entry(space=SPACE)
     changed, words = [], []
@@ -384,6 +382,7 @@ def resolve_page(root, want, folder=None):
 def tray_check(root):
     """(lines, problems) for office status: an in-tray that exists, against
     the install's catalog and the page shape; none, said so."""
+    import office_drafting as od
     root = pathlib.Path(root)
     entry = od.catalog_entry(space=SPACE)
     manifest = oh.read_toml(root / MANIFEST_REL)
@@ -506,6 +505,7 @@ def main(argv=None):
             print(f"{len(raw.splitlines())}\t{oh.ascii_escape(first_line(raw))[0]}")
             return 0
         if a.cmd == "list":
+            import json
             for d in (unsorted(a.root) if a.unsorted else drops(a.root)):
                 print(json.dumps(d))
             return 0
