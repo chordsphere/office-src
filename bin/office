@@ -61,6 +61,62 @@ pylib() {
 helper() { pylib "$HELPER" "$@"; }
 reader() { pylib "$READER" "$@"; }
 
+# Several reads in one helper process (0.29.0). A helper call costs about
+# 35 ms of interpreter and module loading before it reads anything, and a
+# command made a dozen such calls in a row to read the same office; the
+# reads that sit side by side in a command, with no write or question
+# between them, now go out as one `helper batch` call, each run by its own
+# module exactly as its own call would have been (lib/office_helper.py,
+# batch). A read that depends on another's answer, or that follows a
+# write, stays a call of its own after it.
+#
+# batch_call ARRAY [-q|-m] [MODULE:]SUBCOMMAND ARGS...: append one call to
+# the batch ARRAY (the array's name). MODULE is helper (the default), bale,
+# drafting, drop, sort, watches, digest, door, deliver, home, meeting,
+# planner, probe or letterhead; -q discards the call's stderr (its
+# 2>/dev/null), -m merges it into its stdout (its 2>&1); with neither it
+# goes to this command's stderr as the call runs.
+batch_call() {
+  local -n __b_arr="$1"; shift
+  __b_arr+=("$#" "$@")
+}
+
+# batch_run VAR... -- CALLS...: run the calls (as batch_call built them) in
+# one helper process and read one result per VAR, in order: VAR holds the
+# call's stdout with its trailing newlines dropped, as "$(call)" would
+# hold it, and VAR_rc its exit code. A result the process did not print (it
+# failed to start, or died) reads as exit 2 and nothing, so a caller that
+# checks VAR_rc sees it the way it saw the call failing.
+batch_run() {
+  local __b_vars=() __b_v
+  while [ $# -gt 0 ]; do
+    __b_v="$1"; shift
+    [ "$__b_v" != -- ] || break
+    __b_vars+=("$__b_v")
+  done
+  batch_read "${__b_vars[@]}" < <(helper batch "$@")
+}
+
+# batch_read VAR...: the records a batch prints, one per VAR: `RC<TAB>LINES`
+# and then that many lines.
+batch_read() {
+  local __b_v __b_rc __b_n __b_i __b_line __b_acc
+  for __b_v in "$@"; do
+    __b_acc=""
+    if IFS=$'\t' read -r __b_rc __b_n && [[ "$__b_rc" =~ ^[0-9]+$ ]] && [[ "$__b_n" =~ ^[0-9]+$ ]]; then
+      for ((__b_i = 0; __b_i < __b_n; __b_i++)); do
+        IFS= read -r __b_line || { __b_rc=2; break; }
+        __b_acc+="$__b_line"$'\n'
+      done
+      __b_acc="${__b_acc%$'\n'}"
+    else
+      __b_rc=2
+    fi
+    printf -v "$__b_v" '%s' "$__b_acc"
+    printf -v "${__b_v}_rc" '%s' "$__b_rc"
+  done
+}
+
 # Single-quote a word for a printed command line.
 shq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 
@@ -218,20 +274,60 @@ resolve_office() {
 
 # --- version skew ----------------------------------------------------------
 
+# skew_read ROOT: the office's two version stamps and its skew report in
+# one helper call (0.29.0; it was three: stamp, skew, and stamp again in
+# most callers). Sets OFFICE_BUILT and OFFICE_MIGRATED (the stamps),
+# SKEW_REPORT (the state and any pending migrations, as helper skew prints
+# them) and SKEW_STATE (its first line). Returns 1 with SKEW_ERROR set, the
+# line the three calls died with, when the stamp cannot be read or the
+# migrations cannot be planned; the helper's own line went to stderr.
+# Read once per command: a second read of the same office in one command
+# (a verb's own code run inside another, as land runs moves and close)
+# answers from the first, until skew_forget says the stamp was written
+# (office upgrade, after each migration).
+SKEW_OF=""
+skew_read() {
+  local root="$1" out rc
+  [ "$SKEW_OF" != "$root" ] || return 0
+  out="$(helper skew-report "$root/$MANIFEST_REL" "$(install_version)" "$MIGRATIONS")"; rc=$?
+  skew_take "$root" "$out" "$rc"
+}
+
+# skew_forget: the stamp was written, so the next skew_read reads it again.
+skew_forget() { SKEW_OF=""; }
+
+# skew_take ROOT ANSWER RC: skew_read's reading of a skew-report answer, for
+# a command that read it in a batch with its other reads.
+skew_take() {
+  local root="$1" out="$2" rc="$3" first
+  if [ "$rc" != 0 ]; then
+    if [ -z "$out" ]; then SKEW_ERROR="cannot read the version stamp in $root/$MANIFEST_REL"
+    else SKEW_ERROR="cannot plan migrations from $MIGRATIONS"; fi
+    return 1
+  fi
+  SKEW_ERROR=""
+  first="${out%%$'\n'*}"
+  OFFICE_BUILT="${first%%$'\t'*}"; OFFICE_MIGRATED="${first#*$'\t'}"
+  SKEW_REPORT="${out#*$'\n'}"; SKEW_STATE="${SKEW_REPORT%%$'\n'*}"
+  SKEW_OF="$root"
+}
+
 # Prints the skew state and any pending migrations (helper format).
 skew_report() {
-  local root="$1" office_v
-  office_v="$(helper stamp "$root/$MANIFEST_REL" migrated_to)" || die "cannot read the version stamp in $root/$MANIFEST_REL"
-  helper skew "$office_v" "$(install_version)" "$MIGRATIONS" || die "cannot plan migrations from $MIGRATIONS"
+  skew_read "$1" || die "$SKEW_ERROR"
+  printf '%s\n' "$SKEW_REPORT"
 }
 
 # Refuse loudly on skew in either direction; commands that act on the
 # office's shape call this before touching it.
 require_current() {
-  local root="$1" report state office_v
-  report="$(skew_report "$root")" || exit 1
-  state="$(printf '%s\n' "$report" | head -n 1)"
-  office_v="$(helper stamp "$root/$MANIFEST_REL" migrated_to)"
+  skew_read "$1" || die "$SKEW_ERROR"
+  skew_judge "$1"
+}
+
+# skew_judge ROOT: require_current's judgment of what skew_read read.
+skew_judge() {
+  local root="$1" report="$SKEW_REPORT" state="$SKEW_STATE" office_v="$OFFICE_MIGRATED"
   case "$state" in
     current) return 0 ;;
     ahead) die "this office was migrated to $office_v, past the installed office-src $(install_version); install $office_v or later before using it" ;;
@@ -253,11 +349,42 @@ warn_if_unfounded() {
   # The founding door's own steps are the founding; they say so themselves.
   [ "${FOUNDING_DOOR:-0}" != 1 ] || return 0
   out="$(helper profile-check "$root/$PROFILE_REL" "$SHAPE")"
-  case $? in
+  unfounded_judge $?
+}
+
+# unfounded_judge RC: warn_if_unfounded's judgment of profile-check's exit.
+unfounded_judge() {
+  case "$1" in
     0) return 0 ;;
     3) warn "this office is unfounded: its profile is incomplete (office status names the sections; the walk-in's Next line names what founds it)" ;;
     *) warn "could not check the profile against the required shape" ;;
   esac
+}
+
+# require_current_founded ROOT [NAMES_VAR]: require_current and
+# warn_if_unfounded in one helper call (0.29.0), and, when NAMES_VAR is
+# given, the office's project names into it with the same call (helper
+# project-names, as the verbs read them, quietly).
+require_current_founded() {
+  # The locals are __rf_-prefixed: NAMES_VAR is set with printf -v, which a
+  # local of the same name here would swallow.
+  local __rf_root="$1" __rf_var="${2:-}" __rf_skew __rf_skew_rc __rf_profile __rf_profile_rc __rf_names __rf_names_rc
+  local __rf_calls=() __rf_vars=()
+  if [ "$SKEW_OF" != "$__rf_root" ]; then
+    batch_call __rf_calls skew-report "$__rf_root/$MANIFEST_REL" "$(install_version)" "$MIGRATIONS"; __rf_vars+=(__rf_skew)
+  fi
+  if [ "${FOUNDING_DOOR:-0}" != 1 ]; then
+    batch_call __rf_calls profile-check "$__rf_root/$PROFILE_REL" "$SHAPE"; __rf_vars+=(__rf_profile)
+  fi
+  if [ -n "$__rf_var" ]; then batch_call __rf_calls -q project-names "$__rf_root/$MANIFEST_REL"; __rf_vars+=(__rf_names); fi
+  [ "${#__rf_calls[@]}" -eq 0 ] || batch_run "${__rf_vars[@]}" -- "${__rf_calls[@]}"
+  if [ "$SKEW_OF" != "$__rf_root" ]; then skew_take "$__rf_root" "$__rf_skew" "$__rf_skew_rc" || die "$SKEW_ERROR"; fi
+  skew_judge "$__rf_root"
+  [ "${FOUNDING_DOOR:-0}" = 1 ] || unfounded_judge "$__rf_profile_rc"
+  if [ -n "$__rf_var" ]; then
+    [ "$__rf_names_rc" = 0 ] || __rf_names=""
+    printf -v "$__rf_var" '%s' "$__rf_names"
+  fi
 }
 
 # --- survey ----------------------------------------------------------------
@@ -979,8 +1106,7 @@ cmd_survey() {
     [ "$commit" = 1 ] || die "--before-pack commits the page; it takes no --no-commit"
     refresh_survey "$root"; return 0
   fi
-  require_current "$root"
-  warn_if_unfounded "$root"
+  require_current_founded "$root"
   log "surveying $(hostname 2>/dev/null) for $root"
   local report
   report="$(write_survey "$root")" || exit 1
@@ -1013,8 +1139,13 @@ commit_survey() {
 # it is and which office-src it records.
 refresh_survey() {
   local root="$1" held rc report age
-  age="$(helper survey-age "$root/$SURVEY_REL" --install "$(install_version)" 2>/dev/null || printf 'unreadable')"
-  held="$(reader writers "$root" "$SURVEY_REL" 2>/dev/null)"; rc=$?
+  # The survey's age and who holds the page, in one helper call (0.29.0).
+  local age_rc held_rc calls=()
+  batch_call calls -q survey-age "$root/$SURVEY_REL" --install "$(install_version)"
+  batch_call calls -q bale:writers "$root" "$SURVEY_REL"
+  batch_run age held -- "${calls[@]}"
+  [ "$age_rc" = 0 ] || age='unreadable'
+  rc="$held_rc"
   case $rc in
     0) ;;
     3) warn "an open session holds $SURVEY_REL (the one-writer rule), so office start leaves the survey as it is: $age"
@@ -1088,12 +1219,36 @@ cmd_status() {
   case "${1:-}" in -h|--help) usage_status; return 0 ;; esac
   [ $# -eq 0 ] || { usage_status >&2; die "office status takes no arguments"; }
   root="$(resolve_office)" || exit 1
-  report="$(skew_report "$root")" || exit 1
-  state="$(printf '%s\n' "$report" | head -n 1)"
-  office_v="$(helper stamp "$root/$MANIFEST_REL" migrated_to)"
-  built="$(helper stamp "$root/$MANIFEST_REL" built_from)"
+  # Every read status makes, in one helper call (0.29.0; it was 17): the
+  # stamps and skew first, so a floor plan with no stamp refuses as it did,
+  # then each line's read in the order the lines are printed. None writes,
+  # and none depends on another's answer, so they go out together; what
+  # each would have printed to stderr still goes there as it runs.
+  local name survey tz_named drift defects folders filed drafting tray handbook bale letterhead
+  local skewr calls=()
+  batch_call calls skew-report "$root/$MANIFEST_REL" "$(install_version)" "$MIGRATIONS"
+  batch_call calls get "$root/$MANIFEST_REL" office.name --default "(unnamed)"
+  batch_call calls profile-check "$root/$PROFILE_REL" "$SHAPE"
+  batch_call calls -q survey-age "$root/$SURVEY_REL" --install "$(install_version)"
+  batch_call calls -q get "$root/$MANIFEST_REL" office.timezone --default UTC
+  batch_call calls include-group-check "$root/$MANIFEST_REL" "$root/$BALE_TOML_REL" "$root"
+  batch_call calls -q catalog-check "$VERBS" "$CATALOG"
+  batch_call calls -q folder-check "$root"
+  batch_call calls -q filed-check "$root"
+  batch_call calls -q drafting:table-check "$root"
+  batch_call calls -q drop:tray-check "$root"
+  batch_call calls -q sort:handbook-check "$root"
+  batch_call calls bale:status-lines "$root"
+  batch_call calls deliver:status-lines "$root"
+  batch_run skewr name profile survey tz_named drift defects folders filed drafting tray handbook bale letterhead -- "${calls[@]}"
+  if [ "$skewr_rc" != 0 ]; then
+    [ -n "$skewr" ] || die "cannot read the version stamp in $root/$MANIFEST_REL"
+    die "cannot plan migrations from $MIGRATIONS"
+  fi
+  built="${skewr%%$'\t'*}"; office_v="${skewr#*$'\t'}"; office_v="${office_v%%$'\n'*}"
+  report="${skewr#*$'\n'}"; state="${report%%$'\n'*}"
   printf 'office:     %s\n' "$root"
-  printf 'name:       %s\n' "$(helper get "$root/$MANIFEST_REL" office.name --default "(unnamed)")"
+  printf 'name:       %s\n' "$name"
   printf 'install:    office-src %s at %s\n' "$(install_version)" "$OFFICE_SRC"
   install_source_line
   printf 'built from: %s\n' "$built"
@@ -1104,25 +1259,22 @@ cmd_status() {
     behind)  printf 'skew:       BEHIND; run: office upgrade\n'
              printf '%s\n' "$report" | tail -n +2 | cut -f1,2,4 | sed 's/\t/ (/; s/\t/): /; s/^/  pending:  /' ;;
   esac
-  profile="$(helper profile-check "$root/$PROFILE_REL" "$SHAPE")"; rc=$?
-  case $rc in
+  case $profile_rc in
     0) printf 'profile:    complete\n' ;;
     3) printf 'profile:    INCOMPLETE; this office is unfounded\n'
        printf '%s\n' "$profile" | sed 's/^/  /' ;;
     *) printf 'profile:    could not be checked\n' ;;
   esac
-  printf 'survey:     %s\n' "$(helper survey-age "$root/$SURVEY_REL" --install "$(install_version)" 2>/dev/null || printf 'unreadable')"
-  local tz_named
-  tz_named="$(office_tz_named "$root")"
+  [ "$survey_rc" = 0 ] || survey='unreadable'
+  printf 'survey:     %s\n' "$survey"
+  [ "$tz_named_rc" = 0 ] || tz_named=UTC
   if zone_resolves "$tz_named"; then
     printf 'timezone:   %s\n' "$tz_named"
   else
     printf 'timezone:   PROBLEM: the floor plan names %s, which is not in %s, so the office runs on UTC\n' "$tz_named" "$(zoneinfo_dir)"
     printf '  %s\n' "$(zone_remedy "$tz_named")"
   fi
-  local drift
-  drift="$(helper include-group-check "$root/$MANIFEST_REL" "$root/$BALE_TOML_REL" "$root")"
-  case $? in
+  case $drift_rc in
     0) printf 'hung items: bale.toml include group matches the floor plan\n' ;;
     3) printf 'hung items: bale.toml differs from the floor plan\n'; printf '%s\n' "$drift" | sed 's/^/  /' ;;
     *) printf 'hung items: could not compare bale.toml with the floor plan\n' ;;
@@ -1130,44 +1282,46 @@ cmd_status() {
   # The install's catalogs, not the office's: a verb declared unattended
   # with no landing, or a hung page that is also filed, is a defect in
   # office-src that every office on this install should hear about.
-  local defects
-  defects="$(helper catalog-check "$VERBS" "$CATALOG" 2>/dev/null)"
-  case $? in
+  case $defects_rc in
     0) printf 'catalogs:   every unattended session kind declares a landing; no hung page is filed\n' ;;
     3) printf 'catalogs:   DEFECT in the install at %s (share/verbs.toml, share/spaces.toml)\n' "$OFFICE_SRC"
        printf '%s\n' "$defects" | sed 's/^/  /' ;;
     *) printf 'catalogs:   could not be checked\n' ;;
   esac
+  # The checks below print their own lines (said here as each read them);
+  # a check that could not run says so instead.
   # The desk's facts: every folder's status agrees with its History's
   # last state-changing line, and the numbers are minted once each.
-  helper folder-check "$root" 2>/dev/null
-  case $? in 0|3) ;; *) printf 'folders:    could not be checked\n' ;; esac
+  [ -z "$folders" ] || printf '%s\n' "$folders"
+  case $folders_rc in 0|3) ;; *) printf 'folders:    could not be checked\n' ;; esac
   # Filed pages only grow at their end: git's history of every filed
   # page the floor plan lists, the net for a hand edit that went
   # through neither bale nor a script.
-  helper filed-check "$root" 2>/dev/null
-  case $? in 0|3) ;; *) printf 'filed:      could not be checked (is the office a git repo?)\n' ;; esac
+  [ -z "$filed" ] || printf '%s\n' "$filed"
+  case $filed_rc in 0|3) ;; *) printf 'filed:      could not be checked (is the office a git repo?)\n' ;; esac
   # The drafting table, when it exists, against the install's catalog;
   # and every ratified charter's bytes against git from its ratifying
   # commit on.
-  drafting table-check "$root" 2>/dev/null
-  case $? in 0|3) ;; *) printf 'drafting:   could not be checked\n' ;; esac
+  [ -z "$drafting" ] || printf '%s\n' "$drafting"
+  case $drafting_rc in 0|3) ;; *) printf 'drafting:   could not be checked\n' ;; esac
   # The in-tray, when it exists, against the install's catalog, and every
   # drop's page against the shape office drop writes (0.19.0).
-  dropx tray-check "$root" 2>/dev/null
-  case $? in 0|3) ;; *) printf 'in-tray:    could not be checked\n' ;; esac
+  [ -z "$tray" ] || printf '%s\n' "$tray"
+  case $tray_rc in 0|3) ;; *) printf 'in-tray:    could not be checked\n' ;; esac
   # The handbook, when it exists, against the install's catalog, and every
   # chapter against the shape office land writes (0.20.0).
-  sortx handbook-check "$root" 2>/dev/null
-  case $? in 0|3) ;; *) printf 'handbook:   could not be checked\n' ;; esac
+  [ -z "$handbook" ] || printf '%s\n' "$handbook"
+  case $handbook_rc in 0|3) ;; *) printf 'handbook:   could not be checked\n' ;; esac
   # The read side: which bale is installed against the version the
   # office's reads were written for, and whether each project in scope
   # can be read. Lines, never a refusal.
-  reader status-lines "$root" || printf 'bale:       the read side could not be checked\n'
+  [ -z "$bale" ] || printf '%s\n' "$bale"
+  [ "$bale_rc" = 0 ] || printf 'bale:       the read side could not be checked\n'
   # The audience line (0.25.0): the letterhead and its voice page, and the
   # push guard in each audience clone, older ones named with the line
   # that replaces them.
-  deliver_py status-lines "$root" || printf 'letterhead: could not be checked\n'
+  [ -z "$letterhead" ] || printf '%s\n' "$letterhead"
+  [ "$letterhead_rc" = 0 ] || printf 'letterhead: could not be checked\n'
 }
 
 # Run planned migrations in a target office. Arguments: target, plan file.
@@ -1187,6 +1341,7 @@ run_migrations() {
       if unmet="$(helper landed "$version" "$MIGRATIONS" "$(install_version)" "$target")"; then
         log "migration $version is a renovation and its declaration holds: $landed"
         helper set-migrated "$target/$MANIFEST_REL" "$version" || return 1
+        skew_forget
         printf 'verified\t%s\t%s (renovation, checked)\n' "$version" "$summary"
         continue
       fi
@@ -1209,6 +1364,7 @@ run_migrations() {
       fi
     fi
     helper set-migrated "$target/$MANIFEST_REL" "$version" || return 1
+    skew_forget
     printf 'applied\t%s\t%s\n' "$version" "$summary"
   done < "$plan"
   return 0
@@ -1339,9 +1495,22 @@ cmd_upgrade() {
 zoneinfo_dir() { printf '%s' "${TZDIR:-/usr/share/zoneinfo}"; }
 
 # The timezone the floor plan names, as written (UTC when it names none).
+# Read once per command (0.29.0): the first read, or a batch that read it
+# (office_tz_keep), keeps it for the command's later reads, which a start
+# and a land made two or three of. The floor plan's timezone line is
+# written by office init and office upgrade alone, never by a command
+# that reads it here.
+OFFICE_TZ_NAMED=""; OFFICE_TZ_NAMED_OF=""
 office_tz_named() {
-  helper get "$1/$MANIFEST_REL" office.timezone --default UTC 2>/dev/null || printf 'UTC'
+  if [ "$OFFICE_TZ_NAMED_OF" = "$1" ]; then printf '%s' "$OFFICE_TZ_NAMED"; return 0; fi
+  local tz
+  tz="$(helper get "$1/$MANIFEST_REL" office.timezone --default UTC 2>/dev/null || printf 'UTC')"
+  office_tz_keep "$1" "$tz"
+  printf '%s' "$tz"
 }
+
+# office_tz_keep ROOT NAME: keep the floor plan's timezone name a batch read.
+office_tz_keep() { OFFICE_TZ_NAMED_OF="$1"; OFFICE_TZ_NAMED="$2"; }
 
 # zone_resolves NAME: is NAME a zone file under the zone database?
 zone_resolves() {
@@ -1371,8 +1540,14 @@ zone_remedy() {
 # database; a bad or missing zone falls back to UTC, loudly, with what
 # fixes it.
 office_tz() {
-  local root="$1" tz
-  tz="$(office_tz_named "$root")"
+  office_tz_resolved "$(office_tz_named "$1")"
+}
+
+# office_tz_resolved NAME: the zone NAME when it resolves, else UTC, loudly,
+# with what fixes it (office_tz's check, for a caller that read the floor
+# plan's name in a batch, 0.29.0).
+office_tz_resolved() {
+  local tz="$1"
   if ! zone_resolves "$tz"; then
     warn "the floor plan's timezone '$tz' is not in $(zoneinfo_dir), so the office runs on UTC; $(zone_remedy "$tz")"
     tz="UTC"
@@ -1699,7 +1874,7 @@ cmd_drop() {
   tz="$(office_tz "$root")"; day="$(office_date "$tz")"; now="$(office_time "$tz")"
   # The slug from the first line as typed, the way office slip makes one:
   # an escape is no part of a file name.
-  slug="$(short_slug "$(python3 -B -c 'import sys
+  slug="$(short_slug "$(python3 -B -P -S -c 'import sys
 for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
     if line.strip():
         print(line.strip()); break' "$text_file" | title_words)")"
@@ -1820,8 +1995,7 @@ cmd_open() {
   [ "$candidate" = 0 ] || [ "$filed" = 0 ] || die "--candidate and --filed are two different births; give one"
   [ -z "$sid" ] || [ "$filed" = 1 ] || die "--sid goes with --filed: a folder born done at that session"
   root="$(resolve_office)" || exit 1
-  require_current "$root"
-  warn_if_unfounded "$root"
+  require_current_founded "$root"
 
   # Flags first: a value a field does not take is explained, then asked
   # on a terminal and refused when piped.
@@ -2267,7 +2441,13 @@ move_folder_dir() {
 
 # folder_fact FOLDER_MD KEY: status, number, history (1 or 0) or sids.
 folder_fact() {
-  helper folder-facts "$1" 2>/dev/null | sed -n "s/^$2\t//p"
+  fact_of "$(helper folder-facts "$1" 2>/dev/null)" "$2"
+}
+
+# fact_of FACTS KEY: one fact from folder-facts' answer, read once for a
+# command's several facts (0.29.0).
+fact_of() {
+  printf '%s\n' "$1" | sed -n "s/^$2\t//p"
 }
 
 # One History line, and the status line when given, in a folder; each
@@ -2480,8 +2660,20 @@ FILED_PAGES=""
 # lack files nothing and says nothing.
 file_notes() {
   local root="$1" folder="$2" sid="$3" response="$4" tz day names out kind text paths=()
+  # The zone and the project names in one call when the zone was not read
+  # before (0.29.0), the names alone when it was (a land reads it first).
+  local tz_named tz_named_rc names_rc calls=()
+  if [ "$OFFICE_TZ_NAMED_OF" = "$root" ]; then
+    names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+  else
+    batch_call calls -q get "$root/$MANIFEST_REL" office.timezone --default UTC
+    batch_call calls -q project-names "$root/$MANIFEST_REL"
+    batch_run tz_named names -- "${calls[@]}"
+    [ "$tz_named_rc" = 0 ] || tz_named=UTC
+    office_tz_keep "$root" "$tz_named"
+    [ "$names_rc" = 0 ] || names=""
+  fi
   tz="$(office_tz "$root")"; day="$(office_date "$tz")"
-  names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
   out="$(sortx file-notes "$root" --response "$response" --sid "$sid" --day "$day" ${folder:+--folder "$folder"} \
            --projects "$names")" || return 1
   while IFS=$'\t' read -r kind text; do
@@ -2885,10 +3077,11 @@ cmd_blueprint_close() {
   fi
   tmp="$(mktemp)" || die "cannot make a temp file"; TMP_PATHS+=("$tmp")
   plan="$(drafting blueprint-close-plan "$root" "$id" --brief "$tmp")" || exit 1
-  title="$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin)["title"])')"
-  close_folder="$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin)["close_folder"] or "")')"
-  mapfile -t members < <(printf '%s' "$plan" | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["members"]))')
-  mapfile -t ledgers < <(printf '%s' "$plan" | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["ledgers"]))')
+  # The plan's four fields in one read (0.29.0).
+  local members_text ledgers_text title_rc close_folder_rc members_text_rc ledgers_text_rc
+  json_read - title=title close_folder=close_folder members_text=members ledgers_text=ledgers <<< "$plan"
+  mapfile -t members <<< "$members_text"
+  mapfile -t ledgers <<< "$ledgers_text"
   command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office blueprint close sends the close sitting out with bale pack"
   if [ -n "$close_folder" ]; then
     rel="$close_folder"
@@ -3789,8 +3982,14 @@ downloads_setting() {
 downloads_known() {
   local out rc
   out="$(helper downloads "$MACHINE_FILE" 2>/dev/null)"; rc=$?
-  case "$rc" in
-    0) DOWNLOADS="$out"; return 0 ;;
+  downloads_take "$out" "$rc"
+}
+
+# downloads_take ANSWER RC: downloads_known's reading of helper downloads'
+# answer, for a command that read it in a batch with its other reads.
+downloads_take() {
+  case "$2" in
+    0) DOWNLOADS="$1"; return 0 ;;
     3) DOWNLOADS=""; return 3 ;;
   esac
   warn "downloads in $MACHINE_FILE does not read (helper downloads $MACHINE_FILE says why); going on without it"
@@ -4090,6 +4289,7 @@ start_check_place() {
   printf '%s\n' "$3" | grep -qxF -- "$2" \
     || die "--on $2: no such project in this office (it scopes: $(printf '%s' "$3" | paste -sd, - | sed 's/,/, /g'); office projects add adds one)"
   local on_host out
+  project_facts "$root" "$2"
   on_host="$(project_host "$root" "$2")"
   [ -n "$on_host" ] || return 0
   [ "${START_CHECKED_HOST:-}" != "$2" ] || return 0
@@ -4102,7 +4302,20 @@ start_check_place() {
 
 # project_host ROOT NAME: the host a project declares, or nothing.
 project_host() {
-  helper project-facts "$1/$MANIFEST_REL" "$2" 2>/dev/null | awk -F'\t' '$1 == "host" {print $2}'
+  project_facts "$1" "$2"
+  printf '%s\n' "$PROJECT_FACTS" | awk -F'\t' '$1 == "host" {print $2}'
+}
+
+# project_facts ROOT NAME: a project's facts (helper project-facts) into
+# PROJECT_FACTS, read once per command and kept (0.29.0): a start read
+# them twice for one project, for its host and for what rides with it.
+# The floor plan's [projects] table is written by office projects alone,
+# never by the command that reads it here.
+PROJECT_FACTS=""; PROJECT_FACTS_OF=""
+project_facts() {
+  [ "$PROJECT_FACTS_OF" != "$1/$2" ] || return 0
+  PROJECT_FACTS="$(helper project-facts "$1/$MANIFEST_REL" "$2" 2>/dev/null)" || PROJECT_FACTS=""
+  PROJECT_FACTS_OF="$1/$2"
 }
 
 # check_start_bundle ROOT WHERE PROJECT BUNDLE: bale open --check where
@@ -4154,6 +4367,7 @@ check_start_bundle() {
 resolve_hosted_bundle() {
   local root="$1" where="$2" project="$3" on_host args=() d found
   [ -n "$bundle" ] && [ "$where" = project ] && [ ! -f "$bundle" ] || return 0
+  project_facts "$root" "$project"
   on_host="$(project_host "$root" "$project")"
   [ -n "$on_host" ] || return 0
   downloads_setting "$(basename "$bundle"), a bundle for $project on $on_host, is found on this machine by name and carried there"
@@ -4445,22 +4659,15 @@ start_sort() {
   log "packing the standalone sort in the office: $(printf '%s\n' "$out" | grep -c .) unsorted drop(s), no folder"
   out="$(reader start "$root" - --where office --goal "$SORT_GOAL" --slug "$SORT_SLUG" "${includes[@]}" "${writes[@]}" \
            --brief "$brief_file" --work-class meta --tray-root "$tray_root")" || exit 1
-  sid="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sid"])')" || die "could not read what office start packed"
-  tray="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tray"])')"
-  printf '%s' "$out" | python3 -c 'import json,sys
-for w in json.load(sys.stdin)["warnings"]:
-    print(w)' | while IFS= read -r d; do warn "$d"; done
+  # What the reader printed, read once (0.29.0; it was five reads).
+  local warnings carried sid_rc tray_rc warnings_rc carried_rc opener_rc
+  json_read - sid=sid tray=tray warnings=warnings carried=carried opener=opener <<< "$out"
+  [ "$sid_rc" = 0 ] || die "could not read what office start packed"
+  [ -z "$warnings" ] || while IFS= read -r d; do warn "$d"; done <<< "$warnings"
   printf 'Packed %s for the in-tray (the standalone sort; no folder records it).\n\n' "$sid"
   printf 'Out tray: %s\n' "$tray"
-  printf '%s' "$out" | python3 -c 'import json,sys
-r = json.load(sys.stdin)
-for line in r["carried"]:
-    print("  " + line)'
+  [ -z "$carried" ] || printf '%s\n' "$carried" | sed 's/^/  /'
   printf '\nAttach every file in the out tray to a fresh chat, then paste the opener:\n\n'
-  opener="$(printf '%s' "$out" | python3 -c 'import json,sys
-r = json.load(sys.stdin)
-if r["opener"] is not None:
-    print("\n".join(r["opener"]))')"
   if [ -z "$opener" ]; then
     warn "bale printed no opener between its scissor lines; the session is open, and bale status shows it"
     return 0
@@ -4521,11 +4728,11 @@ start_prep() {
   log "packing the prep for $key in the office: a read-only sitting, no folder"
   out="$(reader start "$root" - --where office --goal "$title" --slug "$slug" --read-only "${includes[@]}" \
            --brief "$tmp/README.md" --tray-root "$tray_root")" || exit 1
-  sid="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sid"])')" || die "could not read what office start packed"
-  tray="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tray"])')"
-  printf '%s' "$out" | python3 -c 'import json,sys
-for w in json.load(sys.stdin)["warnings"]:
-    print(w)' | while IFS= read -r why; do warn "$why"; done
+  # What the reader printed, read once (0.29.0; it was five reads).
+  local warnings carried sid_rc tray_rc warnings_rc carried_rc opener_rc
+  json_read - sid=sid tray=tray warnings=warnings carried=carried opener=opener <<< "$out"
+  [ "$sid_rc" = 0 ] || die "could not read what office start packed"
+  [ -z "$warnings" ] || while IFS= read -r why; do warn "$why"; done <<< "$warnings"
   if mapfile -t paths < <(meetx prep-out "$root" --key "$key" --sid "$sid" --tz "$tz") && [ "${#paths[@]}" -gt 0 ]; then
     commit_paths "$root" "office start --prep: $key, its prep $sid" "${paths[@]}" || true
   else
@@ -4533,15 +4740,8 @@ for w in json.load(sys.stdin)["warnings"]:
   fi
   printf 'Packed %s for the meeting %s (its prep; the calendar records it, and no folder).\n\n' "$sid" "$title"
   printf 'Out tray: %s\n' "$tray"
-  printf '%s' "$out" | python3 -c 'import json,sys
-r = json.load(sys.stdin)
-for line in r["carried"]:
-    print("  " + line)'
+  [ -z "$carried" ] || printf '%s\n' "$carried" | sed 's/^/  /'
   printf '\nAttach every file in the out tray to a fresh chat, then paste the opener:\n\n'
-  opener="$(printf '%s' "$out" | python3 -c 'import json,sys
-r = json.load(sys.stdin)
-if r["opener"] is not None:
-    print("\n".join(r["opener"]))')"
   if [ -z "$opener" ]; then
     warn "bale printed no opener between its scissor lines; the session is open, and bale status shows it"
     return 0
@@ -4852,8 +5052,7 @@ cmd_start() {
       && [ "$planner" = 0 ] && [ "${#abouts[@]}" -eq 0 ] \
       || die "--sort sends the in-tray's own session, with the office's goal, forecast and brief, so it takes nothing else: office start --sort"
     root="$(resolve_office)" || exit 1
-    require_current "$root"
-    warn_if_unfounded "$root"
+    require_current_founded "$root"
     command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office start runs bale pack"
     start_sort
     return $?
@@ -4867,8 +5066,7 @@ cmd_start() {
       && [ "$planner" = 0 ] && [ "${#abouts[@]}" -eq 0 ] && [ "$sort" = 0 ] \
       || die "--prep sends a meeting's prep, with the meeting's words as its goal and what rides gathered by the office, so it takes nothing but the meeting: office start --prep [MEETING]"
     root="$(resolve_office)" || exit 1
-    require_current "$root"
-    warn_if_unfounded "$root"
+    require_current_founded "$root"
     command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office start runs bale pack"
     start_prep
     return $?
@@ -4920,8 +5118,10 @@ cmd_start() {
     fi
   fi
   root="$(resolve_office)" || exit 1
-  require_current "$root"
-  warn_if_unfounded "$root"
+  # The skew, the profile and the project names in one helper call
+  # (0.29.0): the names are the floor plan's, which nothing before they
+  # are needed below writes.
+  require_current_founded "$root" names
   command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office start runs bale pack"
 
   # Bare office start on a terminal offers the planner's bundles in the
@@ -4950,7 +5150,6 @@ cmd_start() {
     can_ask || { usage_start >&2; die "name the folder: office start FOLDER (office open makes one first); piped input is never asked"; }
     ask_start_folder want "$root"
   fi
-  names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
   # --on PROJECT given: a project on a host refuses here, before a folder
   # for new, the survey, the tray or the session is written.
   [ "$where" != project ] || start_check_place "$where" "$project" "$names"
@@ -5040,18 +5239,35 @@ cmd_start() {
   name="$(find_folder "$root" desk "$want")" || exit 1
   md="$root/desk/$name/folder.md"
   [ -f "$md" ] || die "desk/$name has no folder.md"
-  status="$(folder_fact "$md" status)"
+  # What the folder and the office say, in one helper call (0.29.0; it
+  # was seven): the folder's facts (status, goal, lane and class, read
+  # below from the one answer), which folder is the founding one and
+  # whether the profile is complete, and the out tray's setting. All
+  # reads, none depending on another, before anything here is written.
+  local facts facts_rc founding founding_rc profile_ok profile_ok_rc tray_root_rc calls=()
+  batch_call calls -q folder-facts "$md"
+  batch_call calls -q door:door-folder "$root" founding
+  batch_call calls -q profile-check "$root/$PROFILE_REL" "$SHAPE"
+  if [ -f "$MACHINE_FILE" ]; then batch_call calls -q get "$MACHINE_FILE" out_tray --default "$HOME/out-tray"; fi
+  batch_run facts founding profile_ok tray_root -- "${calls[@]}"
+  [ "$facts_rc" = 0 ] || facts=""
+  status="$(fact_of "$facts" status)"
   case "$status" in done|absorbed|split|retired) die "desk/$name says status $status, which belongs in the filing cabinet; office status names what disagrees" ;; esac
   # A planner sitting recorded in a folder already on the desk keeps his
   # words in its Asked section, as the folder minted for one does.
-  if [ "$planner" = 1 ] && [ -z "$START_OPENED" ]; then planner_asked "$root" "desk/$name"; fi
+  if [ "$planner" = 1 ] && [ -z "$START_OPENED" ]; then
+    planner_asked "$root" "desk/$name"
+    # Written to, so read again (its facts are in the field block, which
+    # the Asked section does not touch; this keeps the rule anyway).
+    facts="$(helper folder-facts "$md" 2>/dev/null)"
+  fi
 
   # The founding folder of an unfounded office goes out through the
   # founding door (office found's own code): the answers its folder keeps
   # ride in the brief, and only what was skipped is asked.
   if [ -z "$brief" ] && [ -z "$bundle" ] && [ "$planner" = 0 ] && [ "${FOUNDING_DOOR:-0}" != 1 ] \
-      && [ "$(door door-folder "$root" founding 2>/dev/null)" = "desk/$name" ] \
-      && ! helper profile-check "$root/$PROFILE_REL" "$SHAPE" >/dev/null 2>&1; then
+      && [ "$founding" = "desk/$name" ] \
+      && [ "$profile_ok_rc" != 0 ]; then
     [ "$where" != project ] && [ "$read_only" = 0 ] && [ "$set_w" = 0 ] && [ "${#includes[@]}" -eq 0 ] && [ -z "$slug" ] \
       || die "desk/$name is this office's founding folder, which goes out through the founding door in the office: office start $name (or office found), with none of --on, --read-only, --write, --include or --slug"
     log "desk/$name is this office's founding folder and the profile is incomplete, so it goes out through the founding door (office found)"
@@ -5064,7 +5280,7 @@ cmd_start() {
   # offered below, and brief.md is the session's brief unless --brief
   # names another; a bundle keeps its own, and that is said.
   local folder_goal
-  folder_goal="$(folder_fact "$md" goal)"
+  folder_goal="$(fact_of "$facts" goal)"
   if [ -f "$root/desk/$name/brief.md" ]; then
     if [ "$planner" = 1 ]; then
       log "desk/$name/brief.md rides in the folder, not as the brief: a planner sitting's brief is the office's, from your words and what rides"
@@ -5079,7 +5295,7 @@ cmd_start() {
   fi
 
   # What the folder already says: its lane (project: paths) and class.
-  lane="$(folder_fact "$md" lane)"; cls="$(folder_fact "$md" class)"
+  lane="$(fact_of "$facts" lane)"; cls="$(fact_of "$facts" class)"
   lane_project=""; lane_paths=""
   # A lane is `project: paths`, or the project alone (as office start
   # --drop writes it): a bare word that names one of the office's
@@ -5167,7 +5383,8 @@ cmd_start() {
   local ride_project="" rides=() r
   if [ "$where" = project ]; then ride_project="$project"; else ride_project="$about"; fi
   if [ -n "$ride_project" ]; then
-    mapfile -t rides < <(helper project-facts "$root/$MANIFEST_REL" "$ride_project" 2>/dev/null | awk -F'\t' '$1 == "rides" {print $2}')
+    project_facts "$root" "$ride_project"
+    mapfile -t rides < <(printf '%s\n' "$PROJECT_FACTS" | awk -F'\t' '$1 == "rides" {print $2}')
   fi
   if [ "$no_rides" = 1 ]; then
     [ "${#rides[@]}" -gt 0 ] || log "nothing rides with ${ride_project:-this session}, so --no-rides changes nothing"
@@ -5204,27 +5421,29 @@ cmd_start() {
   [ "$where" != project ] || [ "$START_CHECKED_HOST" != "$project" ] || args+=(--checked)
   [ "$START_BALE_REHEARSED" = 0 ] || args+=(--bale-rehearsed)
   [ -z "$START_BUNDLE_FOUND" ] || args+=(--bundle-found "$START_BUNDLE_FOUND")
-  tray_root="$(machine_setting out_tray "$HOME/out-tray")"
+  # The out tray's setting was read with the folder's facts above; a
+  # machine.toml that does not read is said, as machine_setting says it.
+  if [ ! -f "$MACHINE_FILE" ]; then tray_root="$HOME/out-tray"
+  elif [ "$tray_root_rc" != 0 ]; then warn "$MACHINE_FILE could not be read; using the default for out_tray"; tray_root="$HOME/out-tray"; fi
   case "$tray_root" in "~"|"~/"*) tray_root="$HOME${tray_root#\~}" ;; esac
 
   log "$([ -n "$bundle" ] && printf 'opening the bundle %s' "$bundle" || printf 'packing') for desk/$name ($([ "$where" = office ] && printf 'in the office' || printf 'on %s' "$project"))"
   out="$(reader start "$root" "desk/$name" "${args[@]}" --tray-root "$tray_root")" || exit 1
   # The session is out: a failure after this is not a start to retry.
   trap cleanup_tmp EXIT; START_OPENED=""
-  sid="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sid"])')" || die "could not read what office start packed"
-  tray="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tray"])')"
-  printf '%s' "$out" | python3 -c 'import json,sys
-for w in json.load(sys.stdin)["warnings"]:
-    print(w)' | while IFS= read -r v; do warn "$v"; done
+  # What the reader printed, read once (0.29.0; it was eight reads).
+  local warnings second_desk request carried opener sitting
+  local sid_rc tray_rc warnings_rc second_desk_rc request_rc carried_rc opener_rc sitting_rc
+  json_read - sid=sid tray=tray warnings=warnings second_desk=second_desk? request=request \
+    carried=carried opener=opener sitting=sitting? <<< "$out"
+  [ "$sid_rc" = 0 ] || die "could not read what office start packed"
+  [ -z "$warnings" ] || while IFS= read -r v; do warn "$v"; done <<< "$warnings"
   tz="$(office_tz "$root")"; day="$(office_date "$tz")"
   # A bundle whose session was still open joins it as a second desk
   # (bale 0.4.44 on): no new session, so the folder records the one the
   # bundle joined, saying so, and the first line says it was joined.
-  local second_desk
-  second_desk="$(printf '%s' "$out" | python3 -c 'import json,sys; print("yes" if json.load(sys.stdin).get("second_desk") else "")')"
   record_session "$root" "desk/$name" "$sid" "${second_desk:+a second desk on a session already open}" "$day"
-  local filed_rc=0 request
-  request="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["request"])')"
+  local filed_rc=0
   file_sitting_pages "$root" "$request" "$sid" || filed_rc=1
   file_ratifications "$root" "$request" "$sid" "$day"
 
@@ -5234,22 +5453,14 @@ for w in json.load(sys.stdin)["warnings"]:
     printf 'Packed %s for desk/%s.\n\n' "$sid" "$name"
   fi
   printf 'Out tray: %s\n' "$tray"
-  printf '%s' "$out" | python3 -c 'import json,sys
-r = json.load(sys.stdin)
-for line in r["carried"]:
-    print("  " + line)'
+  [ -z "$carried" ] || printf '%s\n' "$carried" | sed 's/^/  /'
   printf '\nAttach every file in the out tray to a fresh chat, then paste the opener:\n\n'
-  local opener
-  opener="$(printf '%s' "$out" | python3 -c 'import json,sys
-r = json.load(sys.stdin)
-if r["opener"] is not None:
-    print("\n".join(r["opener"]))')"
   if [ -z "$opener" ]; then
     warn "bale printed no opener between its scissor lines; the session is open, and bale pack's own report (run it by hand) or bale status shows it"
     return "$filed_rc"
   fi
   printf -- '--8<-- session opener --8<--\n%s\n--8<-- end session opener --8<--\n' "$opener"
-  if [ -n "$(printf '%s' "$out" | python3 -c 'import json,sys; print("yes" if json.load(sys.stdin).get("sitting") else "")')" ]; then
+  if [ -n "$sitting" ]; then
     printf '\nA read-only sitting lands nothing; when it is over: office land %s ends it\n' "$sid"
   else
     printf '\nWhen the response comes back: office land %s\n' "$sid"
@@ -5384,7 +5595,7 @@ to_clipboard() {
   TMP_PATHS+=("$tmp")
   printf '%s\n' "$text" > "$tmp/text"
   if [ "$(basename "${clip%% *}")" = clip.exe ]; then
-    python3 -c 'import sys
+    python3 -B -P -S -c 'import sys
 data = open(sys.argv[1], "rb").read().decode("utf-8", "replace")
 open(sys.argv[2], "wb").write(data.encode("utf-16-le"))' "$tmp/text" "$tmp/feed" \
       || { warn "$what is not on the clipboard: it could not be turned into the UTF-16 clip.exe reads; copy it from the screen above"; return 1; }
@@ -5407,7 +5618,7 @@ open(sys.argv[2], "wb").write(data.encode("utf-16-le"))' "$tmp/text" "$tmp/feed"
   fi
   clipboard_reads_back() {
     timeout 15 bash -c "$paste" < /dev/null > "$tmp/back" 2> "$tmp/err" || return 2
-    python3 -c 'import sys
+    python3 -B -P -S -c 'import sys
 def norm(path):
     t = open(path, "rb").read().decode("utf-8", "replace").lstrip("\ufeff")
     return "\n".join(l.rstrip("\r") for l in t.replace("\r\n", "\n").split("\n")).rstrip("\n")
@@ -5620,20 +5831,21 @@ run_after_land_hosted() {
   return 0
 }
 
-# offer_close ROOT FOLDER SID: after an applied landing, a folder whose
+# offer_close ROOT FOLDER SID FOUNDING WHY_RC WHY: after an applied landing, a folder whose
 # only recorded session is the one that landed is finished (0.23.0: landed
 # applied; the planner's ratification comes in the next brief): on a
 # terminal land closes it, done (office close's own code), and says how to
 # reopen it. --close and --leave-open answer without asking (LAND_CLOSE);
 # piped with neither, it stays open and land says so. The founding folder
 # has its own rule (close_founding_folder). Never fails the landing.
+# FOUNDING is the founding folder and WHY_RC and WHY what helper
+# finished-folder answered, read by land_close_folders (0.29.0).
 offer_close() {
-  local root="$1" folder="$2" sid="$3" name why ans founding
+  local root="$1" folder="$2" sid="$3" founding="$4" why_rc="$5" why="$6" name ans
   [ "${folder%%/*}" = desk ] || return 0
   name="${folder#desk/}"
-  founding="$(door door-folder "$root" founding 2>/dev/null)"
   [ "$founding" != "$folder" ] || return 0
-  if ! why="$(helper finished-folder "$root/$folder/folder.md" "$sid" 2>&1)"; then
+  if [ "$why_rc" != 0 ]; then
     if [ "${LAND_CLOSE:-}" = close ]; then
       log "--close: $name stays open, since ${why:-it is not finished}; office close $name closes it when it is done"
     else
@@ -5665,16 +5877,78 @@ offer_close() {
 
 # plan_field FILE KEY: one field of land's plan, as text (a list one per line).
 plan_field() {
-  python3 -c 'import json,sys
-v = json.load(open(sys.argv[1]))
-for k in sys.argv[2].split("."):
-    v = v.get(k) if isinstance(v, dict) else None
-if isinstance(v, list):
-    print("\n".join(str(x) for x in v))
-elif isinstance(v, bool):
-    print("yes" if v else "")
-elif v is not None:
-    print(v)' "$1" "$2"
+  local __pf __pf_rc
+  json_read "$1" "__pf=$2?"; printf '%s\n' "$__pf"
+}
+
+# plan_read FILE: the fields of land's plan cmd_land reads, in one read
+# (0.29.0), into its variables: sid, host (place.host), needs_downloads,
+# needs_response, response_default, problems, took, verb, repo (where),
+# label, folders_all (folders, one per line), tarball, project,
+# response_here, after_land_problem and after_land_list (after_land, one
+# per line). A field the plan lacks reads as nothing, as plan_field read it.
+plan_read() {
+  json_read "$1" sid=sid? host=place.host? needs_downloads=needs_downloads? needs_response=needs_response? \
+    response_default=response_default? problems=problems? took=took? verb=verb? repo=where? label=label? \
+    folders_all=folders? tarball=tarball? project=project? response_here=response_here? \
+    after_land_problem=after_land_problem? after_land_list=after_land?
+}
+
+# json_read SOURCE VAR=KEY...: several fields of one JSON document in one
+# interpreter start (0.29.0; it was one `python3 -c` per field: a start
+# read six of its pack's fields, a land fourteen of its plan's). SOURCE is
+# a file, or - for the document on stdin. Each VAR is set to its field,
+# found by KEY, a dotted path (place.host, relays.0.to): a string or number
+# as is, a list one item per line, true as yes and false or null as
+# nothing; KEY# is a list's length. A KEY the document lacks is an error,
+# said on stderr, unless it ends in ? (then nothing); a document that does
+# not read is an error for every field. VAR_rc is 0 for a field read and
+# 1 for one not, so a caller checks the field it cannot do without.
+json_read() {
+  local __j_src="$1" __j_spec __j_vars=(); shift
+  for __j_spec in "$@"; do __j_vars+=("${__j_spec%%=*}"); done
+  batch_read "${__j_vars[@]}" < <(python3 -B -P -S -c '
+import json, sys
+src, specs = sys.argv[1], sys.argv[2:]
+def record(rc, text):
+    text = text.rstrip("\n")
+    lines = text.split("\n") if text else []
+    sys.stdout.write(f"{rc}\t{len(lines)}\n" + "".join(l + "\n" for l in lines))
+try:
+    doc = json.load(sys.stdin if src == "-" else open(src, encoding="utf-8"))
+except (OSError, ValueError) as exc:
+    print(f"[office] error: {src}: not a JSON document ({exc})", file=sys.stderr)
+    for spec in specs:
+        record(1, "")
+    sys.exit(1)
+for spec in specs:
+    key = spec.split("=", 1)[1]
+    optional, length = key.endswith("?"), key.endswith("#")
+    key = key[:-1] if optional or length else key
+    v, missing = doc, False
+    for part in key.split("."):
+        if isinstance(v, dict) and part in v:
+            v = v[part]
+        elif isinstance(v, list) and part.isdigit() and int(part) < len(v):
+            v = v[int(part)]
+        else:
+            missing = True
+            break
+    if missing:
+        if not optional:
+            print(f"[office] error: {src}: no field {key}", file=sys.stderr)
+        record(0 if optional else 1, "")
+    elif length:
+        record(0, str(len(v)) if isinstance(v, (list, dict)) else "")
+    elif isinstance(v, list):
+        record(0, "\n".join(str(x) for x in v))
+    elif isinstance(v, bool):
+        record(0, "yes" if v else "")
+    elif v is None:
+        record(0, "")
+    else:
+        record(0, str(v))
+' "$__j_src" "$@")
 }
 
 cmd_land() {
@@ -5715,13 +5989,23 @@ cmd_land() {
   root="$(resolve_office)" || exit 1
   # An office behind a renovation migration lands that renovation's session
   # (the renovation door), and nothing else, until office upgrade stamps it.
+  # One read of the stamps and skew (0.29.0; it was five): quiet here, and
+  # when it does not read, require_current reads again and says why.
   local skew_state behind=0
-  skew_state="$( (skew_report "$root") 2>/dev/null | head -n 1)"
+  if skew_read "$root" 2>/dev/null; then skew_state="$SKEW_STATE"; else skew_state=""; fi
   if [ "$skew_state" = behind ]; then behind=1; else require_current "$root"; fi
   command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office land runs bale apply"
   tmp="$(mktemp -d)" || die "cannot make temp space for the landing"
   TMP_PATHS+=("$tmp")
   plan="$tmp/plan.json"; capture="$tmp/bale-stdout"
+  # The floor plan's timezone and this machine's downloads, one helper call
+  # (0.29.0): the zone is kept for the command's later reads of it.
+  local tz_named tz_named_rc dl dl_rc calls=()
+  batch_call calls -q get "$root/$MANIFEST_REL" office.timezone --default UTC
+  batch_call calls -q downloads "$MACHINE_FILE"
+  batch_run tz_named dl -- "${calls[@]}"
+  [ "$tz_named_rc" = 0 ] || tz_named=UTC
+  office_tz_keep "$root" "$tz_named"
   tz="$(office_tz "$root")"; day="$(office_date "$tz")"
 
   if [ -n "$folder" ]; then
@@ -5759,23 +6043,30 @@ cmd_land() {
   # Where downloads land, when this machine says (never asked here: a
   # session on a project here has bale's own search; land_plan asks for
   # it, through needs_downloads, when the session is on a host).
-  if downloads_known; then
+  if downloads_take "$dl" "$dl_rc"; then
     while IFS= read -r d; do [ -n "$d" ] && dl_args+=(--downloads "$d"); done <<< "$DOWNLOADS"
   else
     dl_args=(--no-downloads)
   fi
   reader land-plan "$root" ${sid:+--sid "$sid"} ${folder:+--folder "$folder"} ${response:+--response "$response"} \
     --cwd "$PWD" --plan "$plan" "${dl_args[@]}" || exit 1
-  sid="$(plan_field "$plan" sid)"
-  host="$(plan_field "$plan" place.host)"
-  if [ -n "$(plan_field "$plan" needs_downloads)" ]; then
+  # The plan's fields, read once (0.29.0; it was one interpreter start per
+  # field, fourteen in a landing), and again after each time the plan is
+  # written anew.
+  local needs_downloads needs_response response_default problems took folders_all tarball project response_here \
+        after_land_problem after_land_list
+  local sid_rc host_rc needs_downloads_rc needs_response_rc response_default_rc problems_rc took_rc verb_rc repo_rc \
+        label_rc folders_all_rc tarball_rc project_rc response_here_rc after_land_problem_rc after_land_list_rc
+  plan_read "$plan"
+  if [ -n "$needs_downloads" ]; then
     downloads_setting "the response for $sid is found on this machine by name and carried to $host"
     dl_args=()
     while IFS= read -r d; do [ -n "$d" ] && dl_args+=(--downloads "$d"); done <<< "$DOWNLOADS"
     reader land-plan "$root" --sid "$sid" ${response:+--response "$response"} --cwd "$PWD" --plan "$plan" "${dl_args[@]}" || exit 1
+    plan_read "$plan"
   fi
-  if [ -n "$(plan_field "$plan" needs_response)" ]; then
-    default="$(plan_field "$plan" response_default)"
+  if [ -n "$needs_response" ]; then
+    default="$response_default"
     if ! can_ask; then
       die "bale held $sid, so its corrected response lands with bale retry; give it: office land $sid --response FILE (a browser saves a second download of one name as 'response-$sid (1).tar.gz'${default:+; the downloads hold one copy, $default, which may be the held one}); piped input is never asked"
     fi
@@ -5806,14 +6097,14 @@ cmd_land() {
       "The response the worker sent after the HOLD, usually the newest: a browser saves a second download of one name as 'response-$sid (1).tar.gz'. $help_more" \
       "" 1 "${cvals[@]}"
     reader land-plan "$root" --sid "$sid" --response "$response" --cwd "$PWD" --plan "$plan" "${dl_args[@]}" || exit 1
+    plan_read "$plan"
   fi
-  plan_field "$plan" problems | while IFS= read -r line; do [ -n "$line" ] && warn "$line"; done
-  plan_field "$plan" took | while IFS= read -r line; do [ -n "$line" ] && log "$line"; done
-  verb="$(plan_field "$plan" verb)"; repo="$(plan_field "$plan" where)"; label="$(plan_field "$plan" label)"
+  [ -z "$problems" ] || while IFS= read -r line; do [ -n "$line" ] && warn "$line"; done <<< "$problems"
+  [ -z "$took" ] || while IFS= read -r line; do [ -n "$line" ] && log "$line"; done <<< "$took"
   if [ "$behind" = 1 ]; then
     local reno
-    reno="$(door door-folder "$root" renovation --version "$(skew_report "$root" | sed -n 2p | cut -f1)" 2>/dev/null)"
-    if [ -n "$reno" ] && plan_field "$plan" folders | grep -qxF -- "$reno"; then
+    reno="$(door door-folder "$root" renovation --version "$(printf '%s\n' "$SKEW_REPORT" | sed -n 2p | cut -f1)" 2>/dev/null)"
+    if [ -n "$reno" ] && printf '%s\n' "$folders_all" | grep -qxF -- "$reno"; then
       log "this office is behind office-src $(install_version) while its renovation session lands; office upgrade checks the renovation after, and stamps the office"
     else
       require_current "$root"
@@ -5835,43 +6126,43 @@ cmd_land() {
   [ -z "$LAND_ARISING" ] || [ -n "$prep" ] || die "--arising goes with a meeting's prep: $sid is not one, and nothing was landed"
   if [ "$verb" = unlock ]; then
     [ -z "$ratify$except" ] || log "a sitting lands nothing, so nothing is ratified"
-    log "ending the read-only sitting $sid ($label; $(plan_field "$plan" folders | paste -sd, - | sed 's/,/, /g')): bale unlock $sid, in $repo"
+    log "ending the read-only sitting $sid ($label; $(printf '%s\n' "$folders_all" | paste -sd, - | sed 's/,/, /g')): bale unlock $sid, in $repo"
     out="$(reader land-end "$root" --plan "$plan" --day "$day")" || exit 1
-    printf '\n%s\n' "$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["words"])')"
-    printf '%s' "$out" | python3 -c 'import json,sys
-for l in json.load(sys.stdin)["told"]:
-    print(l)' | while IFS= read -r line; do log "$line"; done
+    local told words_rc told_rc
+    json_read - words=words told=told <<< "$out"
+    printf '\n%s\n' "$words"
+    [ -z "$told" ] || while IFS= read -r line; do log "$line"; done <<< "$told"
     [ -z "$prep" ] || land_held "$root" "$sid" "$day" "$tz"
     return $?
   fi
-  log "landing $sid ($label; $(plan_field "$plan" folders | paste -sd, - | sed 's/,/, /g; s/^$/no folder records it/')): bale $verb $(plan_field "$plan" tarball), in $repo"
+  log "landing $sid ($label; $(printf '%s\n' "$folders_all" | paste -sd, - | sed 's/,/, /g; s/^$/no folder records it/')): bale $verb $tarball, in $repo"
   [ -z "$host" ] || log "$label is on $host: the response travels there, bale runs in its repo there with this terminal, and the temporary directory it travels in is removed after"
   line="$(reader land-prepare "$root" --plan "$plan")" || exit 1
   [ -z "$line" ] || log "$line"
 
   reader land-run "$root" --plan "$plan" --capture "$capture"; code=$?
   if ! out="$(reader land-outcome "$root" --plan "$plan" --capture "$capture" --exit "$code" --day "$day")"; then
-    [ -z "$line" ] || warn "the record of $sid may still be out of its folder; office sessions $(plan_field "$plan" folders | head -n 1 | sed 's#.*/##') $sid puts it back"
+    [ -z "$line" ] || warn "the record of $sid may still be out of its folder; office sessions $(printf '%s\n' "$folders_all" | head -n 1 | sed 's#.*/##') $sid puts it back"
     die "could not read how $sid ended from bale's records (bale stats --sid $sid --json, in $repo, shows them)"
   fi
-  words="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["words"])')"
+  # How it ended, read once (0.29.0; it was five reads).
+  local told applied next outcome words_rc told_rc applied_rc next_rc outcome_rc
+  json_read - words=words told=told applied=applied next=next outcome=outcome <<< "$out"
   printf '\n%s\n' "$words"
-  printf '%s' "$out" | python3 -c 'import json,sys
-for l in json.load(sys.stdin)["told"]:
-    print(l)' | while IFS= read -r line; do log "$line"; done
+  [ -z "$told" ] || while IFS= read -r line; do log "$line"; done <<< "$told"
 
   # The blocks to carry (carry_relays): on an applied landing they go on
   # the clipboard last of all, after the after-land actions, so the
   # office's copy is the last made (bale copied each block too, while it
   # applied); when nothing landed, nothing runs after, so they go now.
   local landed="$out"
-  if [ -z "$(printf '%s' "$out" | python3 -c 'import json,sys; print("yes" if json.load(sys.stdin)["applied"] else "")')" ]; then
+  if [ -z "$applied" ]; then
     carry_relays "$landed" 0
     [ -z "$ratify$except" ] || log "nothing landed, so nothing is ratified"
     [ "$LAND_CLOSE" != close ] || log "nothing landed, so no folder is closed"
-    line="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["next"] or "")')"
+    line="$next"
     [ -z "$line" ] || printf 'Next: %s\n' "$line"
-    [ "$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["outcome"])')" = clarification ] && return 0
+    [ "$outcome" = clarification ] && return 0
     return 1
   fi
 
@@ -5880,26 +6171,25 @@ for l in json.load(sys.stdin)["told"]:
   # a sort earned, each said as it happens (0.20.0); then the project's
   # after-land actions.
   local folders
-  folders="$(plan_field "$plan" folders | head -n 1)"
-  land_files "$root" "$folders" "$sid" "$plan"
+  folders="${folders_all%%$'\n'*}"
+  land_files "$root" "$folders" "$sid" "$response_here" "$project"
   land_moves "$root" "$sid"
   # On a project with an audience, the letterhead's review of what landed
   # (0.25.0): what office deliver would refuse, said now so a fix can
   # ride the next session; it refuses nothing here.
-  if [ -n "$(plan_field "$plan" project)" ]; then
-    deliver_py land-review "$root" --project "$(plan_field "$plan" project)" --sid "$sid" ${folders:+--folder "$folders"} || true
+  if [ -n "$project" ]; then
+    deliver_py land-review "$root" --project "$project" --sid "$sid" ${folders:+--folder "$folders"} || true
   fi
 
   # The project's after-land actions, in order. What became of each is
   # said again as land's last lines, after the ratification, so it is
   # never lost above a long screen.
-  local problem actions=() project
+  local problem actions=()
   AFTER_LAND_REPORT=()
-  project="$(plan_field "$plan" project)"
-  problem="$(plan_field "$plan" after_land_problem)"
+  problem="$after_land_problem"
   # An empty list prints one empty line; it is no action (0.7.0 and 0.8.0
   # ran it as `bash -c ""` and said "1 action(s) ran").
-  mapfile -t actions < <(plan_field "$plan" after_land | grep -v '^$')
+  mapfile -t actions < <(printf '%s\n' "$after_land_list" | grep -v '^$')
   if [ -n "$problem" ]; then
     warn "after-land actions not run: the project's declarations do not read ($problem; office projects set fixes them)"
     AFTER_LAND_REPORT+=("not run: $project's declarations do not read ($problem); office projects set $project fixes them")
@@ -5942,8 +6232,7 @@ for l in json.load(sys.stdin)["told"]:
         commit_paths "$root" "office sessions: $sid ratified in $name" "$space/$name/folder.md" || true
       fi
     fi
-    close_founding_folder "$root" "$folders" "$sid" "$day"
-    offer_close "$root" "$folders" "$sid"
+    land_close_folders "$root" "$folders" "$sid" "$day"
   fi
   land_watches "$root" "$tz" "$day"
   after_land_summary "$repo"
@@ -6023,12 +6312,12 @@ land_held() {
 # landing's last step: a block whose copy is not confirmed is printed again
 # there, whole, since bale printed it far above.
 carry_relays() {
-  local out="$1" at_end="$2" relays i=0 block to outcome ans crc
-  relays="$(printf '%s' "$out" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["relays"]))')"
-  outcome="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["outcome"])')"
+  local out="$1" at_end="$2" relays i=0 block to outcome ans crc relays_rc outcome_rc block_rc to_rc
+  # The count and the outcome in one read, then each block with whom it is
+  # for in one (0.29.0; it was two reads each).
+  json_read - relays=relays# outcome=outcome <<< "$out"
   while [ "$i" -lt "$relays" ]; do
-    block="$(printf '%s' "$out" | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["relays"][int(sys.argv[1])]["lines"]))' "$i")"
-    to="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["relays"][int(sys.argv[1])]["to"])' "$i")"
+    json_read - block=relays.$i.lines to=relays.$i.to <<< "$out"
     if [ "$outcome" = clarification ]; then
       printf '\nFor the planner, whole:\n\n%s\n' "$block"
     fi
@@ -6046,7 +6335,7 @@ carry_relays() {
   return 0
 }
 
-# land_files ROOT FOLDER SID PLAN: after an applied landing, what the
+# land_files ROOT FOLDER SID RESPONSE PROJECT: after an applied landing, what the
 # response's notes.md says, when the office found the response on this
 # machine (a path, or the name in the downloads): a project session's
 # folder pages, walkthrough.md and delivery.md (0.17.0), then any
@@ -6054,15 +6343,14 @@ carry_relays() {
 # When only bale's own search knew where the response was, land says the
 # line that files them. Never fails the landing.
 land_files() {
-  local root="$1" folder="$2" sid="$3" plan="$4" response line
-  response="$(plan_field "$plan" response_here)"
+  local root="$1" folder="$2" sid="$3" response="$4" project="$5" line
   if [ -n "$folder" ]; then line="office sessions ${folder#*/} $sid --pages FILE"
   else line="office sessions --in-tray $sid --pages FILE"; fi
   if [ -z "$response" ]; then
     log "the response's notes were not filed (the walkthrough and delivery pages, the Sort, answers and facts): bale found the response in its own search directories, which the office cannot list; $line files them from the response"
     return 0
   fi
-  if [ -n "$(plan_field "$plan" project)" ] && [ -n "$folder" ]; then
+  if [ -n "$project" ] && [ -n "$folder" ]; then
     FILED_PAGES=""
     if file_pages "$root" "$folder" "$sid" "$response"; then
       log "the folder's pages: ${FILED_PAGES:-nothing filed}"
@@ -6082,9 +6370,16 @@ land_files() {
 # Never fails the landing.
 land_moves() {
   local root="$1" sid="$2" run=0 minted number rel page
-  if sortx pending "$root"; then
+  # Both questions in one call (0.29.0): whether a sorted drop waits, and
+  # whether the session was a sort; each is a read, and the second is of
+  # the id alone.
+  local pending pending_rc is_sort is_sort_rc calls=()
+  batch_call calls sort:pending "$root"
+  batch_call calls sort:is-sort "$sid"
+  batch_run pending is_sort -- "${calls[@]}"
+  if [ "$pending_rc" = 0 ]; then
     run=1
-  elif sortx is-sort "$sid" && [ -f "$root/drafting-table/moves.md" ] \
+  elif [ "$is_sort_rc" = 0 ] && [ -f "$root/drafting-table/moves.md" ] \
       && [ -n "$(drafting moves-plan "$root" --shell 2>/dev/null)" ]; then
     run=1
   fi
@@ -6104,19 +6399,21 @@ land_moves() {
   return 0
 }
 
-# close_founding_folder ROOT FOLDER SID DAY: after an applied landing, the
+# close_founding_folder ROOT FOLDER SID DAY FOUNDING FOUNDING_RC PROFILE_RC MISSING: after an applied landing, the
 # founding folder closes with the founding: when the folder that records
 # the session is this office's founding folder and the profile is now
 # complete, it goes to the filing cabinet, done (office close's own code),
 # and land says so. A profile still incomplete leaves it open, and land
 # names what founds it. The folder is the office's, not the session's,
-# so the office closes it. Never fails the landing.
+# so the office closes it. Never fails the landing. FOUNDING and
+# FOUNDING_RC are door-folder's answer, PROFILE_RC and MISSING
+# profile-check's, read by land_close_folders (0.29.0).
 close_founding_folder() {
-  local root="$1" folder="$2" sid="$3" day="$4" founding missing
+  local root="$1" folder="$2" sid="$3" day="$4" founding="$5" founding_rc="$6" profile_rc="$7" missing="$8"
   [ "${folder%%/*}" = desk ] || return 0
-  founding="$(door door-folder "$root" founding 2>/dev/null)" || return 0
+  [ "$founding_rc" = 0 ] || return 0
   [ -n "$founding" ] && [ "$founding" = "$folder" ] || return 0
-  if missing="$(helper profile-check "$root/$PROFILE_REL" "$SHAPE" 2>&1)"; then
+  if [ "$profile_rc" = 0 ]; then
     if ( OFFICE_ROOT="$root" MOVE_TEXT="office land: the founding landed at $sid, with the profile complete" cmd_close "${folder#desk/}" ); then
       log "the founding landed with the profile complete, so its folder is closed: ${folder#desk/} is in the filing cabinet, done"
       AFTER_LAND_REPORT+=("the founding folder ${folder#desk/}: closed, done (the profile is complete)")
@@ -6129,6 +6426,25 @@ close_founding_folder() {
     AFTER_LAND_REPORT+=("the founding folder ${folder#desk/}: stays open, the profile is incomplete")
   fi
   return 0
+}
+
+# land_close_folders ROOT FOLDER SID DAY: the two closings after an applied
+# landing, the founding folder's (close_founding_folder) and a finished
+# folder's (offer_close), their three reads made in one helper call
+# (0.29.0): which folder is the founding one, whether the profile is
+# complete, and whether the folder is finished. A read follows no write
+# here: the founding folder closes only when it is the folder that landed,
+# and then offer_close reads nothing of it.
+land_close_folders() {
+  local root="$1" folder="$2" sid="$3" day="$4"
+  [ "${folder%%/*}" = desk ] || return 0
+  local founding founding_rc missing missing_rc why why_rc calls=()
+  batch_call calls -q door:door-folder "$root" founding
+  batch_call calls -m profile-check "$root/$PROFILE_REL" "$SHAPE"
+  batch_call calls -m finished-folder "$root/$folder/folder.md" "$sid"
+  batch_run founding missing why -- "${calls[@]}"
+  close_founding_folder "$root" "$folder" "$sid" "$day" "$founding" "$founding_rc" "$missing_rc" "$missing"
+  offer_close "$root" "$folder" "$sid" "$founding" "$why_rc" "$why"
 }
 
 # land_watches ROOT TZ DAY: after an applied landing, office watches check
@@ -6290,7 +6606,7 @@ cmd_withdraw() {
   fi
   tz="$(office_tz "$root")"; day="$(office_date "$tz")"
   out="$(reader withdraw "$root" --sid "$sid" --day "$day" "${dargs[@]}")" || die "$sid was not withdrawn (the lines above are bale's words, or the office's); nothing else was changed"
-  printf '%s' "$out" | python3 -c 'import json,sys
+  printf '%s' "$out" | python3 -B -P -S -c 'import json,sys
 r = json.load(sys.stdin)
 print(r["words"])
 for line in r["told"]:
@@ -7174,7 +7490,7 @@ deliver_show() {
   fi
   printf '  changes:\n'; plan_field "$plan" stat | sed 's/^/   /'
   printf '  words (desk/%s/delivery.md), and the commits as they will be pushed:\n' "$(plan_field "$plan" folder_name)"
-  python3 -c 'import json, sys
+  python3 -B -P -S -c 'import json, sys
 plan = json.load(open(sys.argv[1]))
 w = plan["words"]
 shown = plan.get("commits_shown") or []
@@ -7240,7 +7556,7 @@ cmd_deliver() {
   if [ "$rc" = 4 ]; then
     # The project declares no author: a fact only the occupant knows, asked
     # once here and kept (0.25.0); the clone's own identity is never used.
-    who="$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(p["need_author"]); print(p.get("clone_identity") or "")' "$plan")"
+    who="$(python3 -B -P -S -c 'import json,sys; p=json.load(open(sys.argv[1])); print(p["need_author"]); print(p.get("clone_identity") or "")' "$plan")"
     project="$(printf '%s\n' "$who" | sed -n 1p)"
     local own help
     own="$(printf '%s\n' "$who" | sed -n 2p)"
@@ -7277,17 +7593,14 @@ cmd_deliver() {
     case "$ans" in y|Y|yes) ;; *) deliver_py abandon "$root" --plan "$plan"; log "stopped before anything left"; return 0 ;; esac
   fi
   out="$(deliver_py run "$root" --plan "$plan" --day "$(office_date "$(office_tz "$root")")")" || exit 1
-  printf '\n%s\n' "$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["words"])')"
-  printf '%s' "$out" | python3 -c 'import json,sys
-for l in json.load(sys.stdin)["told"]:
-    print(l)' | while IFS= read -r line; do log "$line"; done
+  # What the delivery said, read once (0.29.0; it was four reads).
+  local words told next words_rc told_rc next_rc
+  json_read - words=words told=told next=next <<< "$out"
+  printf '\n%s\n' "$words"
+  [ -z "$told" ] || while IFS= read -r line; do log "$line"; done <<< "$told"
   printf '\nNext:\n'
-  printf '%s' "$out" | python3 -c 'import json,sys
-for l in json.load(sys.stdin)["next"]:
-    print("  " + l)'
-  url="$(printf '%s' "$out" | python3 -c 'import json,sys
-for l in json.load(sys.stdin)["next"]:
-    if l.startswith("open the review: "): print(l[len("open the review: "):]); break')"
+  [ -z "$next" ] || printf '%s\n' "$next" | sed 's/^/  /'
+  url="$(printf '%s\n' "$next" | sed -n 's/^open the review: //p' | head -n 1)"
   [ -z "$url" ] || to_clipboard "$url" "the review's URL" || true
   return 0
 }
@@ -7426,7 +7739,7 @@ cmd_relay() {
   out="$(reader relay "$root" --sid "$sid" --answer "$answer" --cwd "$PWD" "${dl_args[@]}")"; rc=$?
   [ -z "$out" ] || printf '%s\n' "$out"
   [ "$rc" = 0 ] || return "$rc"
-  block="$(printf '%s' "$out" | python3 -c 'import sys
+  block="$(printf '%s' "$out" | python3 -B -P -S -c 'import sys
 lines = sys.stdin.read().splitlines()
 a = next((i for i, l in enumerate(lines) if l.startswith("BALE EXCHANGE BEGIN ")), None)
 b = next((i for i, l in enumerate(lines) if l.startswith("BALE EXCHANGE END")), None)
@@ -7637,7 +7950,7 @@ cmd_probe() {
       *) exit 1 ;;
     esac
   done
-  probe_field() { python3 -c 'import json,sys
+  probe_field() { python3 -B -P -S -c 'import json,sys
 v = json.load(open(sys.argv[1]))[sys.argv[2]]
 print("\n".join(v) if isinstance(v, list) else ("" if v is None else v))' "$1" "$2"; }
   sid="$(probe_field "$plan_file" sid)"; where="$(probe_field "$plan_file" where)"
@@ -7787,7 +8100,7 @@ tour_step() {  # tour_step N TOTAL TITLE
 # slip, each made the way the verbs make them.
 tour_furnish() {
   local office="$TOUR_DIR/office" tz today gap_day
-  python3 - "$SHAPE" > "$office/$PROFILE_REL" <<'PY' || return 1
+  python3 -B -P -S - "$SHAPE" > "$office/$PROFILE_REL" <<'PY' || return 1
 import sys, tomllib
 with open(sys.argv[1], "rb") as f:
     shape = tomllib.load(f)
@@ -7970,14 +8283,24 @@ RC
 WALK_TZ=""; WALK_SKEW=""; WALK_FOUNDED=""
 walk_in_head() {
   local root="$1" name tz report state founded tz_named tz_shown install_lines
-  name="$(helper get "$root/$MANIFEST_REL" office.name --default "(unnamed)")"
-  tz="$(office_tz "$root")"
-  tz_named="$(office_tz_named "$root")"
+  # The head's six reads in one helper call (0.29.0): the office's name
+  # and timezone, the stamps and skew, the profile's state and the
+  # install's lines; none writes and none depends on another.
+  local calls=() profile
+  batch_call calls get "$root/$MANIFEST_REL" office.name --default "(unnamed)"
+  batch_call calls -q get "$root/$MANIFEST_REL" office.timezone --default UTC
+  batch_call calls -q skew-report "$root/$MANIFEST_REL" "$(install_version)" "$MIGRATIONS"
+  batch_call calls -q profile-check "$root/$PROFILE_REL" "$SHAPE"
+  batch_call calls -q bale:install-lines "$root"
+  batch_run name tz_named report profile install_lines -- "${calls[@]}"
+  [ "$tz_named_rc" = 0 ] || tz_named=UTC
+  office_tz_keep "$root" "$tz_named"
+  tz="$(office_tz_resolved "$tz_named")"
   tz_shown="$tz"
   [ "$tz_named" = "$tz" ] || tz_shown="$tz (the floor plan's $tz_named does not resolve here; office status says what fixes it)"
-  report="$(skew_report "$root" 2>/dev/null)" && state="$(printf '%s\n' "$report" | head -n 1)" || state="unreadable"
+  if [ "$report_rc" = 0 ]; then report="${report#*$'\n'}"; state="${report%%$'\n'*}"; else state="unreadable"; fi
   case "$state" in current|behind|ahead) WALK_SKEW="$state" ;; *) WALK_SKEW=unreadable ;; esac
-  if helper profile-check "$root/$PROFILE_REL" "$SHAPE" >/dev/null 2>&1; then founded="founded"; WALK_FOUNDED=yes
+  if [ "$profile_rc" = 0 ]; then founded="founded"; WALK_FOUNDED=yes
   else founded="UNFOUNDED (profile incomplete: office status)"; WALK_FOUNDED=no; fi
   case "$state" in
     current) state="current with office-src $(install_version)" ;;
@@ -7992,7 +8315,7 @@ walk_in_head() {
   # run the install, so the Next line names the install line too); and the
   # latest detached run of the source's suite when its verdict is not OK
   # (FAILED, BROKEN, or RUNNING for over an hour), one line (0.17.2).
-  install_lines="$(reader install-lines "$root" 2>/dev/null)" || install_lines=""
+  [ "$install_lines_rc" = 0 ] || install_lines=""
   [ -z "$install_lines" ] || printf '%s\n' "$install_lines"
   WALK_TZ="$tz"
 }
@@ -8022,9 +8345,20 @@ walk_in() {
   # bale is asked each question once; it is printed last.
   next_file="$(mktemp)" || die "cannot make a temp file for the walk-in"
   TMP_PATHS+=("$next_file")
-  desk="$(reader desk "$root" --walk-in --today "$today" ${since:+--since "$since"} \
-    --next-file "$next_file" --skew "$WALK_SKEW" --founded "$WALK_FOUNDED")"
-  case $? in
+  # The page's three reads in one helper call (0.29.0): the desk, this
+  # week (office week's own read, with the head's timezone) and the
+  # notepad's last lines; none writes, and each needs only the head.
+  local calls=() vars=(desk) week="" week_rc=0 has_calendar=0
+  batch_call calls bale:desk "$root" --walk-in --today "$today" ${since:+--since "$since"} \
+    --next-file "$next_file" --skew "$WALK_SKEW" --founded "$WALK_FOUNDED"
+  if has_space "$root" calendar; then
+    has_calendar=1; vars+=(week)
+    batch_call calls week "$root/calendar" --today "$today" --now "$(office_time "$WALK_TZ")" --tz "$WALK_TZ"
+  fi
+  vars+=(notes)
+  batch_call calls -q recent-notes "$root/notepad" 3
+  batch_run "${vars[@]}" -- "${calls[@]}"
+  case $desk_rc in
     0|3) printf '%s\n' "$desk" ;;
     *) printf 'In flight:\n  could not be read (OFFICE_DEBUG=1 office for why)\n\nOn the desk:\n  could not be read; office desk says why\n' ;;
   esac
@@ -8032,9 +8366,15 @@ walk_in() {
   [ -n "$next" ] || next="Next: office desk  (the next move could not be worked out; OFFICE_DEBUG=1 office says why)"
   record_walk_in "$root" "$today"
   printf '\nThis week:\n'
-  OFFICE_ROOT="$root" cmd_week | sed 's/^/  /'
+  if [ "$has_calendar" = 0 ]; then
+    printf '  this office has no calendar yet. It arrives with the first meeting: office meeting records one, in your words (doctrine section 5).\n'
+  elif [ "$week_rc" = 0 ]; then
+    printf '%s\n' "$week" | sed 's/^/  /'
+  else
+    printf '[office] error: %s\n' "could not read the calendar in $root/calendar" >&2
+  fi
   printf '\nNotepad, last lines:\n'
-  notes="$(helper recent-notes "$root/notepad" 3 2>/dev/null)"
+  [ "$notes_rc" = 0 ] || notes=""
   if [ -n "$notes" ]; then printf '%s\n' "$notes" | sed 's/^/  /'; else printf '  nothing noted yet\n'; fi
   slips="$(find "$root/suggestion-box" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
   printf '\nSuggestion box: %s slip(s).\n' "$slips"

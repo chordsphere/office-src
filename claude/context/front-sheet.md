@@ -101,10 +101,10 @@ pastes.
 ## The suite's clock
 
 For the worker first. bale gives a session's validation two minutes
-(TARBALL.md 7.6), and the whole suite takes far longer (919 tests at
-0.28.0; 866 seconds on a two-core sandbox, 4 jobs at a time,
-where 0.27.0's 914 took 1,245 on the same sandbox; the fast tier
-64.1 seconds). So, since 0.17.1:
+(TARBALL.md 7.6), and the whole suite takes far longer (924 tests at
+0.29.0; 652 seconds on a two-core sandbox, 4 jobs at a time,
+where 0.28.0's 919 took 894 on the same sandbox; the fast tier
+56.0 seconds). So, since 0.17.1:
 
 - Every validation.sh runs the fast tier, `tests/run.sh --fast`, plus
   what the session touched, named after it (`tests/run.sh --fast
@@ -206,9 +206,45 @@ where 0.27.0's 914 took 1,245 on the same sandbox; the fast tier
   them, writes its top-level patterns as LazyPatterns, and needs nothing
   of site-packages (zoneinfo's tzdata fallback is the one exception, and
   the zone falls back to UTC as it already did).
+- Since 0.29.0 a command starts fewer helpers. The reads a command made
+  side by side go out as one `office_helper batch` call (bin/office
+  `batch_call` and `batch_run`; each call runs in the batch's process
+  exactly as its own would have, and its answer and exit code come back
+  in variables), the stamps and the skew are one read made once per
+  command (`skew-report`, `skew_read`), and a helper's JSON answer is read
+  back by one `json_read` rather than one `python3 -c` per field. `office
+  status` starts one helper where it started 17, the walk-in three where
+  ten, a plain start on a project twelve where 23, its landing eleven
+  where 19 (a landing that sorts drops about 29 where 45). A new read a
+  command adds beside another goes into that batch when nothing is
+  written or asked between them; a read that follows a write, or needs
+  another's answer, stays a call of its own after it. `TestFewerHelperStarts` in
+  tests/test_suite_clock.py and in tests/test_land.py hold the batch to
+  each call run alone and count what the four commands start.
 
 ## Recent changes
 
+- 0.29.0 (session 2026-10-23-helper-starts-001): fewer helper starts, the
+  third session after the front-door arc. Nothing you use changes.
+  - `office status` starts one Python helper where it started 17, the
+    walk-in three where ten, a plain start on a project twelve where 23
+    and its landing eleven where 19 (a landing that sorts drops and mints
+    their folders about 29 where 45), and a land's twenty-odd `python3
+    -c` reads of a helper's answer are four. In the worker's sandbox
+    `office status` took 0.5 seconds where it took 2.3 (no bytecode
+    cache, as on your machine), a start 2.6 where 4.0 and a land 2.7
+    where 4.2; the whole suite took 652 seconds there where 0.28.0's took
+    894 (919 tests then, 924 now, none dropped), the fast tier 56.0 where
+    64.2.
+  - The reads a command makes side by side go out as one helper call
+    (`office_helper batch`); the stamps and skew are one read, made once
+    per command; a helper's JSON answer is read back once.
+  - Two things said differently: the walk-in in an office with a calendar
+    says once that the floor plan names a zone this machine lacks, where
+    it said it twice; and a batched read's stderr lines (an error, and
+    only then) come before the command's stdout lines from that batch,
+    not between them.
+  - Additive: no migration.
 - 0.28.0 (session 2026-10-22-helper-imports-003): the helpers' start, the
   second session after the front-door arc. Nothing you use changes.
   - A small helper call took 42 ms where it took 85 in the worker's

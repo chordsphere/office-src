@@ -1393,8 +1393,8 @@ matches the floor plan.
 
 | path | what |
 |---|---|
-| bin/office | the command (bash); `pylib` starts each Python helper as a module, with -B, -P and (0.28.0) -S |
-| lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library); since 0.28.0 the LazyPattern and OneSubcommand every module's start leans on |
+| bin/office | the command (bash); `pylib` starts each Python helper as a module, with -B, -P and (0.28.0) -S; since 0.29.0 the reads a command makes side by side go out as one call (`batch_call`, `batch_run`), the stamps and skew are read once per command (`skew_read`) and a helper's JSON answer is read back once (`json_read`) |
+| lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library); since 0.28.0 the LazyPattern and OneSubcommand every module's start leans on; since 0.29.0 `batch`, several subcommands of any lib/ module in one process, and `skew-report` |
 | lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after |
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
 | lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for, the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray |
@@ -1566,6 +1566,29 @@ name builds them all, so argparse's usage and errors read as before); and
 small call went from 85 ms to 42 in the worker's sandbox, and the whole
 suite from 1,245 seconds to 866. `TestTheHelpersStart` in
 tests/test_suite_clock.py holds every module to the rule.
+
+Since 0.29.0 a command starts fewer of them, and still no verb's output
+changes. The reads a command made side by side (with no write or
+question between them) go out as one `office_helper batch` call, which
+runs each subcommand, of office_helper or a sibling module, in one
+process exactly as its own call would have run and prints one record
+per call; `bin/office` builds the batch with `batch_call` and reads the
+records into variables with `batch_run` (each answer in its variable,
+its exit code in `VAR_rc`). The two version stamps and the skew report
+are one read (`skew-report`), made once per command (`skew_read`); the
+fields read back from a helper's JSON line are one `json_read` per
+answer instead of one `python3 -c` per field, and the one-liners that
+stay single run with `-B -P -S`. `office status` starts one helper where
+it started 17, the walk-in three where ten, a plain start on a project
+twelve where 23, its landing eleven where 19 and four `python3 -c` where
+about twenty (a landing that sorts drops and mints their folders about
+29 where 45); in the worker's sandbox `office status` took half a second
+where it took 2.3 in everyday use (no bytecode cache, so every call
+compiled the module it loaded), and the whole suite 652 seconds where
+0.28.0's took 894 on the same sandbox. `TestFewerHelperStarts` in
+tests/test_suite_clock.py holds the batch to each call run alone, and
+the class of the same name in tests/test_land.py counts what a status, a
+walk-in, a start and a land start.
 
 The suite builds offices, installs and synthetic migrations under
 temporary directories and never touches your home directory or offices,

@@ -2778,12 +2778,184 @@ def cmd_survey_age(a):
     print(f"{stamp} ({what})")
 
 
-def cmd_skew(a):
-    state, pending = skew(a.office_version, a.install_version, a.migrations)
-    print(state)
+def skew_lines(state, pending):
+    """The skew report as `skew` prints it: the state, then one line per
+    pending migration."""
+    lines = [state]
     for m in pending:
         landed = describe_landed(m["landed"]) if m["kind"] == "renovation" else ""
-        print(f"{m['version']}\t{m['kind']}\t{m['action']}\t{m['summary']}\t{landed}")
+        lines.append(f"{m['version']}\t{m['kind']}\t{m['action']}\t{m['summary']}\t{landed}")
+    return lines
+
+
+def cmd_skew(a):
+    state, pending = skew(a.office_version, a.install_version, a.migrations)
+    for line in skew_lines(state, pending):
+        print(line)
+
+
+def cmd_skew_report(a):
+    """The two version stamps and the skew report in one read (0.29.0):
+    `stamp migrated_to`, `stamp built_from` and `skew` were three helper
+    calls at the top of nearly every command (bin/office skew_read). The
+    first line is `built_from<TAB>migrated_to`; the rest is what `skew`
+    prints for the migrated_to stamp."""
+    stamp = office_stamp(read_toml(a.manifest))
+    print(f"{stamp['built_from']}\t{stamp['migrated_to']}", flush=True)
+    state, pending = skew(stamp["migrated_to"], a.install_version, a.migrations)
+    for line in skew_lines(state, pending):
+        print(line)
+
+
+# --- several calls in one process (0.29.0) ---------------------------------
+#
+# Every helper call starts an interpreter and loads the modules every call
+# needs (about 35 of a small call's 42 ms, measured in 0.28.0's session),
+# and an office command made a dozen such calls in a row to read the same
+# office. `batch` runs several subcommands, of this module or a sibling,
+# in one process, each exactly as its own call would run (its module's
+# main, its argv, its stdout captured at the file descriptor, its exit
+# code kept), and prints one record per call for bin/office's batch_read.
+
+BATCH_MODULES = {
+    "helper": "office_helper", "bale": "office_bale", "drafting": "office_drafting",
+    "drop": "office_drop", "sort": "office_sort", "watches": "office_watches",
+    "digest": "office_digest", "door": "office_door", "deliver": "office_deliver",
+    "home": "office_home", "meeting": "office_meeting", "planner": "office_planner",
+    "probe": "office_probe", "letterhead": "office_letterhead",
+}
+BATCH_STDERR = {"-q": "quiet", "-m": "merge"}
+
+
+def parse_batch(tokens):
+    """The calls a `batch` command line carries: `COUNT [-q|-m]
+    [MODULE:]SUBCOMMAND ARGS...`, repeated, COUNT counting every token after
+    it up to the next call (bin/office batch_call writes them). Returns a
+    list of (module, argv, stderr) with stderr one of inherit, quiet
+    (discarded, the call's `2>/dev/null`) or merge (into its stdout, the
+    call's `2>&1`)."""
+    calls, i = [], 0
+    while i < len(tokens):
+        try:
+            count = int(tokens[i])
+        except ValueError:
+            raise HelperError(f"batch: a call's token count was expected, not {tokens[i]!r}")
+        words = tokens[i + 1:i + 1 + count]
+        if count < 1 or len(words) != count:
+            raise HelperError(f"batch: call {len(calls) + 1} says {count} token(s) and has {len(words)}")
+        i += 1 + count
+        stderr = "inherit"
+        if words[0] in BATCH_STDERR:
+            stderr = BATCH_STDERR[words[0]]
+            words = words[1:]
+            if not words:
+                raise HelperError(f"batch: call {len(calls) + 1} names no subcommand")
+        spec, argv = words[0], words[1:]
+        module, _, sub = spec.rpartition(":")
+        module = module or "helper"
+        if module not in BATCH_MODULES:
+            raise HelperError(f"batch: no module {module!r} (one of {', '.join(sorted(BATCH_MODULES))})")
+        if not sub or sub.startswith("-"):
+            raise HelperError(f"batch: call {len(calls) + 1} names no subcommand ({spec!r})")
+        calls.append((BATCH_MODULES[module], [sub, *argv], stderr))
+    return calls
+
+
+def batch_module(name):
+    """The module a batch call runs: this module itself when it names
+    office_helper (whatever runpy named it), else the sibling, imported
+    once and kept for the batch's other calls."""
+    if name == "office_helper":
+        return sys.modules[__name__]
+    import importlib
+    return importlib.import_module(name)
+
+
+def capture_fd():
+    """An anonymous file to capture a call's stdout in: in memory where
+    the platform has memfd_create (Linux), else a temporary file."""
+    try:
+        return os.memfd_create("office-batch")
+    except (AttributeError, OSError):
+        import tempfile
+        fd, path = tempfile.mkstemp(prefix="office-batch.")
+        os.unlink(path)
+        return fd
+
+
+def run_call(module, argv, stderr):
+    """Run one call in this process as its own process would have run it:
+    the module's main(argv), stdout captured at file descriptor 1 (so
+    writes through sys.stdout.buffer and a child process's inherited
+    stdout are captured too), stderr inherited, discarded or merged, a
+    SystemExit read as the interpreter reads it (None 0, an int itself,
+    anything else printed to stderr and 1), an uncaught exception
+    printed as a traceback and 1. Returns (exit code, stdout bytes)."""
+    sys.stdout.flush()
+    sys.stderr.flush()
+    out_fd, saved_out, saved_err = capture_fd(), os.dup(1), os.dup(2)
+    null_fd = None
+    os.dup2(out_fd, 1)
+    if stderr == "quiet":
+        null_fd = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(null_fd, 2)
+    elif stderr == "merge":
+        os.dup2(out_fd, 2)
+    try:
+        try:
+            rc = module.main(argv)
+            rc = 0 if rc is None else rc
+        except SystemExit as exc:
+            if exc.code is None:
+                rc = 0
+            elif isinstance(exc.code, int):
+                rc = exc.code
+            else:
+                print(exc.code, file=sys.stderr)
+                rc = 1
+        except Exception:  # noqa: BLE001 - a call's own crash, reported as its process would
+            import traceback
+            traceback.print_exc()
+            rc = 1
+        sys.stdout.flush()
+        sys.stderr.flush()
+    finally:
+        os.dup2(saved_out, 1)
+        os.dup2(saved_err, 2)
+        os.close(saved_out)
+        os.close(saved_err)
+        if null_fd is not None:
+            os.close(null_fd)
+    os.lseek(out_fd, 0, os.SEEK_SET)
+    chunks = []
+    while True:
+        chunk = os.read(out_fd, 1 << 16)
+        if not chunk:
+            break
+        chunks.append(chunk)
+    os.close(out_fd)
+    return rc, b"".join(chunks)
+
+
+def batch_record(rc, out):
+    """One result for bin/office batch_read: `RC<TAB>LINES` and then that
+    many lines, each ending in a newline; the output's trailing newlines
+    are dropped first, as "$(...)" drops them, so the record carries what
+    the call's own command substitution would have held."""
+    out = out.rstrip(b"\n")
+    lines = out.split(b"\n") if out else []
+    return f"{rc}\t{len(lines)}\n".encode() + b"".join(line + b"\n" for line in lines)
+
+
+def cmd_batch(a):
+    calls = parse_batch(a.calls)
+    if not calls:
+        raise HelperError("batch: no call given (COUNT [-q|-m] [MODULE:]SUBCOMMAND ARGS..., repeated)")
+    screen = sys.stdout.buffer
+    for module_name, argv, stderr in calls:
+        rc, out = run_call(batch_module(module_name), argv, stderr)
+        screen.write(batch_record(rc, out))
+        screen.flush()
 
 
 def cmd_landed(a):
@@ -3569,6 +3741,14 @@ def build_parser(only=None):
     p.set_defaults(fn=cmd_survey_age)
     p = add("skew"); p.add_argument("office_version"); p.add_argument("install_version")
     p.add_argument("migrations"); p.set_defaults(fn=cmd_skew)
+    p = add("skew-report", help="the two version stamps (built_from, migrated_to, one tab-separated line) "
+                                "and then the skew report, in one read")
+    p.add_argument("manifest"); p.add_argument("install_version"); p.add_argument("migrations")
+    p.set_defaults(fn=cmd_skew_report)
+    p = add("batch", help="run several subcommands in one process: COUNT [-q|-m] [MODULE:]SUBCOMMAND "
+                          "ARGS..., repeated; one record per call (RC, LINES, the lines) for bin/office's "
+                          "batch_read")
+    p.add_argument("calls", nargs=argparse.REMAINDER); p.set_defaults(fn=cmd_batch)
 
     p = add("landed"); p.add_argument("version"); p.add_argument("migrations")
     p.add_argument("install_version"); p.add_argument("root"); p.set_defaults(fn=cmd_landed)

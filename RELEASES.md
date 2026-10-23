@@ -4,6 +4,73 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.29.0
+
+Additive: no migration, nothing to do in any office, and nothing an
+office does changes. This release is about how many Python helpers an
+`office` command starts: `office status` started 17, a walk-in 10, a
+plain start on a project 23 and its landing 19 (a landing that sorts
+drops and mints their folders about 45), and each start cost about 35 ms
+of interpreter and module loading before it read anything, or about 95
+in everyday use, where no bytecode cache spares a call from compiling
+the module it loads. Now `office status` starts one, a walk-in three,
+that start twelve and its landing eleven (the sorting landing about 29),
+and a land's twenty-odd `python3 -c` reads of a helper's JSON answer are
+four. In the worker's two-core sandbox `office status` took
+0.5 seconds where it took 2.3 in everyday use (0.26 where 1.3 with the
+suite's bytecode cache), the walk-in 0.85 where 1.5, a start 2.6 where
+4.0 and a land 2.7 where 4.2; the whole suite 652 seconds where
+0.28.0's took 894 on the same sandbox, the fast tier 56.0 where 64.2,
+every test kept and five added.
+
+Several reads in one helper call. `office_helper batch` runs several
+subcommands, of office_helper or of a sibling module, in one process,
+each exactly as its own call would have run (its module's main, its
+argv, its stdout captured at the file descriptor, its exit code kept,
+its stderr inherited, discarded or merged as the call's redirection
+was), and prints one record per call; bin/office builds the batch with
+`batch_call` and reads the records back with `batch_run`, each call's
+answer into a variable and its exit code into `VAR_rc`. The reads that
+sat side by side in a command, with no write or question between them,
+go out as one call: every read `office status` makes, the walk-in's
+head and its page, a start's skew, profile and project names and then
+its folder's facts, the founding folder, the profile and the out tray,
+a land's zone and downloads, its two sort questions and its two
+closings' three reads. A read that follows a write, or depends on
+another's answer, stays a call of its own after it.
+
+The stamps and the skew in one read. `office_helper skew-report` prints
+the two version stamps and then the skew report, where nearly every
+command read them as three calls (stamp, skew, stamp again); bin/office
+reads it once per command (`skew_read`), a verb's own code run inside
+another (land running moves and close) answering from that read until
+`office upgrade` writes the stamp. The floor plan's timezone name and a
+project's facts are read once per command the same way.
+
+A JSON answer read once. The fields bin/office read back from a helper's
+JSON line with one `python3 -c` each (a start's eight, a land's fourteen
+plan fields and five outcome fields, the standalone sort's and the
+prep's five, a delivery's four, a blueprint's close four) are one
+`json_read` each, an interpreter start that prints the fields in the
+same records `batch_run` reads; the one-liners that stay single run
+with `-B -P -S`, as the helpers do.
+
+What the occupant sees is as it was, byte for byte: every verb's stdout,
+stderr and exit code, compared on eighteen commands against the
+unchanged tree besides the suite, with two things to know. The walk-in
+in an office with a calendar says once that the floor plan names a zone
+this machine lacks, where it said it twice (its head, then office week's
+own read); and the lines a batched read prints to stderr as it runs (an
+error, and only then) come before the stdout lines the command prints
+from the batch's answers, where they came between them.
+
+Tests: tests/test_suite_clock.py `TestFewerHelperStarts` (the batch
+against each call run alone, its stderr modes and its refusals;
+skew-report; bin/office's `batch_run` and `json_read` read into
+variables) and tests/test_land.py `TestFewerHelperStarts` (a python3 on
+the PATH ahead of the real one counts what a status, a walk-in, a start
+and a land start).
+
 ## 0.28.0
 
 Additive: no migration, nothing to do in any office, and nothing an
