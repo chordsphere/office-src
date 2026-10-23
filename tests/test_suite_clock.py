@@ -1151,6 +1151,107 @@ class TestTheHelpersStart(unittest.TestCase):
         self.assertEqual((proc.returncode, proc.stdout), (0, "1 False False\n"), proc.stderr)
 
 
+class TestFewerHelperStarts(unittest.TestCase):
+    """0.29.0: several reads in one helper process (office_helper batch,
+    bin/office batch_call, batch_run and batch_read), the two stamps and
+    the skew in one read (skew-report), and a JSON answer's fields read
+    back in one interpreter start (bin/office json_read)."""
+
+    def setUp(self):
+        self.e = Env(self)
+        self.manifest = self.e.tmp / "m.toml"
+        self.manifest.write_text('[office]\nname = "Example"\nbuilt_from = "0.27.0"\nmigrated_to = "0.28.0"\n'
+                                 'timezone = "Europe/Paris"\n')
+
+    def pylib(self, *argv, stdin=None):
+        return subprocess.run([sys.executable, "-B", "-P", "-S", "-c", PYLIB_CODE, str(LIB), *argv],
+                              env=self.e.env, cwd=self.e.tmp, capture_output=True, text=True, timeout=60, input=stdin)
+
+    def test_a_batch_runs_each_call_as_its_own_process_would_and_prints_one_record_each(self):
+        m = str(self.manifest)
+        calls = (["get", m, "office.name"], ["stamp", m, "built_from"], ["profile-check", m, m],
+                 ["get", m, "office.nope"], ["vercmp", "1", "2"], ["skew-report", m, "0.28.0", str(REPO / "migrations")],
+                 ["sort:is-sort", "2026-10-23-in-tray-sort-001"], ["sort:is-sort", "2026-10-23-fix-login-001"],
+                 ["vercmp"])
+        argv = ["batch"]
+        for c in calls:
+            argv += [str(len(c)), *c]
+        proc = self.pylib("office_helper", *argv)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        records = proc.stdout
+        for c in calls:
+            mod, _, sub = c[0].rpartition(":")
+            alone = self.pylib(f"office_{mod or 'helper'}", sub, *c[1:])
+            out = alone.stdout.rstrip("\n")
+            want = f"{alone.returncode}\t{len(out.splitlines())}\n" + "".join(l + "\n" for l in out.splitlines())
+            self.assertTrue(records.startswith(want), f"{c}: wanted {want!r} at {records[:200]!r}")
+            records = records[len(want):]
+            if alone.stderr:
+                self.assertIn(alone.stderr.splitlines()[-1], proc.stderr, c)
+        self.assertEqual(records, "")
+        # -q discards a call's stderr, -m merges it into its stdout.
+        proc = self.pylib("office_helper", "batch", "4", "-q", "get", m, "office.nope", "4", "-m", "get", m, "office.nope")
+        self.assertEqual((proc.returncode, proc.stderr), (0, ""))
+        self.assertEqual(proc.stdout, f"1\t0\n1\t1\n[office] error: {m}: no key office.nope\n")
+        # A call that fails is its own exit code, said on stderr, and the batch goes on.
+        proc = self.pylib("office_helper", "batch", "3", "stamp", "/nonexistent/m.toml", "built_from", "3", "vercmp", "1.0.0", "1.0.0")
+        self.assertEqual((proc.returncode, proc.stdout), (0, "1\t0\n0\t1\n0\n"), proc.stderr)
+        self.assertIn("missing file", proc.stderr)
+        # The command line's shape is held.
+        for bad in (["batch"], ["batch", "x"], ["batch", "2", "vercmp"], ["batch", "1", "nomodule:x"], ["batch", "1", "-q"]):
+            proc = self.pylib("office_helper", *bad)
+            self.assertEqual((proc.returncode, proc.stdout), (1, ""), bad)
+            self.assertIn("[office] error: batch:", proc.stderr)
+        self.assertEqual(h.parse_batch(["3", "-m", "bale:desk", "/x", "2", "stamp", "m"]),
+                         [("office_bale", ["desk", "/x"], "merge"), ("office_helper", ["stamp", "m"], "inherit")])
+
+    def test_skew_report_is_the_stamps_then_the_skew(self):
+        proc = self.pylib("office_helper", "skew-report", str(self.manifest), "0.28.0", str(REPO / "migrations"))
+        self.assertEqual((proc.returncode, proc.stdout), (0, "0.27.0\t0.28.0\ncurrent\n"))
+        skew = self.pylib("office_helper", "skew", "0.28.0", "0.28.0", str(REPO / "migrations"))
+        self.assertEqual(proc.stdout.split("\n", 1)[1], skew.stdout)
+        # The stamps are printed before the migrations are planned, so a
+        # caller tells the two failures apart as it told the two calls'.
+        bad = self.e.tmp / "migrations"
+        bad.mkdir()
+        (bad / "0.1.0.toml").write_text('version = "0.2.0"\n')
+        proc = self.pylib("office_helper", "skew-report", str(self.manifest), "0.28.0", str(bad))
+        self.assertEqual((proc.returncode, proc.stdout), (1, "0.27.0\t0.28.0\n"), proc.stderr)
+        (self.e.tmp / "bare.toml").write_text("[office]\n")
+        proc = self.pylib("office_helper", "skew-report", str(self.e.tmp / "bare.toml"), "0.28.0", str(REPO / "migrations"))
+        self.assertEqual((proc.returncode, proc.stdout), (1, ""), proc.stderr)
+
+    def test_the_command_reads_a_batch_and_a_json_answer_into_its_variables(self):
+        functions = office_functions("pylib", "batch_call", "batch_run", "batch_read", "json_read") \
+            + 'HELPER="$OFFICE_SRC/lib/office_helper.py"; helper() { pylib "$HELPER" "$@"; }\n'
+        doc = self.e.tmp / "doc.json"
+        doc.write_text(json.dumps({"sid": "2026-10-23-x-001", "lines": ["a", "", "b"], "yes": True, "no": False,
+                                   "none": None, "relays": [{"to": "planner"}], "n": 7}))
+        script = functions + """
+calls=()
+batch_call calls get "$M" office.name
+batch_call calls -q get "$M" office.nope
+batch_call calls -m stamp "$M" migrated_to
+batch_run name nope stamp missing -- "${calls[@]}"
+printf '%s|%s|%s|%s|%s|%s|%s|%s\\n' "$name" "$name_rc" "$nope" "$nope_rc" "$stamp" "$stamp_rc" "$missing" "$missing_rc"
+json_read "$DOC" sid=sid lines=lines yes=yes no=no none=none to=relays.0.to n=relays# gone=gone opt=gone?
+printf '%s|%s|%s|%s|%s|%s|%s|%s|%s\\n' "$sid" "${lines//$'\\n'/;}" "$yes" "$no" "$none" "$to" "$n" "$gone_rc" "$opt_rc"
+json_read - a=sid <<< "$(cat "$DOC")"; printf '%s\\n' "$a"
+json_read - a=sid <<< "not json"; printf '%s|%s\\n' "$a" "$a_rc"
+"""
+        proc = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=60,
+                              env=dict(self.e.env, OFFICE_SRC=str(REPO), M=str(self.manifest), DOC=str(doc)))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout.splitlines(), [
+            "Example|0||1|0.28.0|0||2",
+            "2026-10-23-x-001|a;;b|yes|||planner|1|1|0",
+            "2026-10-23-x-001",
+            "|1"])
+        self.assertNotIn("no key office.nope", proc.stderr, "the -q call's stderr was discarded")
+        self.assertIn("no field gone", proc.stderr)
+        self.assertIn("not a JSON document", proc.stderr)
+
+
 class TestTheRecord(unittest.TestCase):
     def test_the_version_the_releases_and_the_readme(self):
         version = (REPO / "VERSION").read_text().strip()

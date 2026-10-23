@@ -940,3 +940,63 @@ class TestABundledSittingOpensOnTheDigest(LandCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFewerHelperStarts(LandCase):
+    """0.29.0: the reads a command makes side by side go out as one helper
+    call, and a helper's JSON answer is read back once. A python3 on the
+    test's PATH ahead of the real one logs every interpreter the command
+    starts, so the counts below are what the occupant's shell would start."""
+
+    def setUp(self):
+        super().setUp()
+        self.log = self.e.tmp / "python3-starts.log"
+        real = sys.executable
+        self.assertTrue(real and not re.search(r"\s", real), real)
+        shim = self.e.desktop / "python3"
+        shim.write_text("#!/bin/bash\n# The suite's own: logs this start, then runs the real python3.\n"
+                        f"printf '%s\\n' \"$*\" >> {str(self.log)!r}\nexec {real} \"$@\"\n")
+        shim.chmod(0o755)
+
+    def starts(self, *args, check=0):
+        """(helper calls, python3 -c one-liners) one command started."""
+        self.log.write_text("")
+        self.run_office(*args, check=check)
+        lines = self.log.read_text().splitlines()
+        helpers = [l for l in lines if "runpy.run_module" in l]
+        oneliners = [l for l in lines if "runpy.run_module" not in l and (" -c " in l or l.startswith("-c "))]
+        return len(helpers), len(oneliners)
+
+    def test_a_status_is_one_helper_call_and_a_walk_in_three(self):
+        self.assertEqual(self.starts("status"), (1, 0))
+        # The head's reads, the page's reads, and office week's own read of
+        # the calendar's space (has_space).
+        self.assertEqual(self.starts(), (3, 0))
+
+    def test_a_start_and_a_land_start_a_handful_each(self):
+        self.log.write_text("")
+        sid = self.start("fix-login", "--on", "alpha", "--goal", "Fix the login redirect")
+        lines = self.log.read_text().splitlines()
+        helpers = [l for l in lines if "runpy.run_module" in l]
+        # Three batches, the pack's survey (survey-render, then its age), the
+        # project's facts, the riders, the pack, the zone, and the three
+        # writes after the pack (record-session, file-sitting-pages,
+        # ratifications): twelve where 0.28.0 started 23.
+        self.assertEqual(len(helpers), 12, "\n".join(helpers))
+        self.assertEqual(len([l for l in lines if "runpy.run_module" not in l and (" -c " in l or l.startswith("-c "))]),
+                         1, "\n".join(lines))
+        # One batch carries the skew, the profile and the project names;
+        # one the folder's facts, the founding folder, the profile and the
+        # out tray; one the survey's age and its writers (office survey
+        # --before-pack, which the pack runs); the pack's JSON is read once.
+        self.assertEqual(len([l for l in helpers if " batch " in l]), 3, "\n".join(helpers))
+        response_tarball(self.downloads, sid, {"src/a.py": "fixed\n"})
+        helpers, oneliners = self.starts("land")
+        # The skew, which session is out, three batches (the zone and the
+        # downloads; the two sort questions; the two closings' reads), the
+        # landing's four bale calls, the letterhead's review and the
+        # watches: eleven where 0.28.0 started 19.
+        self.assertEqual(helpers, 11)
+        # The plan once, the outcome once, and the relays twice (their
+        # count, then the one block), where 0.28.0 started about twenty.
+        self.assertEqual(oneliners, 4)
