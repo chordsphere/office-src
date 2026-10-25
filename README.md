@@ -425,6 +425,17 @@ links ~/.local/bin/office to it. `--prefix DIR`, `--bin-dir DIR` and
 `--no-link` change that. Run it again to upgrade the install; it replaces
 the previous install whole, and refuses a prefix that is not one.
 
+Since 0.30.0 it also compiles lib/ into bytecode beside its sources
+(lib/__pycache__), with the python3 on your PATH, so a helper call reads
+its module's compiled code instead of compiling it. Every office command
+runs its helpers with `-B` and never writes the install, so before
+0.30.0 each call compiled the module it loaded from source, about half
+of what the call cost. `office status` says in one line whether the
+cache is level with the sources for the python3 it runs; after a Python
+upgrade, or a source changed inside the install, it names what compiles
+from source and the line that brings the cache level (install.sh again).
+A compile that fails is said, and the install goes on without the cache.
+
 On another machine, clone and run the same line:
 
     git clone <remote> ~/office-src && ~/office-src/install.sh
@@ -440,7 +451,7 @@ rendering says bale is missing and the rest of the command works.
 
 ### Looking after an office
 
-    office status              # version, skew, the install against its source, profile, survey age, timezone, hung items, catalogs, folders, filed pages, bale, projects, the letterhead, the push guards
+    office status              # version, skew, the install against its source, its bytecode cache, profile, survey age, timezone, hung items, catalogs, folders, filed pages, bale, projects, the letterhead, the push guards
     office survey              # rewrite floor-plan/survey.md, report what changed
     office upgrade             # run pending migrations: dry run, then one commit; a renovation goes out through office start; with or without one, the letterhead's missing pages and the current push guards
     office found               # an unfounded office's founding session, through the founding door
@@ -1393,9 +1404,9 @@ matches the floor plan.
 
 | path | what |
 |---|---|
-| bin/office | the command (bash); `pylib` starts each Python helper as a module, with -B, -P and (0.28.0) -S; since 0.29.0 the reads a command makes side by side go out as one call (`batch_call`, `batch_run`), the stamps and skew are read once per command (`skew_read`) and a helper's JSON answer is read back once (`json_read`) |
-| lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library); since 0.28.0 the LazyPattern and OneSubcommand every module's start leans on; since 0.29.0 `batch`, several subcommands of any lib/ module in one process, and `skew-report` |
-| lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after |
+| bin/office | the command (bash); `pylib` starts each Python helper as a module, with -B, -P and (0.28.0) -S; since 0.29.0 the reads a command makes side by side go out as one call (`batch_call`, `batch_run`), the stamps and skew are read once per command (`skew_read`) and a helper's JSON answer is read back once (`json_read`); since 0.30.0 a landing's record, bale apply and its outcome are one `office_bale land` call |
+| lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library); since 0.28.0 the LazyPattern and OneSubcommand every module's start leans on; since 0.29.0 `batch`, several subcommands of any lib/ module in one process, and `skew-report`; since 0.30.0 `bytecode-check`, office status's line on the install's bytecode cache |
+| lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after (one `land` call since 0.30.0: the office's record out, bale apply or retry, the outcome) |
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
 | lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for, the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray |
 | lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review |
@@ -1515,8 +1526,9 @@ directory (`PYTHONPYCACHEPREFIX`, handed to every job and, through each
 `-B` so nothing is ever written beside an install, and before 0.21.0 it
 compiled every module again on every call, which was most of the suite's
 time. The cache is checked against each source as always, nothing but
-the runner writes it, and it goes with the scratch directory; in everyday
-use there is none and nothing changes.
+the runner writes it, and it goes with the scratch directory. Under its
+prefix the interpreter reads that cache alone; in everyday use it reads
+the install's own, lib/__pycache__, which install.sh writes (0.30.0).
 
 The suite runs the same in the foreground, in the background and with
 `--detach`. A background job started from a non-interactive shell
@@ -1589,6 +1601,23 @@ compiled the module it loaded), and the whole suite 652 seconds where
 tests/test_suite_clock.py holds the batch to each call run alone, and
 the class of the same name in tests/test_land.py counts what a status, a
 walk-in, a start and a land start.
+
+Since 0.30.0 the install carries its own bytecode cache, and a land
+starts two helpers fewer. install.sh compiles lib/ into lib/__pycache__
+as it installs (above, Install), so in everyday use a helper call reads
+its module's compiled code where it compiled it from source: in the
+worker's sandbox a small call took 50 ms of CPU where it took 100, an
+office_bale call 60 where 210, and `office status` 0.30 seconds where
+0.56, a start 1.6 where 2.8 and a land 1.3 where 2.9. `office status`
+says whether that cache is level (`office_helper bytecode-check`).
+The landing's three helper calls (the office's record out, bale apply
+or retry, its outcome) are one, `office_bale land`, which says the
+record's line in its place and writes the outcome to a file, since its
+stdout is bale's. The suite already ran on the runner's cache, so its
+time barely moves. `TestTheInstallsBytecodeCache` and
+`TestTheBytecodeLine` in tests/test_office.py hold the cache and the
+line; `TestTheLandingInOneCall` and `TestLandWholeInProcess` in
+tests/test_land.py hold the landing to its three steps.
 
 The suite builds offices, installs and synthetic migrations under
 temporary directories and never touches your home directory or offices,

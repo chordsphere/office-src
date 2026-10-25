@@ -12,8 +12,11 @@ import atexit
 import contextlib
 import copy
 import datetime as dt
+import importlib.util
+import marshal
 import os
 import pathlib
+import py_compile
 import re
 import shutil
 import subprocess
@@ -1502,7 +1505,10 @@ class TestDevelopmentRecord(unittest.TestCase):
 
 # --- install -------------------------------------------------------------------
 
-class TestInstall(unittest.TestCase):
+class InstallCase(unittest.TestCase):
+    """A working copy of this tree, committed, and an install's prefix and
+    link directory in the Env's directory (never the machine's install)."""
+
     def setUp(self):
         self.e = Env(self)
         self.src = self.e.tmp / "office-src"
@@ -1518,6 +1524,8 @@ class TestInstall(unittest.TestCase):
                                "--bin-dir", str(self.bindir), *extra],
                               env=self.e.env, capture_output=True, text=True, timeout=60)
 
+
+class TestInstall(InstallCase):
     def test_installs_links_and_knows_its_version(self):
         proc = self.install()
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -1553,6 +1561,239 @@ class TestInstall(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn("not an office-src install", proc.stderr)
         self.assertTrue((self.prefix / "keep").exists())
+
+
+class TestTheInstallsBytecodeCache(InstallCase):
+    """0.30.0: install.sh compiles lib/ into lib/__pycache__, with the
+    python3 the office runs, as it installs; every helper call reads that
+    compiled code (pylib runs with -B, so no command writes it), and office
+    status says in one line whether it is level with the sources. A test
+    here installs into its Env's directory, never the machine's install."""
+
+    TAG = sys.implementation.cache_tag
+
+    def setUp(self):
+        super().setUp()
+        # Everyday use: no cache prefix, so the interpreter reads the
+        # install's lib/__pycache__ (a prefix hides it; the runner's is
+        # handed to every Env).
+        self.e.env.pop("PYTHONPYCACHEPREFIX", None)
+        self.office = self.bindir / "office"
+
+    def modules(self):
+        return sorted(p.name for p in (self.prefix / "lib").glob("*.py"))
+
+    def status_line(self, root, **extra):
+        out = self.e.run("status", cwd=root, bin_path=self.office, extra=extra, check=0).stdout
+        lines = [l for l in out.splitlines() if l.startswith("bytecode:")]
+        self.assertEqual(len(lines), 1, out)
+        # Its place: under the install's source line, above built from.
+        names = [l.split(":")[0] for l in out.splitlines()]
+        self.assertEqual(names[names.index("source") + 1:names.index("source") + 3], ["bytecode", "built from"], out)
+        return lines[0]
+
+    def test_lib_is_compiled_beside_its_sources_whatever_the_callers_python_settings(self):
+        elsewhere = self.e.tmp / "a-cache-prefix"
+        elsewhere.mkdir()
+        proc = subprocess.run(
+            [str(self.src / "install.sh"), "--prefix", str(self.prefix), "--bin-dir", str(self.bindir)],
+            env=dict(self.e.env, PYTHONPYCACHEPREFIX=str(elsewhere), PYTHONOPTIMIZE="2", SOURCE_DATE_EPOCH="1"),
+            capture_output=True, text=True, timeout=120)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        # Nothing new said when the compile succeeds.
+        self.assertNotIn("bytecode", proc.stderr + proc.stdout)
+        self.assertNotIn("compile", proc.stderr + proc.stdout)
+        cache = self.prefix / "lib" / "__pycache__"
+        self.assertEqual(sorted(p.name for p in cache.iterdir()),
+                         sorted(f"{m[:-3]}.{self.TAG}.pyc" for m in self.modules()))
+        for m in self.modules():
+            # Plain (no optimization level), timestamp-checked, level with
+            # the source the install holds.
+            self.assertEqual(h.pyc_state((cache / f"{m[:-3]}.{self.TAG}.pyc").read_bytes(), self.prefix / "lib" / m),
+                             "level", m)
+            self.assertEqual(int.from_bytes((cache / f"{m[:-3]}.{self.TAG}.pyc").read_bytes()[4:8], "little"), 0, m)
+        self.assertEqual(list(elsewhere.iterdir()), [])
+        self.assertEqual([p.relative_to(self.prefix).as_posix() for p in self.prefix.rglob("__pycache__")],
+                         ["lib/__pycache__"])
+        # A traceback names the install's own path, not the staging directory.
+        code = marshal.loads((cache / f"office_door.{self.TAG}.pyc").read_bytes()[16:])
+        self.assertEqual(code.co_filename, str(self.prefix / "lib" / "office_door.py"))
+
+    def test_status_says_it_is_level_and_every_helper_call_reads_it_writing_nothing(self):
+        self.assertEqual(self.install().returncode, 0)
+        root = self.e.home / "w"
+        self.e.run("init", str(root), "--no-founding", bin_path=self.office, check=0)
+        self.assertEqual(self.status_line(root),
+                         f"bytecode:   level with lib/'s {len(self.modules())} modules ({self.TAG}, in lib/__pycache__)")
+        # A read-only install reads its cache the same: the cache was
+        # written before the install was in place, and no command writes it.
+        before = sorted((p.relative_to(self.prefix).as_posix(), p.stat().st_mtime_ns) for p in self.prefix.rglob("*"))
+        for p in [self.prefix, *self.prefix.rglob("*")]:
+            if not p.is_symlink():
+                p.chmod(p.stat().st_mode & ~0o222)
+        self.addCleanup(lambda: [p.chmod(p.stat().st_mode | 0o200) for p in [self.prefix, *self.prefix.rglob("*")]
+                                 if not p.is_symlink()])
+        proc = self.e.run("status", cwd=root, bin_path=self.office, extra={"PYTHONVERBOSE": "1"}, check=0)
+        loaded = re.findall(r"^# code object from '?([^'\n]+?)'?$", proc.stderr, re.M)
+        office = [l for l in loaded if "/office_" in l]
+        # office_helper and the five siblings status reads, each from its
+        # compiled code, none compiled from its source.
+        self.assertGreaterEqual(len(office), 6, proc.stderr[-3000:])
+        for path in office:
+            self.assertTrue(path.startswith(str(self.prefix / "lib" / "__pycache__") + "/") and path.endswith(".pyc"),
+                            path)
+        after = sorted((p.relative_to(self.prefix).as_posix(), p.stat().st_mtime_ns) for p in self.prefix.rglob("*"))
+        self.assertEqual(after, before)
+
+    def test_a_stale_or_missing_cache_is_a_line_and_install_sh_brings_it_level(self):
+        self.assertEqual(self.install().returncode, 0)
+        root = self.e.home / "w"
+        self.e.run("init", str(root), "--no-founding", bin_path=self.office, check=0)
+        n = len(self.modules())
+        source = self.prefix / "lib" / "office_probe.py"
+        os.utime(source, (source.stat().st_atime, source.stat().st_mtime + 60))
+        again = f"(cd '{self.src}' && ./install.sh) brings the cache level"
+        self.assertEqual(self.status_line(root),
+                         f"bytecode:   BEHIND: 1 of lib/'s {n} modules compiles from source on every helper call "
+                         f"(office_probe.py stale); {again}")
+        shutil.rmtree(self.prefix / "lib" / "__pycache__")
+        self.assertEqual(self.status_line(root),
+                         f"bytecode:   NONE for this python3 ({self.TAG}): all {n} of lib/'s modules compile from "
+                         f"source on every helper call; {again}")
+        # Under a cache prefix the interpreter never reads the install's.
+        self.assertEqual(self.install().returncode, 0)
+        prefix = self.e.tmp / "another-cache"
+        self.assertIn("PYTHONPYCACHEPREFIX is set, so this python3 reads compiled code from that cache alone, "
+                      "never the install's", self.status_line(root, PYTHONPYCACHEPREFIX=str(prefix)))
+        self.assertEqual(self.status_line(root),
+                         f"bytecode:   level with lib/'s {n} modules ({self.TAG}, in lib/__pycache__)")
+
+    def test_a_compile_that_fails_is_said_and_the_install_goes_on(self):
+        shim = self.e.desktop / "python3"
+        real = sys.executable
+        shim.write_text("#!/bin/bash\n# The suite's own: python3 whose compileall fails.\n"
+                        "case \" $* \" in *\" -m compileall \"*) echo \"*** Error compiling 'lib/office_door.py'\"; exit 1 ;; esac\n"
+                        f"exec {real} \"$@\"\n")
+        shim.chmod(0o755)
+        proc = self.install()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("[install] warning: lib/ did not compile into its bytecode cache, so every helper call will "
+                      "compile its module from source; office status names what is missing:", proc.stderr)
+        self.assertIn("[install]   *** Error compiling 'lib/office_door.py'", proc.stderr)
+        self.assertIn(f"office-src {VERSION}", proc.stdout)
+        self.assertFalse((self.prefix / "lib" / "__pycache__").exists())
+        root = self.e.home / "w"
+        self.e.run("init", str(root), "--no-founding", bin_path=self.office, check=0)
+        self.assertTrue(self.status_line(root).startswith(f"bytecode:   NONE for this python3 ({self.TAG}): "))
+
+    def test_a_copy_outside_git_carries_none_of_the_working_copys_cache(self):
+        shutil.rmtree(self.src / ".git")
+        stray = self.src / "lib" / "__pycache__"
+        stray.mkdir()
+        (stray / "office_helper.cpython-99.pyc").write_bytes(b"not bytecode")
+        (self.src / "share" / "__pycache__").mkdir()
+        self.assertEqual(self.install().returncode, 0)
+        self.assertNotIn("office_helper.cpython-99.pyc", [p.name for p in (self.prefix / "lib" / "__pycache__").iterdir()])
+        self.assertFalse((self.prefix / "share" / "__pycache__").exists())
+        self.assertIn("commit: none (not a git work tree)", (self.prefix / "INSTALLED").read_text())
+
+
+class TestTheBytecodeLine(unittest.TestCase):
+    """office_helper.bytecode_line, on a small install of its own: what
+    office status says for each state of the cache, for the interpreter
+    running the check."""
+
+    TAG = sys.implementation.cache_tag
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="bytecode-line-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.install = self.tmp / "office-src"
+        self.lib = self.install / "lib"
+        self.lib.mkdir(parents=True)
+        for name in ("a", "b"):
+            (self.lib / f"{name}.py").write_text(f"NAME = {name!r}\n")
+        (self.install / "INSTALLED").write_text("package: office-src\nversion: 1.2.3\nsource: /w/office-src\n")
+        self.again = "(cd '/w/office-src' && ./install.sh) brings the cache level"
+        patch = mock.patch.object(sys, "pycache_prefix", None)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def compile(self, name, mode=py_compile.PycInvalidationMode.TIMESTAMP):
+        source = self.lib / f"{name}.py"
+        py_compile.compile(str(source), cfile=importlib.util.cache_from_source(str(source)), doraise=True,
+                           invalidation_mode=mode)
+
+    def line(self):
+        return h.bytecode_line(self.install)
+
+    def test_level_stale_missing_and_how_many_more(self):
+        self.compile("a"); self.compile("b")
+        self.assertEqual(self.line(), (f"bytecode:   level with lib/'s 2 modules ({self.TAG}, in lib/__pycache__)", 0))
+        b = self.lib / "b.py"
+        os.utime(b, (b.stat().st_atime, b.stat().st_mtime + 5))
+        self.assertEqual(self.line(), (f"bytecode:   BEHIND: 1 of lib/'s 2 modules compiles from source on every "
+                                       f"helper call (b.py stale); {self.again}", 3))
+        pathlib.Path(importlib.util.cache_from_source(str(self.lib / "a.py"))).unlink()
+        self.assertEqual(self.line(), (f"bytecode:   BEHIND: all 2 of lib/'s modules compile from source on every "
+                                       f"helper call (a.py not compiled, b.py stale); {self.again}", 3))
+        for name in ("c", "d", "e"):
+            (self.lib / f"{name}.py").write_text("X = 1\n")
+        self.compile("b")
+        self.assertEqual(self.line(), (f"bytecode:   BEHIND: 4 of lib/'s 5 modules compile from source on every "
+                                       f"helper call (a.py not compiled, c.py not compiled, d.py not compiled, and 1 "
+                                       f"more); {self.again}", 3))
+
+    def test_none_for_this_python_names_what_the_install_holds(self):
+        cache = self.lib / "__pycache__"
+        cache.mkdir()
+        (cache / "a.cpython-99.pyc").write_bytes(b"")
+        self.assertEqual(self.line(), (f"bytecode:   NONE for this python3 ({self.TAG}; the install holds "
+                                       f"cpython-99's): all 2 of lib/'s modules compile from source on every helper "
+                                       f"call; {self.again}", 3))
+
+    def test_a_working_copy_a_stamp_with_no_source_and_a_quoted_one(self):
+        stamp = self.install / "INSTALLED"
+        stamp.unlink()
+        self.assertEqual(self.line(), ("bytecode:   none read: this office-src runs from a working copy, not an "
+                                       "install, so all 2 of lib/'s modules compile from source on every helper "
+                                       "call", 3))
+        stamp.write_text("package: office-src\nversion: 1.2.3\n")
+        self.assertTrue(self.line()[0].endswith("; install.sh, run again from the working copy, brings the cache "
+                                                "level"))
+        stamp.write_text("package: office-src\nsource: /w/it's here\n")
+        self.assertTrue(self.line()[0].endswith("; (cd '/w/it'\\''s here' && ./install.sh) brings the cache level"),
+                        self.line())
+
+    def test_a_cache_prefix_is_where_the_interpreter_looks(self):
+        self.compile("a"); self.compile("b")
+        with mock.patch.object(sys, "pycache_prefix", str(self.tmp / "prefix")):
+            line, code = self.line()
+            self.assertEqual(code, 3)
+            self.assertTrue(line.endswith("; PYTHONPYCACHEPREFIX is set, so this python3 reads compiled code from "
+                                          "that cache alone, never the install's"), line)
+            self.compile("a"); self.compile("b")
+            self.assertEqual(self.line(), (f"bytecode:   level with lib/'s 2 modules ({self.TAG}, in the cache "
+                                           f"PYTHONPYCACHEPREFIX names)", 0))
+
+    def test_pyc_state_reads_as_the_import_system_does(self):
+        source = self.lib / "a.py"
+        cfile = pathlib.Path(importlib.util.cache_from_source(str(source)))
+        self.compile("a", py_compile.PycInvalidationMode.CHECKED_HASH)
+        self.assertEqual(h.pyc_state(cfile.read_bytes(), source), "level")
+        st = source.stat()
+        source.write_text("NAME = 'z'\n")   # the same size, the same time: only a hash tells
+        os.utime(source, ns=(st.st_atime_ns, st.st_mtime_ns))
+        self.assertEqual(h.pyc_state(cfile.read_bytes(), source), "stale")
+        self.compile("a", py_compile.PycInvalidationMode.UNCHECKED_HASH)
+        source.write_text("NAME = 'y'\n")
+        self.assertEqual(h.pyc_state(cfile.read_bytes(), source), "level")
+        self.compile("a")
+        data = cfile.read_bytes()
+        self.assertEqual(h.pyc_state(data, source), "level")
+        self.assertEqual(h.pyc_state(b"\0\0\0\0" + data[4:], source), "stale")
+        self.assertEqual(h.pyc_state(data[:4] + b"\x08\0\0\0" + data[8:], source), "stale")
+        self.assertEqual(h.pyc_state(data[:10], source), "stale")
 
 
 # --- text rules ------------------------------------------------------------------

@@ -4,6 +4,75 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.30.0
+
+Additive: no migration, nothing to do in any office, and nothing an
+office does changes but one new line in `office status`. This release is
+about what a helper call spends compiling. Every `office` command runs
+its Python helpers with `-B` and never writes the install, so in
+everyday use, with no bytecode cache, each call compiled the module it
+loaded from source: about 50 ms of CPU for office_helper in the worker's
+sandbox, and 150 for office_bale, about half of what a call cost. Now
+install.sh compiles them once, as it installs, and every call reads the
+compiled code. In the worker's two-core sandbox, each version run from
+an install its own install.sh made, `office status` took 0.30 seconds
+where it took 0.56, the walk-in 0.40 where 0.92, a start 1.6 where 2.8
+and a land 1.3 where 2.9. Installing takes about half a second longer.
+
+The bytecode cache. install.sh compiles lib/ into lib/__pycache__,
+beside the sources it copies, with the python3 on the PATH (bytecode is
+tagged by its interpreter, so the cache is the machine's own), in its
+staging directory before the install takes its place: nothing has to be
+writable once it is installed, and no command writes it (`-B` stays).
+The caller's PYTHON* settings are kept out of the compile (`python3
+-I`), each module is checked by its source's size and time, as Python
+always checks it, and a compile that fails is said while the install
+goes on without the cache. `office status` says whether the cache is
+level, in one line under the install's source line: level with lib/'s
+modules, for which interpreter; or which of them compile from source on
+every call (after a Python upgrade, or a source changed inside the
+install) and the line that brings the cache level, install.sh run again
+from its working copy. It is a line, never a refusal: a module whose
+compiled code is stale or missing still runs, compiled as it loads.
+
+The landing in one call. `office land`'s three helper calls for the
+landing itself (take the office's record out of an office session's
+folder, run bale apply or retry with the terminal, read how it ended
+from bale's records) are one, `office_bale land`. It says the record's
+line itself, in its place between the first two, and writes how the
+landing ended to a file of its own, since bale's output is on its
+stdout. A plain landing starts nine helpers where it started eleven,
+about 150 ms less with the cache.
+
+What the occupant sees is as it was, byte for byte, but for the new
+status line: the suite, and 21 commands compared against the unchanged
+tree in the suite's world (the landings with both streams interleaved
+as a terminal shows them, a held one and its retry, an office session's,
+one whose outcome could not be read), with a zone database and without
+one. The whole suite took 659 seconds where 0.29.0's took 658 on the
+same sandbox (924 tests then, 942 now, none dropped); the runner already
+compiled the office's modules into its own cache, so its time barely
+moves.
+
+Tests: tests/test_office.py `TestTheInstallsBytecodeCache` (install.sh
+into the Env's own prefix: the cache for every module, whatever the
+caller's PYTHON* settings; status's line, every helper of a status read
+from it with the install read-only, nothing in the install written; a
+stale and a missing cache, and install.sh again; a compile that fails; a
+copy outside git carrying none of the working copy's cache) and
+`TestTheBytecodeLine` (every state of the line, a cache prefix, and the
+pyc checks the import system makes); tests/test_land.py
+`TestTheLandingInOneCall` (the record's line between the landing line
+and bale's; the outcome unread, with the record out and without) and
+`TestLandWholeInProcess` (each step as its own process ran it, and the
+exit codes bin/office reads); `TestFewerHelperStarts` there counts nine
+helpers for a landing. And one test that could fail on a fast machine no
+longer does: tests/test_watches_digest.py ran the digest twice and
+counted a commit for the second run, but the page is stamped to the
+second, so two runs inside one second wrote the same bytes and had
+nothing to commit; the test now waits the clock past the first page's
+second (under a second) before the second run.
+
 ## 0.29.0
 
 Additive: no migration, nothing to do in any office, and nothing an

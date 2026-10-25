@@ -101,10 +101,10 @@ pastes.
 ## The suite's clock
 
 For the worker first. bale gives a session's validation two minutes
-(TARBALL.md 7.6), and the whole suite takes far longer (924 tests at
-0.29.0; 652 seconds on a two-core sandbox, 4 jobs at a time,
-where 0.28.0's 919 took 894 on the same sandbox; the fast tier
-56.0 seconds). So, since 0.17.1:
+(TARBALL.md 7.6), and the whole suite takes far longer (942 tests at
+0.30.0; 659 seconds on a two-core sandbox, 4 jobs at a time,
+where 0.29.0's 924 took 658 on the same sandbox; the fast tier
+74.3 seconds there, where 0.29.0's took 76.9). So, since 0.17.1:
 
 - Every validation.sh runs the fast tier, `tests/run.sh --fast`, plus
   what the session touched, named after it (`tests/run.sh --fast
@@ -221,9 +221,35 @@ where 0.28.0's 919 took 894 on the same sandbox; the fast tier
   another's answer, stays a call of its own after it. `TestFewerHelperStarts` in
   tests/test_suite_clock.py and in tests/test_land.py hold the batch to
   each call run alone and count what the four commands start.
+- Since 0.30.0 the install has a bytecode cache of its own: install.sh
+  compiles lib/ into lib/__pycache__ as it installs (`python3 -I -m
+  compileall`, timestamp-checked), and `office status` says whether it is
+  level (`office_helper bytecode-check`). A new lib/ module is compiled
+  with the rest; nothing else is. Under the runner the interpreter reads
+  the runner's cache alone (a cache prefix hides every __pycache__), so a
+  test that means the install's cache runs its commands without
+  PYTHONPYCACHEPREFIX, as `TestTheInstallsBytecodeCache` does. The
+  landing's own three helper calls are one, `office_bale land`: a plain
+  land is nine helper starts.
 
 ## Recent changes
 
+- 0.30.0 (session 2026-10-25-install-cache-001): the install's bytecode
+  cache, the fourth session after the front-door arc. Nothing you use
+  changes but one new line in `office status`.
+  - install.sh now compiles the office's Python helpers once, as it
+    installs, where every helper call compiled its own from source
+    before (no command ever writes the install). In the worker's sandbox
+    `office status` took 0.30 seconds where it took 0.56, the walk-in
+    0.40 where 0.92, a start 1.6 where 2.8 and a land 1.3 where 2.9.
+    Installing takes about half a second longer.
+  - `office status` says, under the install's source line, whether that
+    cache is level with the sources for the python3 you run; when it is
+    not (after a Python upgrade, say), it names what compiles from
+    source and the one line that brings it level.
+  - A landing's three helper calls for bale's apply are one, so a land
+    starts nine helpers where it started eleven.
+  - Additive: no migration.
 - 0.29.0 (session 2026-10-23-helper-starts-001): fewer helper starts, the
   third session after the front-door arc. Nothing you use changes.
   - `office status` starts one Python helper where it started 17, the
@@ -820,6 +846,11 @@ where 0.28.0's 919 took 894 on the same sandbox; the fast tier
 
 ## Known problems
 
+- The install's bytecode cache is for the python3 install.sh ran with.
+  After a Python upgrade (Ubuntu's next release, say) every helper call
+  compiles from source again, as before 0.30.0, until install.sh runs
+  again; `office status` says so, with the line to run, and nothing
+  else changes.
 - `office meeting` reads when from English words: a slash date is
   month/day (11/3 is the 3rd of November), and a bare hour from 1 to 6
   is the afternoon; each reading it was not told outright is said on the
@@ -1161,6 +1192,12 @@ where 0.28.0's 919 took 894 on the same sandbox; the fast tier
 - *Why does a watch say "cannot evaluate" and not "not fired"?* Because
   bale does not record what it would need. Not fired would claim it was
   looked at.
+
+- *What is the bytecode line in office status?* Whether the office's
+  Python helpers on this machine read the compiled code install.sh wrote
+  for them, or compile from source on every call, which is slower and
+  otherwise the same. When it says BEHIND or NONE, the line it gives
+  (install.sh, from your office-src) brings it level.
 
 ## Public documentation
 

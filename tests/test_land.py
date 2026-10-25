@@ -16,6 +16,7 @@ Run with the rest of the suite:
     PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 """
 
+import argparse
 import hashlib
 import io
 import json
@@ -994,9 +995,184 @@ class TestFewerHelperStarts(LandCase):
         helpers, oneliners = self.starts("land")
         # The skew, which session is out, three batches (the zone and the
         # downloads; the two sort questions; the two closings' reads), the
-        # landing's four bale calls, the letterhead's review and the
-        # watches: eleven where 0.28.0 started 19.
-        self.assertEqual(helpers, 11)
+        # landing's two bale calls (land-plan, then land: the record out,
+        # bale apply and its outcome in one, 0.30.0), the letterhead's
+        # review and the watches: nine where 0.29.0 started eleven and
+        # 0.28.0 19.
+        self.assertEqual(helpers, 9)
         # The plan once, the outcome once, and the relays twice (their
         # count, then the one block), where 0.28.0 started about twenty.
         self.assertEqual(oneliners, 4)
+
+
+class TestTheLandingInOneCall(LandCase):
+    """0.30.0: the landing's three helper calls (land-prepare, land-run,
+    land-outcome, one after another with one line of bin/office's between
+    the first two) are one, `office_bale land`, which says that line
+    itself, in its place, and writes how the landing ended to a file of
+    its own, since its stdout is bale's."""
+
+    def merged(self, *args, check=None):
+        """office ARGS with stdout and stderr in one stream, in the order
+        written, as a terminal shows them."""
+        proc = subprocess.run([str(self.e.office_bin), *args], cwd=self.root, env=self.e.env, input="",
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=120)
+        if check is not None:
+            self.assertEqual(proc.returncode, check, proc.stdout)
+        return proc.stdout
+
+    def test_the_record_line_comes_between_the_landing_line_and_bale(self):
+        sid = self.start("fix-login", "--in-office", "--goal", "Plan the fix")
+        response_tarball(self.downloads, sid, {f"notepad/{sid[:10]}-plan.md": "words\n"})
+        out = self.merged("land", check=0)
+        at = [out.index(f"[office] landing {sid} ("),
+              out.index(f"[office] {self.folder}/folder.md: the office's record of {sid}, written after the pack, "
+                        "is out while bale lands it, so bale finds the folder as it was packed; it goes back after\n"),
+              out.index("[bale] walkthrough action: merge"),
+              out.index(f"Landed: {sid} is applied in this office")]
+        self.assertEqual(at, sorted(at), out)
+        # Said once, as bin/office's log said it.
+        self.assertEqual(out.count("is out while bale lands it"), 1, out)
+
+    def test_how_it_ended_unread_is_said_as_before_and_the_record_still_out_named(self):
+        """bale ran, and its records could not be read after: land says it
+        could not read how the session ended, and for an office session,
+        whose record was out while bale landed, that it may still be out."""
+        wrap = self.e.tmp / "bale-refusing-stats"
+        wrap.mkdir()
+        marker = self.e.tmp / "applied-once"
+        real = self.fake.dir / "bale"
+        (wrap / "bale").write_text(
+            "#!/bin/bash\n# The suite's own: bale whose stats refuses once apply has run.\n"
+            f"if [ \"$1\" = stats ] && [ -e {str(marker)!r} ]; then echo '[bale] error: stats refused for the test' >&2; exit 1; fi\n"
+            f"{str(real)!r} \"$@\"; rc=$?\n[ \"$1\" != apply ] || : > {str(marker)!r}\nexit $rc\n")
+        (wrap / "bale").chmod(0o755)
+        self.e.env["PATH"] = f"{wrap}{os.pathsep}{self.e.env['PATH']}"
+        for where, flags in (("an office session", ("--in-office",)), ("a project session", ("--on", "alpha"))):
+            if marker.exists():
+                marker.unlink()
+            sid = self.start("fix-login", *flags, "--goal", "g")
+            files = {f"notepad/{sid[:10]}-plan.md": "words\n"} if flags[0] == "--in-office" else {"src/a.py": "x\n"}
+            response_tarball(self.downloads, sid, files)
+            proc = self.run_office("land", sid, check=1)
+            self.assertIn(f"[office] error: could not read how {sid} ended from bale's records (bale stats --sid {sid} "
+                          "--json, in ", proc.stderr, where)
+            still_out = (f"[office] warning: the record of {sid} may still be out of its folder; office sessions "
+                         f"{self.name} {sid} puts it back")
+            if flags[0] == "--in-office":
+                self.assertIn(still_out, proc.stderr, where)
+                self.assertLess(proc.stderr.index(still_out), proc.stderr.index("could not read how"), where)
+            else:
+                self.assertNotIn("may still be out of its folder", proc.stderr, where)
+            self.assertNotIn("Landed:", proc.stdout, where)
+            # The refusal's own line came through, once.
+            self.assertEqual(proc.stderr.count("stats refused for the test"), 1, (where, proc.stderr))
+
+
+class TestLandWholeInProcess(unittest.TestCase):
+    """office_bale.land_whole, its three steps stubbed: each runs as its own
+    process ran it, the line between them said in bin/office's words, and
+    its exit codes are the ones bin/office reads."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="land-whole-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.plan = self.tmp / "plan.json"
+        self.plan.write_text(json.dumps({"sid": "2026-10-01-job-001", "n": 1}))
+        self.outcome = self.tmp / "outcome.json"
+        self.a = argparse.Namespace(cmd="land", office=str(self.tmp), plan=str(self.plan),
+                                    capture=str(self.tmp / "capture"), day="2026-10-01", outcome=str(self.outcome))
+        self.events = []
+
+    def run_whole(self, prepare=None, run=None, outcome=None):
+        """land_whole with the three steps stubbed; (exit, stderr)."""
+        import contextlib
+        from unittest import mock
+
+        def take(office, plan):
+            self.events.append(("prepare", dict(plan)))
+            plan["record"] = {"unrecorded": "abc"}
+            return prepare() if callable(prepare) else prepare
+
+        def land_run(rd, plan, capture):
+            self.events.append(("run", plan.get("record")))
+            return run() if callable(run) else run
+
+        def land_outcome(rd, office, plan, code, capture, day):
+            self.events.append(("outcome", code, plan.get("record"), id(rd)))
+            if callable(outcome):
+                return outcome()
+            return {"outcome": "applied", "words": "w"}
+
+        err = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(ob, "take_record_out", take))
+            stack.enter_context(mock.patch.object(ob, "land_run", land_run))
+            stack.enter_context(mock.patch.object(ob, "land_outcome", land_outcome))
+            forget = stack.enter_context(mock.patch.object(ob.ohost, "forget_reach"))
+            stack.enter_context(contextlib.redirect_stderr(err))
+            rd = ob.Reader()
+            code = ob.land_whole(rd, self.a)
+        self.forgotten = forget.call_count
+        self.reader = id(rd)
+        return code, err.getvalue()
+
+    def test_a_plain_landing_writes_its_outcome_and_says_the_line_once(self):
+        code, err = self.run_whole(prepare="desk/x/folder.md: out while bale lands it\n\n", run=0)
+        self.assertEqual((code, err), (0, "[office] desk/x/folder.md: out while bale lands it\n"))
+        self.assertEqual(json.loads(self.outcome.read_text()), {"outcome": "applied", "words": "w"})
+        self.assertTrue(self.outcome.read_text().endswith("}\n"))
+        # Each step read the plan its predecessor wrote; the outcome read
+        # with a reader of its own and a fresh reach.
+        self.assertEqual([e[0] for e in self.events], ["prepare", "run", "outcome"])
+        self.assertEqual(self.events[1][1], {"unrecorded": "abc"})
+        self.assertEqual(self.events[2][1:3], (0, {"unrecorded": "abc"}))
+        self.assertNotEqual(self.events[2][3], self.reader)
+        self.assertEqual(self.forgotten, 1)
+        self.assertEqual(json.loads(self.plan.read_text())["record"], {"unrecorded": "abc"})
+
+    def test_no_line_is_said_when_prepare_has_none(self):
+        for nothing in (None, "", "\n"):
+            self.events = []
+            self.assertEqual(self.run_whole(prepare=nothing, run=0), (0, ""), repr(nothing))
+
+    def test_a_prepare_that_refuses_runs_nothing(self):
+        def refuse():
+            raise ob.LandError(["git show failed in /o: no such path"])
+        code, err = self.run_whole(prepare=refuse, run=0)
+        self.assertEqual((code, err), (1, "[office] error: git show failed in /o: no such path\n"))
+        self.assertEqual([e[0] for e in self.events], ["prepare"])
+        self.assertFalse(self.outcome.exists())
+
+    def test_the_run_failing_is_a_code_the_outcome_reads(self):
+        def broken():
+            raise ValueError("no such tarball")
+        for run, code, said in ((broken, 1, "[office] error: no such tarball\n"), (-2, 254, ""), (125, 125, ""),
+                                (3, 3, "")):
+            self.events = []
+            got, err = self.run_whole(prepare=None, run=run)
+            self.assertEqual(got, 0, run)
+            self.assertEqual(err, said, run)
+            self.assertEqual(self.events[-1][1], code, run)
+
+    def test_an_unexpected_error_in_the_run_is_its_traceback_and_the_landing_goes_on(self):
+        def odd():
+            raise KeyError("place")
+        code, err = self.run_whole(prepare=None, run=odd)
+        self.assertEqual(code, 0)
+        self.assertIn("Traceback (most recent call last):", err)
+        self.assertIn("KeyError: 'place'", err)
+        self.assertEqual(self.events[-1][1], 1)
+
+    def test_an_outcome_that_does_not_read_exits_three_or_four(self):
+        def unread():
+            raise ob.BaleError("refused", "bale stats --sid refused")
+        def odd():
+            raise KeyError("attempts")
+        for prepare, outcome, want in ((None, unread, 3), ("the record is out", unread, 4), (None, odd, 3),
+                                       ("the record is out", odd, 4)):
+            self.events = []
+            code, err = self.run_whole(prepare=prepare, run=0, outcome=outcome)
+            self.assertEqual(code, want, (prepare, outcome))
+            self.assertIn("bale stats --sid refused" if outcome is unread else "KeyError: 'attempts'", err)
+            self.assertFalse(self.outcome.exists())

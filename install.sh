@@ -8,7 +8,9 @@
 # working copy can change freely without touching any office until the
 # next install. Inside a git work tree the install is exactly HEAD (git
 # archive); uncommitted changes are reported and left out. Outside git it
-# copies the shipped directories as they are.
+# copies the shipped directories as they are. Either way lib/ is compiled
+# into bytecode beside its sources (lib/__pycache__, 0.30.0), so a helper
+# call reads its module's compiled code rather than compiling it.
 
 set -uo pipefail
 
@@ -64,6 +66,31 @@ else
 fi
 
 chmod +x "$STAGE/bin/office" "$STAGE/install.sh" || die "cannot set the exec bit"
+
+# The bytecode cache (0.30.0). Every office command runs lib/'s modules
+# through bin/office's pylib with -B, so no command ever writes the
+# install, and a module with no compiled code beside it is compiled from
+# source on every helper call (office_helper.py about 55 ms of CPU,
+# office_bale.py about 130, in the worker's sandbox). So the install
+# compiles them, once, here: with the python3 the office runs (bytecode is
+# tagged by its interpreter, so the cache is this machine's own), into
+# lib/__pycache__ beside the sources, in the staging directory before the
+# swap. Written there, the cache goes with the install it was made for,
+# and needs nothing writable once the install is in place. Only this
+# script's compile is the cache: a __pycache__ a plain copy carried in is
+# removed first. -I keeps the caller's PYTHON* settings out of the compile
+# (PYTHONPYCACHEPREFIX would send it to another directory, PYTHONOPTIMIZE
+# would compile it for an optimization level the office does not run);
+# timestamp is what the interpreter then checks, each source's size and
+# time, which the copy keeps; -d makes a traceback name the install's own
+# path. A compile that fails is said, and the install goes on: every call
+# compiles from source then, as before 0.30.0, and office status says so.
+find "$STAGE" -type d -name __pycache__ -prune -exec rm -rf {} + || die "cannot clear a copied bytecode cache from the staging directory"
+if ! compiled="$(python3 -I -m compileall -q --invalidation-mode timestamp -d "$PREFIX/lib" "$STAGE/lib" 2>&1)"; then
+  log "warning: lib/ did not compile into its bytecode cache, so every helper call will compile its module from source; office status names what is missing:"
+  printf '%s\n' "$compiled" | grep -v '^$' | sed 's/^/[install]   /' >&2
+fi
+
 {
   printf 'package: office-src\n'
   printf 'version: %s\n' "$VERSION"

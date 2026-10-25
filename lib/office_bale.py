@@ -4762,11 +4762,105 @@ def start_check_main(a):
         return 1
 
 
+# What `land` exits with (0.30.0): 0 the outcome is written to --outcome;
+# 1 the record could not be taken out, and nothing ran (as land-prepare
+# refused); LAND_UNREAD when bale ran and how it ended could not be read,
+# LAND_UNREAD_RECORD_OUT the same with the office's record still out of its
+# folder (bin/office says so, as it did when land-outcome refused).
+LAND_UNREAD = 3
+LAND_UNREAD_RECORD_OUT = 4
+
+
+def land_whole(rd, a):
+    """The landing in one process (0.30.0): what land-prepare, land-run and
+    land-outcome did as three helper starts in a row, with the one line
+    bin/office logged between the first two said here, in its words.
+
+    1. Take the office's record out of an office session's folder and
+       record the commit in the plan (take_record_out), and say the line
+       it returns, as `[office] LINE` on stderr. A refusal here is said and
+       exits 1, and nothing else runs.
+    2. bale apply or retry through the terminal (land_run): stdin and
+       stderr the terminal's, bale's stdout copied to ours as it comes and
+       kept in --capture. Its failure is an exit code the outcome reads,
+       as land-run's exit was.
+    3. What happened, from bale's records (land_outcome), as one JSON line
+       written to --outcome: stdout is bale's, so the answer cannot share
+       it. A refusal here is said and exits LAND_UNREAD or
+       LAND_UNREAD_RECORD_OUT.
+
+    Each step reads the plan from --plan as its own process did, and the
+    outcome reads with a fresh Reader and a fresh reach of a hosted place
+    (office_host.forget_reach: a host that did not answer during the run is
+    asked again, one that did is carried, as the reach file carried it to a
+    new process), so nothing the run cached stands in for what bale
+    recorded. An error a step does not expect prints its traceback, as the
+    step's own interpreter did, and the landing goes on as bin/office went
+    on after that step's exit 1."""
+    import json
+    import traceback
+
+    def read_plan():
+        return json.loads(pathlib.Path(a.plan).read_text(encoding="utf-8"))
+
+    try:
+        plan = read_plan()
+        line = take_record_out(a.office, plan)
+        pathlib.Path(a.plan).write_text(json.dumps(plan), encoding="utf-8")
+    except StartError as exc:
+        for msg in exc.lines:
+            log(f"error: {msg}")
+        return 1
+    except (oh.HelperError, BaleError, OSError, ValueError) as exc:
+        log(f"error: {exc}")
+        return 1
+    # As `line="$(land-prepare)"` then `[ -z "$line" ] || log "$line"` had
+    # it: the line without its trailing newlines, and nothing when empty.
+    said = (line or "").rstrip("\n")
+    if said:
+        log(said)
+
+    try:
+        code = land_run(rd, read_plan(), a.capture)
+    except StartError as exc:
+        for msg in exc.lines:
+            log(f"error: {msg}")
+        code = 1
+    except (oh.HelperError, BaleError, OSError, ValueError) as exc:
+        log(f"error: {exc}")
+        code = 1
+    except Exception:
+        traceback.print_exc()
+        code = 1
+    # The code as a process exit carried it (bale killed by a signal is a
+    # negative wait status here, and was its low byte through the exit).
+    code = (code if isinstance(code, int) else 0) & 0xFF
+
+    unread = LAND_UNREAD_RECORD_OUT if said else LAND_UNREAD
+    ohost.forget_reach()
+    try:
+        outcome = land_outcome(Reader(consumption=rd.consumption), a.office, read_plan(), code, a.capture, a.day)
+        pathlib.Path(a.outcome).write_text(json.dumps(outcome) + "\n", encoding="utf-8")
+    except StartError as exc:
+        for msg in exc.lines:
+            log(f"error: {msg}")
+        return unread
+    except (oh.HelperError, BaleError, OSError, ValueError) as exc:
+        log(f"error: {exc}")
+        return unread
+    except Exception:
+        traceback.print_exc()
+        return unread
+    return 0
+
+
 def land_main(a):
-    """The land-* subcommands: error lines on stderr and exit 1 when the
-    office cannot go on; land-run exits with bale's own code."""
+    """The land-* subcommands and land: error lines on stderr and exit 1
+    when the office cannot go on; land exits as land_whole says."""
     import json
     rd = Reader()
+    if a.cmd == "land":
+        return land_whole(rd, a)
     try:
         if a.cmd == "land-out":
             out, problems = sessions_out(rd, a.office)
@@ -4785,21 +4879,13 @@ def land_main(a):
             words, told = end_sitting(rd, a.office, plan, a.day)
             print(json.dumps({"words": words, "told": told}))
             return 0
-        if a.cmd == "land-prepare":
-            line = take_record_out(a.office, plan)
-            pathlib.Path(a.plan).write_text(json.dumps(plan), encoding="utf-8")
-            if line:
-                print(line)
-            return 0
-        if a.cmd == "land-run":
-            return land_run(rd, plan, a.capture)
         if a.cmd == "land-after":
             return land_after(plan, a.index)
         if a.cmd == "land-after-line":
             print(land_after_line(plan, a.index))
             return 0
-        print(json.dumps(land_outcome(rd, a.office, plan, a.exit, a.capture, a.day)))
-        return 0
+        log(f"error: {a.cmd} is not one of the land subcommands (a defect in office-src)")
+        return 2
     except StartError as exc:
         for line in exc.lines:
             log(f"error: {line}")
@@ -4913,10 +4999,12 @@ def build_parser(only=None):
     p.add_argument("--no-downloads", action="store_true", help="machine.toml sets no downloads")
     p = add("land-end", help="end a read-only sitting: bale unlock, then the folder's History; one JSON line")
     p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--day", required=True)
-    p = add("land-prepare", help="take the office's record out of an office session's folder")
-    p.add_argument("office"); p.add_argument("--plan", required=True)
-    p = add("land-run", help="bale apply or retry, the terminal's; exits with bale's code")
+    p = add("land", help="the landing (0.30.0, once land-prepare, land-run and land-outcome): the office's "
+                         "record out of an office session's folder, said; bale apply or retry, the terminal's; "
+                         "what happened, from bale's records, one JSON line into --outcome; exit 0, 1 when "
+                         "nothing ran, 3 or 4 (the record still out) when how it ended could not be read")
     p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--capture", required=True)
+    p.add_argument("--day", required=True); p.add_argument("--outcome", required=True)
     for name, text in (("land-after", "a hosted project's after-land action N, run on its host; exits with its code"),
                        ("land-after-line", "the line that reruns the after-land actions from N on")):
         p = add(name, help=text)
@@ -4927,9 +5015,6 @@ def build_parser(only=None):
     p = add("relay", help="bale relay SID - where the session is open, the planner's answer on its stdin")
     p.add_argument("office"); p.add_argument("--sid", required=True); p.add_argument("--answer", required=True)
     p.add_argument("--cwd"); p.add_argument("--downloads", action="append", default=[])
-    p = add("land-outcome", help="what happened, from bale's records; one JSON line")
-    p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--capture", required=True)
-    p.add_argument("--exit", type=int, required=True); p.add_argument("--day", required=True)
     p = add("bundle-lands", help="where a bundle's brief says it lands (its LANDS line): place<tab>office "
                                             "or place<tab>project<tab>NAME, folder<tab>NAME or folder<tab>new, "
                                             "words<tab>LINE, say<tab>WHY, or absent")
@@ -5000,7 +5085,7 @@ def main(argv=None):
         except (oh.HelperError, BaleError, ohost.HostError, OSError) as exc:
             log(f"error: {exc}")
             return 1
-    if a.cmd.startswith("land-"):
+    if a.cmd == "land" or a.cmd.startswith("land-"):
         return land_main(a)
     if a.cmd == "relay":
         try:

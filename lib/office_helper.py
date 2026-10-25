@@ -2778,6 +2778,140 @@ def cmd_survey_age(a):
     print(f"{stamp} ({what})")
 
 
+# --- the install's bytecode cache (0.30.0) ---------------------------------
+#
+# install.sh compiles lib/ into lib/__pycache__ as it installs (bin/office's
+# pylib runs every module with -B, so no command writes the install, and
+# without the cache every helper call compiled its module from source).
+# office status says, in one line, whether that cache is level with the
+# sources for the python3 the office runs.
+
+BYTECODE_STATES = ("level", "stale", "missing")
+BYTECODE_NAMED = 3   # modules a line names before it says how many more
+
+
+def pyc_state(data, source):
+    """Whether compiled code `data` (a .pyc file's bytes) is what the
+    interpreter running this would use for `source`, by the checks it
+    makes before it does (importlib's _classify_pyc and _validate_*):
+    "level" when it would, "stale" when it would compile the source again
+    instead (another interpreter's magic number, flags it does not know, a
+    source whose time or size, or for a checked hash its hash, moved)."""
+    import importlib.util
+    if len(data) < 16 or data[:4] != importlib.util.MAGIC_NUMBER:
+        return "stale"
+    flags = int.from_bytes(data[4:8], "little")
+    if flags & ~0b11:
+        return "stale"
+    if flags & 0b01:
+        # Hash-based: an unchecked hash is never compared with the source.
+        if not flags & 0b10:
+            return "level"
+        return "level" if data[8:16] == importlib.util.source_hash(source.read_bytes()) else "stale"
+    st = source.stat()
+    mtime, size = int.from_bytes(data[8:12], "little"), int.from_bytes(data[12:16], "little")
+    return "level" if (mtime, size) == (int(st.st_mtime) & 0xFFFFFFFF, st.st_size & 0xFFFFFFFF) else "stale"
+
+
+def bytecode_state(lib):
+    """[(module path relative to lib, state)] for every .py under lib,
+    state one of BYTECODE_STATES, judged for the interpreter running this:
+    its cache tag, its optimization level and its cache prefix
+    (PYTHONPYCACHEPREFIX, under which it looks in that prefix and never in
+    __pycache__), as importlib.util.cache_from_source names the file it
+    reads. "missing" is no compiled code there (or none that can be read,
+    which the interpreter treats alike)."""
+    import importlib.util
+    lib = pathlib.Path(lib)
+    out = []
+    for source in sorted(lib.rglob("*.py")):
+        rel = source.relative_to(lib)
+        if "__pycache__" in rel.parts:
+            continue
+        try:
+            data = pathlib.Path(importlib.util.cache_from_source(str(source))).read_bytes()
+        except NotImplementedError:
+            # An interpreter with no cache tag reads no compiled code at all.
+            out.append((rel.as_posix(), "missing"))
+            continue
+        except OSError as exc:
+            if os.environ.get("OFFICE_DEBUG") == "1":
+                log(f"debug: bytecode: {rel}: no compiled code read ({exc.__class__.__name__}: {exc})")
+            out.append((rel.as_posix(), "missing"))
+            continue
+        out.append((rel.as_posix(), pyc_state(data, source)))
+    return out
+
+
+def shell_single_quoted(text):
+    """text in single quotes for a printed command line, as bin/office's
+    shq writes it."""
+    return "'" + text.replace("'", "'\\''") + "'"
+
+
+def installed_source(install):
+    """The working copy install.sh recorded as the install's source (its
+    INSTALLED stamp's `source:` line), "" when the stamp names none, or
+    None when there is no stamp: an office-src run from a working copy."""
+    stamp = pathlib.Path(install) / "INSTALLED"
+    try:
+        text = stamp.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        return None
+    for line in text.splitlines():
+        if line.startswith("source: "):
+            return line[len("source: "):].strip()
+    return ""
+
+
+def bytecode_line(install):
+    """(office status's bytecode line, exit code): 0 when every module of
+    the install's lib/ reads compiled code that is level with its source,
+    3 when a helper call compiles one or more of them from source, with
+    which and the one line that brings the cache level. Never a refusal:
+    a stale or missing module still runs, compiled in memory as it loads."""
+    import sys
+    tag = sys.implementation.cache_tag or "no cache tag"
+    lib = pathlib.Path(install) / "lib"
+    states = bytecode_state(lib)
+    total = len(states)
+    prefixed = getattr(sys, "pycache_prefix", None) is not None
+    where = "in the cache PYTHONPYCACHEPREFIX names" if prefixed else "in lib/__pycache__"
+    off = [(name, state) for name, state in states if state != "level"]
+    if not off:
+        return f"bytecode:   level with lib/'s {total} modules ({tag}, {where})", 0
+    if len(off) == total:
+        compiling = f"all {total} of lib/'s modules compile from source on every helper call"
+    else:
+        compiling = (f"{len(off)} of lib/'s {total} modules {'compiles' if len(off) == 1 else 'compile'} "
+                     "from source on every helper call")
+    source = installed_source(install)
+    if source is None:
+        return f"bytecode:   none read: this office-src runs from a working copy, not an install, so {compiling}", 3
+    if len(off) == total and all(state == "missing" for _, state in off):
+        others = sorted({p.name.split(".")[1] for p in (lib / "__pycache__").glob("*.pyc")
+                         if p.name.count(".") >= 2 and p.name.split(".")[1] != tag})
+        held = f"; the install holds {', '.join(others)}'s" if others else ""
+        what = f"NONE for this python3 ({tag}{held}): {compiling}"
+    else:
+        named = [f"{name} {'stale' if state == 'stale' else 'not compiled'}" for name, state in off[:BYTECODE_NAMED]]
+        more = f", and {len(off) - BYTECODE_NAMED} more" if len(off) > BYTECODE_NAMED else ""
+        what = f"BEHIND: {compiling} ({', '.join(named)}{more})"
+    if prefixed:
+        fix = "PYTHONPYCACHEPREFIX is set, so this python3 reads compiled code from that cache alone, never the install's"
+    elif source:
+        fix = f"(cd {shell_single_quoted(source)} && ./install.sh) brings the cache level"
+    else:
+        fix = "install.sh, run again from the working copy, brings the cache level"
+    return f"bytecode:   {what}; {fix}", 3
+
+
+def cmd_bytecode_check(a):
+    line, code = bytecode_line(a.install)
+    print(line)
+    return code
+
+
 def skew_lines(state, pending):
     """The skew report as `skew` prints it: the state, then one line per
     pending migration."""
@@ -3739,6 +3873,9 @@ def build_parser(only=None):
     p = add("survey-age"); p.add_argument("page")
     p.add_argument("--install", help="the installed office-src version, to compare with the one the survey records")
     p.set_defaults(fn=cmd_survey_age)
+    p = add("bytecode-check", help="office status's bytecode line: whether the install's lib/ reads compiled "
+                                   "code level with its sources, for this python3; exit 3 when not")
+    p.add_argument("install"); p.set_defaults(fn=cmd_bytecode_check)
     p = add("skew"); p.add_argument("office_version"); p.add_argument("install_version")
     p.add_argument("migrations"); p.set_defaults(fn=cmd_skew)
     p = add("skew-report", help="the two version stamps (built_from, migrated_to, one tab-separated line) "
