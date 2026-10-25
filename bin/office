@@ -41,9 +41,12 @@ debug() { [ "${OFFICE_DEBUG:-0}" = "1" ] && printf '[office] debug: %s\n' "$*" >
 # with -P no current directory on it), but loaded as a module, so its
 # compiled code is read from a bytecode cache when one is there: the test
 # runner's (tests/runner.py, PYTHONPYCACHEPREFIX, 0.21.0), where compiling
-# the office's modules again on every call was most of the suite's time.
-# With no cache, as in everyday use, nothing changes: the modules compile
-# as they load, and -B still writes nothing.
+# the office's modules again on every call was most of the suite's time;
+# and since 0.30.0 the install's own, lib/__pycache__, which install.sh
+# compiles as it installs, so in everyday use too a call reads its
+# module's compiled code (office status's bytecode line says whether it
+# is level). With no cache, or a stale one, nothing else changes: the
+# modules compile as they load, and -B still writes nothing.
 #
 # -S (0.28.0): the interpreter starts without site, so no site-packages
 # directory is on sys.path and none is searched. lib/ is standard library
@@ -1170,7 +1173,8 @@ usage_status() {
 usage: office status
 Says whether the office matches the installed tool, read-only: the version
 stamp and any skew, whether the install is level with the working copy it
-was installed from, whether the profile is complete, the survey's age and
+was installed from, whether its bytecode cache is level with its lib/ for
+this python3, whether the profile is complete, the survey's age and
 the office-src it records, whether the floor plan's timezone resolves (and
 what fixes it when it does not), whether bale.toml's include group matches
 the floor plan, the install's catalogs, folders against their History,
@@ -1224,10 +1228,11 @@ cmd_status() {
   # then each line's read in the order the lines are printed. None writes,
   # and none depends on another's answer, so they go out together; what
   # each would have printed to stderr still goes there as it runs.
-  local name survey tz_named drift defects folders filed drafting tray handbook bale letterhead
+  local name bytecode survey tz_named drift defects folders filed drafting tray handbook bale letterhead
   local skewr calls=()
   batch_call calls skew-report "$root/$MANIFEST_REL" "$(install_version)" "$MIGRATIONS"
   batch_call calls get "$root/$MANIFEST_REL" office.name --default "(unnamed)"
+  batch_call calls bytecode-check "$OFFICE_SRC"
   batch_call calls profile-check "$root/$PROFILE_REL" "$SHAPE"
   batch_call calls -q survey-age "$root/$SURVEY_REL" --install "$(install_version)"
   batch_call calls -q get "$root/$MANIFEST_REL" office.timezone --default UTC
@@ -1240,7 +1245,7 @@ cmd_status() {
   batch_call calls -q sort:handbook-check "$root"
   batch_call calls bale:status-lines "$root"
   batch_call calls deliver:status-lines "$root"
-  batch_run skewr name profile survey tz_named drift defects folders filed drafting tray handbook bale letterhead -- "${calls[@]}"
+  batch_run skewr name bytecode profile survey tz_named drift defects folders filed drafting tray handbook bale letterhead -- "${calls[@]}"
   if [ "$skewr_rc" != 0 ]; then
     [ -n "$skewr" ] || die "cannot read the version stamp in $root/$MANIFEST_REL"
     die "cannot plan migrations from $MIGRATIONS"
@@ -1251,6 +1256,13 @@ cmd_status() {
   printf 'name:       %s\n' "$name"
   printf 'install:    office-src %s at %s\n' "$(install_version)" "$OFFICE_SRC"
   install_source_line
+  # The install's bytecode cache (0.30.0): whether every lib/ module reads
+  # the compiled code install.sh wrote beside it, for this python3, or
+  # compiles from source on every helper call. A line, never a refusal.
+  case $bytecode_rc in
+    0|3) printf '%s\n' "$bytecode" ;;
+    *)   printf 'bytecode:   could not be checked\n' ;;
+  esac
   printf 'built from: %s\n' "$built"
   printf 'migrated:   %s\n' "$office_v"
   case "$state" in
@@ -5953,7 +5965,7 @@ for spec in specs:
 
 cmd_land() {
   local want="" sid="" folder="" response="" ratify="" except="" has_except=0 root tmp plan capture
-  local out n line words verb repo label code day tz md name space rc=0 ans relays i
+  local out n line words verb repo label day tz md name space rc=0 ans relays i
   local host="" dl_args=() d default help_more
   LAND_CLOSE=""; LAND_ARISING=""
   while [ $# -gt 0 ]; do
@@ -6137,14 +6149,22 @@ cmd_land() {
   fi
   log "landing $sid ($label; $(printf '%s\n' "$folders_all" | paste -sd, - | sed 's/,/, /g; s/^$/no folder records it/')): bale $verb $tarball, in $repo"
   [ -z "$host" ] || log "$label is on $host: the response travels there, bale runs in its repo there with this terminal, and the temporary directory it travels in is removed after"
-  line="$(reader land-prepare "$root" --plan "$plan")" || exit 1
-  [ -z "$line" ] || log "$line"
-
-  reader land-run "$root" --plan "$plan" --capture "$capture"; code=$?
-  if ! out="$(reader land-outcome "$root" --plan "$plan" --capture "$capture" --exit "$code" --day "$day")"; then
-    [ -z "$line" ] || warn "the record of $sid may still be out of its folder; office sessions $(printf '%s\n' "$folders_all" | head -n 1 | sed 's#.*/##') $sid puts it back"
-    die "could not read how $sid ended from bale's records (bale stats --sid $sid --json, in $repo, shows them)"
-  fi
+  # The landing itself, in one helper call (0.30.0; it was three in a row:
+  # land-prepare, land-run, land-outcome): the office's record taken out of
+  # its folder and said, bale apply or retry with this terminal, and how it
+  # ended, read from bale's records into one JSON line in a file of the
+  # landing's own (stdout is bale's). Exit 1: the record could not be taken
+  # out and nothing ran; 3, or 4 with the record still out: bale ran and
+  # how it ended could not be read.
+  local outcome_file="$tmp/outcome.json" landing
+  reader land "$root" --plan "$plan" --capture "$capture" --day "$day" --outcome "$outcome_file"; landing=$?
+  case $landing in
+    0) out="$(< "$outcome_file")" ;;
+    3|4)
+      [ "$landing" != 4 ] || warn "the record of $sid may still be out of its folder; office sessions $(printf '%s\n' "$folders_all" | head -n 1 | sed 's#.*/##') $sid puts it back"
+      die "could not read how $sid ended from bale's records (bale stats --sid $sid --json, in $repo, shows them)" ;;
+    *) exit 1 ;;
+  esac
   # How it ended, read once (0.29.0; it was five reads).
   local told applied next outcome words_rc told_rc applied_rc next_rc outcome_rc
   json_read - words=words told=told applied=applied next=next outcome=outcome <<< "$out"
@@ -6306,7 +6326,7 @@ land_held() {
 }
 
 # carry_relays OUTCOME AT_END: the blocks bale printed for a person to
-# carry, from land-outcome's JSON, printed whole when bale did not print
+# carry, from the landing's outcome JSON, printed whole when bale did not print
 # them (a clarification's) and put on the clipboard one at a time, in
 # bale's order, each copy said (to_clipboard). AT_END 1 is an applied
 # landing's last step: a block whose copy is not confirmed is printed again

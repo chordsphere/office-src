@@ -27,6 +27,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import tomllib
 import unittest
 
@@ -799,6 +800,16 @@ class TestDigest(DigestCase):
         self.assertRegex(self.section(page, "Open blueprints"),
                          r"- blueprint \d{4}-\d{2}-\d{2}-watch-arc: An arc \(not ratified\); members: none yet")
         # Running it again overwrites the page; it never records a firing.
+        # The page is stamped to the second (its written_at line), so a run
+        # in the same second as the last writes the same bytes and has
+        # nothing to commit: on a fast machine the two runs here can share
+        # a second (0.30.0, the first time it held a landing). Wait the clock
+        # past the first page's second, under one second, so the second
+        # run's page differs by its stamp and the commit is the one to see.
+        stamp = re.search(r"^- written_at: (\S+)", (self.root / DT / "digest.md").read_text(), re.M).group(1)
+        first = dt.datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+        while dt.datetime.now(dt.timezone.utc) < first + dt.timedelta(seconds=1):
+            time.sleep(0.05)
         before = self.e.git(self.root, "rev-list", "--count", "HEAD")
         self.digest(code=3)
         self.assertNotIn("fired", (self.root / DT / "watch-log.md").read_text().split("```")[-1])
