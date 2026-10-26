@@ -825,6 +825,28 @@ def run(office_root, plan_, day):
 
 # --- office letterhead check --on PROJECT: the check in a project's repo, here or there ------
 
+# The letterhead check on this machine runs office_letterhead as a module,
+# the way bin/office's pylib runs every helper (0.31.0), not as a script: a
+# script's own code is compiled from its source on every run and never read
+# from a cache, so `python3 -B lib/office_letterhead.py` compiled its 540
+# lines on every check, where a module run through runpy reads the compiled
+# code install.sh wrote into lib/__pycache__. -B still writes nothing; -P
+# keeps the current directory (the project's tree here) off sys.path, as a
+# script's run kept it off, and -S starts without site, as pylib does; the
+# module runs as __main__, so its last line calls main as it did. A hosted
+# project's check is unchanged: the module travels as the program python3
+# reads from stdin.
+PYLIB_PROGRAM = ('import runpy, sys; sys.path.insert(0, sys.argv.pop(1)); '
+                 'runpy.run_module(sys.argv.pop(1), run_name="__main__", alter_sys=True)')
+
+
+def letterhead_argv(install, args):
+    """The argv that runs the letterhead check with args from the install's
+    lib/, as pylib runs a helper (PYLIB_PROGRAM)."""
+    return [sys.executable, "-B", "-P", "-S", "-c", PYLIB_PROGRAM, str(pathlib.Path(install) / "lib"),
+            "office_letterhead", *args]
+
+
 def check_in_project(office_root, project, scope_all=False, range_spec=None, words=(), files_only=False,
                      never=(), words_text=(), template_rev=None):
     """Run the letterhead check in a project's repo where it is. On a
@@ -854,8 +876,8 @@ def check_in_project(office_root, project, scope_all=False, range_spec=None, wor
         + (["--words-json", json.dumps([list(w) for w in words_text])] if words_text else []) \
         + (["--template-rev", template_rev] if template_rev else [])
     if not place.hosted:
-        argv = [sys.executable, "-B", str(INSTALL / "lib" / "office_letterhead.py"), "--rules-json", json.dumps(rules),
-                *flags, *[w for f in words for w in ("--words", str(f))], place.path]
+        argv = letterhead_argv(INSTALL, ["--rules-json", json.dumps(rules), *flags,
+                                         *[w for f in words for w in ("--words", str(f))], str(place.path)])
         run = ohost.run_in(ohost.Place(place.path), argv, timeout=ohost.TRANSFER_TIMEOUT)
         return run.returncode, run.stdout, run.stderr
     if words:

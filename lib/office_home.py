@@ -400,7 +400,7 @@ def drop_items(groups, projects):
 
 
 def home_items(skew, founded, out, groups, projects, slips, behind, bundles, names, directories, now, sittings=(),
-               meetings=()):
+               meetings=(), cache=None):
     """The waiting list, in order: the Next line's move first (marked),
     then each meeting near now whose prep is still to send (0.26.0), each
     response in the downloads, each unopened bundle, each unsorted drop
@@ -410,7 +410,7 @@ def home_items(skew, founded, out, groups, projects, slips, behind, bundles, nam
     already in the list is not repeated."""
     import office_bale as ob
     import office_meeting as om
-    command, why = ob.next_move(skew, founded, out, groups, projects, slips, behind)
+    command, why = ob.next_move(skew, founded, out, groups, projects, slips, behind, cache)
     kind, argv = command_argv(command)
     items = []
     if skew == "behind" and argv == ["upgrade"]:
@@ -565,6 +565,11 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
     except (OSError, oh.HelperError) as exc:
         debug(f"the install could not be compared with its source: {exc}")
         behind = None
+    try:
+        cache = ob.bytecode_behind()
+    except (OSError, oh.HelperError) as exc:
+        debug(f"the install's bytecode cache could not be checked: {exc}")
+        cache = None
     projects = ob.office_projects(office_root)
     every, _ = ob.open_anywhere(rd, office_root)
     sittings = [x for x in every if x["read_only"] and x["folders"]]
@@ -576,7 +581,7 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
         debug(f"the calendar could not be read for the meetings near now: {exc}")
         meetings = []
     items = home_items(skew, founded, out, groups, projects, ob.count_slips(office_root), behind, bundles, names,
-                       directories, now, sittings, meetings)
+                       directories, now, sittings, meetings, cache)
     # The sessions out that were never worked: the w key's (office withdraw).
     try:
         offered, _, _ = ob.withdraw_view(rd, office_root, directories)

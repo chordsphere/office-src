@@ -1177,9 +1177,10 @@ was installed from, whether its bytecode cache is level with its lib/ for
 this python3, whether the profile is complete, the survey's age and
 the office-src it records, whether the floor plan's timezone resolves (and
 what fixes it when it does not), whether bale.toml's include group matches
-the floor plan, the install's catalogs, folders against their History,
-filed pages against git, the drafting table against the catalog and each
-ratified charter against git from its ratifying commit on, the installed
+the floor plan, the install's catalogs, folders against their History
+(and each one still provisional though every session it records landed
+applied), filed pages against git, the drafting table against the catalog
+and each ratified charter against git from its ratifying commit on, the installed
 bale and the projects, the letterhead and its voice page, and the push
 guard in each audience clone (an older or missing one named with the
 line that replaces it). It reports and exits 0.
@@ -1228,7 +1229,7 @@ cmd_status() {
   # then each line's read in the order the lines are printed. None writes,
   # and none depends on another's answer, so they go out together; what
   # each would have printed to stderr still goes there as it runs.
-  local name bytecode survey tz_named drift defects folders filed drafting tray handbook bale letterhead
+  local name bytecode survey tz_named drift defects folders structure filed drafting tray handbook bale letterhead
   local skewr calls=()
   batch_call calls skew-report "$root/$MANIFEST_REL" "$(install_version)" "$MIGRATIONS"
   batch_call calls get "$root/$MANIFEST_REL" office.name --default "(unnamed)"
@@ -1239,13 +1240,14 @@ cmd_status() {
   batch_call calls include-group-check "$root/$MANIFEST_REL" "$root/$BALE_TOML_REL" "$root"
   batch_call calls -q catalog-check "$VERBS" "$CATALOG"
   batch_call calls -q folder-check "$root"
+  batch_call calls -q bale:provisional-lines "$root"
   batch_call calls -q filed-check "$root"
   batch_call calls -q drafting:table-check "$root"
   batch_call calls -q drop:tray-check "$root"
   batch_call calls -q sort:handbook-check "$root"
   batch_call calls bale:status-lines "$root"
   batch_call calls deliver:status-lines "$root"
-  batch_run skewr name bytecode profile survey tz_named drift defects folders filed drafting tray handbook bale letterhead -- "${calls[@]}"
+  batch_run skewr name bytecode profile survey tz_named drift defects folders structure filed drafting tray handbook bale letterhead -- "${calls[@]}"
   if [ "$skewr_rc" != 0 ]; then
     [ -n "$skewr" ] || die "cannot read the version stamp in $root/$MANIFEST_REL"
     die "cannot plan migrations from $MIGRATIONS"
@@ -1306,6 +1308,12 @@ cmd_status() {
   # last state-changing line, and the numbers are minted once each.
   [ -z "$folders" ] || printf '%s\n' "$folders"
   case $folders_rc in 0|3) ;; *) printf 'folders:    could not be checked\n' ;; esac
+  # A folder still provisional though every session it records landed
+  # applied (0.31.0): its Structure never came back, or was off its shape
+  # and not filed. One line each, nothing when there is none; never a
+  # refusal.
+  [ -z "$structure" ] || printf '%s\n' "$structure"
+  case $structure_rc in 0) ;; *) printf 'structure:  could not be checked\n' ;; esac
   # Filed pages only grow at their end: git's history of every filed
   # page the floor plan lists, the net for a hand edit that went
   # through neither bale nor a script.
@@ -4641,17 +4649,22 @@ start_sort() {
     die "a sort is out already: $first is open in this office; office land $first brings it back, and then office start --sort sends the next; nothing was written"
   fi
   one_writer "$root" "start --sort" in-tray
-  # Where the office has a drafting table, the moves page is the sort's
-  # to write, as a sitting writes it: it arrives first when it must.
-  if [ -d "$root/drafting-table" ]; then
-    if [ ! -f "$root/drafting-table/moves.md" ]; then
-      one_writer "$root" "start --sort" "drafting-table/moves.md"
-      out="$(drafting arrive "$root" --page moves.md)" || die "the drafting table's moves page could not arrive; nothing was sent out"
-      mapfile -t paths < <(printf '%s\n' "$out" | grep -v '^$')
-      [ "${#paths[@]}" -eq 0 ] || commit_paths "$root" "office start --sort: the drafting table's moves page arrives" "${paths[@]}" || true
-    fi
-    writes+=(--write drafting-table/moves.md)
+  # The moves page is the sort's to write, as a sitting writes it, so it
+  # arrives first when it must; in an office with no drafting table the
+  # table arrives with it (0.31.0), as the in-tray arrives with the first
+  # drop: its pages from the install's templates, the floor plan's entry
+  # and bale.toml's trigger, each only when missing, committed alone.
+  if [ ! -f "$root/drafting-table/moves.md" ]; then
+    local targets=() arrives
+    mapfile -t targets < <(arrival_targets "$root")
+    one_writer "$root" "start --sort" "drafting-table/moves.md" "${targets[@]}"
+    out="$(drafting arrive "$root" --page moves.md)" || die "the drafting table's moves page could not arrive; nothing was sent out"
+    mapfile -t paths < <(printf '%s\n' "$out" | grep -v '^$')
+    arrives="the drafting table's moves page arrives"
+    printf '%s\n' "${paths[@]}" | grep -qxF "drafting-table/README.md" && arrives="the drafting table arrives, for the moves page"
+    [ "${#paths[@]}" -eq 0 ] || commit_paths "$root" "office start --sort: $arrives" "${paths[@]}" || true
   fi
+  writes+=(--write drafting-table/moves.md)
   # What ships: every folder's folder.md (not the folders whole) and every
   # handbook chapter; the hung items ride through bale.toml's group, and
   # the unsorted drops and the doctrine as for every office session.
@@ -8334,7 +8347,10 @@ walk_in_head() {
   # behind its source, one line in office status's words (start and land
   # run the install, so the Next line names the install line too); and the
   # latest detached run of the source's suite when its verdict is not OK
-  # (FAILED, BROKEN, or RUNNING for over an hour), one line (0.17.2).
+  # (FAILED, BROKEN, or RUNNING for over an hour), one line (0.17.2). In
+  # any office, between the two: the install's bytecode cache when it is
+  # not level for this python3, in status's words, install.sh's line on
+  # the Next line (0.31.0).
   [ "$install_lines_rc" = 0 ] || install_lines=""
   [ -z "$install_lines" ] || printf '%s\n' "$install_lines"
   WALK_TZ="$tz"

@@ -75,6 +75,9 @@ HANDBOOK_FRONT = "README.md"
 HANDBOOK_FRONT_TEMPLATE = "handbook-README.md"
 CHAPTER_TEMPLATE = "handbook-chapter.md"
 FACT_LINE_RE = oh.LazyPattern(r"^- (\d{4}-\d{2}-\d{2}): (.+) \((\S+)\)$")
+# The line office land writes above a session's Questions and answers in a
+# folder (0.31.0: read back, so a response filed twice adds nothing twice).
+QA_FROM_RE = oh.LazyPattern(r"^- from (\S+):$")
 CHAPTER_NAME_RE = oh.LazyPattern(r"^[A-Za-z0-9][A-Za-z0-9_-]*\.md$")
 
 
@@ -455,18 +458,57 @@ def set_front_sheet(path, front):
     pathlib.Path(path).write_text("\n".join(new) + "\n", encoding="ascii")
 
 
+def filed_facts(path):
+    """{(fact, sid)} of the Facts lines a chapter holds, in the form
+    office land writes; the day each was filed is not part of the key, so
+    a response filed again on a later day finds its facts there."""
+    lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
+    start, end = oh.section_bounds(lines, "Facts")
+    out = set()
+    for line in lines[start + 1:end] if start is not None else []:
+        m = FACT_LINE_RE.match(line)
+        if m:
+            out.add((m.group(2), m.group(3)))
+    return out
+
+
+def front_sheet_body(path):
+    """The chapter's Front sheet section as set_front_sheet writes it
+    (its lines, the blank lines around them dropped), or None."""
+    lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
+    start, end = oh.section_bounds(lines, "Front sheet")
+    return None if start is None else trimmed(lines[start + 1:end])
+
+
 def file_handbook(root, project, facts, front, sid, day):
     """One project's facts and front sheet into its chapter. Returns
-    (changed, words)."""
+    (changed, words). Filed twice (0.31.0), a fact the chapter already
+    holds from the same session is said and left, and a front sheet the
+    chapter already reads is not written again: the facts grow at their
+    end and nothing filed is rewritten."""
     rel, changed, words = ensure_chapter(root, project)
     path = pathlib.Path(root) / rel
+    wrote = bool(changed)
     if facts:
-        append_facts(path, [fact_line(day, f, sid) for f in facts])
-        words.append(f"{rel}: {len(facts)} fact(s) from {sid}")
+        have = filed_facts(path)
+        entries = [fact_line(day, f, sid) for f in facts]
+        new = [e for e in entries if (FACT_LINE_RE.match(e).group(2), sid) not in have]
+        already = len(entries) - len(new)
+        if new:
+            append_facts(path, new)
+            wrote = True
+            words.append(f"{rel}: {len(new)} fact(s) from {sid}"
+                         + (f"; {already} already there, left as they are" if already else ""))
+        else:
+            words.append(f"{rel}: all {already} fact(s) from {sid} already there, left as they are")
     if front:
-        set_front_sheet(path, front)
-        words.append(f"{rel}: the front sheet, replaced whole by {sid}'s")
-    if rel not in changed:
+        if front_sheet_body(path) == oh.ascii_escape("\n".join(trimmed(front)))[0].split("\n"):
+            words.append(f"{rel}: the front sheet already reads as {sid}'s, left as it is")
+        else:
+            set_front_sheet(path, front)
+            wrote = True
+            words.append(f"{rel}: the front sheet, replaced whole by {sid}'s")
+    if wrote and rel not in changed:
         changed.append(rel)
     return changed, words
 
@@ -586,15 +628,30 @@ def file_notes(root, notes_text, sid, day, folder=None, project_names=()):
         else:
             md = root / folder / "folder.md"
             lines = md.read_text(encoding="utf-8").splitlines()
-            for entry in [f"- from {sid}:"] + [oh.ascii_escape(q)[0] for q in notes["qa"]]:
+            # Filed twice (the same response by land and by sessions
+            # --pages, 0.31.0): a line already in the section is said and
+            # left, and nothing filed is rewritten.
+            start, end = oh.section_bounds(lines, "Questions and answers")
+            there = lines[start + 1:end] if start is not None else []
+            entries = [oh.ascii_escape(q)[0] for q in notes["qa"]]
+            new = [e for e in entries if e not in there]
+            heads = [l for l in there if QA_FROM_RE.match(l)]
+            head = [] if not new or (heads and heads[-1] == f"- from {sid}:") else [f"- from {sid}:"]
+            for entry in head + new:
                 lines = oh.append_line_to_section(lines, "Questions and answers", entry)
                 if lines is None:
                     said.append(f"Questions and answers: {folder}/folder.md has no such section; nothing filed")
                     break
             else:
-                md.write_text("\n".join(lines) + "\n", encoding="utf-8")
-                note([f"{folder}/folder.md"],
-                     [f"Questions and answers: {len(notes['qa'])} line(s) filed in {folder}/folder.md"])
+                already = len(entries) - len(new)
+                if new:
+                    md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                    note([f"{folder}/folder.md"],
+                         [f"Questions and answers: {len(new)} line(s) filed in {folder}/folder.md"
+                          + (f"; {already} already there, left as they are" if already else "")])
+                else:
+                    said.append(f"Questions and answers: all {already} line(s) already in {folder}/folder.md, "
+                                "left as they are; nothing filed")
         if notes["qa_other"]:
             said.append(f"  {notes['qa_other']} line(s) not of the form `- DATE question? answer` were left out")
     if notes["handbook"] is not None:

@@ -118,7 +118,10 @@ before. Walking in shows the office's name, the date and time in its timezone
 whether it is founded and current (and, when the office scopes the
 project the install came from and that project has moved past the
 installed commit, an `Install: BEHIND: ...` line in the words `office
-status` uses; and, for that same office, a `Suite: ...` line when the
+status` uses; in any office, a `Bytecode: ...` line when the install's
+bytecode cache is not level for the python3 that runs it, in status's
+words too, with install.sh's line on the Next line (0.31.0); and, for an
+office that scopes the install's project, a `Suite: ...` line when the
 latest detached run of the project's suite, below, did not end `OK`:
 its `FAILED` or `BROKEN` verdict as written, or a `RUNNING` one over an
 hour old, with the log to read), the sessions in flight in its projects
@@ -476,7 +479,12 @@ size and the goal) is named on a `- provisional: title, size, goal` line
 (0.23.0) until the session that works the job sends back its own, as
 `## Structure` in its notes.md, and `office land` files it; a field a flag
 sets is yours and never provisional, and `office status` names a
-provisional line that does not read. `office start new` runs this same
+provisional line that does not read, and (0.31.0), in a `structure:` line
+each, a folder still provisional though every session it records landed
+applied (by bale's applied/ tags), whose Structure never came back. Filed
+twice (`office land`, then `office sessions --pages` with the same
+response), a session's Questions and answers and its facts are filed
+once: a line already there is said and left. `office start new` runs this same
 code and sends the session out with it. Type `?` at a question to have it
 explained. Every field has a flag, which sets it as given, so the same
 folder opens in one line, and piped input is never asked anything:
@@ -857,8 +865,9 @@ unsorted drop between its DROP markers, the desk as `office desk` prints
 it (so the session routes to folders by number), and the Sort format.
 It ships every folder's folder.md (not the folders whole), the handbook,
 the hung items, the drops and the doctrine, and forecasts the notepad
-and, where the office has a drafting table, drafting-table/moves.md (made
-from its template first when it is not there), on which the session
+and drafting-table/moves.md (made from its template first when it is not
+there, and in an office with no drafting table the table arrives with it,
+committed alone: 0.31.0), on which the session
 writes the moves the desk needs that are not drops: `- [ ] DATE close
 folder N` for a finished folder, `absorb folder N into="folder M"`,
 `retire folder N why="..."`. Its id carries the slug `in-tray-sort`; the
@@ -1618,6 +1627,12 @@ time barely moves. `TestTheInstallsBytecodeCache` and
 `TestTheBytecodeLine` in tests/test_office.py hold the cache and the
 line; `TestTheLandingInOneCall` and `TestLandWholeInProcess` in
 tests/test_land.py hold the landing to its three steps.
+
+Since 0.31.0 the letterhead check on this machine (office deliver's, and
+office land's review) runs office_letterhead as a module, as every helper
+runs, so it reads the install's compiled code where, run as a script, it
+compiled its 540 lines on every check; tests/test_tidy.py holds that, and
+the rest of the 0.31.0 tidy.
 
 The suite builds offices, installs and synthetic migrations under
 temporary directories and never touches your home directory or offices,
