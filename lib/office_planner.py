@@ -295,8 +295,17 @@ def every_sitting_carries(root, own):
     if own:
         lines.append((f"{own}/", "the sitting's own folder, whole: what was asked, and the sessions it records"))
         paths.append(own)
-    lines.append((f"{od.SPACE}/", "the drafting table, its digest.md first: written just before the pack, every line "
-                                  "computed then (doctrine section 5)"))
+    # The drafting table rides with every sitting: office start writes the
+    # digest just before the pack, and the digest brings the table into an
+    # office that has none (office_digest.write), so office_bale's start
+    # finds it there and adds it. Where there is none yet, the line says it
+    # arrives (0.31.0); a path that is not there weighs nothing.
+    if (root / od.SPACE).is_dir():
+        lines.append((f"{od.SPACE}/", "the drafting table, its digest.md first: written just before the pack, every "
+                                      "line computed then (doctrine section 5)"))
+    else:
+        lines.append((f"{od.SPACE}/", "the drafting table, which arrives in this office with its digest.md: written "
+                                      "just before the pack, every line computed then (doctrine section 5)"))
     paths.append(od.SPACE)
     try:
         manifest = oh.read_toml(root / "floor-plan" / "manifest.toml")

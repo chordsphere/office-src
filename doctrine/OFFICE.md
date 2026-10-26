@@ -344,9 +344,16 @@ sitting; one whose pack line the office cannot read at all leaves the
 page as it was, said in one line with the time the page was written,
 since a silent skip would send a sitting out on a stale page. A session whose forecast overlaps one already open is refused
 before bale is asked, and the open session, its folder and the overlap are
-named; a bundle is refused the same way whenever the office can read its
-pack line, and where it cannot (a bare name bale's search finds), the
-office says so and bale's own words stand. For a project on a host a
+named. A second desk is bale's to recognize, and the office refuses an
+overlap only where bale would (0.18.0): a bundle whose pack line the
+office can read is checked the same way, and bale's own rehearsal runs
+before anything is written; a bundle bale would take as a second desk on
+an open session is sent on, the overlap the office saw said beside bale's
+words, and one bale's rehearsal refuses is refused in the office's words
+with bale's reason beside them (a bale whose rehearsal does not answer in
+JSON is refused on the office's reading alone). Where the office cannot
+read the pack line (a bare name bale's search finds), it says so and
+bale's own words stand. For a project on a host a
 bundle is a file on the occupant's machine: its path, or a bare name the
 office finds in the downloads (below), since bale's own search would run
 on the host. A session a
@@ -690,8 +697,9 @@ install's templates/sort-brief.md, which carries the standing
 instructions, every unsorted drop between its DROP markers and the desk as
 `office desk` prints it. It ships every folder's folder.md (not the
 folders whole), every handbook chapter, the hung items and the doctrine,
-and forecasts the notepad and, where the office has a drafting table, its
-moves page (which arrives first when it must), and nothing else: like
+and forecasts the notepad and the drafting table's moves page, which
+arrives first when it must, the drafting table with it in an office that
+has none (0.31.0), and nothing else: like
 every session it writes its Sort, Questions and answers and Handbook in
 notes.md, and `office land SID` files them and runs the moves. The walk-in and `office desk` show it in flight
 as the in-tray's session. It is refused while another sort is out, while
@@ -782,7 +790,9 @@ back its own in its Structure (section 4), `office land` files each over
 the provisional value and takes it off the line, and the line goes when
 it names nothing. A field a flag set is his, never provisional. `office
 status` names a provisional line that does not read or marks a field the
-folder does not carry. The number is the folder's citation, folder
+folder does not carry, and, one line each, a folder still provisional
+though every session it records landed applied (0.31.0): its Structure
+never came back, or came back off its shape and was not filed. The number is the folder's citation, folder
 N: `office open` mints it as one more than the highest number on the
 desk and in the filing cabinet, and it is never reused or renumbered. A
 folder from before numbers keeps none and is cited by its name; nothing
@@ -1303,7 +1313,9 @@ date and time in its timezone (and, when the floor plan's zone does not
 resolve, that the office is on UTC instead), whether it is founded and
 current, a line saying the install is behind its source when the office
 scopes the project the install came from and that project has moved past
-the installed commit (in the words `office status` uses), the sessions in flight in its projects and in the office
+the installed commit (in the words `office status` uses), a line saying
+the install's bytecode cache is not level for the python3 that runs it,
+in any office, in status's words too (0.31.0), the sessions in flight in its projects and in the office
 itself, with the folder each belongs to (a read-only sitting a folder
 records says that `office land SID` ends it when the sitting is over;
 the Next line never names one, since nothing in the office knows when a
@@ -1325,8 +1337,11 @@ office out of step with the install (upgrade it, or, when the renovation
 upgrade sent out is out, land that first); the install behind its source,
 when the office scopes that source (bring it level with the source's
 `./install.sh`: start and land run the install, so until it is level they
-run the old office; placed here in 0.13.0, ahead of a session out); a
-session out (land it,
+run the old office; placed here in 0.13.0, ahead of a session out); the
+install's bytecode cache not level, when its stamp names the source
+(the same `./install.sh`: until it runs every command, a land included,
+compiles the helpers from source and takes about twice as long; placed
+here in 0.31.0); a session out (land it,
 or, when bale held it, land its corrected response); desk moves a sitting
 decided that have not run (run them: until then the desk is not in the
 order the sitting decided); an unsorted drop (the oldest whose project

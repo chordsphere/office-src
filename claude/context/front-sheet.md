@@ -234,6 +234,28 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.31.0 (session 2026-10-26-office-tidy-001): the tidy after the
+  front-door arc, the fifth session after it: eight small items the
+  workers proposed and the queue carried. What you see changes in four
+  small, said ways.
+  - `office status` has a `structure:` line for each folder still
+    marked provisional though every session it records landed applied:
+    its Structure never came back. Nothing when there is none.
+  - The walk-in has a `Bytecode:` line when the install's compiled
+    helpers are not level for your python3 (after a Python upgrade,
+    say), in status's words, and the Next line names install.sh's line
+    right after an install behind its source.
+  - `office start --sort` in an office with no drafting table brings the
+    table first, committed alone, so the sort's moves have a page.
+  - The doctrine says the second desk as the office has done it since
+    0.18.0, and the three changes above where it pins them.
+  - Said, and nothing more: a sitting's pages (SLUG.md, SLUG-2.md) count
+    as one sitting on the digest and the watches; the drafting table is
+    named the same way on a planner sitting's list and a prep's; a
+    response filed twice (land, then `office sessions --pages`) files
+    each answer and fact once; the letterhead check reads the install's
+    compiled code.
+  - Additive: no migration.
 - 0.30.0 (session 2026-10-25-install-cache-001): the install's bytecode
   cache, the fourth session after the front-door arc. Nothing you use
   changes but one new line in `office status`.
@@ -849,8 +871,8 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 - The install's bytecode cache is for the python3 install.sh ran with.
   After a Python upgrade (Ubuntu's next release, say) every helper call
   compiles from source again, as before 0.30.0, until install.sh runs
-  again; `office status` says so, with the line to run, and nothing
-  else changes.
+  again; `office status` and the walk-in say so, and the walk-in's Next
+  line is install.sh's line (0.31.0), and nothing else changes.
 - `office meeting` reads when from English words: a slash date is
   month/day (11/3 is the 3rd of November), and a bare hour from 1 to 6
   is the afternoon; each reading it was not told outright is said on the
@@ -875,7 +897,11 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 - A new folder's title, size and goal are provisional until the session
   that works the job lands with its Structure section; a session that
   writes none (every session before 0.23.0 among them) leaves them as the
-  office worked them out, and `office status` shows the provisional line.
+  office worked them out, and `office status` shows the provisional line;
+  since 0.31.0 it names, in a `structure:` line, each such folder whose
+  sessions all landed applied. A folder already in the filing cabinet
+  keeps the line: a closed folder moves whole, and nothing files a
+  Structure into it.
 - bale copies every paste block itself (pack's opener, apply's relay)
   when its bale.toml names a clipboard command, and on WSL its copy
   feeds clip.exe UTF-8, which Windows reads in the console's code page:

@@ -830,18 +830,15 @@ def render_brief(o, tz_name, day, rides, left, windows):
 
 def write_prep(root, key, tz, tz_name, day, brief_out, includes_out):
     """The prep's brief and includes, written; returns the ride lines."""
-    import office_drafting as od
     import office_planner as op
     o = planned(root, key, tz)
     if o is None:
         raise MeetingError(f"the plan holds no meeting {key!r}")
     gathered, windows = gather_prep(root, o, tz)
+    # The drafting table rides with the prep as with every sitting: its
+    # digest, written just before the pack, brings the table into an office
+    # that has none, and the planner's list says which (0.31.0).
     base_paths, always = op.every_sitting_carries(root, None)
-    # The drafting table rides only where the office has one (office_bale
-    # start adds it then); the planner's list names it either way.
-    if not (pathlib.Path(root) / od.SPACE).is_dir():
-        always = [(path, why) for path, why in always if path != f"{od.SPACE}/"]
-        base_paths = [p for p in base_paths if p != od.SPACE]
     always = [(f"{SPACE}/", "the calendar: this meeting's line in the plan, and the record of the meetings before it")] \
         + always
     base_paths = [SPACE] + base_paths

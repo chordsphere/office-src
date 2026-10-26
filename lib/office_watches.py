@@ -280,12 +280,17 @@ def standing_entry(entry):
 
 # --- sittings, from git ----------------------------------------------------------------
 
-def sitting_key(rel):
+def sitting_key(rel, pages=()):
     """Which sitting a page belongs to: a page named SID-N.md continues
-    SID.md (the sitting's later pages), so both are one sitting."""
+    SID.md (the sitting's later pages), so both are one sitting; and a
+    page named SLUG-N.md continues SLUG.md when SLUG.md is a sitting's page
+    too (pages: the stems of the notepad's sitting pages), the way the
+    planner's sitting_pages joins a sitting's pages by slug (0.31.0: the
+    pages office start files are named by the sitting's slug, SLUG.md,
+    SLUG-2.md, and were each counted as a sitting of their own)."""
     stem = pathlib.PurePosixPath(rel).stem
     m = re.match(r"^(.*)-(\d+)$", stem)
-    if m and oh.SID_RE.match(m.group(1)):
+    if m and (oh.SID_RE.match(m.group(1)) or m.group(1) in pages):
         return m.group(1)
     return stem
 
@@ -309,7 +314,11 @@ def sitting_filings(root):
             commit = (dt.datetime.fromisoformat(when), sha, subject)
             continue
         if line.strip() and commit and oh.SITTING_PAGE_RE.match(line.strip()):
-            out.append((commit[0], line.strip(), commit[1], commit[2], sitting_key(line.strip())))
+            out.append((commit[0], line.strip(), commit[1], commit[2]))
+    # Keyed once every page is known, so a later page joins its first
+    # whichever commit filed which.
+    stems = {pathlib.PurePosixPath(f[1]).stem for f in out}
+    out = [(*f, sitting_key(f[1], stems)) for f in out]
     out.sort(key=lambda f: (f[0], f[1]))
     return out
 

@@ -1508,21 +1508,28 @@ def sort_move(drops, groups, projects):
     return None
 
 
-def next_move(skew, founded, out, groups, projects, slips, behind=None):
+def next_move(skew, founded, out, groups, projects, slips, behind=None, cache=None):
     """(command, why) for the walk-in's Next line, from the office's state:
     skew (current, behind, ahead or unreadable), founded (bool), out
     (sessions_to_land's list), groups (classify_desk's, with the
     in-tray's unsorted drops under "drops" as render_desk adds them),
     projects (the [projects] entries, or None for no table), slips (a
-    count) and behind (install_behind's dict when the install is behind a
-    source this office scopes, else None). A pure function, so every
-    state is testable without an office.
+    count), behind (install_behind's dict when the install is behind a
+    source this office scopes, else None) and cache (bytecode_behind's
+    dict when the install's bytecode cache is not level for this python3,
+    else None). A pure function, so every state is testable without an
+    office.
 
     The order (doctrine section 7, the walk-in): the office out of step with the
-    install, then the install behind its source, then a session out,
-    the moves, an unsorted drop, the founding, the desk. The install comes before a
-    session out because office start and office land run the install:
-    behind its source, they would run the old office."""
+    install, then the install behind its source, then its bytecode cache
+    not level, then a session out, the moves, an unsorted drop, the
+    founding, the desk. The install comes before a session out because
+    office start and office land run the install: behind its source, they
+    would run the old office. Its cache comes next (0.31.0), since the same
+    one line brings it level and, until it runs, every command, a land
+    included, compiles the helpers from source and takes about twice as
+    long; install.sh's line is filled in only where its stamp names the
+    source, and with none the line leaves the cache to office status."""
     if skew == "ahead":
         return ("office status", "this office was migrated past the installed office-src; install a newer one "
                                  "(office status names both versions)")
@@ -1542,6 +1549,11 @@ def next_move(skew, founded, out, groups, projects, slips, behind=None):
                 f"the installed office-src is behind its source, which this office scopes as {behind['project']} "
                 f"(installed {behind['commit']}; the source is at {behind['head']}, office-src {behind['version']}); "
                 "office start and office land run the install, so until it is level they run the old office")
+    if cache and cache.get("source"):
+        return (f"(cd {shell_quote(cache['source'])} && ./install.sh)",
+                f"the installed office-src's bytecode cache is not level for this python3 ({cache['what']}), so "
+                "every office command compiles its helpers from source and takes about twice as long; install.sh "
+                "compiles them again")
     if out:
         s = out[0]
         where = "this office" if s["label"] == OFFICE_LABEL else s["label"]
@@ -1617,8 +1629,13 @@ def next_line(rd, office_root, skew, founded, groups):
     except (OSError, oh.HelperError) as exc:
         debug(f"the install could not be compared with its source: {exc}")
         behind = None
+    try:
+        cache = bytecode_behind()
+    except (OSError, oh.HelperError) as exc:
+        debug(f"the install's bytecode cache could not be checked: {exc}")
+        cache = None
     command, why = next_move(skew, founded, out, groups, office_projects(office_root),
-                             count_slips(office_root), behind)
+                             count_slips(office_root), behind, cache)
     return f"Next: {command}  ({why})"
 
 
@@ -1869,6 +1886,71 @@ def render_versions(rd, office_root, name=None):
             bad += 1
             lines.append(f"{p['name']}: cannot read: {exc}")
     return lines, bad
+
+
+def applied_sids(cwd):
+    """The session ids bale tagged applied in a repo (its applied/SID
+    tags, as office deliver reads them), here or through a host's shell.
+    A repo with none is an empty set; one git cannot read raises
+    BaleError."""
+    out = git_lines(cwd, "for-each-ref", "--format=%(refname:short)", "refs/tags/applied/")
+    if out is None:
+        raise BaleError("refused", f"git cannot list the applied/ tags in {cwd}")
+    return {t[len("applied/"):] for t in out.split() if t.startswith("applied/")}
+
+
+def provisional_landed(office_root):
+    """(lines, 0) for office status (0.31.0): one line for each folder,
+    on the desk or in the filing cabinet, whose worked-out fields are still
+    marked provisional though every session recorded in it landed applied,
+    so its Structure never came back, or came back off its shape and was
+    said at its land and not filed. Landed applied is bale's applied/SID
+    tag in the office or a project it scopes, read with git alone (no bale
+    call), and only when some folder could be such a one. A provisional
+    line that does not read is folder-check's to name, not this. A repo
+    that cannot be read is said when it leaves a folder undecided. Lines,
+    never a refusal; nothing at all when no folder is one."""
+    root = pathlib.Path(office_root)
+    candidates = []
+    for f in oh.read_folders(root):
+        if f["problem"] or not f["sids"]:
+            continue
+        marked = f["fields"].get("provisional") or []
+        if len(marked) != 1:
+            continue
+        try:
+            names = oh.provisional_list(marked[0])
+        except oh.HelperError:
+            continue
+        candidates.append((f, names))
+    if not candidates:
+        return [], 0
+    places = []
+    own = office_registry(root)
+    if own is not None:
+        places.append((OFFICE_LABEL, {"problem": None, "resolved": own}))
+    places += [(p["name"], p) for p in office_projects(root) or []]
+    # The repos on this machine first; a project on a host is asked (one
+    # connection) only while a folder's sessions are not all found here.
+    applied, unread = set(), []
+    for label, p in sorted(places, key=lambda lp: hosted_project(lp[1])):
+        if hosted_project(p) and all(all(s in applied for s in f["sids"]) for f, _ in candidates):
+            break
+        try:
+            applied |= applied_sids(readable(p))
+        except BaleError as exc:
+            unread.append(f"{label} ({exc})")
+    lines = []
+    for f, names in candidates:
+        if all(sid in applied for sid in f["sids"]):
+            n = len(f["sids"])
+            lines.append(f"structure:  {oh.cite(f)} ({f['rel']}) still marks {', '.join(names)} provisional, though "
+                         f"{'its one session' if n == 1 else f'all {n} of its sessions'} landed applied: its "
+                         "Structure never came back, or came back off its shape and was not filed")
+        elif unread:
+            lines.append(f"structure:  {oh.cite(f)} ({f['rel']}) could not be judged: "
+                         + "; ".join(unread) + " could not be read")
+    return lines, 0
 
 
 def status_lines(rd, office_root):
@@ -2974,6 +3056,31 @@ def install_behind(office_root, install=None, source=False):
              f"(cd {shell_quote(src)} && ./install.sh) brings the install level")
     return {"source": src, "commit": commit, "head": short, "version": version, "words": words,
             "project": project}
+
+
+def bytecode_behind(install=None):
+    """When the running install's bytecode cache is not level with its lib/
+    for this python3 and install.sh is what brings it level (0.31.0, the
+    walk-in's line and the Next line's, after the install behind its
+    source): {words, what, source}, words being office status's bytecode
+    line less its label (BEHIND: ... or NONE for this python3 ...), what
+    the part before its remedy, source the working copy install.sh was run
+    from ("" when its stamp names none). None when the cache is level, for
+    a working copy (no install, no cache to keep), and under a cache prefix
+    (PYTHONPYCACHEPREFIX: this python3 reads that cache alone, never the
+    install's, and install.sh does not write it). Any office, whether or
+    not it scopes the source: every office on this install runs slower."""
+    install = pathlib.Path(install or INSTALL)
+    if getattr(sys, "pycache_prefix", None) is not None:
+        return None
+    source = oh.installed_source(install)
+    if source is None:
+        return None
+    line, code = oh.bytecode_line(install)
+    if code == 0:
+        return None
+    words = line.split(":", 1)[1].strip()
+    return {"words": words, "what": words.split("; ", 1)[0], "source": source}
 
 
 # --- the detached suite's verdict, on the walk-in ----------------------------------------
@@ -4911,6 +5018,9 @@ def build_parser(only=None):
     p = add("landed"); p.add_argument("office"); p.add_argument("path"); p.add_argument("--project")
     p = add("versions"); p.add_argument("office"); p.add_argument("--project")
     p = add("status-lines"); p.add_argument("office")
+    p = add("provisional-lines", help="office status's structure lines: each folder still provisional though "
+                                      "every session it records landed applied; nothing when none is")
+    p.add_argument("office")
     p = add("desk"); p.add_argument("office"); p.add_argument("--today", required=True)
     p.add_argument("--since", help="the day of the previous walk-in (default: today)")
     p.add_argument("--walk-in", action="store_true", help="In flight and the first ready folders only")
@@ -4962,10 +5072,11 @@ def build_parser(only=None):
     p.add_argument("--where", choices=("office", "project"), required=True); p.add_argument("--project")
     p.add_argument("--include", action="append", default=[]); p.add_argument("--write", action="append", default=[])
     p.add_argument("--read-only", action="store_true"); p.add_argument("--bundle")
-    p = add("install-lines", help="the walk-in's lines about the install, when this office scopes its "
-                                             "source: Install: BEHIND ... when the source moved past the install, "
-                                             "Suite: ... when the latest detached run's verdict is not OK; nothing "
-                                             "otherwise")
+    p = add("install-lines", help="the walk-in's lines about the install: Install: BEHIND ... when this office "
+                                             "scopes its source and the source moved past the install, Bytecode: ... "
+                                             "when the install's bytecode cache is not level for this python3, "
+                                             "Suite: ... when the office scopes the source and the latest detached "
+                                             "run's verdict is not OK; nothing otherwise")
     p.add_argument("office")
     p = add("bundle-where", help="where a bundle opens by default: DEFAULT<tab>WHY, or nothing")
     p.add_argument("office"); p.add_argument("--bundle", required=True); p.add_argument("--lane")
@@ -5157,6 +5268,16 @@ def main(argv=None):
         for r in riders:
             print(f"{r['number']}\t{r['title']}\t{r['rides']}\t{', '.join(r['touched'])}")
         return 0
+    if a.cmd == "provisional-lines":
+        # git alone, no bale: no Reader is made.
+        try:
+            lines, _ = provisional_landed(a.office)
+        except (oh.HelperError, OSError) as exc:
+            log(f"error: {exc}")
+            return 1
+        for line in lines:
+            print(line)
+        return 0
     if a.cmd == "install-lines":
         # Each line is read on its own, so one that cannot be read never
         # hides the other; the source is looked up once for both.
@@ -5172,6 +5293,15 @@ def main(argv=None):
             behind = None
         if behind:
             print(f"Install: {behind['words']}")
+        # The install's bytecode cache, not level for this python3 (0.31.0):
+        # in office status's words, in any office this install runs.
+        try:
+            cache = bytecode_behind()
+        except (OSError, oh.HelperError) as exc:
+            debug(f"the install's bytecode cache could not be checked: {exc}")
+            cache = None
+        if cache:
+            print(f"Bytecode: {cache['words']}")
         try:
             verdict = suite_verdict(a.office, source=source)
         except (OSError, oh.HelperError) as exc:

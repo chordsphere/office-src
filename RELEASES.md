@@ -4,6 +4,78 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.31.0
+
+Additive: no migration, nothing to do in any office. This release is the
+tidy after the front-door arc: eight small items the arc's workers
+proposed and the queue carried, each a few lines, none depending on
+another. What you see changes in four small, said ways: one `office
+status` line, one walk-in line and its Next line, the drafting table
+arriving with the in-tray's sort, and the doctrine's words; everything
+else is as it was.
+
+A sitting's pages are one sitting. office start files a sitting's words
+under its slug (SLUG.md, then SLUG-2.md and on), and the watches and the
+digest joined only a page named SID-N.md to SID.md, so a sitting of three
+pages counted as three. A page SLUG-N.md now joins SLUG.md whenever
+SLUG.md is a sitting's page too, as the planner's own reading of a
+sitting's pages always joined them (lib/office_watches.py `sitting_key`).
+
+The drafting table on a sitting's list. The digest office start writes
+just before a sitting is packed brings the drafting table into an office
+that has none, so the table rides with every sitting, a meeting's prep
+included. The planner sitting's list named it even where there was none
+yet; the prep's list left it out there, though it rode. Both now name it
+the same way, and where there is none yet the line says it arrives with
+its digest (lib/office_planner.py `every_sitting_carries`).
+
+`office status` names, one `structure:` line each, a folder still
+marked provisional though every session it records landed applied (by
+bale's applied/ tags, read with git): its Structure never came back, or
+came back off its shape and was not filed. Nothing when there is none,
+and never a refusal.
+
+A response filed twice adds nothing twice. `office land` and `office
+sessions --pages` file a session's Questions and answers into its
+folder and its facts into the handbook chapter; filed again from the
+same response, a line already there is said and left, a fact from the
+same session is the same fact whatever day it was filed, and a front
+sheet that already reads as the session's is not written again. Nothing
+filed is rewritten.
+
+The drafting table arrives with `office start --sort`. The sort forecasts
+the drafting table's moves page; in an office with no drafting table it
+had nowhere for its moves to land. Now the table arrives first, as the
+in-tray arrives with the first drop: its pages from the install's
+templates, the floor plan's entry and bale.toml's trigger, each only
+when missing, committed alone, the one-writer rule held over each.
+
+The doctrine's second-desk sentence (section 4, continued) now says what
+office start has done since 0.18.0: a second desk is bale's to
+recognize, and the office refuses an overlap only where bale would. The
+doctrine also says the three changes above where it pins them: the
+sort's forecast, status's line, and the walk-in's line and its place in
+the Next line's order.
+
+The install's bytecode cache on the walk-in. When the cache 0.30.0 gave
+the install is not level for the python3 that runs it (after a Python
+upgrade, say), the walk-in says so in `office status`'s words, a
+`Bytecode:` line in the walk-in's head, in any office, and the Next
+line names install.sh's line right after an install behind its source:
+until it runs, every command compiles the helpers from source and takes
+about twice as long. Under a cache prefix, and from a working copy,
+nothing is said. The home screen's first item follows the Next line.
+
+The letterhead check reads the cache too. office deliver, and office
+land's review, ran the check on this machine as a script, whose own code
+Python never reads from a cache, so each check compiled office_letterhead's
+540 lines. It now runs as a module, the way bin/office's pylib runs every
+helper; its output and exits are as they were. The hosted form, the
+module sent on stdin, is unchanged.
+
+Tests: tests/test_tidy.py, SUITE_NEW tests, one class per item; and the
+record's pins. SUITE_LINE
+
 ## 0.30.0
 
 Additive: no migration, nothing to do in any office, and nothing an
