@@ -404,6 +404,26 @@ def mirror_here(prefix="office-deliver-"):
     return tmp, repo
 
 
+def delivery_words(delivery_md, label=None):
+    """((label, text), unread): a folder's delivery.md as the letterhead
+    reads it, at deliver and at land's review alike (0.35.0): the lines
+    whose words leave, each at its own line of the page, and the count of
+    the page's other non-blank lines, which stay in the office
+    (office_helper.delivery_leaving_text says which). label defaults to
+    the page's path, so a hit is named as it always was."""
+    path = pathlib.Path(delivery_md)
+    text, unread = oh.delivery_leaving_text(path.read_text(encoding="utf-8", errors="replace"))
+    return (label or str(path), text), unread
+
+
+def unread_line(label, unread):
+    """What the check says of delivery.md's lines it did not read, since a
+    line skipped without a word is a silent skip."""
+    return (f"{label}: the to: line and the Commit and Review sections are read, the words that leave; its "
+            f"{unread} other line(s) (the page's heading, office land's filing note, anything else above the first "
+            "Commit or Review) stay in the office and are not read")
+
+
 def plan(consumption, office_root, folder, branch=None, project_name=None, others_ok=False, interactive=False,
          author_given=None, adopt=False):
     """Everything a delivery needs before the one question, written as a
@@ -648,12 +668,18 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
         # 8. The letterhead check: the diff as staged, and the words, the
         # lines of the repository's pull-request template as the audience
         # holds it (at the delivery's start) aside from the phrasing rule
-        # and the three characters (0.26.0).
+        # and the three characters (0.26.0). The words are what of
+        # delivery.md leaves (0.35.0, delivery_words): the page's heading
+        # and office land's filing note stay in the office, so a page
+        # office land filed is never refused for a line of its own.
         try:
             rules = office_rules(office_root)
-            hits, told = olh.check(str(worktree), rules, words=[str(delivery_md)], template_rev=start_sha)
-        except olh.CheckError as exc:
+            words_text, unread = delivery_words(delivery_md)
+            hits, told = olh.check(str(worktree), rules, words_text=[words_text], template_rev=start_sha)
+        except (olh.CheckError, OSError) as exc:
             raise DeliverError([f"the letterhead check could not run: {exc}"])
+        if unread:
+            told.insert(0, unread_line(f"{rel}/delivery.md", unread))
         out = {
             "folder": rel, "folder_name": folder, "title": title, "project": name, "audience": audience, "url": url,
             "author": author, "base": base, "branch": branch, "continuing": continuing, "adopting": adopting,
@@ -1006,7 +1032,9 @@ def land_review(office_root, project, sid, folder_rel=None):
     if folder_rel:
         md = root / folder_rel / oh.PAGE_FILES["delivery"]
         if md.is_file():
-            words_text.append((f"{folder_rel}/{md.name}", md.read_text(encoding="utf-8", errors="replace")))
+            # Read as deliver reads it (0.35.0): what of the page leaves.
+            label_text, _ = delivery_words(md, label=f"{folder_rel}/{md.name}")
+            words_text.append(label_text)
     template_rev = f"refs/remotes/{entry['audience']}/{entry['base']}" if entry.get("base") \
         else f"refs/remotes/{entry['audience']}/HEAD"
     tag = f"applied/{sid}"

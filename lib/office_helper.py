@@ -2141,6 +2141,19 @@ def notes_from_response(tarball):
     return None
 
 
+def filing_note(key, sid):
+    """The comment office land writes under a filed page's heading.
+    walkthrough.md stays in the office and names the session it came
+    from. delivery.md names none (0.35.0): it is the page of the words
+    that leave, and a session id is a bale mark the letterhead refuses,
+    so the page office land files holds no word the letterhead would
+    refuse of its own making. The folder's Sessions section and the
+    office's commit name the session."""
+    if key == "delivery":
+        return "<!-- filed by office land from the build session's notes.md -->"
+    return f"<!-- filed by office land from {sid}'s notes.md -->"
+
+
 def file_pages(folder_dir, pages, sid, title):
     """Write the folder's walkthrough.md and delivery.md from the
     sections a response carried. Returns [(key, state, path)] with state
@@ -2156,7 +2169,7 @@ def file_pages(folder_dir, pages, sid, title):
             out.append((key, "absent", path))
             continue
         head = f"# {PAGE_SECTIONS[key]}: {title}" if title else f"# {PAGE_SECTIONS[key]}"
-        text = "\n".join([head, "", f"<!-- filed by office land from {sid}'s notes.md -->", "", *body]) + "\n"
+        text = "\n".join([head, "", filing_note(key, sid), "", *body]) + "\n"
         state = "rewritten" if path.exists() else "filed"
         path.write_text(ascii_escape(text)[0], encoding="utf-8")
         out.append((key, state, path))
@@ -2182,21 +2195,17 @@ def parse_delivery(text):
     separated, relative to the repo's top; a directory takes what is
     under it); the last takes the rest. The Review section's first
     paragraph is the title, the rest the body. A `to:` line, before the
-    first section, names the reviewer."""
+    first section, names the reviewer. Since 0.35.0 a section runs to the
+    next Commit or Review heading (delivery_sections), so a pull-request
+    template's own `## ` headings filled into the Review stay in its body."""
     lines = text.splitlines()
-    first = next((i for i, l in enumerate(lines) if l.startswith("## ")), len(lines))
+    first, spans = delivery_sections(lines)
     to = None
     for line in lines[:first]:
         m = TO_LINE_RE.match(line.strip())
         if m:
             to = m.group(1)
-    sections = []
-    i = first
-    while i < len(lines):
-        heading = lines[i][3:].strip()
-        j = next((k for k in range(i + 1, len(lines)) if lines[k].startswith("## ")), len(lines))
-        sections.append((heading, lines[i + 1:j]))
-        i = j
+    sections = [(lines[s][3:].strip(), lines[s + 1:e]) for s, e in spans]
 
     def paragraphs(body):
         out, cur = [], []
@@ -2257,6 +2266,61 @@ def parse_delivery(text):
     if commits[-1]["paths"]:
         raise HelperError("the last Commit section takes everything the others left, so it names no paths")
     return {"to": to, "commits": commits, "review": review}
+
+
+LEAVING_SECTIONS = ("commit", "review")
+
+
+def delivery_sections(lines):
+    """(first, spans) for delivery.md's lines, the one reading of its
+    sections that parse_delivery and delivery_leaving_text share, so the
+    words deliver sends and the words the letterhead reads cannot differ.
+    first is the index of the first `## ` line (what is above it is the
+    page's front: the heading, the `to:` line). spans are (start, end)
+    for each Commit and Review section, named case-insensitively: each
+    runs from its heading to the next Commit or Review heading, so a
+    `## ` heading of another name inside one is its words (a pull-request
+    template's `## Summary` filled into the Review, 0.35.0; before, such
+    a heading cut the Review short and its lines never left). A section of
+    another name before the first Commit or Review is no span: it is
+    never read into a delivery."""
+    first = next((i for i, l in enumerate(lines) if l.startswith("## ")), len(lines))
+    starts = [i for i, l in enumerate(lines) if l.startswith("## ") and l[3:].strip().lower() in LEAVING_SECTIONS]
+    return first, list(zip(starts, starts[1:] + [len(lines)]))
+
+
+def delivery_leaving_text(text):
+    """delivery.md as the letterhead reads it (0.35.0): every line whose
+    words leave kept where it is, every other line blank, so the page
+    keeps its length and a hit is named at its own line of the page.
+
+    What leaves is what parse_delivery reads into a delivery, by the same
+    reading (delivery_sections): a `to:` line above the first `## `
+    section (it names the reviewer, and deliver's Next line says it), and
+    every line of each Commit and Review section (the commit messages,
+    and the review's title and body, a filled pull-request template's
+    headings and lines among them). What stays in the office is blank:
+    the page's `# ` heading, the comment office land files under it
+    (which, before 0.35.0, named the session the page came from: a bale
+    mark), any prose above the first section (a page written by hand from
+    the template keeps the template's), and a section of another name
+    before the first Commit or Review, which parse_delivery never reads.
+    Returns (text, n): n counts the non-blank lines blanked, so the check
+    can say what it did not read."""
+    lines = text.splitlines()
+    first, spans = delivery_sections(lines)
+    keep = set()
+    for start, end in spans:
+        keep.update(range(start, end))
+    keep.update(i for i in range(first) if TO_LINE_RE.match(lines[i].strip()))
+    out, unread = [], 0
+    for i, line in enumerate(lines):
+        if i in keep or not line.strip():
+            out.append(line)
+        else:
+            out.append("")
+            unread += 1
+    return "\n".join(out) + ("\n" if text.endswith("\n") else ""), unread
 
 
 def cmd_delivery_words(a):
