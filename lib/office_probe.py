@@ -19,6 +19,11 @@ hands at the terminal (doctrine section 1), so office probe runs it:
          nothing is already at probe-output/ there. One reach of a host,
          and the plan is a JSON line for bin/office, which shows the
          header and asks once before anything runs.
+  on     (0.34.0) what `office-on PROJECT COMMAND` runs inside a block
+         that spans the office and a project's host: the one command
+         where that project lives, through its shell on a host, stdin
+         closed, its output back on this stream. office probe writes the
+         office-on helper for one run and puts it on the block's PATH.
   run    run the block there, stdin closed (office_host.run_probe), its
          output to this terminal whole; read the block back out of it
          (the lines between the sentinels, and whether the integrity
@@ -28,6 +33,13 @@ hands at the terminal (doctrine section 1), so office probe runs it:
          The result is a JSON file for bin/office, which copies the block
          to the clipboard with the office's own clipboard command and
          writes the folder's History line, `- DATE probe: SID, N lines`.
+
+A block that calls `office-on PROJECT ...` (0.34.0) spans the office and
+the projects it names: it runs in the office root, under the folder's
+session open in the office or in one of those projects, and each
+office-on call runs its command where that project lives. The M10
+walkthrough's planner sitting (2026-10-27) needed the work office's
+folder and the hosted repo in one probe, and ran six by hand.
 
 bale is read only for the sessions open where the project lives (bale
 status --json, through office_bale's reader), and the shell is run only
@@ -59,6 +71,13 @@ TEXT_SLUG_RE = oh.LazyPattern(r"PROBE BEGIN ([a-z0-9][a-z0-9-]*)")
 READ_ONLY_RE = oh.LazyPattern(r"\bread[- ]only\b", re.I)
 NOT_READ_ONLY_RE = oh.LazyPattern(r"\bnot\s+read[- ]only\b", re.I)
 EXIT_ASK_SID = 5
+# The helper a spanning block calls (0.34.0): `office-on PROJECT COMMAND...`
+# on a line that is not a comment names a project the block reaches.
+ON_HELPER = "office-on"
+REACH_RE = oh.LazyPattern(r"(?<![\w./-])office-on\s+([A-Za-z0-9_][A-Za-z0-9_-]*)")
+# The exit code office-on gives when the project cannot be reached at all
+# (a host that stopped answering), told apart from the command's own.
+EXIT_ON_UNREACHED = 97
 
 
 class ProbeError(Exception):
@@ -132,7 +151,21 @@ def read_block(text):
     if slug is None:
         m = TEXT_SLUG_RE.search("\n".join(lines))
         slug = m.group(1) if m else None
-    return {"text": "\n".join(lines) + "\n", "header": header, "slug": slug}
+    return {"text": "\n".join(lines) + "\n", "header": header, "slug": slug, "reaches": reaches_of(lines)}
+
+
+def reaches_of(lines):
+    """The projects a block reaches with `office-on PROJECT ...` (0.34.0),
+    in order of first call, read from the lines that are not comments: a
+    header may say what the helper is for without naming a project."""
+    out = []
+    for line in lines:
+        if line.lstrip().startswith("#"):
+            continue
+        for m in REACH_RE.finditer(line):
+            if m.group(1) not in out:
+                out.append(m.group(1))
+    return out
 
 
 def read_output(text):
@@ -274,6 +307,8 @@ def plan(office_root, folder_rel, project, block_file, sid=None, rd=None):
     import office_host as ohost
     rd = rd or ob.Reader()
     block = read_block(pathlib.Path(block_file).read_text(encoding="utf-8", errors="replace"))
+    if block["reaches"]:
+        return plan_spanning(office_root, folder_rel, project, block, sid, rd)
     place, label, words = where_it_runs(office_root, project)
     md = pathlib.Path(office_root) / folder_rel / "folder.md"
     folder = oh.parse_folder(md.read_text(encoding="utf-8"))
@@ -332,7 +367,77 @@ def plan(office_root, folder_rel, project, block_file, sid=None, rd=None):
                           f"could not be told from it; nothing ran. Carry or remove it first (it is not the repo's)"])
     return {"folder": folder_rel, "name": name, "sid": chosen, "project": label, "where": words,
             "place": place_record(place), "header": block["header"], "slug": block["slug"],
-            "lines": block["text"].count("\n"), "sitting": chosen in sittings and chosen not in candidates}
+            "lines": block["text"].count("\n"), "sitting": chosen in sittings and chosen not in candidates,
+            "reaches": {}}
+
+
+def plan_spanning(office_root, folder_rel, project, block, sid, rd):
+    """The plan for a block that spans the office and the projects it
+    names with office-on (0.34.0): it runs in the office root, so --project
+    is office or not given; every project named must be one the office
+    scopes and can reach (one connection each, which also reads the
+    sessions open there); the session is chosen from the folder's sessions
+    open in the office (a read-only sitting, or an office session) and in
+    any project reached, by the same rule as a probe of one place, so a
+    planner sitting's probe is found without --sid when it is the one.
+    probe-output/ must not be in the office root already."""
+    import office_bale as ob
+    import office_host as ohost
+    label = OFFICE
+    if project not in (None, OFFICE):
+        raise ProbeError([f"the block calls {ON_HELPER} for {', '.join(block['reaches'])}, so it runs in the office root "
+                          f"and reaches each of them through its shell; --project {project} does not fit it (give "
+                          f"--project office, or leave it out); nothing ran"])
+    md = pathlib.Path(office_root) / folder_rel / "folder.md"
+    folder = oh.parse_folder(md.read_text(encoding="utf-8"))
+    recorded = list(dict.fromkeys(folder["sids"]))
+    name = pathlib.Path(folder_rel).name
+    root_place = ohost.Place(str(pathlib.Path(office_root).resolve()), name=OFFICE)
+    reaches, reach_words, open_in_projects = {}, [], []
+    for reached in block["reaches"]:
+        try:
+            place, _, words = where_it_runs(office_root, reached)
+        except ProbeError as exc:
+            raise ProbeError([f"{ON_HELPER} {reached}: {exc.lines[0]}; nothing ran", *exc.lines[1:]])
+        try:
+            # The sessions open there: for a hosted project, the one
+            # connection that also proves the host answers.
+            if place.hosted or (pathlib.Path(place.path) / ".bale").is_dir():
+                open_in_projects += [s for s, _ in rd.open_sessions(place if place.hosted else place.path)
+                                     if s not in open_in_projects]
+        except ob.BaleError as exc:
+            raise ProbeError([f"{reached}: {exc}; nothing ran"])
+        except ohost.HostError as exc:
+            raise ProbeError([f"{reached}: {exc}; nothing ran"])
+        reaches[reached] = place_record(place)
+        reach_words.append(f"{reached} {words} with {ON_HELPER} {reached}")
+    where = "in the office root, reaching " + "; ".join(reach_words)
+    try:
+        registry = ob.office_registry(office_root)
+        open_office = rd.open_sessions(registry) if registry is not None else []
+    except ob.BaleError as exc:
+        raise ProbeError([f"the office: its open sessions could not be read, so the office cannot say which session "
+                          f"this probe is for: {exc}; nothing ran"])
+    office_sids = [s for s, _ in open_office]
+    sittings = [s for s, read_only in open_office if read_only and s in recorded]
+    candidates = [s for s in recorded if s in open_in_projects or (s in office_sids and s not in sittings)]
+    pool = candidates + [s for s in sittings if s not in candidates]
+    if not pool and sid is None:
+        raise ProbeError([f"{name} records no session open in the office or in {', '.join(block['reaches'])} (it records: "
+                          f"{', '.join(recorded) or 'none'}; open: {', '.join(office_sids + open_in_projects) or 'none'}), "
+                          "and a probe is a session's: its output is kept under that session's out tray. Nothing ran; a "
+                          "folder's session goes out through office start"])
+    chosen = choose_session(candidates, sittings, block["slug"], sid)
+    if chosen is None:
+        raise ProbeError([f"--sid {sid}: not a session {name} records that is open in the office or in "
+                          f"{', '.join(block['reaches'])} (open and recorded: {', '.join(pool) or 'none'})"])
+    if (pathlib.Path(root_place.path) / OUTPUT_DIR).exists():
+        raise ProbeError([f"{OUTPUT_DIR}/ is already in the office root, from an earlier run, so a fallback probe's "
+                          "output could not be told from it; nothing ran. Carry or remove it first"])
+    return {"folder": folder_rel, "name": name, "sid": chosen, "project": label, "where": where,
+            "place": place_record(root_place), "header": block["header"], "slug": block["slug"],
+            "lines": block["text"].count("\n"), "sitting": chosen in sittings and chosen not in candidates,
+            "reaches": reaches}
 
 
 class AskSid(Exception):
@@ -361,18 +466,83 @@ def tray_dest(tray_root, sid):
     return dest
 
 
-def run(plan_data, block_file, tray_root, screen=None):
+ON_HELPER_TEXT = """#!/usr/bin/env bash
+# office-on PROJECT COMMAND...: run one shell command where PROJECT lives,
+# through its shell on a host, stdin closed, its output on this stream and
+# its exit code returned (97: the project could not be reached). Written by
+# office probe for one run of a block that spans the office and a project's
+# host; the block's own header promises it is read-only.
+exec {python} -I -B -P -S {module} on --plan {plan} -- "$@"
+"""
+
+
+def write_on_helper(directory, plan_file):
+    """Write the office-on helper (0.34.0) into directory, for one run of a
+    spanning block, and return its directory for the block's PATH."""
+    import shlex
+    import stat
+    d = pathlib.Path(directory)
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / ON_HELPER
+    path.write_text(ON_HELPER_TEXT.format(python=shlex.quote(sys.executable),
+                                          module=shlex.quote(str(pathlib.Path(__file__).resolve())),
+                                          plan=shlex.quote(str(pathlib.Path(plan_file).resolve()))), encoding="utf-8")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    return d
+
+
+def run_on(plan_data, project, words):
+    """What `office-on PROJECT COMMAND...` does (0.34.0): the words, joined
+    with spaces as a shell line, run where the project lives through
+    office_host (in its directory on this machine; through its shell, in
+    its path, on a host), stdin closed. Returns (exit code, stdout,
+    stderr); a project the plan does not reach, or that cannot be
+    reached, is a ProbeError."""
+    import office_host as ohost
+    reaches = plan_data.get("reaches") or {}
+    if project not in reaches:
+        raise ProbeError([f"{ON_HELPER} {project}: not a project this probe reaches (its block names: "
+                          f"{', '.join(reaches) or 'none'}); a name is read from the block before it runs, so "
+                          "name each project literally, never through a variable"])
+    command = " ".join(words).strip()
+    if not command:
+        raise ProbeError([f"{ON_HELPER} {project}: no command given"])
+    place = place_from(reaches[project])
+    try:
+        run_ = ohost.run_in(place, ["bash", "-c", command], timeout=ohost.TRANSFER_TIMEOUT)
+    except ohost.HostError as exc:
+        raise ProbeError([f"{ON_HELPER} {project}: {exc}"])
+    # Through a shell the streams come back line by line, their last
+    # newline not kept (office_host._split_calls): each ends in one here,
+    # as a command's output does, so the block's next line starts fresh.
+    out = run_.stdout if not run_.stdout or run_.stdout.endswith("\n") else run_.stdout + "\n"
+    err = run_.stderr if not run_.stderr or run_.stderr.endswith("\n") else run_.stderr + "\n"
+    return run_.returncode, out, err
+
+
+def run(plan_data, block_file, tray_root, screen=None, plan_file=None):
     """Run the block where the plan says, then read what came back and
     carry the fallback's directory. Returns the result: code, stopped
     (the office's backstop stopped it), found, closed, block (lines),
     count, trailer, words (the count's line), carried (the out tray
-    path, or None), carry_problem."""
+    path, or None), carry_problem. A block that spans (plan reaches, with
+    plan_file) gets the office-on helper first on its PATH, written beside
+    the plan for this run."""
+    import os
     import office_host as ohost
     place = place_from(plan_data["place"])
     block = read_block(pathlib.Path(block_file).read_text(encoding="utf-8", errors="replace"))
+    env = None
+    if plan_data.get("reaches"):
+        if plan_file is None:
+            raise ProbeError([f"a block that calls {ON_HELPER} needs its plan as a file, for the helper to read"])
+        helper_dir = write_on_helper(pathlib.Path(plan_file).resolve().parent / "bin", plan_file)
+        env = {"PATH": f"{helper_dir}{os.pathsep}{os.environ.get('PATH', '/usr/bin:/bin')}"}
+        log(f"{ON_HELPER} is on the block's PATH for {', '.join(plan_data['reaches'])}: each call runs its command "
+            "where that project lives, stdin closed")
     log(f"running the probe {plan_data['where']}, stdin closed; its output follows, whole")
     try:
-        code, text, stopped = ohost.run_probe(place, block["text"], screen=screen)
+        code, text, stopped = ohost.run_probe(place, block["text"], screen=screen, env=env)
     except ohost.HostError as exc:
         raise ProbeError([f"{plan_data['project']}: {exc}; the block did not run to its end, and nothing was carried"])
     out = read_output(text)
@@ -405,14 +575,49 @@ def run(plan_data, block_file, tray_root, screen=None):
 
 # --- the command line ---------------------------------------------------------------------
 
+def on_main(argv):
+    """`on --plan FILE -- PROJECT COMMAND...`, the office-on helper's line
+    (0.34.0), read by hand so a command's own flags (git log --format=%s)
+    are never taken for this program's. Exits with the command's code,
+    EXIT_ON_UNREACHED when the project cannot be reached, 2 for a line
+    that does not read."""
+    import json
+    argv = list(argv)
+    if len(argv) < 4 or argv[0] != "--plan" or argv[2] != "--":
+        log(f"error: {ON_HELPER} is run as `on --plan FILE -- PROJECT COMMAND...`, not {' '.join(argv)!r}")
+        return 2
+    plan_file, project, words = argv[1], argv[3], argv[4:]
+    try:
+        data = json.loads(pathlib.Path(plan_file).read_text(encoding="utf-8"))
+        code, out, err = run_on(data, project, words)
+    except ProbeError as exc:
+        for line in exc.lines:
+            log(f"error: {line}")
+        return EXIT_ON_UNREACHED
+    except (OSError, json.JSONDecodeError) as exc:
+        log(f"error: {ON_HELPER}: the plan could not be read: {exc}")
+        return 2
+    sys.stdout.write(out)
+    sys.stdout.flush()
+    sys.stderr.write(err)
+    return code
+
+
 def main(argv=None):
     import json
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["on"]:
+        return on_main(argv[1:])
     p = argparse.ArgumentParser(prog="office_probe.py", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     q = sub.add_parser("lane", help="the project the folder's lane names, when the office scopes it; else nothing")
     q.add_argument("office"); q.add_argument("folder", help="desk/NAME")
     q = sub.add_parser("check", help="read a block as office probe would; its header lines, or why it is refused")
     q.add_argument("block")
+    q = sub.add_parser("reaches", help="the projects a block reaches with office-on, one per line (0.34.0)")
+    q.add_argument("block")
+    q = sub.add_parser("on", help="office-on PROJECT COMMAND...: one command where the project lives (0.34.0); "
+                                  "its line is `on --plan FILE -- PROJECT COMMAND...`, read by on_main, not here")
     q = sub.add_parser("plan", help="the block read, where it runs and its session: one JSON line (exit 5: several "
                                     "sessions open, printed one per line)")
     q.add_argument("office"); q.add_argument("folder", help="desk/NAME")
@@ -430,6 +635,11 @@ def main(argv=None):
             for line in read_block(pathlib.Path(a.block).read_text(encoding="utf-8", errors="replace"))["header"]:
                 print(line)
             return 0
+        if a.cmd == "reaches":
+            for name in read_block(pathlib.Path(a.block).read_text(encoding="utf-8", errors="replace"))["reaches"]:
+                print(name)
+            return 0
+
         if a.cmd == "plan":
             try:
                 print(json.dumps(plan(a.office, a.folder, a.project, a.block, a.sid)))
@@ -441,7 +651,7 @@ def main(argv=None):
             return 0
         if a.cmd == "run":
             data = json.loads(pathlib.Path(a.plan).read_text(encoding="utf-8"))
-            result = run(data, a.block, a.tray_root)
+            result = run(data, a.block, a.tray_root, plan_file=a.plan)
             pathlib.Path(a.result).write_text(json.dumps(result) + "\n", encoding="utf-8")
             return 0
     except ProbeError as exc:

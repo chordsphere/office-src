@@ -332,7 +332,15 @@ out the office says how many and offers the sort first, by key: taken,
 the sort and then the sitting go out together, the sitting's opener left
 on the clipboard. A planner's bundle whose brief carries a LANDS line
 (`--- LANDS alpha, folder 14 ---`) goes out without asking where it lands
-or which job.
+or which job; one whose brief names the branch its session builds on
+(`--- BRANCH picklists ---`, 0.34.0: a review's answer goes onto the
+review's own branch) has that branch checked out in the project's clone,
+here or through its shell on a host, before `bale open --check` runs. Its
+local branch, or a new one tracking the one remote that has it; a clone
+with uncommitted changes, with a session open in it, or with no such
+branch locally or on a remote it has fetched stops the start with nothing
+written and says what to do there (the office fetches nothing), and a
+clone already on the branch is said.
 
 ### Bring it back
 
@@ -377,7 +385,10 @@ read-only. The output comes back to your terminal whole, the block goes
 on your clipboard to paste back, and the folder's History counts the
 probe. A planner sitting's probe of a project's repo works the same way:
 `office probe 21 --project office-src` runs it in that repo, under the
-sitting's id (0.33.0). The details are below.
+sitting's id (0.33.0). A block that spans the office and a project's host
+calls `office-on PROJECT COMMAND` on its own lines (0.34.0): it runs in
+the office root with that helper on its PATH, and each call runs its
+command where the project lives. The details are below.
 
 ### Deliver it to the audience
 
@@ -389,8 +400,11 @@ A project's workbench clone is where bale lands, and nobody reviews it.
 host as a branch of curated commits in your words, the folder's
 `delivery.md`, made from the audience's base, holding none of bale's
 commits, merges, tags, branches or files; it shows what leaves and asks
-once. `office letterhead check` is the guard it runs first, on its own
-for any tree. The details are below.
+once. A branch the audience already has that the folder never delivered
+to, a pull request opened by hand, is adopted when you say so (`--adopt`,
+or yes on a terminal; 0.34.0), so a review's answer lands on the review's
+own branch. `office letterhead check` is the guard it runs first, on its
+own for any tree. The details are below.
 
 ### Build an office
 
@@ -1105,6 +1119,26 @@ connection, which is the reach. Then it shows the header and where the
 block runs, and asks once, `y` or `N`, default no; `--yes` is the flag
 twin, and piped, nothing runs without it.
 
+A block may span the office and a project's host (0.34.0): a planner
+sitting that needs the office's pages and a hosted repo in one probe,
+say, which before this ran several probes by hand. Such a block calls
+`office-on PROJECT COMMAND...` on its own lines, naming one of the
+office's projects literally each time (never through a variable; a header
+line that mentions the helper names no project). `office probe` reads the
+names before anything runs and refuses one the office does not scope,
+then runs the block in the office root with `office-on` first on its
+PATH, a helper written for that one run beside the plan: each call runs
+its command where that project lives, in its repo here or through its
+shell in its path on a host, stdin closed, its output on the block's own
+stream and its exit code returned (97 when the project cannot be reached,
+or is not one the block named). Such a block takes no `--project`
+(`office` is the only one that fits, and is said); its session is the
+folder's open in the office, a sitting or an office session, or in a
+project it reaches, chosen by the rule above; a fallback's
+`probe-output/` is the office root's, carried the same way. The block's
+header still promises it is read-only, and the promise covers every
+command the calls run.
+
 The block runs with its stdin closed: in the project's repo, or through
 the project's shell in its path, in the plain form with no terminal
 asked for (a probe never waits on one), or in the office root. Its
@@ -1144,6 +1178,7 @@ coworker reviews. `office deliver FOLDER` is the crossing:
     office deliver health-route                  # shows what leaves, asks once, pushes the branch
     office deliver 14 --yes                      # without asking
     office deliver health-route --branch api-health --others-too
+    office deliver 6 --branch picklists --adopt  # onto a pull request's branch made outside the office
 
 The project is the folder's lane's (`--on PROJECT` when the lane names
 none), and it must declare an `audience`: the name of the remote in its
@@ -1155,7 +1190,14 @@ session applied in that project. In order, each step logged:
 - The audience's base branch is fetched (the project's `base`, or the
   audience remote's HEAD branch read from the clone), and the delivery
   branch when an earlier delivery made it: a second delivery for the
-  same folder adds to the same branch.
+  same folder adds to the same branch. A branch the audience has that the
+  folder's records do not cover was made outside the office (a pull
+  request opened by hand, or another folder's): deliver says so and, on a
+  terminal, asks once whether to add this delivery to it, default no
+  (`--adopt` is the twin; piped, it refuses and names it); this is how a
+  review's answer lands on the review's own branch (0.34.0). Adopted, the
+  range read next is what the branch does not have yet, from where the
+  workbench and the branch parted.
 - The landed work since the last delivery, or since the workbench branch
   and the base parted, is read: every applied session in it is named by
   its id and the folder it belongs to. Sessions of other folders ride in
@@ -1197,11 +1239,16 @@ session applied in that project. In order, each step logged:
   following; never the workbench branch.
 - The folder's History gains a dated `delivered` line: the branch, the
   audience, the sessions covered, the workbench commit and the delivery
-  commit. Then what you do next: open the review (a URL when the git
-  host's compare-URL shape is known, GitHub, an enterprise instance
-  named github.*, or GitLab, with the review's title and body in it and,
-  on WSL, on the clipboard; the branch's name otherwise) and whom to
-  send it to, when the words name a reviewer.
+  commit, and `; adopted` at its end for an adopted branch, so the next
+  delivery adds to it as to one of the folder's own. Then what you do
+  next: open the review (a URL when the git host's compare-URL shape is
+  known, GitHub, an enterprise instance named github.*, or GitLab, with
+  the review's title and body in it and, on WSL, on the clipboard; the
+  branch's name otherwise) and whom to send it to, when the words name a
+  reviewer. For an adopted branch the review is the one already open on
+  it: the next line lists the reviews for that branch on the git host
+  (GitHub's pull requests with that head, GitLab's merge requests with
+  that source branch), and the Review section's words are the reply.
 
 The delivery is built on this machine, where the audience answers with
 your credentials: for a project on this machine in the clone itself, in
@@ -1459,8 +1506,8 @@ matches the floor plan.
 | lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library); since 0.28.0 the LazyPattern and OneSubcommand every module's start leans on; since 0.29.0 `batch`, several subcommands of any lib/ module in one process, and `skew-report`; since 0.30.0 `bytecode-check`, office status's line on the install's bytecode cache; since 0.33.0 the doctrine stamp a sitting's Sessions line carries (`sitting_words`, `session_doctrine`) |
 | lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after (one `land` call since 0.30.0: the office's record out, bale apply or retry, the outcome) |
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
-| lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray |
-| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review |
+| lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives) |
+| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review |
 | lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin); the characters an office's letterhead refuses and lifts, and a repository's pull-request templates |
 | share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks, one list for office letterhead check and the suite's text rules; and the characters an office with a letterhead refuses by default |
 | doctrine/OFFICE.md | how every office works; it opens with a reading card naming what each kind of session reads, and what a build session reads sits above its PAST THE CORE banner |

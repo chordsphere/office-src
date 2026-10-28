@@ -234,6 +234,25 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.34.0 (session 2026-10-28-office-src-fix-three-gaps-m10-hit-on-002):
+  the three gaps the M10 walkthrough hit on 2026-10-27, when a planner
+  sitting answered a review of a pull request on a hosted project.
+  - `office deliver` adopts a branch the audience has that the folder
+    never delivered to (made outside the office: a pull request opened by
+    hand), asked once on a terminal or with `--adopt`, so a review's
+    answer lands on the review's own branch; the folder's `delivered`
+    line ends `; adopted`, and the next delivery continues on it.
+  - A planner's bundle names the branch its session builds on, one
+    `--- BRANCH NAME ---` line in its brief beside the LANDS line, and
+    `office start` checks it out in the project's clone (here or through
+    its shell) before `bale open --check`; a dirty clone, a session open
+    in it or no such branch stops the start with nothing written.
+  - `office probe` runs a block that spans the office and a project's
+    host: `office-on PROJECT COMMAND` on the block's own lines, the block
+    run in the office root with the helper on its PATH, each call's
+    command run where the project lives (lib/office_probe.py
+    `plan_spanning`, `run_on`).
+  - Additive: no migration.
 - 0.33.0 (session 2026-10-28-m10-sitting-fixes-001): the sitting fixes,
   the second of the eight sessions the planning sitting of 2026-10-27
   drew from the M10 walkthrough: three things a planner sitting runs into.

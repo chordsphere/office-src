@@ -1404,13 +1404,16 @@ def probe_command(place, block):
             f"exec bash -c {shlex.quote(block)} office-probe </dev/null\n")
 
 
-def run_probe(place, block, screen=None, timeout=None):
+def run_probe(place, block, screen=None, timeout=None, env=None):
     """Run a probe block where the place is: on this machine, bash in its
     directory; on a host, through the plain form of its shell, after the
     reach. Its stdout is copied to screen (this terminal's stdout) as it
-    comes and kept; its stderr goes to this terminal as it is. Returns
-    (exit code, stdout text, whether the backstop stopped it). A path
-    that is not there and a host that stopped answering are HostErrors."""
+    comes and kept; its stderr goes to this terminal as it is. env adds to
+    or overrides this process's environment for a block run on this
+    machine (0.34.0: office probe puts office-on on a spanning block's
+    PATH). Returns (exit code, stdout text, whether the backstop stopped
+    it). A path that is not there and a host that stopped answering are
+    HostErrors."""
     import subprocess
     import threading
     place = as_place(place)
@@ -1425,9 +1428,10 @@ def run_probe(place, block, screen=None, timeout=None):
             raise HostError("path", f"no such directory on this machine: {place.path}")
         argv = ["bash", "-c", command]
         debug(f"a probe block ({len(block)} bytes) in {place.path}, stdin closed")
+    full = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    full.update(env or {})
     try:
-        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, env=full)
     except OSError as exc:
         raise HostError("shell", f"could not run {argv[0]}: {exc}")
     stopped = {"yes": False}
