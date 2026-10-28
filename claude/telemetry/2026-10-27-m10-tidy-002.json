@@ -1,0 +1,259 @@
+{
+  "record_version": 1,
+  "session_id": "2026-10-27-m10-tidy-002",
+  "created_at": "2026-10-27T23:57:48+00:00",
+  "attempts": [
+    {
+      "at": "2026-10-27T23:57:48+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "doctrine/OFFICE.md",
+        "lib/office_deliver.py",
+        "lib/office_letterhead.py",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-10-27-m10-tidy-002.log",
+      "bundle": {
+        "stem": "2026-10-27-m10-tidy (1)",
+        "brief_sha256": "23a764d2083f34e3da9e236e3ae15a2b2cd3e5cc0f7bc1036c22ee5095768386",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "d496cfd4b41936061d8347e59536f86ef52f615291ec1c1d3cb11c5a39de499b"
+      },
+      "provenance": {
+        "work_class": "code",
+        "packer": "chordsphere",
+        "packed_at": "2026-10-27T23:57:48+00:00"
+      }
+    },
+    {
+      "at": "2026-10-28T00:41:41+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-10-27-m10-tidy-002.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "tests/run.sh --fast test_clean_delivery test_drop test_walkthrough_tidy": {
+            "value": "pass",
+            "claim_basis": "predicted"
+          }
+        },
+        "claim_verdict": {
+          "tests/run.sh --fast test_clean_delivery test_drop test_walkthrough_tidy": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "file syntax (bash -n bin/office; python ast for the changed modules and tests)",
+          "tests/run.sh --fast test_clean_delivery test_drop test_walkthrough_tidy",
+          "session assertions: items 1 to 4, VERSION, the newest entry, the front sheet's 0.32.0 line",
+          "bin/office exec bit"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "doctrine/OFFICE.md",
+        "lib/office_deliver.py",
+        "lib/office_letterhead.py",
+        "tests"
+      ],
+      "overridden_paths": [
+        "claude/context/front-sheet.md"
+      ],
+      "overridden_path_sources": {
+        "claude/context/front-sheet.md": "prompt"
+      },
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib/office_deliver.py",
+        "lib/office_letterhead.py",
+        "tests/test_clean_delivery.py",
+        "tests/test_drop.py",
+        "tests/test_walkthrough_tidy.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.55",
+            "contract_docs": {
+              "AGENT.md": "31dcdded2a8fd175f7778c2bd1be09688e89e76b8fd4cd62b7646aacfa2782c4",
+              "TARBALL.md": "3037b905ee561af44f27cc83ec45d832feb7d429a98d4e07b4482a518cda6e94",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "a8e5714e51049768e52bb5bc0ede9338db1175e7095d9b2bdd0d314ab3e01078"
+            },
+            "packer": "chordsphere",
+            "work_class": "code",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-10-27T23:57:48+00:00",
+            "base_files": {
+              "README.md": "648ec05e1c4a0a59bd994d52d09e73b6abae5c8087de5e9bfac05dc3b28e7322",
+              "RELEASES.md": "9fe6bd01c3ec829bfdbafa11a03dff991d3cc2d0816d3892c64838c8775f35b2",
+              "VERSION": "8c4f709e958791f38fd4d06c953c9182f61a05abbc45508e281b907f08b52210",
+              "bin/office": "15905b570a287ad6bcbed6ed4c7d2deff13d763ca8611917e69bfd1107d8bb01",
+              "doctrine/OFFICE.md": "ba3f5acbf9abb4a0be5e7aaf943d62a7e8a3096a1472e52333af334613ab55df",
+              "lib/office_deliver.py": "1cbb75ee0878cd1614ffa8478a9d56817a95a1c8d3929e1c659d18f7d36cf298",
+              "lib/office_letterhead.py": "995d156e64997a2bbd2315d0ece4fd44e38f08caf4364e034682ca2157ec0b73",
+              "tests/fakes/land_bale.py": "732d30ec3f4bf8aeadbf3d208a62d902bc6c043455f16cadc817b1b1e471fa6d",
+              "tests/fakes/pack_bale.py": "fbf35a9c88afa7d9c8d64dbb985e7985476196311911dd05b1fc143fc768d22b",
+              "tests/fakes/replay_bale.py": "f31101e58b28106452c4572b6e38a7642276937076b1f0cc320c9b185c56eea5",
+              "tests/fakes/small_bales.py": "25e74224d580bddfc5a2eb91696d7816c8a4e8f73ea20deb7c9dc2be0422bc4b",
+              "tests/fast-tier.toml": "c4155fe48e1d30e9ef67311794c6ed8f3a95ca6cd769c53eae7229b83bc8a705",
+              "tests/run.sh": "35b3954b5bf5d4e975ba58026bc8c313e11e94f1e97bd5f2140aa963f40829cf",
+              "tests/runner.py": "46930d62b25f6039b0bc877357063bf6cab4f1140bf0a29621c3990d4a66b5e2",
+              "tests/test_audience_line.py": "13d4e927f8b1ee7742fc89a0060cd7a50f1aef8ba5af66ec60305ebb3b504a57",
+              "tests/test_clean_delivery.py": "aa070b246fc68ac94ce63da61a7e4366b2f12bd5ba16535c021d18d033ab8938",
+              "tests/test_desk_verbs.py": "c2ef86128c4c45533ce4a8b192ac2350445d349fd5a4b0da1f4ff4a7382eaa0f",
+              "tests/test_drafting_table.py": "d14930bf0c9c8a01b868ea7c7cdd7df13088765fc42655f25326addc772c4c4c",
+              "tests/test_drop.py": "64343faf068b48a2e43350fdfd743852ef8f42dd90e34b5bc1d4108ad4ad48dc",
+              "tests/test_filed_append_only.py": "9daf033c18db0969190168fb2276dd835c3abd71a56f5bd01d0d6f0edd76d45b",
+              "tests/test_founding_door.py": "8b65f958aecc070bb88fede0c7c27fae82cb1a2c8892c88c665e3ca4359a970a",
+              "tests/test_front_door.py": "be8231e228d56b75b6e790de1def723e6968bbce6958597c8cbfc5fe88fb40c0",
+              "tests/test_home_screen.py": "23e133962371fc2f71ecadadaeb179f6e537975aace5a1d33b94ca29f59744dc",
+              "tests/test_land.py": "a95be3db479dfdf192ec75baea56fa3a6eba34c8e94da2447ace491b5fb7238c",
+              "tests/test_meetings_view.py": "30da684c8dde3cc468963727461946e921c8eb93424cc293426845517f7816f2",
+              "tests/test_office.py": "eda7a43514ca6c7f5a0ac74be9722db285147530086459d85b97d4d897daaedf",
+              "tests/test_one_door.py": "9483a4bab7c1c42a2373e2cb213fb93aee3be8c35beeef61e4a698b989d5428d",
+              "tests/test_out_trip_to_host.py": "291e9e1030ddd6ba84a1a462170049baa45bae72f7e669cd5521284d31a88824",
+              "tests/test_planner_from_words.py": "5955188c1dd272e8442a1eddac35df87ec87d75e589d99a18b447dcb841b720e",
+              "tests/test_probe.py": "37ae03f52490ec441f6f0514af7b6495b794f2f6c9502b1205f591109d69b6d6",
+              "tests/test_project_on_host.py": "aac408a2df6d73d5cdfe098ef50dd5d4d78b66d567d2b0f1d00f3ad85aae68e3",
+              "tests/test_read_side.py": "f69f3a9665e0d5d1e1bd2631d13c6436dbdba35867b1d78b3bfb50b0785fb600",
+              "tests/test_return_trip.py": "315350d82b5d10cb255622b6b9c04de106564af9769c20cf044b82153b9be5e7",
+              "tests/test_second_trip.py": "b2e2972997e49f91ffe15b696357d2a94f94cc38db819e1f6e34e2621bb3dda5",
+              "tests/test_sort.py": "feab3a04c21257f0008e564b65aa50ebbc285d6f5f456494963824f2079b0f28",
+              "tests/test_start.py": "30ac5f8ded386ff5215f23909d251efc56d3740da2cede65ffeda57e17357e86",
+              "tests/test_suite_clock.py": "a772d584614df393680c242e81fbaf8e617624a58afe17fb3196c6698acc5873",
+              "tests/test_third_trip.py": "b7ee76363650aa99edfbe8dabe3923d72556b75fe8c8520680dd4e7d98b94e3f",
+              "tests/test_tidy.py": "4522fe1fa74eca8a3a55a0f71e53468ab0be4d530e6b68199fae61d97660815e",
+              "tests/test_watches_digest.py": "bd90d845ff9faf2ae3081fe1b174e2df3df4efc7fd0d9c93989199c6046e924d"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          },
+          "linkage": {
+            "kind": "probe",
+            "point": "mid-build",
+            "depends_on": null
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "the newest detached run (20261026T133535Z, 958 tests in 245 s at ec8d5c43c573, VERSION 0.31.0) is 0.31.0's after-land run, and its 'with uncommitted changes' is the untracked telemetry files the second probe saw",
+            "\"the record's pins\" in the 0.31.0 Tests line is the entry's own phrase for its TestTheRecord classes, not a third placeholder",
+            "the fast tier with the three touched modules stays under its 120-second budget on the occupant's machine (70 s here, with the fixture tests failing early)"
+          ],
+          "judgment_calls": [
+            "a checklist box is a task-list item (-, *, +, 1. or 1)) then [ ], [x] or [X] followed by a space or the line's end; only the line's own first box is folded",
+            "the first delivery commit is dated now and each after it a second later, at this machine's offset; the last of several is a few seconds ahead of the clock",
+            "only a clipboard text is asked about; a file or stdin is never asked even on a terminal; a no exits 0 and writes nothing; 'office' alone is not counted as a command line",
+            "item 3's check lives in bin/office (drop_office_command), since lib/office_drop.py is outside the forecast",
+            "item 4's tests are a new module, tests/test_walkthrough_tidy.py, named without m10 and an underscore, which the suite's OFFICE_SPECIFIC list refuses in office-src's text",
+            "the in-tray drop 2026-10-27-office-drop-project-m10-api.md is sorted into folder 22, this job, as the evidence item 3 was built from"
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [
+            "claude/context/front-sheet.md",
+            "claude/fixtures/",
+            "migrations/"
+          ],
+          "compaction_occurred": {
+            "occurred": false,
+            "disclosure_ref": null
+          },
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md META through section 11.2, and 11.7",
+            "README.md (the brief)",
+            "TARBALL.md sections 1, 2, 4, 5.1 to 5.4, 7 and 10.1",
+            "doctrine/OFFICE.md, whole",
+            "the home-office context: profile.md, folder 22's folder.md, handbook/office-src.md, the in-tray drop, the walkthrough and delivery templates",
+            "lib/office_letterhead.py whole; lib/office_deliver.py plan, commit_words, read_commits; bin/office cmd_drop, cmd_deliver, deliver_show",
+            "tests/test_tidy.py, tests/test_clean_delivery.py, tests/test_drop.py, tests/fast-tier.toml, tests/runner.py (the detached run and the summary)",
+            "claude/context/front-sheet.md, read through the second probe"
+          ],
+          "forecast_departures": [
+            {
+              "path": "claude/context/front-sheet.md",
+              "why": "bumping VERSION to 0.32.0 needs a '- 0.32.0 (session ...' line there for tests/test_suite_clock.py TestTheRecord, in the fast tier; one entry added, nothing else touched"
+            }
+          ],
+          "light_blocks": 0
+        }
+      },
+      "log": ".bale/logs/2026-10-27-m10-tidy-002.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-10-28T00:41:41+00:00",
+  "outcome": "applied"
+}
