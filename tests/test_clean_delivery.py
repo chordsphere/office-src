@@ -471,6 +471,148 @@ class TestTheWorkbenchHere(unittest.TestCase):
         self.assertTrue((root / "letterhead" / "voice.md").is_file())
 
 
+# --- 0.32.0, the M10 tidy: a ticked checklist line, and the delivery's dates ---------------------------
+
+# A template's checklist, as a repository holds it: unticked. The first
+# line is the M10 walkthrough's, which the phrasing rule refuses as the
+# occupant's writing; the second holds an em dash, which an office with a
+# letterhead refuses; the third a string the office's forbidden list holds.
+CHECKLIST = ("## Checklist\n\n"
+             "- [ ] I have updated the documentation accordingly.\n"
+             f"* [ ] Tests {EM} added or not needed\n"
+             "1. [ ] Acme Internal sign-off\n")
+
+
+class TestATickedTemplateLine(unittest.TestCase):
+    """0.32.0: a checklist line is the template's whatever its box holds.
+    The template's lines and the words' are compared with the box's state
+    folded, so a ticked line is as exempt as the unticked one; words added
+    after the box make a changed line, held to everything; names, bale's
+    marks and the forbidden list still read a ticked one."""
+
+    def setUp(self):
+        self.e = Env(self)
+        self.repo = repo_with(self.e.tmp / "r", {".github/pull_request_template.md": CHECKLIST, "a.txt": "a\n"},
+                              self.e.env)
+        letterhead = self.e.tmp / "office" / "letterhead"
+        letterhead.mkdir(parents=True)
+        (letterhead / "forbidden.txt").write_text("Acme Internal\n")
+        self.rules = olh.apply_letterhead(olh.load_rules_toml(RULES), letterhead, "letterhead")
+
+    def test_the_box_is_folded_and_nothing_else(self):
+        key = olh.template_key
+        self.assertEqual(key("- [x] I have updated the documentation accordingly.  "),
+                         "- [ ] I have updated the documentation accordingly.")
+        for ticked, empty in (("- [X] Docs", "- [ ] Docs"), ("  * [x] nested", "  * [ ] nested"),
+                              ("+ [x] plus", "+ [ ] plus"), ("1. [x] one", "1. [ ] one"), ("2) [X] two", "2) [ ] two"),
+                              ("- [x]", "- [ ]"), ("- [ ] left", "- [ ] left"),
+                              ("- [x] - [x] the line's own box only", "- [ ] - [x] the line's own box only")):
+            self.assertEqual(key(ticked), empty, ticked)
+        # Not a box: only right-stripped.
+        for line in ("[x] no bullet", "- [xx] two marks", "- [y] another mark", "-[x] no space", "- [x]tight",
+                     "words - [x] later"):
+            self.assertEqual(key(line + "  "), line, line)
+
+    def test_a_ticked_line_is_exempt_and_a_changed_one_is_held(self):
+        words = self.e.tmp / "words.md"
+        words.write_text("## Checklist\n\n"
+                         "- [x] I have updated the documentation accordingly.\n"
+                         f"* [X] Tests {EM} added or not needed\n"
+                         "1. [x] Acme Internal sign-off\n"
+                         "- [x] I have updated the documentation accordingly, and the tests.\n")
+        hits, told = olh.check(str(self.repo), self.rules, words=[str(words)])
+        shown = [(n, kind) for _, n, kind, _, _ in hits]
+        # Lines 3 and 4, ticked, are the template's: not held to the
+        # phrasing rule or the three characters.
+        self.assertNotIn((3, "phrasing"), shown)
+        self.assertNotIn((4, "character"), shown)
+        # Line 5, ticked: the forbidden list still reads it.
+        self.assertIn((5, "forbidden"), shown)
+        # Line 6, words added after the box: a changed line, held.
+        self.assertIn((6, "phrasing"), shown)
+        self.assertEqual(sorted(shown), [(5, "forbidden"), (6, "phrasing")])
+        self.assertTrue(any(t.startswith(f"{words}: 4 line(s) are the repository's pull-request template's")
+                            for t in told), told)
+        # The template unticked reads the same, as it always did.
+        words.write_text(CHECKLIST)
+        hits, _ = olh.check(str(self.repo), self.rules, words=[str(words)])
+        self.assertEqual([(n, kind) for _, n, kind, _, _ in hits], [(5, "forbidden")])
+
+    def test_the_hosted_form_the_module_on_stdin_reads_it_the_same(self):
+        import json
+        text = "- [x] I have updated the documentation accordingly.\n- [x] I have updated the docs too.\n"
+        proc = subprocess.run([sys.executable, "-", "--rules-json", json.dumps(self.rules), "--words-json",
+                               json.dumps([["delivery.md", text]]), "."], cwd=self.repo, capture_output=True, text=True,
+                              env=self.e.env, input=(REPO / "lib" / "office_letterhead.py").read_text(), timeout=60)
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        self.assertEqual(proc.stdout.splitlines(),
+                         ["delivery.md:2: phrasing: 'I have updated the' in: - [x] I have updated the docs too."])
+        self.assertIn("delivery.md: 1 line(s) are the repository's pull-request template's", proc.stderr)
+
+
+class TestTheDeliveryCommitsDates(AudienceCase):
+    """0.32.0: a delivery's commits have distinct, ordered dates, each a
+    second after the one before, author and committer date alike; the
+    question shows each commit's date, and says in one line how many leave
+    when the words hold several Commit sections."""
+
+    def test_the_dates_and_the_line_as_units(self):
+        dates = odl.commit_dates(3, now=1_800_000_000)
+        self.assertEqual([d.split()[0] for d in dates], ["@1800000000", "@1800000001", "@1800000002"])
+        for d in dates:
+            self.assertRegex(d, r"^@\d+ [+-]\d{4}$")
+        self.assertEqual(odl.commit_dates(0), [])
+        self.assertIsNone(odl.commits_line(1))
+        self.assertEqual(odl.commits_line(3), "3 commits leave in this delivery, dated a second apart, oldest first; "
+                                              "one commit per delivery is the usual shape (one Commit section in "
+                                              "delivery.md)")
+
+    def test_commit_words_dates_each_commit_a_second_after_the_last(self):
+        repo = repo_with(self.e.tmp / "units", {"a.txt": "a\n"}, self.e.env)
+        start = git(repo, "rev-parse", "HEAD", env=self.e.env).strip()
+        for name in ("b.txt", "c.txt", "d.txt"):
+            (repo / name).write_text(name)
+        git(repo, "add", "-A", env=self.e.env)
+        words = {"commits": [{"subject": "Add b", "body": "", "paths": ["b.txt"]},
+                             {"subject": "Add c", "body": "", "paths": ["c.txt"]},
+                             {"subject": "Add d", "body": "It is d.", "paths": []}]}
+        with self.e.this_process():
+            shas = odl.commit_words(repo, words, "Zed Zee <z@example.org>", now=1_800_000_000)
+            shown, _ = odl.read_commits(repo, start, olh.load_rules_toml(RULES))
+        stamps = git(repo, "log", "--reverse", "--format=%H %at %ct", f"{start}..HEAD", env=self.e.env).split("\n")
+        self.assertEqual([s.split() for s in stamps if s],
+                         [[sha, str(1_800_000_000 + n), str(1_800_000_000 + n)] for n, sha in enumerate(shas)])
+        # The question's rendering reads each date back, author and committer alike.
+        self.assertEqual([c["sha"] for c in shown], shas)
+        self.assertEqual(len({c["date"] for c in shown}), 3)
+        self.assertTrue(all(c["date"] == c["committed"] for c in shown), shown)
+        self.assertEqual([c["date"] for c in shown], sorted(c["date"] for c in shown))
+
+    def test_deliver_says_how_many_leave_and_shows_each_date(self):
+        self.land_session(SID2, {"docs.md": "# health\n"}, "Document the route")
+        self.run_office("sessions", self.name, SID2, check=0)
+        self.write_words("# Delivery\n\n## Commit\n\n- paths: docs.md\n\nDocument the health route\n\n"
+                         "## Commit\n\nAdd the health route\n\nIts code.\n\n## Review\n\nHealth route\n\nLook.\n")
+        proc = self.run_office("deliver", self.name, "--yes")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("    2 commits leave in this delivery, dated a second apart, oldest first; one commit per "
+                      "delivery is the usual shape (one Commit section in delivery.md)\n    commit 1: ", proc.stdout)
+        dated = re.findall(r"^      dated (\S+)$", proc.stdout, re.M)
+        self.assertEqual(len(dated), 2, proc.stdout)
+        stamps = git(self.audience, "log", "--reverse", "--format=%at %ct %aI", "main..health-route",
+                     env=self.e.env).split("\n")
+        (a1, c1, i1), (a2, c2, i2) = [s.split() for s in stamps if s]
+        self.assertEqual((a1, int(a2)), (c1, int(a1) + 1))
+        self.assertEqual(c2, a2)
+        self.assertEqual(dated, [i1, i2])
+
+    def test_one_commit_is_dated_and_no_line_is_said(self):
+        proc = self.run_office("deliver", self.name, "--yes")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertNotIn("commits leave in this delivery", proc.stdout)
+        self.assertRegex(proc.stdout, r"\n      dated \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}\n")
+
+
 # --- the record ----------------------------------------------------------------------------------------
 
 class TestTheRecord(unittest.TestCase):

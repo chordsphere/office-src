@@ -624,6 +624,7 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             "stat": shown_stat, "hits": olh.render(hits), "check_told": told, "guard": guard_lines,
             "delivery_md": str(delivery_md), "office_root": str(office_root), "start": start_sha,
             "author_told": author_told, "commits_shown": [],
+            "commits_line": commits_line(len(words["commits"])) or "",
         }
         if hits:
             # Nothing with a hit leaves: the worktree goes, the hits stay
@@ -683,10 +684,37 @@ def abandon(plan_, quiet=False):
     return told
 
 
-def commit_words(worktree, words, author):
+def commit_dates(count, now=None):
+    """The dates a delivery's commits carry, oldest first (0.32.0): the
+    first at now, each after it one second later than the one before, so
+    several commits read in their order and never as a burst made in one
+    second. Each is git's raw form, `@SECONDS +HHMM`, at this machine's
+    offset for that instant, as git would have stamped it."""
+    import time
+    start = int(time.time() if now is None else now)
+    out = []
+    for n in range(count):
+        at = start + n
+        offset = time.localtime(at).tm_gmtoff // 60
+        sign = "+" if offset >= 0 else "-"
+        out.append(f"@{at} {sign}{abs(offset) // 60:02d}{abs(offset) % 60:02d}")
+    return out
+
+
+def commits_line(count):
+    """The one line the question says before a delivery of several
+    commits (0.32.0); None for one, the usual shape."""
+    if count <= 1:
+        return None
+    return (f"{count} commits leave in this delivery, dated a second apart, oldest first; one commit per delivery is "
+            "the usual shape (one Commit section in delivery.md)")
+
+
+def commit_words(worktree, words, author, now=None):
     """The delivery's commit(s) in the worktree, from the words: one per
-    Commit section, each but the last taking the paths it names. Returns
-    the commits' shas, oldest first."""
+    Commit section, each but the last taking the paths it names, dated by
+    commit_dates (author and committer date alike). Returns the commits'
+    shas, oldest first."""
     import tempfile
     name, email = oh.split_author(author)
     # Both halves of the identity, and over any GIT_AUTHOR_* in the
@@ -694,6 +722,7 @@ def commit_words(worktree, words, author):
     cfg = ["-c", f"user.name={name}", "-c", f"user.email={email}"]
     identity = {"GIT_AUTHOR_NAME": name, "GIT_AUTHOR_EMAIL": email,
                 "GIT_COMMITTER_NAME": name, "GIT_COMMITTER_EMAIL": email}
+    dates = commit_dates(len(words["commits"]), now)
     shas = []
     for n, c in enumerate(words["commits"]):
         message = c["subject"] + ("\n\n" + c["body"] if c["body"] else "") + "\n"
@@ -704,7 +733,8 @@ def commit_words(worktree, words, author):
             argv = [*cfg, "commit", "-q", "-F", msg]
             if c["paths"]:
                 argv += ["--", *c["paths"]]
-            run = g(worktree, *argv, check=False, env=identity)
+            run = g(worktree, *argv, check=False,
+                    env=dict(identity, GIT_AUTHOR_DATE=dates[n], GIT_COMMITTER_DATE=dates[n]))
             if run.returncode != 0:
                 raise DeliverError([f"commit {n + 1} of {len(words['commits'])} ({c['subject']!r}) could not be made: "
                                     f"{ohost._last_words(run.stderr)}"
@@ -720,17 +750,18 @@ def commit_words(worktree, words, author):
 
 def read_commits(worktree, start, rules):
     """Each commit since start in the worktree, oldest first, as the
-    question shows it: sha, subject, body, author, committer, the files it
-    touches (status and path) and the letterhead's verdict on it (its
-    message and the files it changed, at its version). Returns (shown,
-    hits across them)."""
+    question shows it: sha, subject, body, author, committer, their dates
+    (0.32.0; git's strict ISO form), the files it touches (status and path)
+    and the letterhead's verdict on it (its message and the files it
+    changed, at its version). Returns (shown, hits across them)."""
     import office_letterhead as olh
-    log_ = g(worktree, "log", "--reverse", "--format=%H%x00%an <%ae>%x00%cn <%ce>%x00%B%x1e", f"{start}..HEAD").stdout
+    log_ = g(worktree, "log", "--reverse", "--format=%H%x00%an <%ae>%x00%cn <%ce>%x00%aI%x00%cI%x00%B%x1e",
+             f"{start}..HEAD").stdout
     shown, all_hits = [], []
     for rec in log_.split("\x1e"):
         if not rec.strip():
             continue
-        sha, author, committer, message = rec.lstrip("\n").split("\0", 3)
+        sha, author, committer, dated, committed, message = rec.lstrip("\n").split("\0", 5)
         subject, _, body = message.strip("\n").partition("\n")
         files = g(worktree, "diff-tree", "--root", "-r", "--no-commit-id", "--name-status", "-M", sha).stdout.splitlines()
         try:
@@ -739,7 +770,8 @@ def read_commits(worktree, start, rules):
             raise DeliverError([f"the letterhead check could not run on commit {sha[:12]}: {exc}"])
         all_hits += hits
         shown.append({"sha": sha, "subject": subject, "body": body.strip("\n"), "author": author,
-                      "committer": committer, "files": [f.replace("\t", " ", 1).replace("\t", " -> ") for f in files],
+                      "committer": committer, "date": dated, "committed": committed,
+                      "files": [f.replace("\t", " ", 1).replace("\t", " -> ") for f in files],
                       "verdict": "clean" if not hits else olh.render(hits)})
     return shown, all_hits
 

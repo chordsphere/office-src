@@ -720,8 +720,11 @@ read from the audience's base, its lines exempt from the phrasing rule
 and the three characters),
 makes the commits, authored and committed as the project's declared
 author, and shows each one whole as it will be pushed (its subject and
-body, author and committer, the files it touches and the letterhead's
-verdict on it) with the diff's stat, the sessions and the branch; asks
+body, author and committer, its date, the files it touches and the
+letterhead's verdict on it) with the diff's stat, the sessions and the
+branch; several commits are dated a second apart, oldest first, so they
+read in their order, and the question says in one line how many leave,
+since one commit per delivery is the usual shape (0.32.0); asks
 once; checks every commit's author and committer against the declared
 author; and pushes that branch and nothing else, with no tag following
 it. A project with an audience and no declared author is asked for it
@@ -939,7 +942,10 @@ of one of the repository's templates as the repository holds it (the
 audience's base, for a delivery; HEAD, for the check by hand) is not held
 to the phrasing rule or to the three characters (0.26.0), while names,
 bale's marks and the forbidden list read it, and the lines the words add,
-or a template line changed, are held to all of it. Which files
+or a template line changed, are held to all of it. A checklist line is
+the template's whatever its box holds (0.32.0): `- [x]`, `- [X]` and
+`- [ ]` read as one, so ticking a box changes no line, and words added
+after the box do. Which files
 are templates is read from the repository, by the places git hosts look
 for one (GitHub's, GitLab's and Azure DevOps'). The list's template names the three as
 present by default. The letterhead arrives with the first project given
@@ -1047,7 +1053,13 @@ each, in-tray/DATE-SLUG.md. `office drop` captures one, instant and
 dumb: from the clipboard, a file or stdin, with one optional question,
 the project, in any words; it never refuses a drop it can write, and,
 like a note, it works in an unfounded office and in one out of step with
-the install, and only warns. The in-tray arrives with the first drop,
+the install, and only warns. A text that is one office command line (one
+non-blank line beginning `office `) is asked about once, before anything
+is written, when it came from the clipboard, since the clipboard then held
+the command just copied and not the message: drop it anyway, no by default
+(`--anyway` is the twin), and a yes writes it; from a file or stdin it is
+written as given, and the line saying what the drop took says it is an
+office command line (0.32.0). The in-tray arrives with the first drop,
 as the drafting table arrives with the first verb that writes it: its
 front page from the install's template, the floor plan's entry as the
 catalog declares it and bale.toml's trigger, committed with that drop.

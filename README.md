@@ -174,7 +174,12 @@ own reader, found and kept the first time; asked only when there is
 none). When the office scopes a project, it asks one question, the
 project, each of the office's with a key and any words taken
 (`--project`); a plain return leaves it empty, and it never refuses a
-drop it can write. The
+drop it can write. A text that is one office command line (one
+non-blank line beginning `office `) is usually the clipboard holding the
+command you just copied instead of the message: from the clipboard the
+drop asks once, before writing anything, whether to drop it anyway (no by
+default, `--anyway` the twin, and a yes writes it); from a file or stdin
+it is dropped as given, and the line saying what it took says so. The
 in-tray arrives with the first drop. From then on every session `office
 start` sends out carries the unsorted drops, and a session that can
 judge one sorts it in its notes.md (doctrine section 4); `office start
@@ -1139,7 +1144,8 @@ session applied in that project. In order, each step logged:
   dashes and the ellipsis refused by default; the lines of the
   repository's own pull-request template, as the audience's base holds
   them, exempt from the phrasing rule and, since 0.26.0, the three
-  characters); one hit refuses the delivery,
+  characters, a checklist line whatever its box holds since 0.32.0);
+  one hit refuses the delivery,
   with nothing pushed.
 - The words become one commit (several when `delivery.md` has several
   Commit sections, each but the last naming on a `paths:` line what it
@@ -1148,10 +1154,13 @@ session applied in that project. In order, each step logged:
   keeps it, `--author` the twin; piped, deliver refuses and names it;
   the clone's own identity is never used).
 - Each commit is shown whole, as it will be pushed: its subject and
-  body, its author and committer, the files it touches, and the
+  body, its author and committer, its date, the files it touches, and the
   letterhead's verdict on it; with the diff's stat, the sessions covered
   and the branch (named from the folder's slug, or `--branch NAME`).
-  deliver asks once (`--yes`; piped, it refuses without it).
+  Several commits are dated a second apart, oldest first (0.32.0), so a
+  reader sees their order and never a burst made in one second, and one
+  line before them says how many leave: one commit per delivery is the
+  usual shape. deliver asks once (`--yes`; piped, it refuses without it).
 - Every commit's author and committer is checked against the declared
   author, and those commits alone are pushed as the delivery branch,
   with its name in `OFFICE_DELIVERY` for the push guard and no tag
@@ -1228,6 +1237,9 @@ it, is not held to the phrasing rule or (0.26.0) the three characters:
 its words are the repository's, and a template you cannot change would
 otherwise refuse every delivery that fills it. Names, bale's marks and the
 forbidden list still read it, and a template line you change is yours.
+A checklist line is the template's whatever its box holds (0.32.0):
+ticking `- [ ]` to `- [x]` (or `- [X]`) changes nothing, and words added
+after the box do.
 The suite's own text rules read the same list, so office-src's text is
 held to it too. Scope: the files a range changed and its commit messages
 (`--range A..B`, which is how deliver checks a delivery's diff); else the

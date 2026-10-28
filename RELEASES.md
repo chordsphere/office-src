@@ -4,6 +4,68 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.32.0
+
+Additive: no migration, nothing to do in any office. This release is the
+first of eight the planning sitting of 2026-10-27 drew from the M10
+walkthrough: four small things, none depending on another. What you see
+changes in three small, said ways: a ticked box in a repository's
+pull-request template no longer refuses a delivery, a delivery of
+several commits dates them in order and says so before it asks, and a
+drop whose text is an office command line is asked about. The fourth is
+this file's own.
+
+A checklist line is the template's whatever its box holds. The
+letterhead's exemption for a repository's pull-request template matched
+a line exactly, so ticking the box of the template's documentation line
+(`- [ ]` to `- [x]`) made it the occupant's line, and the phrasing rule
+refused it. The template's lines and the words' are now compared with
+the box's state folded (`- [x]`, `- [X]` and `- [ ]` read as one), so a
+ticked line is exempt from the phrasing rule and the three characters
+as the unticked one is. Names, bale's marks and the forbidden list still read
+it, and words added after the box make a changed line, held to all of
+it. The hosted form of the check, the module sent on stdin, is the same
+module and reads it the same way (lib/office_letterhead.py
+`template_key`).
+
+A delivery's commits are dated in order. office deliver made several
+commits back to back on git's clock, so they shared one second, a
+pattern a reader of the audience's history notices. Now the first is
+dated as it is made and each after it one second later, author and
+committer date alike (GIT_AUTHOR_DATE and GIT_COMMITTER_DATE, at this
+machine's offset). The question shows each commit's date, and before a
+delivery of several commits it says in one line how many leave and that
+one per delivery is the usual shape. Which commits are made is as it was
+(lib/office_deliver.py `commit_dates` and `commits_line`).
+
+A drop that is an office command line is asked about. Copying a command
+from a chat replaces what the clipboard held, and office drop took the
+command as the message: the in-tray of 2026-10-27 holds a drop whose
+whole text is `office drop --project m10-api`. Now a text of one
+non-blank line beginning `office ` is asked about once when it comes
+from the clipboard, before anything is written: drop it anyway, no by
+default, `--anyway` the twin, and a yes writes it. From a file or stdin
+it is written as given, and the line saying what the drop took says it
+is an office command line. The drop still never refuses a drop it can
+write. The doctrine's In-tray paragraph says so (section 5).
+
+The 0.31.0 entry reads whole. Its Tests line ended in two placeholders
+its session never filled; they now say what the entry meant, from
+tests/test_tidy.py and the suite's record. Release notes are not filed
+paper, so this is an edit, said here.
+
+Tests: tests/test_clean_delivery.py `TestATickedTemplateLine` (the box
+folded and nothing else; a ticked line exempt and a changed one held;
+the hosted form) and `TestTheDeliveryCommitsDates` (the dates and the
+line as units; commit_words a second apart; deliver's question with two
+commits and with one); tests/test_drop.py `TestADropThatIsAnOfficeCommand`
+(piped and from a file, said; anything else a message; the usage and the
+doctrine) and `TestADropThatIsAnOfficeCommandOnATerminal` (no, the
+default, drops nothing; a yes writes it, and --anyway asks nothing);
+tests/test_walkthrough_tidy.py `TestTheReleaseNoteReadsWhole` (the
+0.31.0 entry with no placeholder left, its count as tests/test_tidy.py
+holds it) and the record's pins. The suite holds 974 tests, 958 at 0.31.0.
+
 ## 0.31.0
 
 Additive: no migration, nothing to do in any office. This release is the
@@ -73,8 +135,10 @@ Python never reads from a cache, so each check compiled office_letterhead's
 helper; its output and exits are as they were. The hosted form, the
 module sent on stdin, is unchanged.
 
-Tests: tests/test_tidy.py, SUITE_NEW tests, one class per item; and the
-record's pins. SUITE_LINE
+Tests: tests/test_tidy.py, 16 tests, one class per item; and the
+record's pins. The whole suite, run detached after the landing, passed
+its 958 tests in 245 seconds on the occupant's machine, where 0.30.0's
+run passed 942 in 250.
 
 ## 0.30.0
 

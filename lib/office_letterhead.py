@@ -23,7 +23,10 @@ line of one of the repo's pull-request templates, as the repo holds it
 (at HEAD, or --template-rev), is not held to the phrasing rule or to the
 three characters (0.26.0). Names, bale's marks and the forbidden list
 still read it, and a template line that was changed is an ordinary line. Which files are templates is read from the repo, by the
-places git hosts look for one (PR_TEMPLATE_PLACES).
+places git hosts look for one (PR_TEMPLATE_PLACES). A checklist line is
+the template's whatever its box holds (0.32.0): `- [x]`, `- [X]` and
+`- [ ]` read as one (template_key), and words added after the box make
+it a changed line.
 
 What it reads, in order of what it was told:
 
@@ -78,6 +81,12 @@ PR_TEMPLATE_FOLDERS = tuple(f"{d}pull_request_template/" for d in PR_TEMPLATE_DI
     tuple(f"{d}pull_request_template/branches/" for d in (".azuredevops/", ".vsts/")) + \
     (".gitlab/merge_request_templates/",)
 LIFT_RE = re.compile(r"^\s*lift\s*:\s*(?P<name>.*?)\s*$", re.I)
+# A checklist line's box (0.32.0): a task-list item, `- [ ] ...` (or `*`,
+# `+`, `1.`, `1)`), whose box is empty, ticked `x` or `X`. A template's
+# checklist is ticked when the words fill it, so a line is compared with
+# the template's with the box's state folded: `- [x] Docs` is the
+# template's `- [ ] Docs`, and what follows the box must still match.
+CHECKBOX_RE = re.compile(r"^(?P<lead>\s*(?:[-*+]|\d+[.)])\s+)\[[ xX]\](?=\s|$)")
 # A line longer than this is read for hits in full, but a match is
 # reported with the line cut short, so a minified file does not flood
 # the screen.
@@ -208,16 +217,26 @@ def compile_rules(rules):
     return out
 
 
+def template_key(line):
+    """A line as it is compared with a pull-request template's lines:
+    right-stripped, and, when it is a checklist line, its box read as
+    empty whatever it holds (0.32.0), so a ticked line is the template's
+    unticked one. Nothing else is folded."""
+    line = line.rstrip()
+    return CHECKBOX_RE.sub(lambda m: m.group("lead") + "[ ]", line, count=1)
+
+
 def hits_in_text(text, compiled, label, exempt=None):
     """Every hit in a text: (label, line number, kind, what matched, the
     line, shown short). A character's hit names the character, not the
     match. A line in exempt (a pull-request template's line, as the repo
-    holds it) is not held to the phrasing rule or to the three characters
-    (0.26.0): it is the repository's, not the occupant's. Names, bale's
+    holds it, keyed by template_key) is not held to the phrasing rule or
+    to the three characters (0.26.0): it is the repository's, not the
+    occupant's, whatever its checklist box holds (0.32.0). Names, bale's
     marks and the forbidden list still read it."""
     out = []
     for n, line in enumerate(text.splitlines(), 1):
-        templated = exempt is not None and line.rstrip() in exempt
+        templated = exempt is not None and template_key(line) in exempt
         for kind, what, rx in compiled:
             if templated and kind in TEMPLATE_EXEMPT_KINDS:
                 continue
@@ -243,10 +262,11 @@ def is_pr_template(path):
 
 
 def pr_template_lines(top, rev):
-    """(lines, paths, rev): every non-blank line, right-stripped, of the
-    repo's pull-request templates at rev (HEAD when rev does not resolve),
-    the templates' paths and the rev read. (set(), [], rev) when the repo
-    has none, or nothing resolves (said under debug)."""
+    """(lines, paths, rev): every non-blank line of the repo's pull-request
+    templates at rev (HEAD when rev does not resolve), each as template_key
+    keys it (right-stripped, a checklist box read as empty), the
+    templates' paths and the rev read. (set(), [], rev) when the repo has
+    none, or nothing resolves (said under debug)."""
     proc = git(top, "ls-tree", "-r", "-z", "--name-only", rev, check=False)
     if proc.returncode != 0 and rev != "HEAD":
         debug(f"{rev} does not resolve in {top}; the pull-request templates are read at HEAD")
@@ -261,7 +281,7 @@ def pr_template_lines(top, rev):
         text = read_file(top, path, rev)
         if text is None:
             continue
-        lines.update(l.rstrip() for l in text.splitlines() if l.strip())
+        lines.update(template_key(l) for l in text.splitlines() if l.strip())
     return lines, paths, rev
 
 
@@ -459,7 +479,7 @@ def check(cwd, rules, scope_all=False, range_spec=None, words=(), files_only=Fal
         debug(f"read the words in {label}")
         hits += hits_in_text(text, compiled, label, exempt if templates else None)
         if templates:
-            kept = sum(1 for l in text.splitlines() if l.strip() and l.rstrip() in exempt)
+            kept = sum(1 for l in text.splitlines() if l.strip() and template_key(l) in exempt)
             told.append(f"{label}: {kept} line(s) are the repository's pull-request template's as it holds them "
                         f"({', '.join(templates)} at {rev[:12] if len(rev) == 40 else rev}), and are not held to the phrasing "
                         "rule or the three characters")
