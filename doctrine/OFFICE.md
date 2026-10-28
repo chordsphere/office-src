@@ -8,10 +8,10 @@ says why it exists, and what it adds to these rules, in its own profile
 
 ## Front sheet
 
-Reading card. Find the row for the session you are, read the sections
-it names, and stop. What a build session on a project reads is the
-core: it sits above the banner marked PAST THE CORE, in reading order,
-and everything else sits below it, its section numbers unchanged.
+Reading card. Find the row for the session you are, read the sections it
+names, and stop. What a build session on a project reads is the core: it
+sits above the banner marked PAST THE CORE, in reading order, and
+everything else sits below it, its section numbers unchanged.
 
 | Kind of session | Reads |
 |---|---|
@@ -40,27 +40,26 @@ founded. An office whose profile is incomplete is unfounded and says so.
 
 The office command builds and keeps offices. `office init` builds one,
 surveys the machine, asks which projects it watches, asks the profile's
-questions, and sends the founding session out through `office start`
-with the answers in its brief; `office found` does the same for an
-office that exists and is unfounded. `office tour` builds a throwaway office
-to try the verbs on, walks through them, and deletes it. `office` on its
-own is walking in. On a terminal it is the home screen: each project the
-office scopes, one line each, then what waits on the occupant, each thing
-with a key that runs it, so he never types a session id or a file name.
-Off a terminal it is the page: what is on the desk, this week, the last
-notes, the suggestion box, what you can do from here, and, last, the one
-command to type next. The
-everyday verbs take seconds and need no session: `office note` captures a
-line, `office slip` drops a friction slip in the suggestion box, `office
-drop` drops a message or a thread in the in-tray, to be sorted by a
-session that has the code in context, `office desk` shows what is
-in flight, what is ready and in what order, and what waits on what,
-`office week` shows this week against what happened, `office close` and
-`office reopen` move a folder to the filing cabinet and back. `office
-survey` rewrites the page of machine facts. `office status` says whether
-the office matches the installed tool. `office upgrade` brings an office
-up to a new release, one commit per office. `office projects` lists the
-projects in the office's scope, declares what rides with each and what
+questions, and sends the founding session out through `office start` with
+the answers in its brief; `office found` does the same for an office that
+exists and is unfounded. `office tour` builds a throwaway office to try
+the verbs on, walks through them, and deletes it. `office` on its own is
+walking in. On a terminal it is the home screen: each project the office
+scopes, one line each, then what waits on the occupant, each thing with a
+key that runs it, so he never types a session id or a file name. Off a
+terminal it is the page: what is on the desk, this week, the last notes,
+the suggestion box, what you can do from here, and, last, the one command
+to type next. The everyday verbs take seconds and need no session: `office
+note` captures a line, `office slip` drops a friction slip in the
+suggestion box, `office drop` drops a message or a thread in the in-tray,
+to be sorted by a session that has the code in context, `office desk`
+shows what is in flight, what is ready and in what order, and what waits
+on what, `office week` shows this week against what happened, `office
+close` and `office reopen` move a folder to the filing cabinet and back.
+`office survey` rewrites the page of machine facts. `office status` says
+whether the office matches the installed tool. `office upgrade` brings an
+office up to a new release, one commit per office. `office projects` lists
+the projects in the office's scope, declares what rides with each and what
 runs after its sessions land, and renders what bale records about them.
 `office probe` runs a worker's probe block where a folder's project lives,
 on its host when it has one, after showing the block's header and asking
@@ -96,11 +95,10 @@ job; `office withdraw` closes a session he sent out and will never run,
 named by its folder and asked once; and `office meeting` records a meeting
 from his words, once, its prep, a sitting briefed from what landed since
 the last one, sent by key when it is near (`office start --prep`), and
-what arises in it reaching the in-tray as drops. The
-office runs bale when you ask, as your hands at the terminal; bale asks its
-own questions and only you answer them. It never schedules a session,
-never hands one to a model and never carries pastes. bale carries the
-session.
+what arises in it reaching the in-tray as drops. The office runs bale when
+you ask, as your hands at the terminal; bale asks its own questions and
+only you answer them. It never schedules a session, never hands one to a
+model and never carries pastes. bale carries the session.
 
 > Section 1, what an office is, sits past the core banner, ahead of
 > the rest of section 4; its number is unchanged.
@@ -119,29 +117,29 @@ Three boundaries hold that line, each with a guard.
    profile says which, and a session honors it before anything else.
 2. What leaves the office, into a project or to a person. Guards: the
    letterhead, where an office has one, for anything that goes out: its
-   voice page, the occupant's style rule in his words (section 4 says
-   who reads it), and its check, `office letterhead check`, which names
-   every line that holds what the letterhead refuses (the names of
-   models, vendors and products; tell-tale phrasing an assistant writes,
-   a repository's own pull-request template's lines aside; bale's own
-   marks; the office's forbidden words, letterhead/forbidden.txt; and by
-   default the em dash, the en dash and the ellipsis, the template's lines
-   aside again, section 5);
-   `office deliver`, the one way a project's landed work reaches its
-   audience's git host: a branch of curated commits in the occupant's
-   words, made from the audience's base, holding no bale commit, merge,
-   tag or branch and no file bale's exclude list names, checked by the
-   letterhead, each commit shown whole and asked once, every one carrying
-   the project's declared author as author and committer, and never the
-   workbench branch itself; the push guard in the clone, which lets
-   nothing reach the audience but that one delivery branch (no tag, no
-   bale branch, no other ref); `office land`'s review, which says what
-   deliver would refuse and refuses nothing; and the rule that office
-   context informs a session but never lands in a project. Every project
-   session an office packs carries that rule as a constraint: "Office context
-   informs this session but never lands in this project." Deliberation,
-   candid notes and private versions stay in the office even when a
-   session read them to do the work.
+   voice page, the occupant's style rule in his words (section 4 says who
+   reads it), and its check, `office letterhead check`, which names every
+   line that holds what the letterhead refuses (the names of models,
+   vendors and products; tell-tale phrasing an assistant writes, a
+   repository's own pull-request template's lines aside; bale's own marks;
+   the office's forbidden words, letterhead/forbidden.txt; and by default
+   the em dash, the en dash and the ellipsis, the template's lines aside
+   again, section 5); `office deliver`, the one way a project's landed
+   work reaches its audience's git host: a branch of curated commits in
+   the occupant's words, made from the audience's base, holding no bale
+   commit, merge, tag or branch, nothing a bale commit of its own changed
+   and no file bale's exclude list names, checked by the letterhead, each
+   commit shown whole and asked once, every one carrying the project's
+   declared author as author and committer, and never the workbench branch
+   itself; the push guard in the clone, which lets nothing reach the
+   audience but that one delivery branch (no tag, no bale branch, no other
+   ref); `office land`'s review, which says what deliver would refuse and
+   refuses nothing; and the rule that office context informs a session but
+   never lands in a project. Every project session an office packs carries
+   that rule as a constraint: "Office context informs this session but
+   never lands in this project." Deliberation, candid notes and private
+   versions stay in the office even when a session read them to do the
+   work.
 3. Where each repo is pushed. Guard: the profile's site section. An
    office repo is never pushed where a project's audience can read it.
 
@@ -757,13 +755,22 @@ command: `office deliver FOLDER`. It reads the folder's delivery.md,
 fetches the audience's base, carries the clone's landed work to the
 occupant's machine (as a git bundle through the project's shell, for a
 project on a host: the audience answers with the occupant's credentials
-here, not on the host), squashes it onto the audience's base in a
-temporary worktree, names the applied sessions it covers and whose
-folders they belong to (sessions of other folders ride in the same
-delivery, said, and the occupant may stop there), runs the letterhead
-check on the diff and the words (the repository's pull-request template
-read from the audience's base, its lines exempt from the phrasing rule
-and the three characters; the words are what of delivery.md leaves, its
+here, not on the host), takes what bale's own commits changed out of it
+(0.36.0: the commits bale makes for itself with no session's work in
+them, its housekeeping `bale: ignore .bale/` and its sweeps, undone on
+the workbench's tip in temporary commits that never leave, each named in
+the plan; a line later work already took out is simply gone, later work
+on the same lines takes bale's lines out one by one when adding lines was
+all bale did there, and anything else refuses by name), squashes the
+result onto the audience's base in a temporary worktree, names the
+applied sessions it covers and whose folders they belong to (sessions of
+other folders ride in the same delivery, said, and the occupant may stop
+there), runs the letterhead check on the diff and the words (a bale path
+named in a line that leaves is one of bale's marks, 0.36.0, the backstop
+for a bale line that reaches the squash some other way; the repository's
+pull-request template read from the audience's base, its lines exempt
+from the phrasing rule and the three characters; the words are what of
+delivery.md leaves, its
 `to:` line and its Commit and Review sections, each read at its own line
 of the page, a section running to the next Commit or Review heading so
 that a filled pull-request template's own headings are the review's

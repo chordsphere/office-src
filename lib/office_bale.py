@@ -152,6 +152,23 @@ class Consumption:
                 return kind, sid
         return None
 
+    def own_commit(self, subject):
+        """Whether a commit subject is one bale gives a commit it makes for
+        itself, carrying nothing of a session's work (0.36.0): a sweep
+        (the session's telemetry record) or one of the housekeeping
+        subjects [surfaces.commits] own lists by its start (`bale: ignore
+        .bale/`, made where bale is first set up in a working copy). A
+        session's work commit and its landing merge are not bale's own:
+        what they carry is the work. office deliver takes what bale's own
+        commits changed out of a delivery."""
+        found = self.subject_sid(subject)
+        if found and found[0] == "sweep":
+            return True
+        starts = self.surface("commits").get("own", [])
+        if not isinstance(starts, list) or not all(isinstance(s, str) and s for s in starts):
+            raise oh.HelperError(f"{self.path}: [surfaces.commits] own is not a list of non-empty strings")
+        return any(subject.startswith(s) for s in starts)
+
 
 # --- the reader ------------------------------------------------------------------
 
