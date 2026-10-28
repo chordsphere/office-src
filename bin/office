@@ -7699,7 +7699,12 @@ applied session in it is named by its id and its folder; sessions of
 other folders ride in the same delivery, said and named, and you may stop
 there (--others-too goes on; piped, it refuses without it); the words
 come from delivery.md (missing, deliver stops and says what to write
-where); the diff and the words go through the letterhead check (the
+where); what bale's own commits in that work changed (its housekeeping
+commits, `bale: ignore .bale/`, and its sweeps; never a session's work)
+is taken out before the squash and each is named, so no bale commit
+leaves in content any more than in name, and one that cannot be taken
+out refuses the delivery by name (0.36.0); the diff and the words go
+through the letterhead check (the
 office's letterhead: in an office that has one, the em dash, the en dash
 and the ellipsis are refused by default; the lines of the repository's
 own pull-request template, as the audience holds it, are not held to the
@@ -7742,8 +7747,10 @@ any push to the audience from the clone that deliver did not make.
   --others-too     deliver other folders' sessions riding in the landed work
   --yes            do not ask before pushing
 Under the hood: git fetch of the audience's base and branch, a thin git
-bundle of the clone's HEAD carried back for a hosted project, git merge
---squash in a temporary worktree, office letterhead-check on it and on
+bundle of the clone's HEAD carried back for a hosted project, git revert
+of bale's own commits on the workbench's tip in a temporary worktree
+(temporary commits, never pushed), git merge --squash of the result
+there, office letterhead-check on it and on
 delivery.md, git commit as the author (author and committer, and
 GIT_AUTHOR_DATE and GIT_COMMITTER_DATE a second apart), each commit
 read back and checked, git push --no-follow-tags AUDIENCE
@@ -7773,6 +7780,13 @@ deliver_show() {
   printf '  (%s commit(s) on the workbench since %s)\n' "$(plan_field "$plan" commits)" "$(plan_field "$plan" since_why)"
   if [ -n "$(plan_field "$plan" others_lines)" ]; then
     printf '  and of other folders: %s\n' "$(plan_field "$plan" others_lines | paste -sd ';' - | sed 's/;/; /g')"
+  fi
+  if [ -n "$(plan_field "$plan" own_lines)" ]; then
+    # What bale's own commits changed is taken out before the squash
+    # (0.36.0), one line per commit: its sha, subject and files, and how
+    # when the plain undo was not the whole of it.
+    printf '  taken out: what %s commit(s) of bale'"'"'s own changed, which never leaves:\n' "$(plan_field "$plan" own_lines | grep -c .)"
+    plan_field "$plan" own_lines | sed 's/^/    /'
   fi
   printf '  changes:\n'; plan_field "$plan" stat | sed 's/^/   /'
   printf '  words (desk/%s/delivery.md), and the commits as they will be pushed:\n' "$(plan_field "$plan" folder_name)"
@@ -7916,8 +7930,9 @@ every line that holds what the letterhead refuses, as file:line: what,
 and exits 1 with a hit, 0 clean. What it refuses is one list in the
 install, share/letterhead.toml (model, vendor and product names;
 tell-tale phrasing an assistant writes; bale's marks: its commit
-subjects, applied/ tags, bale/ branches and session ids) plus, when this
-office has a letterhead, the em dash, the en dash and the ellipsis
+subjects, applied/ tags, bale/ branches, session ids and, since 0.36.0,
+the paths bale makes in a working copy, .bale/ and its files, bale.toml
+and .baleignore) plus, when this office has a letterhead, the em dash, the en dash and the ellipsis
 character, refused by default and each named in a refusal, and each
 non-blank, non-comment line of its letterhead/forbidden.txt as a fixed
 string; a `lift: em dash` line there lifts one, said on every check

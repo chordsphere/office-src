@@ -27,13 +27,17 @@ as curated commits:
   once, the folder records it, and the next delivery continues on it as
   on any branch of its own.
 - In a temporary worktree at the audience's tip, the landed work is
-  squashed on (git merge --squash), bale's files are taken out of the
-  index, the diff and the folder's delivery words go through the
-  letterhead check (the office's letterhead: its forbidden list, and the
-  dashes and the ellipsis it refuses by default; the lines of the
-  repository's own pull-request template, as the audience holds it, are
-  not held to the phrasing rule or the three characters), and the words
-  become one commit
+  squashed on (git merge --squash), less what bale's own commits changed
+  (0.36.0: the commits bale makes for itself, with no session's work in
+  them, its housekeeping `bale: ignore .bale/` and its sweeps, are undone
+  on the workbench's tip first, in temporary commits that never leave;
+  take_out_own), bale's files are taken out of the index, the diff and
+  the folder's delivery words go through the letterhead check (the
+  office's letterhead: its forbidden list, and the dashes and the
+  ellipsis it refuses by default; the lines of the repository's own
+  pull-request template, as the audience holds it, are not held to the
+  phrasing rule or the three characters; a bale path named in a line that
+  leaves is one of bale's marks, 0.36.0), and the words become one commit
   (several when delivery.md marks them) authored and committed as the
   project's declared `author` (0.25.0: asked once on a terminal and
   kept when none is declared; the clone's own identity is never used).
@@ -394,6 +398,128 @@ def sids_in_subjects(consumption, subjects):
     return out
 
 
+def own_commits(consumption, repo, range_spec):
+    """[(sha, subject)] for the commits of bale's own in a range (0.36.0),
+    newest first, as the consumption manifest names them
+    (Consumption.own_commit): what they changed never leaves in a
+    delivery. A merge is never one; a session's work commit is the work."""
+    out = g(repo, "log", "--format=%H%x00%s", "--no-merges", range_spec).stdout
+    found = []
+    for line in out.splitlines():
+        sha, _, subject = line.partition("\0")
+        if sha and consumption.own_commit(subject):
+            found.append((sha, subject))
+    return found
+
+
+def identity_of(author):
+    """(git -c flags, environment) that make a commit carry the author as
+    both author and committer, over any GIT_AUTHOR_* in the environment:
+    the audience sees the author, and nobody else."""
+    name, email = oh.split_author(author)
+    cfg = ["-c", f"user.name={name}", "-c", f"user.email={email}"]
+    env = {"GIT_AUTHOR_NAME": name, "GIT_AUTHOR_EMAIL": email,
+           "GIT_COMMITTER_NAME": name, "GIT_COMMITTER_EMAIL": email}
+    return cfg, env
+
+
+def lines_added_only(worktree, sha, path):
+    """(the lines a commit added to a path, whether it created the path)
+    when adding lines is all the commit did there, nothing removed or
+    changed; None when it did more, or when nothing it did there reads as
+    lines (a binary file). What a pure addition left in a file can be
+    taken out line by line, wherever later work moved it."""
+    diff = g(worktree, "show", "--format=", "--no-color", "-U0", sha, "--", path).stdout
+    added, created, in_hunk = [], False, False
+    for line in diff.splitlines():
+        if line.startswith("@@"):
+            in_hunk = True
+            continue
+        if not in_hunk or line.startswith("\\"):
+            # The file header (and the no-newline marker): "+++ " there is
+            # a header line, inside a hunk an added line is content.
+            created = created or line.startswith("new file")
+            continue
+        if line.startswith("+"):
+            added.append(line[1:])
+        elif line.startswith("-"):
+            return None
+    return (added, created) if added else None
+
+
+def take_out_own(worktree, own, author):
+    """In a worktree at the workbench's tip, undo what each of bale's own
+    commits changed (0.36.0): git revert, newest first, each in a
+    temporary commit of its own that never leaves (so the next is undone
+    on the result of the one before), and the squash is made from the
+    result. A line bale added that later work already took out is simply
+    gone (the revert's three-way merge sees both sides agree). Where
+    later work on the workbench touches the same lines, the revert
+    conflicts; when all bale's commit did to that file was add lines,
+    those lines are taken out of the workbench's version one by one
+    (lines_added_only), and the file is deleted when nothing is left of
+    one bale created; anything else refuses by name, since what bale's
+    own commits changed must stay out and the office does not guess
+    around a conflict. Returns (the cleaned tip's sha, what was taken
+    out: one dict per commit with its sha, subject, files and how)."""
+    cfg, env = identity_of(author)
+    taken = []
+    for sha, subject in own:
+        files = g(worktree, "diff-tree", "--root", "-r", "--no-commit-id", "--name-only", sha).stdout.split()
+        how = "undone"
+        reverted = g(worktree, "revert", "--no-commit", sha, check=False, env=env)
+        if reverted.returncode != 0:
+            conflicted = g(worktree, "diff", "--name-only", "--diff-filter=U", check=False).stdout.split()
+            if not conflicted:
+                g(worktree, "revert", "--abort", check=False)
+                raise DeliverError([f"what bale's own commit {sha[:12]} ({subject}) changed could not be undone for the "
+                                    f"delivery: git revert exit {reverted.returncode}: {ohost._last_words(reverted.stderr)}",
+                                    "nothing was pushed, and the delivery was not made"])
+            by_line = []
+            for path in conflicted:
+                pure = lines_added_only(worktree, sha, path)
+                if pure is None:
+                    g(worktree, "revert", "--abort", check=False)
+                    raise DeliverError([f"what bale's own commit {sha[:12]} ({subject}) changed in {path} cannot be taken "
+                                        "out of the delivery: the workbench branch's later work touches the same lines, "
+                                        "and that commit did more there than add lines, so the office will not guess "
+                                        "which lines are bale's",
+                                        f"undo its change to {path} by hand on the workbench branch (a commit of your "
+                                        "own, which the next delivery reads as the work's), and deliver again; nothing "
+                                        "was pushed"])
+                added, created = pure
+                current = g(worktree, "show", f"HEAD:{path}").stdout
+                kept = current.splitlines()
+                for line in added:
+                    if line in kept:
+                        del kept[len(kept) - 1 - kept[::-1].index(line)]
+                if not kept and created:
+                    g(worktree, "rm", "-q", "-f", "--", path)
+                else:
+                    text = "\n".join(kept) + ("\n" if kept and current.endswith("\n") else "")
+                    (pathlib.Path(worktree) / path).write_text(text, encoding="utf-8")
+                    g(worktree, "add", "--", path)
+                by_line.append(path)
+            g(worktree, "revert", "--quit", check=False)
+            how = (f"its lines taken out of {', '.join(by_line)} one by one, since later work on the workbench "
+                   "touches the same place")
+        if g(worktree, "diff", "--cached", "--quiet", "HEAD", check=False).returncode == 0:
+            how = "nothing left to undo: later work on the workbench had already taken it out"
+        else:
+            g(worktree, *cfg, "commit", "-q", "-m", f"office deliver: what {sha[:12]} changed, taken out", env=env)
+        taken.append({"sha": sha, "subject": subject, "files": files, "how": how})
+        debug(f"bale's own commit {sha[:12]} ({subject}): {how}")
+    return g(worktree, "rev-parse", "HEAD").stdout.strip(), taken
+
+
+def own_lines(taken):
+    """What the plan says of each commit of bale's own it took out, one
+    line each: its sha, subject and files, and how when the plain revert
+    was not the whole of it."""
+    return [f"{t['sha'][:12]} {t['subject']} ({', '.join(t['files']) or 'no file'})"
+            + ("" if t["how"] == "undone" else f": {t['how']}") for t in taken]
+
+
 def mirror_here(prefix="office-deliver-"):
     """A temporary bare repo on this machine, the mirror a hosted
     project's delivery is built in."""
@@ -429,7 +555,8 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
     """Everything a delivery needs before the one question, written as a
     dict for run(): the project and its audience, author and base; the
     sessions covered and whose folders they belong to; the words; the
-    worktree with the squash staged; the diff's stat; the letterhead
+    worktree with the squash staged, what bale's own commits changed taken
+    out of it (own, own_lines; 0.36.0); the diff's stat; the letterhead
     check's hits. Raises DeliverError when it cannot go on, having
     removed what it made."""
     import shlex
@@ -645,13 +772,26 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             raise DeliverError([f"the landed work since {since_why} ({commits} commit(s)) carries none of {rel}'s applied "
                                 f"sessions ({', '.join(folder_sids)}); its sessions are not on the workbench branch's "
                                 "history since the base"])
-        # 7. The worktree at the audience's tip, the landed work squashed on.
+        # 7. The worktree at the audience's tip, the landed work squashed
+        # on, less what bale's own commits in the range changed (0.36.0):
+        # those are undone on the workbench's tip first, in temporary
+        # commits made in the worktree and never pushed, and the squash
+        # takes the result. A commit of bale's own that cannot be undone
+        # refuses the delivery by name (take_out_own).
         start = REF_BRANCH if continuing else REF_BASE
         start_sha = g(repo, "rev-parse", start).stdout.strip()
         wt_root = pathlib.Path(tempfile.mkdtemp(prefix="office-deliver-wt-")) if not place.hosted else pathlib.Path(temp_dir)
         worktree = wt_root / "worktree"
         g(repo, "worktree", "add", "-q", "--detach", str(worktree), start)
-        merged = g(worktree, "merge", "--squash", "--no-commit", REF_WORKBENCH, check=False, timeout=ohost.TRANSFER_TIMEOUT)
+        own = own_commits(consumption, repo, range_spec)
+        squashed, taken = REF_WORKBENCH, []
+        if own:
+            log(f"taking what {len(own)} commit(s) of bale's own changed out of the delivery: "
+                + "; ".join(f"{sha[:12]} {subject}" for sha, subject in own))
+            g(worktree, "checkout", "-q", "--detach", REF_WORKBENCH)
+            squashed, taken = take_out_own(worktree, own, author)
+            g(worktree, "checkout", "-q", "--detach", start_sha)
+        merged = g(worktree, "merge", "--squash", "--no-commit", squashed, check=False, timeout=ohost.TRANSFER_TIMEOUT)
         if merged.returncode != 0:
             conflicts = g(worktree, "diff", "--name-only", "--diff-filter=U", check=False).stdout.split()
             raise DeliverError([f"the landed work does not go onto {audience}'s {branch if continuing else base} as it "
@@ -671,11 +811,15 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
         # and the three characters (0.26.0). The words are what of
         # delivery.md leaves (0.35.0, delivery_words): the page's heading
         # and office land's filing note stay in the office, so a page
-        # office land filed is never refused for a line of its own.
+        # office land filed is never refused for a line of its own. The
+        # files taken out of the index above are still on the worktree's
+        # disk, so they are named never read (0.36.0): a bale path is one
+        # of the letterhead's marks now, and bale.toml names its own.
         try:
             rules = office_rules(office_root)
             words_text, unread = delivery_words(delivery_md)
-            hits, told = olh.check(str(worktree), rules, words_text=[words_text], template_rev=start_sha)
+            hits, told = olh.check(str(worktree), rules, words_text=[words_text], never=NEVER_DELIVERED,
+                                   template_rev=start_sha)
         except (olh.CheckError, OSError) as exc:
             raise DeliverError([f"the letterhead check could not run: {exc}"])
         if unread:
@@ -689,6 +833,7 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             "workbench": workbench, "since": since, "since_why": since_why, "commits": int(commits or 0),
             "sessions": mine, "others": others, "folder_sessions": folder_sids, "words": words,
             "others_lines": [f"{s} ({', '.join(f)})" for s, f in others.items()],
+            "own": taken, "own_lines": own_lines(taken),
             "stat": shown_stat, "hits": olh.render(hits), "check_told": told, "guard": guard_lines,
             "delivery_md": str(delivery_md), "office_root": str(office_root), "start": start_sha,
             "author_told": author_told, "commits_shown": [],
@@ -784,12 +929,9 @@ def commit_words(worktree, words, author, now=None):
     commit_dates (author and committer date alike). Returns the commits'
     shas, oldest first."""
     import tempfile
-    name, email = oh.split_author(author)
     # Both halves of the identity, and over any GIT_AUTHOR_* in the
     # environment: the audience sees the author, and nobody else.
-    cfg = ["-c", f"user.name={name}", "-c", f"user.email={email}"]
-    identity = {"GIT_AUTHOR_NAME": name, "GIT_AUTHOR_EMAIL": email,
-                "GIT_COMMITTER_NAME": name, "GIT_COMMITTER_EMAIL": email}
+    cfg, identity = identity_of(author)
     dates = commit_dates(len(words["commits"]), now)
     shas = []
     for n, c in enumerate(words["commits"]):

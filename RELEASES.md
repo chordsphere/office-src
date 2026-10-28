@@ -4,6 +4,76 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.36.0
+
+Additive: no migration, nothing to do in any office. Delivering a work
+office's folder 6 on 2026-10-28, bale's own commit `bale: ignore .bale/`
+(1ee6bc7: `.bale/` added to `.gitignore` where bale was first set up in
+the clone) rode in beside the session's work, and the letterhead did not
+refuse it. `office deliver` squashed the whole workbench range and took
+only bale's names out of the index, so what a bale commit changed in a
+file the clone tracks left with the work; and a bale path was not among
+the letterhead's marks. Deliver promises no bale commit leaves, and now
+keeps it in content as well as in name, two said ways.
+
+What bale's own commits changed stays out. Before the squash, the
+commits of bale's own in the delivered range are undone on the
+workbench's tip: `git revert`, newest first, each in a temporary commit
+made in the worktree and never pushed, and the squash takes the result.
+Bale's own commits are the ones bale makes for itself with no session's
+work in them, as share/bale-consumption.toml declares them
+(`[surfaces.commits] own`, `bale: ` by its start, and the sweeps the
+`subjects` table already names; `Consumption.own_commit`); a session's
+`[bale SID]` work commit and its `Merge bale SID` landing are the work,
+never bale's own. The plan names each one under `taken out:` (its sha,
+subject and files), and `office deliver` logs them as it starts. Three
+shapes the revert meets: a line of bale's that later work on the
+workbench already took out is simply gone (the three-way merge sees both
+sides agree); later work on the same lines conflicts, and when adding
+lines was all bale did to that file, bale's lines are taken out of the
+workbench's version one by one, the file deleted when nothing is left of
+one bale created, and the plan says so; anything else, a bale commit that
+removed or changed lines that later work also touches, refuses the
+delivery by name with the remedy (undo its change by hand on the
+workbench branch, and deliver again), with nothing pushed
+(lib/office_deliver.py `own_commits`, `take_out_own`,
+`lines_added_only`, `plan` step 7). A hosted project's bale commits
+come here in the bundle as before and are undone in the mirror: still
+three connections.
+
+A bale path is one of the letterhead's marks. `.bale/` and the files
+named after it (`.bale-bundle`, `.bale-manifest.json`), `bale.toml` and
+`.baleignore` join share/letterhead.toml's marks, so a line that leaves
+naming one refuses a delivery whatever put it there: the backstop for a
+bale line that reaches the squash some other way (a session's own work
+adding it, say, which is not bale's commit). lib/office_host.py's
+EXCLUDE_LINES and the marks are held to one list by the suite; bale's
+record directory is a name already. The files deliver takes out of the
+index stay on the worktree's disk, so the check is now told never to
+read them (`never=NEVER_DELIVERED`), and a tracked bale.toml naming
+bale's directory refuses nothing; the check says `N file(s) of bale's
+never read` when there are any.
+
+The already delivered branch of folder 6 keeps the `.bale/` line it was
+given: this release changes what leaves from now on and rewrites nothing
+on an audience. The doctrine's section 2 bullet and section 7 paragraph,
+README's deliver summary, details and letterhead paragraph, the layout
+rows, `office deliver --help` and `office letterhead check --help` say
+it. The doctrine's core was one line over its reading pin (301) since
+0.34.0; two ragged paragraphs and the section 2 bullet are rewrapped,
+content unchanged, and the core reads in 299 lines again.
+
+Tests: tests/test_bale_own_commits.py (15 tests in five classes): the
+shapes against the probe's captured subjects, the marks against
+EXCLUDE_LINES and plain words, the delivery with the housekeeping commit
+in the range (gone and named; a line the audience's file already has; a
+line already taken out by hand; later work on the same lines, one by one,
+in both of git's conflict shapes; a commit that did more, refused by
+name, nothing pushed; the sweep taken out and a second delivery reading
+only its own range; the backstop on a work commit's `.bale/` line and on
+the words; a tracked bale.toml never read), the same on a host, and the
+record. The suite's `AudienceCase` world is unchanged.
+
 ## 0.35.0
 
 Additive: no migration, nothing to do in any office. A folder whose

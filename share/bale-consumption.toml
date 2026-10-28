@@ -173,10 +173,19 @@ keys = [
 # subjects   kind -> the subject's start, {sid} the session id; work is
 #            the session's own changes, merge its landing, sweep its
 #            telemetry record (applied, closed-read-only, swept_by SID)
+# own        the starts of the subjects bale gives the commits it makes
+#            for itself, with no session in them and nothing of a
+#            session's work: `bale: ignore .bale/` (1ee6bc7 in a work
+#            office's clone, .bale/ added to .gitignore where bale was
+#            first set up) is the one the capture holds, as `bale: `. A
+#            sweep is bale's own too. office deliver takes what these
+#            commits changed out of a delivery (0.36.0), so a commit of
+#            the occupant's never takes the `bale: ` start.
 [surfaces.commits]
 calls = false
 contract = "none: bale's habit as of 0.4.45 (a slip for bale-src asks for a declared shape or a dossier key)"
 subjects = { work = "[bale {sid}] ", merge = "Merge bale {sid}", sweep = "[bale sweep {sid}] " }
+own = ["bale: "]
 
 # The two surfaces that make something, run only by office start when the
 # occupant asks (the office is the occupant's hands at the terminal; it

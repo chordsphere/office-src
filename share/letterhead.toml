@@ -19,7 +19,13 @@
 #            that leaves as the occupant's own
 # phrasing   tell-tale lines an assistant writes and a person does not
 # marks      bale's own marks: its commit subjects, its tag and branch
-#            names, and a session id of the form YYYY-MM-DD-slug-NNN
+#            names, a session id of the form YYYY-MM-DD-slug-NNN, and the
+#            paths bale makes in a working copy (.bale/ and the files
+#            named after it, bale.toml, .baleignore), which a line that
+#            leaves never names (0.36.0: a .gitignore line bale wrote rode
+#            in a delivery and nothing refused it). lib/office_host.py's
+#            EXCLUDE_LINES is the same list as paths; the suite holds the
+#            two together. bale's record directory is already a name.
 #
 # One more list is not a pattern list: [characters], each a character by
 # its name, refused in every office that has a letterhead (letterhead/ in
@@ -74,6 +80,9 @@ patterns = [
   "bale sweep",
   "\\bbale/[0-9]{4}-[0-9]{2}-[0-9]{2}-",
   "\\b[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{3}\\b",
+  "\\.bale\\b",          # .bale/, and the files named after it (.bale-bundle, .bale-manifest.json)
+  "\\.baleignore\\b",
+  "\\bbale\\.toml\\b",
 ]
 
 [characters]

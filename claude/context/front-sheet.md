@@ -234,6 +234,29 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.36.0 (session 2026-10-28-office-deliver-squashes-the-content-of-004):
+  no bale commit leaves a delivery in content any more than in name.
+  Delivering a work office's folder 6, bale's `bale: ignore .bale/`
+  commit (1ee6bc7, `.bale/` added to `.gitignore`) rode in beside the
+  session's work: deliver squashed the whole range and only took bale's
+  names out of the index, and a bale path was no mark (found 2026-10-28).
+  - What bale's own commits changed is taken out before the squash: the
+    commits bale makes for itself (`bale: ...` by its start, declared in
+    share/bale-consumption.toml `[surfaces.commits] own`, and its sweeps;
+    never a session's work commit or its merge) are undone on the
+    workbench's tip with `git revert`, newest first, in temporary commits
+    that never leave, each named in the plan (`taken out:`). A line later
+    work already took out is simply gone; later work on the same lines
+    takes bale's lines out one by one when adding lines was all bale did
+    there, said so; anything else refuses by name with the remedy
+    (lib/office_deliver.py `own_commits`, `take_out_own`,
+    `lines_added_only`; lib/office_bale.py `Consumption.own_commit`).
+  - A bale path (`.bale/` and its files, `bale.toml`, `.baleignore`) is
+    one of the letterhead's marks (share/letterhead.toml), the backstop
+    for a bale line that reaches the squash some other way; the files
+    deliver takes out of the index are named never read to the check.
+  - Additive; the doctrine's core rewrapped back under its reading pin.
+    tests/test_bale_own_commits.py.
 - 0.35.0 (session 2026-10-28-office-src-office-land-files-delivery-md-003):
   a delivery.md that `office land` filed delivers as it stands. Land
   filed the page under a comment naming the session it came from, a

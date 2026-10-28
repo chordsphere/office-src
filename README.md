@@ -399,8 +399,9 @@ A project's workbench clone is where bale lands, and nobody reviews it.
 `office deliver` carries a folder's landed work to the audience's git
 host as a branch of curated commits in your words, the folder's
 `delivery.md`, made from the audience's base, holding none of bale's
-commits, merges, tags, branches or files; it shows what leaves and asks
-once. A branch the audience already has that the folder never delivered
+commits, merges, tags, branches or files, and nothing a commit of bale's
+own changed (0.36.0: what `bale: ignore .bale/` put in `.gitignore` stays
+on the workbench); it shows what leaves and asks once. A branch the audience already has that the folder never delivered
 to, a pull request opened by hand, is adopted when you say so (`--adopt`,
 or yes on a terminal; 0.34.0), so a review's answer lands on the review's
 own branch. `office letterhead check` is the guard it runs first, on its
@@ -1209,10 +1210,28 @@ session applied in that project. In order, each step logged:
   reviewer (the install's templates/delivery.md says the shape; a build
   session writes it and `office land` files it). Missing, deliver stops
   and says what to write where.
-- In a temporary worktree at the audience's tip the landed work is
-  squashed on (`git merge --squash`), the names bale makes are taken out
-  of the index whatever the clone tracks, and the diff and the words go
-  through the letterhead check, the office's letterhead with it (the
+- In a temporary worktree at the audience's tip, what bale's own commits
+  changed is taken out first (0.36.0): the commits bale makes for itself
+  with no session's work in them, its housekeeping `bale: ignore .bale/`
+  and its sweeps (never a session's `[bale SID]` work commit or its
+  landing merge), are undone on the workbench's tip with `git revert`,
+  newest first, each in a temporary commit that never leaves, and the
+  plan names each one (`taken out: ... SHA bale: ignore .bale/
+  (.gitignore)`). A line of bale's that later work already took out is
+  simply gone; where later work touches the same lines and adding lines
+  was all bale did there, bale's lines are taken out one by one and the
+  plan says so; anything else refuses by name, with the remedy (undo
+  bale's change by hand on the workbench branch, and deliver again).
+  Before 0.36.0 the whole range was squashed and only bale's names left
+  the index, so `.bale/` in `.gitignore` rode in a delivery
+  (found 2026-10-28, delivering a work office's folder 6). Then the landed
+  work is squashed on (`git merge --squash`), the names bale makes are
+  taken out of the index whatever the clone tracks (and named never read
+  to the check, since they stay on the worktree's disk), and the diff and
+  the words go through the letterhead check, the office's letterhead
+  with it (a bale path (`.bale/`, `bale.toml`, `.baleignore`) is one of
+  the letterhead's marks since 0.36.0, so a line that leaves naming one
+  refuses the delivery, whatever put it there; the
   dashes and the ellipsis refused by default; the lines of the
   repository's own pull-request template, as the audience's base holds
   them, exempt from the phrasing rule and, since 0.26.0, the three
@@ -1309,8 +1328,10 @@ leaves (above), so on a page filed before 0.35.0 the hand check names the
 filing note's session id where deliver does not. What it refuses is one list in
 the install, share/letterhead.toml: the names of models, vendors and
 products; tell-tale phrasing an assistant writes and a person does not;
-and bale's marks (its commit subjects, `applied/` tags, `bale/` branches
-and session ids); plus, when the office has a letterhead, each
+and bale's marks (its commit subjects, `applied/` tags, `bale/` branches,
+session ids and, since 0.36.0, the paths bale makes in a working copy:
+`.bale/` and the files named after it, `bale.toml`, `.baleignore`); plus,
+when the office has a letterhead, each
 non-blank, non-comment line of `letterhead/forbidden.txt` as a fixed
 string, and the em dash, the en dash and the ellipsis character, refused
 by default with no line needed and each named in a refusal (a line
@@ -1522,14 +1543,14 @@ matches the floor plan.
 | lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after (one `land` call since 0.30.0: the office's record out, bale apply or retry, the outcome) |
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
 | lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives) |
-| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review; since 0.35.0 a folder's delivery.md read as the letterhead reads it at deliver and at land's review alike, the words that leave and nothing of the office's (delivery_words) |
+| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so; since 0.36.0 what bale's own commits changed taken out before the squash, own_commits and take_out_own), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review; since 0.35.0 a folder's delivery.md read as the letterhead reads it at deliver and at land's review alike, the words that leave and nothing of the office's (delivery_words) |
 | lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin); the characters an office's letterhead refuses and lifts, and a repository's pull-request templates |
-| share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks, one list for office letterhead check and the suite's text rules; and the characters an office with a letterhead refuses by default |
+| share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks (its commit subjects, tags, branches, session ids and, since 0.36.0, its paths), one list for office letterhead check and the suite's text rules; and the characters an office with a letterhead refuses by default |
 | doctrine/OFFICE.md | how every office works; it opens with a reading card naming what each kind of session reads, and what a build session reads sits above its PAST THE CORE banner |
 | doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |
 | share/spaces.toml | every space an office can have; the base ones are the default floor plan; a space files itself whole or as a list of paths |
 | share/profile-shape.toml | the profile's required sections |
-| share/bale-consumption.toml | every bale verb, flag and JSON key the office reads or runs, and the bale version they were written against |
+| share/bale-consumption.toml | every bale verb, flag and JSON key the office reads or runs, the shapes of the commits bale makes (a session's, and since 0.36.0 bale's own), and the bale version they were written against |
 | share/verbs.toml | what each verb ships, where it lands, whether a person must be present and what may set it off; a session kind with no declared landing may not run unattended |
 | lib/office_drafting.py | the drafting table: its arrival in an office (the steps take the space they arrive, so the in-tray arrives through them too), the one reader of its pages (blueprints, riders, the agenda, the ledgers, desk moves), the citation grammar's resolver, and what the drafting-table verbs write |
 | lib/office_drop.py | the in-tray: a drop's page, written and read, and its status line's one writer; the in-tray's arrival with the first drop; the unsorted drops office start carries, the desk lists and the Next line reads; the brief office start --drop sends; office status's in-tray line |
