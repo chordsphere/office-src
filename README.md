@@ -1218,7 +1218,16 @@ session applied in that project. In order, each step logged:
   them, exempt from the phrasing rule and, since 0.26.0, the three
   characters, a checklist line whatever its box holds since 0.32.0);
   one hit refuses the delivery,
-  with nothing pushed.
+  with nothing pushed. The words are what of `delivery.md` leaves: its
+  `to:` line and its Commit and Review sections, each hit named at its
+  line of the page. A section runs to the next Commit or Review heading,
+  so a pull-request template's own `## ` headings filled into the Review
+  are its words, read and sent (before 0.35.0 such a heading cut the
+  Review short). The page's heading, the note `office land` files under
+  it and anything else above the first section stay in the office, and
+  deliver says how many such lines it did not read (0.35.0: a page
+  `office land` filed before then names its session in that note, a bale
+  mark, and delivers as it stands; one filed since names none).
 - The words become one commit (several when `delivery.md` has several
   Commit sections, each but the last naming on a `paths:` line what it
   takes), authored and committed as the project's declared `author`
@@ -1294,7 +1303,10 @@ The letterhead check:
     office letterhead check --words desk/14-health-route/delivery.md
 
 It names every line that holds what the letterhead refuses, as
-`file:line: what`, and exits 1 with a hit. What it refuses is one list in
+`file:line: what`, and exits 1 with a hit. `--words` reads a file whole,
+heading and comments too; deliver reads only what of a `delivery.md`
+leaves (above), so on a page filed before 0.35.0 the hand check names the
+filing note's session id where deliver does not. What it refuses is one list in
 the install, share/letterhead.toml: the names of models, vendors and
 products; tell-tale phrasing an assistant writes and a person does not;
 and bale's marks (its commit subjects, `applied/` tags, `bale/` branches
@@ -1359,7 +1371,10 @@ land names the line that files them:
     office sessions fix-login 2026-10-05-fix-login-001 --pages ~/Downloads/response-2026-10-05-fix-login-001.tar.gz
 
 Folders from before 0.17.0 are not rewritten; the pages file into them
-all the same.
+all the same. Each page is filed under a comment saying `office land`
+filed it: the walkthrough's names the session, and since 0.35.0 the
+delivery's names none, since a session id is one of bale's marks and
+`delivery.md` is the page of the words that leave.
 
 ### The projects an office scopes, and what bale records about them
 
@@ -1507,7 +1522,7 @@ matches the floor plan.
 | lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after (one `land` call since 0.30.0: the office's record out, bale apply or retry, the outcome) |
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
 | lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives) |
-| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review |
+| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review; since 0.35.0 a folder's delivery.md read as the letterhead reads it at deliver and at land's review alike, the words that leave and nothing of the office's (delivery_words) |
 | lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin); the characters an office's letterhead refuses and lifts, and a repository's pull-request templates |
 | share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks, one list for office letterhead check and the suite's text rules; and the characters an office with a letterhead refuses by default |
 | doctrine/OFFICE.md | how every office works; it opens with a reading card naming what each kind of session reads, and what a build session reads sits above its PAST THE CORE banner |

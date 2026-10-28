@@ -4,6 +4,47 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.35.0
+
+Additive: no migration, nothing to do in any office. A folder whose
+delivery.md `office land` filed could not be delivered without a hand
+edit: land wrote a comment under the page's heading naming the session
+the page came from, a session id is one of bale's marks, and `office
+deliver`'s letterhead check read the page whole, so it refused that line
+(found 2026-10-27, delivering a folder whose words came from a build
+session's notes). What you see changes in three said ways.
+
+`office deliver` reads the words that leave. The letterhead check reads
+what of delivery.md becomes the delivery: its `to:` line and its Commit
+and Review sections, each hit still named at its own line of the page.
+The page's heading, the comment land files under it and anything else
+above the first Commit or Review stay in the office and are not read,
+and deliver says how many such lines it left (a line under "letterhead
+on the diff and the words: clean"). `office land`'s review
+reads the page the same way, so it never names a line deliver would not
+refuse. A page filed before this release delivers as it stands, its
+comment's session id and all, with no edit and no migration
+(lib/office_helper.py `delivery_leaving_text`; lib/office_deliver.py
+`delivery_words`, `plan`, `land_review`).
+
+A filled pull-request template's headings stay in the Review. A
+delivery.md section now runs to the next Commit or Review heading, so a
+template's own `## Summary` (or any `## ` heading of another name) filled
+into the Review is part of the review's body. Before, such a heading
+ended the Review: the review's body stopped short of it and the
+template's lines never left, though the letterhead read them. The words
+deliver sends and the words the letterhead reads now come from one
+reading of the page (lib/office_helper.py `delivery_sections`,
+`parse_delivery`).
+
+The page `office land` files names no session. delivery.md's comment is
+now "filed by office land from the build session's notes.md", so the
+page holds no word of land's own that any letterhead check would refuse,
+`office letterhead check --words` by hand included; walkthrough.md, which
+stays in the office, still names its session. The folder's Sessions
+section and the office's commit name it as before
+(lib/office_helper.py `filing_note`, `file_pages`).
+
 ## 0.34.0
 
 Additive: no migration, nothing to do in any office. This release fixes

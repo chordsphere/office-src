@@ -234,6 +234,32 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.35.0 (session 2026-10-28-office-src-office-land-files-delivery-md-003):
+  a delivery.md that `office land` filed delivers as it stands. Land
+  filed the page under a comment naming the session it came from, a
+  session id is one of bale's marks, and deliver's letterhead check read
+  the page whole, so a landed folder could not deliver without a hand
+  edit (found 2026-10-27, delivering a folder).
+  - `office deliver` reads the words that leave: delivery.md's `to:` line
+    and its Commit and Review sections, each hit named at its own line of
+    the page; the heading, land's comment and anything else above the
+    first Commit or Review stay in the office, unread, and deliver says
+    how many such lines it left. `office land`'s review reads the page
+    the same way (lib/office_helper.py `delivery_leaving_text`,
+    lib/office_deliver.py `delivery_words`).
+  - A delivery.md section runs to the next Commit or Review heading, so a
+    filled pull-request template's own `## ` headings stay in the Review
+    and its lines leave; before, such a heading cut the Review short and
+    its lines never left (lib/office_helper.py
+    `delivery_sections`, shared by `parse_delivery`).
+  - The comment land files on delivery.md names no session ("filed by
+    office land from the build session's notes.md"); walkthrough.md's
+    still names it (lib/office_helper.py `filing_note`).
+  - A page filed before 0.35.0 delivers with its old comment as it is;
+    `office letterhead check --words` on it by hand still names the
+    comment's session id, since `--words` reads a file whole.
+  - Additive: no migration. tests/test_delivery_words.py holds the
+    release's tests.
 - 0.34.0 (session 2026-10-28-office-src-fix-three-gaps-m10-hit-on-002):
   the three gaps the M10 walkthrough hit on 2026-10-27, when a planner
   sitting answered a review of a pull request on a hosted project.

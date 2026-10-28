@@ -703,7 +703,10 @@ front sheet of any handbook chapter the change touched) is brought up to
 date by an office step, not by the project session writing into the
 office: `office land` files the folder's walkthrough.md and delivery.md
 from the Walkthrough and Delivery sections of the response's notes.md
-(principle 6), when it found the response on the occupant's machine;
+(principle 6), each under a comment saying `office land` filed it, the
+walkthrough's naming the session and the delivery's naming none, since
+a session id is a bale mark the letterhead refuses (0.35.0), when it
+found the response on the occupant's machine;
 `office sessions FOLDER SID --pages RESPONSE` files them from a response
 bale found on its own. Both then file four more sections of any
 session's notes.md, in this order, each only when present and each said
@@ -760,7 +763,13 @@ folders they belong to (sessions of other folders ride in the same
 delivery, said, and the occupant may stop there), runs the letterhead
 check on the diff and the words (the repository's pull-request template
 read from the audience's base, its lines exempt from the phrasing rule
-and the three characters),
+and the three characters; the words are what of delivery.md leaves, its
+`to:` line and its Commit and Review sections, each read at its own line
+of the page, a section running to the next Commit or Review heading so
+that a filled pull-request template's own headings are the review's
+words, while the page's heading, the note `office land` files under it
+and anything else above the first section stay in the office, unread and
+said so, 0.35.0),
 makes the commits, authored and committed as the project's declared
 author, and shows each one whole as it will be pushed (its subject and
 body, author and committer, its date, the files it touches and the
