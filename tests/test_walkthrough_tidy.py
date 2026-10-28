@@ -20,7 +20,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from test_office import REPO  # noqa: E402
+from test_office import REPO, h  # noqa: E402
 
 # The development record's directory, spelled so this file names no model.
 RECORD_DIR = "cla" + "ude"
@@ -87,8 +87,9 @@ class TestTheReleaseNoteReadsWhole(unittest.TestCase):
 
 class TestTheRecord(unittest.TestCase):
     def test_the_release_is_recorded(self):
-        version = (REPO / "VERSION").read_text().strip()
-        self.assertEqual(version, "0.32.0")
+        # 0.32.0 or a later release (0.33.0): a pin on the exact version
+        # fails every release after this one, as test_probe's says.
+        self.assertGreaterEqual(h.compare_versions((REPO / "VERSION").read_text().strip(), "0.32.0"), 0)
         self.assertIn("## 0.32.0", (REPO / "RELEASES.md").read_text())
         self.assertIn(f"0.32.0 (session {SID})", (REPO / RECORD_DIR / "context" / "front-sheet.md").read_text())
         doctrine = flat((REPO / "doctrine" / "OFFICE.md").read_text())

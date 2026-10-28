@@ -13,10 +13,12 @@ hands at the terminal (doctrine section 1), so office probe runs it:
          or its purpose header does not say it is read-only), find where
          the folder's project lives (its place: a directory here, or a
          path through a host's shell; the office root for the office
-         itself) and the folder's session open there, and check nothing
-         is already at probe-output/ there. One reach of a host, and the
-         plan is a JSON line for bin/office, which shows the header and
-         asks once before anything runs.
+         itself) and the folder's session open there, or its read-only
+         sitting open in the office (0.33.0: a sitting's probe of a
+         project's repo runs there, under the sitting's id), and check
+         nothing is already at probe-output/ there. One reach of a host,
+         and the plan is a JSON line for bin/office, which shows the
+         header and asks once before anything runs.
   run    run the block there, stdin closed (office_host.run_probe), its
          output to this terminal whole; read the block back out of it
          (the lines between the sentinels, and whether the integrity
@@ -222,15 +224,52 @@ def where_it_runs(office_root, project):
     return place, project, words
 
 
+def open_sittings(office_root, recorded, rd):
+    """The sessions in `recorded` open in the office's own registry as
+    read-only sittings (0.33.0), oldest first: [] when the office has no
+    registry. A sitting is open in the office, never in a project, so a
+    probe it asks for a project's repo is found here. Raises BaleError when
+    the registry cannot be read."""
+    import office_bale as ob
+    registry = ob.office_registry(office_root)
+    if registry is None or not recorded:
+        return []
+    return [s for s, read_only in rd.open_sessions(registry) if read_only and s in recorded]
+
+
+def choose_session(candidates, sittings, slug, sid=None):
+    """The session a probe is for, from the folder's recorded sessions open
+    where it runs (candidates) and its read-only sittings open in the
+    office (sittings, 0.33.0): --sid when given and one of them (None when
+    it is not, for the caller to refuse); else the one the block's slug
+    names; else today's rule for the project's sessions, the one open there
+    when there is one; else the one sitting when there is no session there.
+    Raises AskSid with them all when nothing says which."""
+    pool = candidates + [s for s in sittings if s not in candidates]
+    if sid is not None:
+        return sid if sid in pool else None
+    by_slug = [s for s in pool if slug and re.fullmatch(rf"\d{{4}}-\d{{2}}-\d{{2}}-{re.escape(slug)}-\d{{3}}", s)]
+    if len(by_slug) == 1:
+        return by_slug[0]
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates and len(sittings) == 1:
+        return sittings[0]
+    raise AskSid(pool, sittings=[s for s in pool if s in sittings and s not in candidates])
+
+
 def plan(office_root, folder_rel, project, block_file, sid=None, rd=None):
     """Everything office probe settles before it asks: the block read, where
     it runs, and the session it is for. The session is the folder's
     recorded session open where the project lives (bale status there);
     with several, the one the block's slug names, else --sid; with none,
     the probe is refused, since a probe is a session's and the office keeps
-    its output under that session. Returns the plan, or raises ProbeError;
-    raises AskSid with the candidates when several are open and nothing
-    says which."""
+    its output under that session. A read-only sitting the folder records,
+    open in the office's own registry, is a session a probe of a project
+    can be for too (0.33.0): the block runs in the project's repo, under
+    the sitting's id, and its output is kept in the sitting's out tray.
+    Returns the plan, or raises ProbeError; raises AskSid with the
+    candidates when several are open and nothing says which."""
     import office_bale as ob
     import office_host as ohost
     rd = rd or ob.Reader()
@@ -266,37 +305,45 @@ def plan(office_root, folder_rel, project, block_file, sid=None, rd=None):
     except ohost.HostError as exc:
         raise ProbeError([f"{label}: {exc}; nothing ran"])
     candidates = [s for s in recorded if s in open_here]
-    if sid is not None:
-        if sid not in candidates:
-            raise ProbeError([f"--sid {sid}: not a session {name} records that is open {words} (open there and "
-                              f"recorded: {', '.join(candidates) or 'none'})"])
-        chosen = sid
-    elif len(candidates) == 1:
-        chosen = candidates[0]
-    elif not candidates:
+    # The folder's read-only sittings open in the office (0.33.0), for a
+    # probe of a project: read only when the folder records a session that
+    # is not open there, so a folder whose sessions are all the project's
+    # costs no read of the office's registry.
+    sittings = []
+    if label != OFFICE and any(s not in open_here for s in recorded):
+        try:
+            sittings = open_sittings(office_root, [s for s in recorded if s not in open_here], rd)
+        except ob.BaleError as exc:
+            raise ProbeError([f"the office: its open sittings could not be read, so the office cannot say whether "
+                              f"this probe is for one of {name}'s: {exc}; nothing ran"])
+    pool = candidates + [s for s in sittings if s not in candidates]
+    if not pool and sid is None:
         raise ProbeError([f"{name} records no session open {words} (it records: {', '.join(recorded) or 'none'}; "
-                          f"open there: {', '.join(open_here) or 'none'}), and a probe is a session's: its output "
-                          "is kept under that session's out tray. Nothing ran; a folder's session goes out "
-                          "through office start"])
-    else:
-        by_slug = [s for s in candidates if block["slug"] and re.fullmatch(
-            rf"\d{{4}}-\d{{2}}-\d{{2}}-{re.escape(block['slug'])}-\d{{3}}", s)]
-        if len(by_slug) == 1:
-            chosen = by_slug[0]
-        else:
-            raise AskSid(candidates)
+                          f"open there: {', '.join(open_here) or 'none'}; and no read-only sitting of its is open "
+                          "in the office), and a probe is a session's: its output is kept under that session's "
+                          "out tray. Nothing ran; a folder's session goes out through office start"])
+    # Raises AskSid, for the caller to ask, when several could be meant.
+    chosen = choose_session(candidates, sittings, block["slug"], sid)
+    if chosen is None:
+        raise ProbeError([f"--sid {sid}: not a session {name} records that is open {words} or a read-only sitting "
+                          f"of its open in the office (open and recorded: {', '.join(pool) or 'none'})"])
     if there_already:
         raise ProbeError([f"{OUTPUT_DIR}/ is already {words}, from an earlier run, so a fallback probe's output "
                           f"could not be told from it; nothing ran. Carry or remove it first (it is not the repo's)"])
     return {"folder": folder_rel, "name": name, "sid": chosen, "project": label, "where": words,
             "place": place_record(place), "header": block["header"], "slug": block["slug"],
-            "lines": block["text"].count("\n")}
+            "lines": block["text"].count("\n"), "sitting": chosen in sittings and chosen not in candidates}
 
 
 class AskSid(Exception):
-    def __init__(self, candidates):
+    """Several sessions a probe could be for, and nothing says which: the
+    candidates, and which of them are read-only sittings open in the
+    office (0.33.0), so the question can say so."""
+
+    def __init__(self, candidates, sittings=()):
         super().__init__(", ".join(candidates))
         self.candidates = candidates
+        self.sittings = list(sittings)
 
 
 # --- the run ------------------------------------------------------------------------------
@@ -387,8 +434,9 @@ def main(argv=None):
             try:
                 print(json.dumps(plan(a.office, a.folder, a.project, a.block, a.sid)))
             except AskSid as exc:
+                # One per line: the id, a tab, and its words for the key.
                 for s in exc.candidates:
-                    print(s)
+                    print(f"{s}\t{s}, a read-only sitting open in the office" if s in exc.sittings else f"{s}\t{s}")
                 return EXIT_ASK_SID
             return 0
         if a.cmd == "run":

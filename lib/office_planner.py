@@ -340,7 +340,10 @@ def render_brief(words, concerns, folder, folder_words, day, rides, left, why=""
     """The sitting's brief, from the install's templates/sitting-brief.md:
     his words verbatim as a quoted block, what they concern and how that
     was found, and what rides, one line each, with anything left out for
-    bale's caps said after it."""
+    bale's caps said after it; and, in its opening, the doctrine it goes
+    out under (0.33.0: office_bale.doctrine_brief_words, the line left out,
+    and said, when the install's OFFICE.md cannot be read)."""
+    import office_bale as ob
     import office_drop as odrop
     said = odrop.normalize_text(words).strip("\n").splitlines()
     quoted = "\n".join(f"> {l.rstrip()}" if l.strip() else ">" for l in said)
@@ -350,7 +353,7 @@ def render_brief(words, concerns, folder, folder_words, day, rides, left, why=""
     return oh.render_template(template, {
         "day": day, "folder": folder, "folder_words": folder_words, "words": quoted,
         "concerns": concern_words(concerns) + (f" ({why})" if why else ""),
-        "rides": "\n".join(ride_lines),
+        "rides": "\n".join(ride_lines), "doctrine": ob.doctrine_brief_words(folder=True),
     })
 
 

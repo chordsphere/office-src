@@ -829,6 +829,7 @@ class TestStartOnATerminal(StartCase):
                                    self.root, self.e.env, [
             (b"(office start FOLDER):", "2"),
             (b"The job, in your own words", "Write the plan\n"),
+            (b"[keep]: ", ""),  # 0.33.0: the answer is shown whole, and a plain return keeps it
         ])
         self.assertEqual(code, 0, seen)
         md = next(self.root.glob("desk/*-write-the-plan/folder.md")).read_text()
