@@ -1,0 +1,282 @@
+{
+  "record_version": 1,
+  "session_id": "2026-10-28-m10-sitting-fixes-001",
+  "created_at": "2026-10-28T00:48:43+00:00",
+  "attempts": [
+    {
+      "at": "2026-10-28T00:48:43+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib/office_bale.py",
+        "lib/office_helper.py",
+        "lib/office_home.py",
+        "lib/office_meeting.py",
+        "lib/office_planner.py",
+        "lib/office_probe.py",
+        "templates/prep-brief.md",
+        "templates/sitting-brief.md",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-10-28-m10-sitting-fixes-001.log",
+      "bundle": {
+        "stem": "2026-10-27-m10-sitting-fixes",
+        "brief_sha256": "f16e64428ab409c9000040451fbd584112abe696006110da241f758af8847323",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "9a07621ce0559e255d22836dd408aee62372deb8a37cc7a8ae6ae85392e1c54c"
+      },
+      "provenance": {
+        "work_class": "code",
+        "packer": "chordsphere",
+        "packed_at": "2026-10-28T00:48:42+00:00"
+      }
+    },
+    {
+      "at": "2026-10-28T02:24:25+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-10-28-m10-sitting-fixes-001.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "tests/run.sh --fast, with this session's tests": {
+            "value": "pass",
+            "claim_basis": "predicted"
+          },
+          "tests/run.sh, the eight touched modules whole (--slow)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "tests/run.sh --fast, with this session's tests": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "tests/run.sh, the eight touched modules whole (--slow)": {
+            "claim": "pass",
+            "verdict": "skip",
+            "agreement": "n/a"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "bash -n bin/office",
+          "python3 ast parse of the changed modules",
+          "session assertions: exec bit, VERSION, the doctrine hash's bytes, the template lines, the Sessions words, probe --help, the doctrine's sentence",
+          "tests/run.sh --fast, with this session's tests",
+          "tests/run.sh, the eight touched modules whole (--slow)"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib/office_bale.py",
+        "lib/office_helper.py",
+        "lib/office_home.py",
+        "lib/office_meeting.py",
+        "lib/office_planner.py",
+        "lib/office_probe.py",
+        "templates/prep-brief.md",
+        "templates/sitting-brief.md",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib/office_bale.py",
+        "lib/office_helper.py",
+        "lib/office_home.py",
+        "lib/office_meeting.py",
+        "lib/office_planner.py",
+        "lib/office_probe.py",
+        "templates/prep-brief.md",
+        "templates/sitting-brief.md",
+        "tests/test_answer_review.py",
+        "tests/test_desk_verbs.py",
+        "tests/test_founding_door.py",
+        "tests/test_one_door.py",
+        "tests/test_planner_from_words.py",
+        "tests/test_probe.py",
+        "tests/test_start.py",
+        "tests/test_third_trip.py",
+        "tests/test_walkthrough_tidy.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.55",
+            "contract_docs": {
+              "AGENT.md": "31dcdded2a8fd175f7778c2bd1be09688e89e76b8fd4cd62b7646aacfa2782c4",
+              "TARBALL.md": "3037b905ee561af44f27cc83ec45d832feb7d429a98d4e07b4482a518cda6e94",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "a8e5714e51049768e52bb5bc0ede9338db1175e7095d9b2bdd0d314ab3e01078"
+            },
+            "packer": "chordsphere",
+            "work_class": "code",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-10-28T00:48:42+00:00",
+            "base_files": {
+              "README.md": "7ed095370c4a09c70d151f0e8deb2faa87b37af0ce90102a03aa9a8dc6055a6e",
+              "RELEASES.md": "6a0189b011525b25d53d7cdc064bf0547d3e67eacd3ef6883f4d035f311eb15f",
+              "VERSION": "e0ccf7913110f807adecc59be43ce6fb334f82a8a7f70f70fbbba34bf1eeaaf2",
+              "bin/office": "b68c9cefeea540f0a348fe66acf6ab4f4ed2e5252bac47c80a109fff9d467792",
+              "claude/context/front-sheet.md": "4bb50bba214975e41b944755e2aa69b0746f424f24dd6cf7e039d087ec5eb093",
+              "doctrine/OFFICE.md": "dc6a17574ded83a08f9869783e01f9147e30a755f91a047859727efde3cba758",
+              "lib/office_bale.py": "0dcdb5eaa7ae6aefe9d00f4915b59b8cc656e916ef01dfa4d8be51caa846fbfc",
+              "lib/office_helper.py": "bd3488535befecb8c5c20120ecb15d091050c333bba583037130adddac9bd07d",
+              "lib/office_home.py": "2cbfc7c49f777bb4c6100a897f5088a4c6b08a0ec301e98ef27ba585f6abf893",
+              "lib/office_meeting.py": "f7517125e34eaa792e4a0edad401356551c2649f498b2fe8e51486197984553e",
+              "lib/office_planner.py": "52d2b571e180935f3df3295d82d6eb0dda7b14e816e9e4af7e278130b44fef3a",
+              "lib/office_probe.py": "f265a998cef55f8aa615fdfeb78c9901ec8d43fa2eabd981367f7628401fa5af",
+              "templates/prep-brief.md": "327fc83c4def8a28284df7a6c21a415801b6aa5566f66d3e19138beec11501ae",
+              "templates/sitting-brief.md": "7bbdc495677acc149e586be0dbcb3f58599085f988648b062f33d34cfda5a4e7",
+              "tests/fakes/land_bale.py": "732d30ec3f4bf8aeadbf3d208a62d902bc6c043455f16cadc817b1b1e471fa6d",
+              "tests/fakes/pack_bale.py": "fbf35a9c88afa7d9c8d64dbb985e7985476196311911dd05b1fc143fc768d22b",
+              "tests/fakes/replay_bale.py": "f31101e58b28106452c4572b6e38a7642276937076b1f0cc320c9b185c56eea5",
+              "tests/fakes/small_bales.py": "25e74224d580bddfc5a2eb91696d7816c8a4e8f73ea20deb7c9dc2be0422bc4b",
+              "tests/fast-tier.toml": "c4155fe48e1d30e9ef67311794c6ed8f3a95ca6cd769c53eae7229b83bc8a705",
+              "tests/run.sh": "35b3954b5bf5d4e975ba58026bc8c313e11e94f1e97bd5f2140aa963f40829cf",
+              "tests/runner.py": "46930d62b25f6039b0bc877357063bf6cab4f1140bf0a29621c3990d4a66b5e2",
+              "tests/test_audience_line.py": "13d4e927f8b1ee7742fc89a0060cd7a50f1aef8ba5af66ec60305ebb3b504a57",
+              "tests/test_clean_delivery.py": "5c2c39364785ec6582ad3d7343d798aa1f3c3497d117891054f04176ba92b906",
+              "tests/test_desk_verbs.py": "c2ef86128c4c45533ce4a8b192ac2350445d349fd5a4b0da1f4ff4a7382eaa0f",
+              "tests/test_drafting_table.py": "d14930bf0c9c8a01b868ea7c7cdd7df13088765fc42655f25326addc772c4c4c",
+              "tests/test_drop.py": "7ed73e08c58fa70d4a3fa5253bb034f26f215a979002781c1f81cdc75484d889",
+              "tests/test_filed_append_only.py": "9daf033c18db0969190168fb2276dd835c3abd71a56f5bd01d0d6f0edd76d45b",
+              "tests/test_founding_door.py": "8b65f958aecc070bb88fede0c7c27fae82cb1a2c8892c88c665e3ca4359a970a",
+              "tests/test_front_door.py": "be8231e228d56b75b6e790de1def723e6968bbce6958597c8cbfc5fe88fb40c0",
+              "tests/test_home_screen.py": "23e133962371fc2f71ecadadaeb179f6e537975aace5a1d33b94ca29f59744dc",
+              "tests/test_land.py": "a95be3db479dfdf192ec75baea56fa3a6eba34c8e94da2447ace491b5fb7238c",
+              "tests/test_meetings_view.py": "30da684c8dde3cc468963727461946e921c8eb93424cc293426845517f7816f2",
+              "tests/test_office.py": "eda7a43514ca6c7f5a0ac74be9722db285147530086459d85b97d4d897daaedf",
+              "tests/test_one_door.py": "9483a4bab7c1c42a2373e2cb213fb93aee3be8c35beeef61e4a698b989d5428d",
+              "tests/test_out_trip_to_host.py": "291e9e1030ddd6ba84a1a462170049baa45bae72f7e669cd5521284d31a88824",
+              "tests/test_planner_from_words.py": "5955188c1dd272e8442a1eddac35df87ec87d75e589d99a18b447dcb841b720e",
+              "tests/test_probe.py": "37ae03f52490ec441f6f0514af7b6495b794f2f6c9502b1205f591109d69b6d6",
+              "tests/test_project_on_host.py": "aac408a2df6d73d5cdfe098ef50dd5d4d78b66d567d2b0f1d00f3ad85aae68e3",
+              "tests/test_read_side.py": "f69f3a9665e0d5d1e1bd2631d13c6436dbdba35867b1d78b3bfb50b0785fb600",
+              "tests/test_return_trip.py": "315350d82b5d10cb255622b6b9c04de106564af9769c20cf044b82153b9be5e7",
+              "tests/test_second_trip.py": "b2e2972997e49f91ffe15b696357d2a94f94cc38db819e1f6e34e2621bb3dda5",
+              "tests/test_sort.py": "feab3a04c21257f0008e564b65aa50ebbc285d6f5f456494963824f2079b0f28",
+              "tests/test_start.py": "30ac5f8ded386ff5215f23909d251efc56d3740da2cede65ffeda57e17357e86",
+              "tests/test_suite_clock.py": "a772d584614df393680c242e81fbaf8e617624a58afe17fb3196c6698acc5873",
+              "tests/test_third_trip.py": "b7ee76363650aa99edfbe8dabe3923d72556b75fe8c8520680dd4e7d98b94e3f",
+              "tests/test_tidy.py": "4522fe1fa74eca8a3a55a0f71e53468ab0be4d530e6b68199fae61d97660815e",
+              "tests/test_walkthrough_tidy.py": "1e7ef9b7528277a64c4ef164766ce9360fa14b2d2c77b40edb418a4ad0914ce4",
+              "tests/test_watches_digest.py": "bd90d845ff9faf2ae3081fe1b174e2df3df4efc7fd0d9c93989199c6046e924d"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "a blank line in an answer taken in the editor is left out, so an editor answer has the shape a typed one has (flagged in notes.md for ratification)",
+            "only read-only office sittings are stamped; a read-only project session is not a sitting and gets no stamp"
+          ],
+          "judgment_calls": [
+            "the review question adds 'more' (lines after the last) beside keep, redo and a line's number",
+            "the editor needs stdin and stderr to be a terminal, not stdout, and draws on stderr: office start new reads the words inside a command substitution",
+            "the probe's choice: --sid, then a slug naming one, then the one project session (today's rule), then the one sitting, else asked",
+            "the brief's doctrine line is a template field line, so it drops cleanly and is said when OFFICE.md cannot be read",
+            "office status's doctrine: line sits below skew:, keeping the bytecode line's pinned place above built from:",
+            "validation names this session's tests (and one changed terminal test per question kind) after --fast and runs the touched modules whole behind --slow, because --fast's budget covers what is named after it"
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [
+            "claude/context/sittings/ (TestDevelopmentRecord's page pins fail on an unchanged tree without it)",
+            ".gitignore (TestText.test_names_no_model_and_no_office errors on an unchanged tree without it)"
+          ],
+          "compaction_occurred": {
+            "occurred": false,
+            "disclosure_ref": null
+          },
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md META through section 11.2",
+            "README.md (the request's brief)",
+            "TARBALL.md sections 1, 2, 5.1 to 5.5, 7 and 10.1",
+            "tools/craft_response.py (header, usage and its write paths)",
+            "tools/response_lint.py (header and the feedback schema)"
+          ]
+        }
+      },
+      "log": ".bale/logs/2026-10-28-m10-sitting-fixes-001.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-10-28T02:24:25+00:00",
+  "outcome": "applied"
+}
