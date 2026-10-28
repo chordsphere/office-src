@@ -234,6 +234,24 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.32.0 (session 2026-10-27-m10-tidy-002): the M10 tidy, the first of
+  eight sessions the planning sitting of 2026-10-27 drew from the M10
+  walkthrough: four small things, none depending on another.
+  - A ticked box in a repository's pull-request template no longer
+    refuses a delivery: a checklist line is the template's whatever its
+    box holds (`- [x]`, `- [X]` and `- [ ]` read as one), while words
+    added after the box are held as before.
+  - A delivery of several commits dates them a second apart, oldest
+    first, so the audience's history never shows a burst made in one
+    second; deliver's question shows each commit's date and says in one
+    line how many leave, since one per delivery is the usual shape.
+  - `office drop` asks once when the clipboard holds one office command
+    line instead of a message (no by default, `--anyway` the twin); from
+    a file or stdin it drops the line as given and says so.
+  - RELEASES.md's 0.31.0 entry reads whole: its two placeholders say
+    test_tidy.py's 16 tests and the suite's detached run, 958 tests in
+    245 seconds.
+  - Additive: no migration.
 - 0.31.0 (session 2026-10-26-office-tidy-001): the tidy after the
   front-door arc, the fifth session after it: eight small items the
   workers proposed and the queue carried. What you see changes in four

@@ -1814,12 +1814,18 @@ dropx() { pylib "$DROP_PY" "$@"; }
 
 usage_drop() {
   cat <<'USAGE'
-usage: office drop [FILE | -] [--project TEXT]
+usage: office drop [FILE | -] [--project TEXT] [--anyway]
 Drops a message or a thread in the in-tray: one new page,
 in-tray/DATE-SLUG.md, committed on its own, waiting to be sorted. The text
 comes from FILE, from stdin (-, or anything piped), or, on a terminal with
 neither, from the clipboard (machine.toml's paste_command, asked once). It
-says what it took: the first line and how many lines. On a terminal, when
+says what it took: the first line and how many lines. A text that is one
+office command line (one non-blank line beginning `office `) is usually
+the clipboard holding the command just copied rather than the message: from
+the clipboard it asks once, before writing, whether to drop it anyway (no
+by default; --anyway is the flag twin, and a yes writes it); from a file or
+stdin it is dropped as given, and the line saying what it took says it is
+an office command line. On a terminal, when
 the office scopes a project, it asks one question, the project: each of
 the office's projects has a key, any words are taken, and a plain return
 leaves it empty (--project is the flag twin). Piped, it asks nothing. It never refuses a
@@ -1833,19 +1839,35 @@ Examples:
   office drop --project alpha                  (the clipboard, for alpha)
   office drop thread.txt --project "the website"
   pbpaste | office drop - --project alpha
+  office drop --anyway                         (the clipboard, even an office command line)
 USAGE
 }
 
+# drop_office_command FILE: the text's one line, trimmed, when the text is
+# one office command line (0.32.0): exactly one non-blank line, beginning
+# with the office's own verb and a space. Exit 1, printing nothing, for
+# any other text.
+drop_office_command() {
+  awk '/[^[:space:]]/ { n++; line = $0 }
+       END {
+         if (n != 1) exit 1
+         sub(/^[[:space:]]+/, "", line); sub(/[[:space:]]+$/, "", line)
+         if (line !~ /^office[ \t]/) exit 1
+         print line
+       }' "$1"
+}
+
 cmd_drop() {
-  local file="" project="" project_given=0 root tz day now tmp text_file via took lines first slug out page rc
-  local paths=() names
+  local file="" project="" project_given=0 anyway=0 root tz day now tmp text_file via took lines first slug out page rc
+  local paths=() names command_line="" from ans
   while [ $# -gt 0 ]; do
     case "$1" in
       --project) [ $# -ge 2 ] || die "--project needs the project, in any words (office drop --help)"
                  project="$2"; project_given=1; shift 2 ;;
+      --anyway) anyway=1; shift ;;
       -h|--help) usage_drop; return 0 ;;
       -) [ -z "$file" ] || die "office drop takes one text: FILE, or - for stdin"; file="-"; shift ;;
-      -*) usage_drop >&2; die "office drop does not know $1; it takes FILE or -, and --project" ;;
+      -*) usage_drop >&2; die "office drop does not know $1; it takes FILE or -, --project and --anyway" ;;
       *) [ -z "$file" ] || die "office drop takes one text: FILE, or - for stdin"; file="$1"; shift ;;
     esac
   done
@@ -1877,7 +1899,29 @@ cmd_drop() {
   took="$(dropx took --text-file "$text_file")" \
     || die "nothing to drop: the text from $([ "$via" = clipboard ] && printf 'the clipboard' || printf '%s' "$via") is empty"
   lines="${took%%$'\t'*}"; first="${took#*$'\t'}"
-  log "took $lines line(s) from $([ "$via" = clipboard ] && printf 'the clipboard' || printf '%s' "$via"): $first"
+  from="$([ "$via" = clipboard ] && printf 'the clipboard' || printf '%s' "$via")"
+  # A text that is one office command line (0.32.0) is usually the
+  # clipboard holding the command just copied from a chat, not the message.
+  # From the clipboard it is asked about once, before anything is written;
+  # from a file or stdin it is dropped as given and said. A drop it can
+  # write is never refused: a yes, or --anyway, writes it.
+  command_line="$(drop_office_command "$text_file")" || command_line=""
+  if [ -z "$command_line" ]; then
+    log "took $lines line(s) from $from: $first"
+  elif [ "$via" != clipboard ]; then
+    log "took $lines line(s) from $from: $first (an office command line, not a message: dropped as given)"
+  elif [ "$anyway" = 1 ]; then
+    log "took $lines line(s) from $from: $first (an office command line, not a message: dropped anyway, --anyway)"
+  else
+    log "took $lines line(s) from $from: $first"
+    ask ans "The clipboard holds an office command line, not a message: $command_line. Drop it anyway? (--anyway) (y/n)" "n" 0 \
+      "y drops the line as it is, a page in the in-tray like any other. n, the default, drops nothing: copy the message itself and run office drop again. Copying a command from a chat replaces what the clipboard held, which is how a command reaches the in-tray instead of the message."
+    case "$ans" in
+      y|Y|yes) log "dropping the office command line, as asked" ;;
+      *) log "nothing dropped: the clipboard held an office command line, not a message; copy the message and run office drop again (--anyway drops the line as it is)"
+         return 0 ;;
+    esac
+  fi
   # Which project, by key, and only when the office scopes one: the one
   # question a drop asks, which a plain return skips (0.22.0).
   if [ "$project_given" = 0 ] && can_ask; then
@@ -7470,8 +7514,10 @@ own pull-request template, as the audience holds it, are not held to the
 phrasing rule or the three characters), and one hit refuses the delivery
 with nothing pushed;
 then the commits are made and each is shown whole, as it will be pushed:
-its subject and body, its author and committer, the files it touches and
-the letterhead's verdict on it, with the diff's stat, the sessions
+its subject and body, its author and committer, its date, the files it
+touches and the letterhead's verdict on it (several commits are dated a
+second apart, oldest first, and one line says how many leave, since one
+commit per delivery is the usual shape), with the diff's stat, the sessions
 covered and the branch; and deliver asks once before anything leaves
 (--yes answers it; piped, it refuses without it). Before the push each
 commit's author and committer are checked against the declared author. After the push the folder's History gains a dated
@@ -7496,7 +7542,8 @@ any push to the audience from the clone that deliver did not make.
 Under the hood: git fetch of the audience's base and branch, a thin git
 bundle of the clone's HEAD carried back for a hosted project, git merge
 --squash in a temporary worktree, office letterhead-check on it and on
-delivery.md, git commit as the author (author and committer), each commit
+delivery.md, git commit as the author (author and committer, and
+GIT_AUTHOR_DATE and GIT_COMMITTER_DATE a second apart), each commit
 read back and checked, git push --no-follow-tags AUDIENCE
 refs/office/delivery:refs/heads/BRANCH with OFFICE_DELIVERY=BRANCH set
 for the push guard. OFFICE_DEBUG=1 shows every git call and connection.
@@ -7527,6 +7574,8 @@ deliver_show() {
 plan = json.load(open(sys.argv[1]))
 w = plan["words"]
 shown = plan.get("commits_shown") or []
+if plan.get("commits_line"):
+    print("    " + plan["commits_line"])
 for n, c in enumerate(w["commits"], 1):
     made = shown[n - 1] if n <= len(shown) else None
     print(f"    commit {n}: " + (made["subject"] if made else c["subject"]))
@@ -7536,6 +7585,9 @@ for n, c in enumerate(w["commits"], 1):
         print("      (takes: " + ", ".join(c["paths"]) + ")")
     if made:
         print("      " + made["sha"][:12] + ", author " + made["author"] + ", committer " + made["committer"])
+        if made.get("date"):
+            print("      dated " + made["date"] + ("" if made.get("committed") in (None, made["date"])
+                                                  else ", committed " + made["committed"]))
         print("      files: " + ("; ".join(made["files"]) or "none"))
         v = made["verdict"]
         print("      letterhead: " + (v if isinstance(v, str) else "REFUSED"))

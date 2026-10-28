@@ -258,6 +258,103 @@ class TestDropOnATerminal(unittest.TestCase):
         self.assertIn("- project: none given\n", drop_pages(self.root)[0].read_text())
 
 
+# --- 0.32.0: a drop whose text is an office command line ------------------------------------------
+
+# The in-tray's drop of 2026-10-27, whole: the clipboard held the command
+# just copied from a chat, not the message.
+COMMAND = "office drop --project m10-api\n"
+SAID = "(an office command line, not a message: dropped as given)"
+
+
+class TestADropThatIsAnOfficeCommand(unittest.TestCase):
+    """0.32.0: a text that is one office command line (one non-blank line
+    beginning `office `), piped or given as a file, is dropped as given,
+    and the line saying what the drop took says so; anything else is a
+    message, said as before."""
+
+    def setUp(self):
+        self.e = Env(self)
+        self.root = self.e.init()
+
+    def test_piped_or_from_a_file_it_is_dropped_as_given_and_said(self):
+        proc = self.e.run("drop", cwd=self.root, input=COMMAND, check=0)
+        self.assertIn(f"took 1 line(s) from stdin: office drop --project m10-api {SAID}", proc.stderr)
+        page = self.root / proc.stdout.strip()
+        self.assertTrue(page.read_text().endswith("## Text\n\noffice drop --project m10-api\n"))
+        thread = self.e.tmp / "cmd.txt"
+        thread.write_text("\n   office start new --words x   \n\n")
+        proc = self.e.run("drop", str(thread), cwd=self.root, check=0)
+        self.assertIn(f"from file cmd.txt: office start new --words x {SAID}", proc.stderr)
+        # --anyway names the clipboard's question; off the clipboard it
+        # changes nothing.
+        proc = self.e.run("drop", "-", "--anyway", cwd=self.root, input=COMMAND, check=0)
+        self.assertIn(SAID, proc.stderr)
+        self.assertEqual(len(drop_pages(self.root)), 3)
+
+    def test_anything_else_is_a_message(self):
+        for text in ("office hours moved to three\nsee you there\n", "officer Dibble called\n", "office\n",
+                     "Please run office drop --project m10-api\n", "office drop\n\noffice note x\n"):
+            proc = self.e.run("drop", cwd=self.root, input=text, check=0)
+            self.assertNotIn("office command line", proc.stderr, text)
+        self.assertEqual(len(drop_pages(self.root)), 5)
+
+    def test_the_usage_and_the_doctrine_say_it(self):
+        usage = " ".join(self.e.run("drop", "--help", cwd=self.root, check=0).stdout.split())
+        self.assertIn("[--anyway]", usage)
+        self.assertIn("from the clipboard it asks once, before writing, whether to drop it anyway", usage)
+        doctrine = " ".join(DOCTRINE.read_text().split())
+        tray = doctrine.split("In-tray. Drops waiting to be sorted", 1)[1].split("Notepad. ", 1)[0]
+        self.assertIn("A text that is one office command line (one non-blank line beginning `office `) is asked "
+                      "about once, before anything is written, when it came from the clipboard", tray)
+        self.assertIn("(`--anyway` is the twin), and a yes writes it", tray)
+
+
+class TestADropThatIsAnOfficeCommandOnATerminal(unittest.TestCase):
+    """0.32.0: from the clipboard, on a terminal, a text that is one office
+    command line is asked about once before anything is written: no, the
+    default, drops nothing; yes writes it, and --anyway asks nothing."""
+
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
+
+    def setUp(self):
+        self.e = Env(self)
+        self.root = self.e.init()
+        from test_start import git_repo
+        self.e.run("projects", "add", "alpha", str(git_repo(self.e.tmp / "alpha")), cwd=self.root, check=0)
+        clip = self.e.tmp / "clipboard.txt"
+        clip.write_text(COMMAND)
+        machine = self.e.home / ".config" / "office-src" / "machine.toml"
+        machine.parent.mkdir(parents=True, exist_ok=True)
+        machine.write_text(f'paste_command = "cat {clip}"\n')
+
+    def test_no_the_default_drops_nothing(self):
+        code, seen = on_a_terminal(self, [str(self.e.office_bin), "drop"], self.root, self.e.env, [
+            (b"The clipboard holds an office command line, not a message: office drop --project m10-api. "
+             b"Drop it anyway? (--anyway) (y/n) [n]:", ""),
+        ])
+        self.assertEqual(code, 0, seen)
+        self.assertIn("nothing dropped: the clipboard held an office command line, not a message; copy the message "
+                      "and run office drop again", " ".join(seen.split()))
+        self.assertNotIn("(--project)", seen)
+        self.assertFalse((self.root / "in-tray").exists())
+
+    def test_a_yes_writes_it_and_anyway_asks_nothing(self):
+        code, seen = on_a_terminal(self, [str(self.e.office_bin), "drop"], self.root, self.e.env, [
+            (b"Drop it anyway? (--anyway) (y/n) [n]:", "y"),
+            (b"(--project) [return skips]:", ""),
+        ])
+        self.assertEqual(code, 0, seen)
+        (page,) = drop_pages(self.root)
+        self.assertIn("- via: clipboard\n", page.read_text())
+        self.assertTrue(page.read_text().endswith("## Text\n\noffice drop --project m10-api\n"))
+        code, seen = on_a_terminal(self, [str(self.e.office_bin), "drop", "--anyway", "--project", "alpha"], self.root,
+                                   self.e.env, [])
+        self.assertEqual(code, 0, seen)
+        self.assertNotIn("Drop it anyway?", seen)
+        self.assertIn("(an office command line, not a message: dropped anyway, --anyway)", seen)
+        self.assertEqual(len(drop_pages(self.root)), 2)
+
+
 # --- every session office start sends out carries the unsorted drops ---------------------------
 
 class DropCase(StartCase):
