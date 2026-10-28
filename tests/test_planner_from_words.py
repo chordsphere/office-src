@@ -192,7 +192,7 @@ class TestPlannerFromWords(LandCase):
         self.assertIn("- lane: alpha\n", md)
         self.assertIn("- provisional: title, size, goal\n", md)
         self.assertIn("> Plan the alpha release\n", md)
-        self.assertIn(f"- {sid}\n", md)
+        self.assertIn(f"- {sid}: sitting, doctrine {install_sha()[:12]}\n", md)  # 0.33.0: the stamp
         self.assertIn("your words name alpha: what rides is gathered for it", proc.stderr)
         self.assertIn("What rides with the sitting, and why", proc.stderr)
         self.assertIn("handbook/alpha.md: alpha's handbook chapter", proc.stderr)
@@ -236,7 +236,7 @@ class TestPlannerFromWords(LandCase):
                                "--about", "alpha", check=0)
         sid = re.search(r"^Packed (\S+) for desk/", proc.stdout, re.M).group(1)
         md = self.folder_md()
-        self.assertIn(f"- {sid}\n", md)
+        self.assertIn(f"- {sid}: sitting, doctrine {install_sha()[:12]}\n", md)  # 0.33.0: the stamp
         self.assertIn("for a planner sitting:\n\n> Is the login fix the right order?\n", md)
         self.assertIn(f"office start --planner: his words in {self.name}", self.subjects(6))
 
@@ -395,6 +395,7 @@ class TestOnATerminal(LandCase):
             (b"Your key: ", "p"),
             (b"What you want a planner for, in your own words (--words)", "Plan the alpha release"),
             (b"  > ", ""),
+            (b"[keep]: ", ""),  # 0.33.0: the answer is shown whole, and a plain return keeps it
             (b"Return brings your home screen back; q leaves: ", "q"),
         ])
         self.assertEqual(code, 0, seen)
@@ -410,6 +411,7 @@ class TestOnATerminal(LandCase):
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start", "--planner"], self.root, self.e.env, [
             (b"in your own words (--words)", "Plan the next quarter"),
             (b"  > ", ""),
+            (b"[keep]: ", ""),  # 0.33.0: the answer is shown whole, and a plain return keeps it
             (b"What the sitting concerns, by its key (--about PROJECT, or --in-office)", "1"),
             (b"Which folder, by its key; a plain return mints a new one", "1"),
         ])
@@ -417,7 +419,7 @@ class TestOnATerminal(LandCase):
         self.assertIn("[2] the office itself", seen)
         self.assertIn("[2] a new folder, from these words", seen)
         sid = re.search(rf"Packed (\S+) for desk/{re.escape(self.name)}\.", seen).group(1)
-        self.assertIn(f"- {sid}\n", self.folder_md())
+        self.assertIn(f"- {sid}: sitting, doctrine {install_sha()[:12]}\n", self.folder_md())
 
     def test_the_sort_is_offered_first_and_the_sittings_opener_is_the_copy_left(self):
         clip = self.clipboard()
@@ -426,6 +428,7 @@ class TestOnATerminal(LandCase):
                                    self.e.env, [
             (b"in your own words (--words)", "Plan the alpha release"),
             (b"  > ", ""),
+            (b"[keep]: ", ""),  # 0.33.0: the answer is shown whole, and a plain return keeps it
             (b"Send the in-tray's sort out first, then this sitting, by its key", ""),
         ])
         self.assertEqual(code, 0, seen)
@@ -474,6 +477,151 @@ class TestOnATerminal(LandCase):
         self.assertEqual(code, 0, seen)
         self.assertIn(f"nothing was closed: {sid} stays out", seen)
         self.assertTrue(self.fake.is_open(self.proj, sid))
+
+
+# --- the doctrine a sitting went out under (0.33.0) ----------------------------------------------------
+
+def install_sha():
+    """The sha256 of the doctrine as this tree ships it: the bytes the
+    install's doctrine/OFFICE.md holds, read here, never through the office."""
+    import hashlib
+    return hashlib.sha256((REPO / "doctrine" / "OFFICE.md").read_bytes()).hexdigest()
+
+
+class TestTheDoctrineASittingWentOutUnder(LandCase):
+    """office start stamps the install's doctrine hash in a sitting's brief
+    and in its folder's Sessions line; the walk-in, the home screen's item
+    and office status say when a sitting is out under another one."""
+
+    def planner(self):
+        out = self.run_office("start", "new", "--planner", "--words", WORDS, check=0).stdout
+        m = re.search(r"^Packed (\S+) for (desk/\S+)\.$", out, re.M)
+        return m.group(1), m.group(2), out
+
+    def older(self, folder, sid, short="0123456789ab"):
+        """The install moved on while the sitting was out: its Sessions line
+        names a doctrine that is not the install's."""
+        md = self.root / folder / "folder.md"
+        md.write_text(re.sub(rf"(- {re.escape(sid)}: sitting, doctrine )[0-9a-f]{{12}}", rf"\g<1>{short}",
+                             md.read_text()))
+        self.e.git(self.root, "commit", "-qam", "the install moved on")
+        return short
+
+    def test_the_hash_is_the_doctrines_bytes_as_the_rides_once_check_reads_them(self):
+        self.assertEqual(ob.install_doctrine_hash(), install_sha())
+        self.assertEqual(ob.install_doctrine_hash(), ob.install_doctrine_sums()["OFFICE.md"])
+
+    def test_the_brief_says_it_first_and_the_sessions_line_keeps_twelve(self):
+        sha = install_sha()
+        version = (REPO / "VERSION").read_text().strip()
+        sid, folder, out = self.planner()
+        brief = request_members(tray_of(out, sid))["README.md"].decode()
+        line, = [l for l in brief.splitlines() if l.startswith("- the doctrine it goes out under: ")]
+        self.assertIn(f"OFFICE.md sha256 {sha} (office-src {version}), the doctrine that rides with it", line)
+        self.assertIn(f"the folder's Sessions line keeps {sha[:12]}", line)
+        self.assertLess(brief.index(line), brief.index("## His words, verbatim"))
+        md = (self.root / folder / "folder.md").read_text()
+        self.assertIn(f"- {sid}: sitting, doctrine {sha[:12]}\n", md)
+        self.assertEqual(dict(h.folder_session_lines(self.root / folder / "folder.md"))[sid],
+                         f"sitting, doctrine {sha[:12]}")
+
+    def test_a_read_only_start_is_stamped_and_a_project_session_is_not(self):
+        sit = self.start(self.name, "--in-office", "--read-only", "--goal", "Plan it")
+        work = self.start(self.name, "--on", "alpha", "--goal", "Fix the login redirect")
+        lines = dict(h.folder_session_lines(self.root / self.folder / "folder.md"))
+        self.assertEqual(h.session_doctrine(lines[sit]), install_sha()[:12])
+        self.assertIsNone(h.session_doctrine(lines[work]))
+
+    def test_the_walk_in_and_status_say_nothing_while_it_is_the_installs(self):
+        sid, folder, _ = self.planner()
+        walk = self.run_office(check=0).stdout
+        self.assertIn(sid, walk)
+        self.assertNotIn("older doctrine", walk)
+        status = self.run_office("status", check=0).stdout
+        self.assertIn(f"doctrine:   OFFICE.md {install_sha()[:12]}, the install's (office-src ", status)
+        self.assertNotIn("older doctrine", status)
+
+    def test_out_under_an_older_one_the_walk_in_and_status_say_so_in_one_line(self):
+        sid, folder, _ = self.planner()
+        old = self.older(folder, sid)
+        said = f"out under an older doctrine: OFFICE.md {old} when it went out, {install_sha()[:12]} the install's now"
+        walk = self.run_office(check=0).stdout
+        line, = [l for l in walk.splitlines() if sid in l and "read-only" in l]
+        self.assertIn(f"(office land {sid} when the sitting is over); {said}", line)
+        status = self.run_office("status", check=0).stdout
+        self.assertIn(f"\n  {sid}: a read-only sitting {said}\n", status)
+        # Nothing refuses: the sitting ends as any sitting does.
+        proc = self.run_office("land", sid, check=0)
+        self.assertNotIn("older doctrine", proc.stderr)
+
+    def test_a_sitting_from_before_the_stamp_is_not_compared(self):
+        sid, folder, _ = self.planner()
+        md = self.root / folder / "folder.md"
+        md.write_text(md.read_text().replace(f"- {sid}: sitting, doctrine {install_sha()[:12]}", f"- {sid}"))
+        self.e.git(self.root, "commit", "-qam", "a line from 0.32.0")
+        self.assertNotIn("older doctrine", self.run_office(check=0).stdout)
+        self.assertIsNone(ob.Doctrines(self.root).older(sid))
+
+    def test_the_words_as_units(self):
+        sha = install_sha()
+        self.assertEqual(h.sitting_words(sha), f"sitting, doctrine {sha[:12]}")
+        self.assertEqual(h.sitting_words(sha, "a second desk on a session already open"),
+                         f"a second desk on a session already open; sitting, doctrine {sha[:12]}")
+        self.assertEqual(h.session_doctrine(h.sitting_words(sha, "x")), sha[:12])
+        self.assertIsNone(h.session_doctrine("a second desk on a session already open"))
+        with self.assertRaises(h.HelperError):
+            h.sitting_words("not-a-hash")
+        d = ob.Doctrines(self.root, install=sha)
+        d._stamps = {"2026-10-28-a-001": sha[:12], "2026-10-28-b-001": "0123456789ab"}
+        self.assertIsNone(d.older("2026-10-28-a-001"))
+        self.assertIsNone(d.older("2026-10-28-c-001"))
+        self.assertEqual(d.older("2026-10-28-b-001"), h.older_doctrine_words("0123456789ab", sha))
+
+    def test_the_prep_brief_names_it_and_an_unreadable_doctrine_leaves_the_line_out(self):
+        import unittest.mock as mock
+        import office_meeting as om
+        o = {"title": "Weekly review", "date": "2026-10-28", "time": "10:00", "about": ["alpha"]}
+        brief = om.render_brief(o, "America/Chicago", "2026-10-28", [], [], {})
+        line, = [l for l in brief.splitlines() if l.startswith("- the doctrine it goes out under: ")]
+        self.assertTrue(line.endswith("the doctrine that rides with it"), line)
+        self.assertIn(install_sha(), line)
+        import contextlib
+        import io
+        said = io.StringIO()
+        with mock.patch.object(ob, "install_doctrine_hash", return_value=None), contextlib.redirect_stderr(said):
+            self.assertNotIn("the doctrine it goes out under", om.render_brief(o, "UTC", "2026-10-28", [], [], {}))
+            plain = op.render_brief(WORDS, ["alpha"], "desk/x", "folder 1, x", "2026-10-28", [], [])
+            self.assertNotIn("the doctrine it goes out under", plain)
+            self.assertIn("## His words, verbatim", plain)
+        # Left out, and said: never a silent skip.
+        self.assertEqual(said.getvalue().count("holds no doctrine/OFFICE.md, so the brief carries no doctrine line"), 2)
+
+    def test_the_doctrine_and_the_readme_say_it(self):
+        doctrine = " ".join((REPO / "doctrine/OFFICE.md").read_text().split())
+        cont = doctrine.split("## 4. How a session is packed, continued", 1)[1].split("## 5.", 1)[0]
+        self.assertIn("Its opening names the doctrine it goes out under, in one line (0.33.0)", cont)
+        self.assertIn("`- SID: sitting, doctrine SHORT`", cont)
+        readme = " ".join((REPO / "README.md").read_text().split())
+        self.assertIn("`- SID: sitting, doctrine SHORT`", readme)
+
+
+class TestTheDoctrineOnTheHomeScreen(LandCase):
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
+
+    planner = TestTheDoctrineASittingWentOutUnder.planner
+    older = TestTheDoctrineASittingWentOutUnder.older
+
+    def test_the_home_screens_item_says_it(self):
+        sid, folder, _ = self.planner()
+        old = self.older(folder, sid)
+        cfg = self.e.home / ".config/office-src"
+        cfg.mkdir(parents=True, exist_ok=True)
+        (cfg / "machine.toml").write_text(f'downloads = ["{self.downloads}"]\n')
+        code, seen = on_a_terminal(self, [str(self.e.office_bin)], self.root, self.e.env, [(b"Your key: ", "q")])
+        self.assertEqual(code, 0, seen)
+        item, = [l for l in seen.splitlines() if "End the sitting" in l]
+        self.assertIn(f"once it is over; it is out under an older doctrine: OFFICE.md {old} when it went out, "
+                      f"{install_sha()[:12]} the install's now", " ".join(item.split()))
 
 
 if __name__ == "__main__":

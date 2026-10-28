@@ -339,6 +339,7 @@ class TestStartNewOnATerminal(LandCase):
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start", "new", "--on", "alpha", "--goal", "g"],
                                    self.root, self.e.env, [
             (b"The job, in your own words", "fix login\n"),
+            (b"[keep]: ", ""),  # 0.33.0: the answer is shown whole, and a plain return keeps it
             (f"{self.folder} is already on the desk: start it".encode(), ""),
         ])
         self.assertEqual(code, 0, seen)
@@ -353,6 +354,7 @@ class TestStartNewOnATerminal(LandCase):
         today is never a reason to ask again."""
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "open"], self.root, self.e.env, [
             (b"The job, in your own words", "Fix login\nA coworker says it fails on phones.\n"),
+            (b"[keep]: ", ""),  # 0.33.0: the answer is shown whole, and a plain return keeps it
             (b"Which project the job is on, by its key (--lane PROJECT)", "1"),
         ])
         self.assertEqual(code, 0, seen)
@@ -703,6 +705,7 @@ class TestAParagraphAnswer(DoorCase):
         code, seen = on_a_terminal(self, argv, self.e.home, self.e.env, [
             (b"(--purpose) [several lines welcome; a blank line ends the answer, and return at once skips]:",
              "My own tools,\n  and my life outside work.\nBoth, kept apart.\n"),
+            (b"[keep]: ", ""),  # 0.33.0: the answer is shown whole, and a plain return keeps it
         ])
         self.assertEqual(code, 0, seen)
         self.assertIn("An answer may run to several lines, and a blank line ends it", seen)

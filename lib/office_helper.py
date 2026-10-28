@@ -731,6 +731,49 @@ def folder_session_lines(folder_md):
     return out
 
 
+# --- the doctrine a sitting went out under (0.33.0) --------------------------
+#
+# office start stamps a read-only sitting's Sessions line with the doctrine
+# it went out under, the first twelve characters of the sha256 of the
+# install's doctrine/OFFICE.md (office_bale.install_doctrine_hash, the bytes
+# the rides-once check reads): `- SID: sitting, doctrine 0123456789ab`,
+# after any words the line carries already. The walk-in, the home screen
+# and office status read it back here and compare it with the install's.
+
+DOCTRINE_SHORT = 12
+SESSION_DOCTRINE_RE = LazyPattern(r"\bsitting, doctrine ([0-9a-f]{12})\b")
+
+
+def doctrine_short(sha):
+    """The short form of a doctrine hash: its first twelve characters."""
+    return sha[:DOCTRINE_SHORT]
+
+
+def sitting_words(sha, words=None):
+    """The Sessions line's words for a sitting that went out under the
+    doctrine whose OFFICE.md hashes to sha: any words given first, then
+    `sitting, doctrine SHORT`. Refuses a sha that is not one."""
+    if not re.fullmatch(r"[0-9a-f]{64}", sha or ""):
+        raise HelperError(f"not a doctrine's sha256: {sha!r}")
+    stamp = f"sitting, doctrine {doctrine_short(sha)}"
+    return f"{words}; {stamp}" if words else stamp
+
+
+def session_doctrine(words):
+    """The short doctrine hash a Sessions line's words stamp, or None (a
+    line from before 0.33.0, or a session that is not a sitting)."""
+    m = SESSION_DOCTRINE_RE.search(words or "")
+    return m.group(1) if m else None
+
+
+def older_doctrine_words(stamped, install):
+    """The one line said of a sitting out under an older doctrine, naming
+    both short hashes; nothing refuses, since the sitting may finish on
+    the doctrine it read."""
+    return (f"out under an older doctrine: OFFICE.md {stamped} when it went out, {doctrine_short(install)} the "
+            "install's now")
+
+
 # --- projects this office scopes ------------------------------------------
 
 PROJECT_NAME_RE = LazyPattern(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
@@ -3279,7 +3322,11 @@ def cmd_project_facts(a):
 
 def cmd_record_session(a):
     """With --day, the first sid a candidate or queued folder records
-    also opens it: the `opened` History line and status open."""
+    also opens it: the `opened` History line and status open. With
+    --doctrine SHA (0.33.0), the line's words stamp the doctrine a sitting
+    went out under (sitting_words)."""
+    if a.doctrine:
+        a.words = sitting_words(a.doctrine, a.words)
     if a.day is None:
         recorded, change = record_session(a.folder_md, a.sid, a.words), None
     else:
@@ -3930,7 +3977,9 @@ def build_parser(only=None):
     p = add("project-facts"); p.add_argument("manifest"); p.add_argument("name")
     p.set_defaults(fn=cmd_project_facts)
     p = add("record-session"); p.add_argument("folder_md"); p.add_argument("sid")
-    p.add_argument("--words"); p.add_argument("--day"); p.set_defaults(fn=cmd_record_session)
+    p.add_argument("--words"); p.add_argument("--day")
+    p.add_argument("--doctrine", help="a sitting's doctrine sha256, stamped in the line's words")
+    p.set_defaults(fn=cmd_record_session)
     p = add("folder-asked", help="keep the occupant's words in a folder's Asked section")
     p.add_argument("folder_md"); p.add_argument("--words-file", required=True); p.add_argument("--by", required=True)
     p.set_defaults(fn=cmd_folder_asked)

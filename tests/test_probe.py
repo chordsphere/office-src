@@ -323,6 +323,91 @@ class TestWhereAndWhichSession(ProbeCase):
         self.assertIn("not a session fix-login records", proc.stderr.replace(self.name, "fix-login"))
 
 
+# --- 2b. a read-only sitting's probe of a project (0.33.0) -----------------------------------------------
+
+class TestASittingsProbeOfAProject(ProbeCase):
+    """A planner sitting is open in the office's own registry, never in a
+    project, so before 0.33.0 a sitting's probe of a project's repo found
+    no session there and was refused. With --project NAME it runs in the
+    project's repo under the sitting's id; everything else holds."""
+
+    def sitting(self, folder, goal="Plan it"):
+        out = self.run_office("start", folder, "--in-office", "--read-only", "--goal", goal, check=0).stdout
+        return re.search(r"^Packed (\S+) for ", out, re.M).group(1)
+
+    def sitting_folder(self):
+        name = self.run_office("open", "plan-it", check=0).stdout.strip().split("/")[1]
+        return name, self.sitting(name)
+
+    def test_it_runs_in_the_projects_repo_under_the_sittings_id(self):
+        name, sit = self.sitting_folder()
+        proc = self.run_office("probe", name, str(self.block), "--project", "alpha", "--yes", check=0)
+        self.assertIn(f"cwd: {os.path.realpath(self.proj)}", proc.stdout)
+        self.assertIn("stdin closed", proc.stdout)
+        self.assertIn(f"for {sit} (desk/{name}, the read-only sitting open in the office)", proc.stderr)
+        md = (self.root / "desk" / name / "folder.md").read_text()
+        self.assertRegex([l for l in md.splitlines() if " probe: " in l][0], HISTORY_RE.format(sid=re.escape(sit), n=4))
+        self.assertEqual(self.subjects(1), [f"office probe: {sit} in {name}"])
+        self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
+
+    def test_the_fallbacks_files_go_to_the_sittings_out_tray(self):
+        name, sit = self.sitting_folder()
+        self.block.write_text(probe_block(writes=True))
+        self.run_office("probe", name, str(self.block), "--project", "alpha", "--yes", check=0)
+        tray = self.tray_root / sit / "probe-output"
+        self.assertTrue((tray / "sub" / "tree.txt").is_file())
+        self.assertFalse((self.proj / "probe-output").exists())
+        # probe-output/ already there refuses, as for any probe.
+        (self.proj / "probe-output").mkdir()
+        proc = self.run_office("probe", name, str(self.block), "--project", "alpha", "--yes", check=1)
+        self.assertIn("probe-output/ is already in", proc.stderr)
+
+    def test_piped_without_yes_runs_nothing_and_without_project_it_is_as_before(self):
+        name, sit = self.sitting_folder()
+        proc = self.run_office("probe", name, str(self.block), "--project", "alpha", check=1)
+        self.assertIn("--yes says it, and piped input is never asked; nothing ran", proc.stderr)
+        proc = self.run_office("probe", name, str(self.block), "--yes", check=1)
+        self.assertIn("--project NAME (alpha), or --project office for the office itself", proc.stderr)
+        proc = self.run_office("probe", name, str(self.block), "--project", "office", "--yes", check=0)
+        self.assertIn(f"cwd: {os.path.realpath(self.root)}", proc.stdout)
+        self.assertNotIn("the read-only sitting open in the office", proc.stderr)
+
+    def test_with_both_the_projects_session_is_kept_unless_the_slug_or_sid_names_the_sitting(self):
+        sit = self.sitting("fix-login")
+        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=0)
+        self.assertIn(f"for {self.sid} (desk/{self.name})", proc.stderr)
+        self.block.write_text(probe_block(slug="something-else"))
+        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=0)
+        self.assertIn(f"for {self.sid} (desk/{self.name})", proc.stderr)
+        self.block.write_text(probe_block(slug=sit[11:-4]))
+        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=0)
+        self.assertIn(f"for {sit} (desk/{self.name}, the read-only sitting open in the office)", proc.stderr)
+        self.block.write_text(probe_block())
+        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", "--sid", sit, check=0)
+        self.assertIn(f"cwd: {os.path.realpath(self.proj)}", proc.stdout)
+        self.assertRegex(self.history()[-1], HISTORY_RE.format(sid=re.escape(sit), n=4))
+
+    def test_a_writing_office_session_is_not_a_sitting(self):
+        name = self.run_office("open", "office-work", check=0).stdout.strip().split("/")[1]
+        self.run_office("start", name, "--in-office", "--goal", "Tidy the office", check=0)
+        proc = self.run_office("probe", name, str(self.block), "--project", "alpha", "--yes", check=1)
+        self.assertIn("and no read-only sitting of its is open in the office", proc.stderr)
+        self.assertNotIn("PROBE BEGIN", proc.stdout)
+
+    def test_choosing_as_a_unit(self):
+        a, b, s = "2026-10-28-fix-login-001", "2026-10-28-docs-002", "2026-10-28-plan-it-sitting-001"
+        self.assertEqual(op.choose_session([a], [s], None), a)
+        self.assertEqual(op.choose_session([a], [s], "plan-it-sitting"), s)
+        self.assertEqual(op.choose_session([], [s], None), s)
+        self.assertEqual(op.choose_session([a], [s], None, sid=s), s)
+        self.assertIsNone(op.choose_session([a], [s], None, sid=b))
+        with self.assertRaises(op.AskSid) as cm:
+            op.choose_session([a, b], [s], None)
+        self.assertEqual((cm.exception.candidates, cm.exception.sittings), ([a, b, s], [s]))
+        with self.assertRaises(op.AskSid):
+            op.choose_session([], [s, "2026-10-28-other-sitting-002"], None)
+
+
 # --- 3. on a host, through the project's shell ---------------------------------------------------------
 
 class TestProbeOnAHost(HostedStartCase):
@@ -357,6 +442,21 @@ class TestProbeOnAHost(HostedStartCase):
         self.assertEqual(self.ssh.left_on(HOST), [])
         self.assertRegex([l for l in (self.root / self.folder / "folder.md").read_text().splitlines()
                           if " probe: " in l][0], HISTORY_RE.format(sid=re.escape(self.sid), n=4))
+
+    def test_a_sittings_probe_runs_through_the_shell_under_the_sittings_id(self):
+        # 0.33.0: a read-only sitting the folder records, open in the office,
+        # is the session; the block still runs on the host, in the path.
+        name = self.run_office("open", "plan-far", check=0).stdout.strip().split("/")[1]
+        out = self.run_office("start", name, "--in-office", "--read-only", "--goal", "Plan it", check=0).stdout
+        sit = re.search(r"^Packed (\S+) for ", out, re.M).group(1)
+        self.block.write_text(probe_block(writes=True))
+        proc = self.run_office("probe", name, str(self.block), "--project", "far", "--yes")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(f"cwd: {os.path.realpath(self.proj)}", proc.stdout)
+        self.assertIn(f"on {HOST} (through far's shell), stdin closed, for {sit} (desk/{name}, the read-only "
+                      "sitting open in the office)", proc.stderr)
+        self.assertEqual((self.tray_root / sit / "probe-output" / "sub" / "tree.txt").read_text(), "deep\n")
+        self.assertEqual(self.ssh.left_on(HOST), [])
 
     def test_a_host_that_does_not_answer_stops_it_with_the_connect_line(self):
         self.block.write_text(probe_block())

@@ -777,6 +777,9 @@ def in_flight(rd, office_root, now=None):
     if own is not None:
         sources.insert(0, (OFFICE_LABEL, {"problem": None, "resolved": own}))
     lines, bad, open_count, flying = [], 0, 0, set()
+    # A sitting out under a doctrine that is not the install's says so on
+    # its own line (0.33.0), read from its folder's Sessions line.
+    doctrines = Doctrines(office_root)
     if not projects:
         lines.append(no_projects_line(projects))
     for label, p in sources:
@@ -795,6 +798,9 @@ def in_flight(rd, office_root, now=None):
                 # the office's to end.
                 prep = om.prep_of(office_root, sid) if label == OFFICE_LABEL and read_only else None
                 ends = f" (office land {sid} when the sitting is over)" if read_only and (folders or prep) else ""
+                older = doctrines.older(sid) if read_only and folders else None
+                if older:
+                    ends += f"; {older}"
                 # The standalone sort belongs to no folder: it is the
                 # in-tray's session (0.20.0); a meeting's prep is the
                 # calendar's (0.26.0).
@@ -2547,6 +2553,116 @@ def install_doctrine_sums(directory=None):
             for rel, data in doctrine_files(directory or INSTALL / "doctrine").items()}
 
 
+# --- the doctrine a sitting went out under (0.33.0) ------------------------------
+#
+# office start stamps it in two places: one line in the sitting's brief (the
+# planner sitting's and a meeting's prep, from the install's templates) and
+# the folder's Sessions line (office_helper.sitting_words). The walk-in's In
+# flight, the home screen's sitting item and office status say, in one line,
+# when a sitting is out under a doctrine that is not the install's; nothing
+# refuses, since the sitting may finish on the doctrine it read.
+
+def install_doctrine_hash(directory=None):
+    """The sha256 of the install's doctrine/OFFICE.md, as the doctrine
+    rides (the same bytes install_doctrine_sums, and so the rides-once
+    check, reads), or None when the install holds no OFFICE.md."""
+    return install_doctrine_sums(directory).get("OFFICE.md")
+
+
+def doctrine_brief_words(folder=True):
+    """The value of a sitting's brief's doctrine line (the templates'
+    `- the doctrine it goes out under:` field): the full hash and the
+    release, then, for a sitting a folder records (folder), where the short
+    hash is kept and what the walk-in does with it. None, said, when the
+    install's OFFICE.md cannot be read: the field line is then left out of
+    the brief, as an unset field line is."""
+    try:
+        sha = install_doctrine_hash()
+    except OSError as exc:
+        log(f"warning: the install's doctrine could not be read, so the brief carries no doctrine line: {exc}")
+        return None
+    if not sha:
+        log(f"warning: the install at {INSTALL} holds no doctrine/OFFICE.md, so the brief carries no doctrine line")
+        return None
+    words = f"OFFICE.md sha256 {sha} (office-src {install_version_here()}), the doctrine that rides with it"
+    if folder:
+        words += (f"; the folder's Sessions line keeps {oh.doctrine_short(sha)}, and the walk-in says so when "
+                  "the install's doctrine changes while the sitting is out")
+    return words
+
+
+def session_doctrines(office_root):
+    """sid -> the short doctrine hash its Sessions line stamps, across the
+    desk and the filing cabinet; a folder that cannot be read is said under
+    OFFICE_DEBUG and skipped, as the walk-in's other reads of it are."""
+    out = {}
+    for space in ("desk", "filing-cabinet"):
+        for md in sorted((pathlib.Path(office_root) / space).glob("*/folder.md")):
+            try:
+                lines = oh.folder_session_lines(md)
+            except (OSError, UnicodeDecodeError) as exc:
+                debug(f"{space}/{md.parent.name}/folder.md cannot be read for its sittings' doctrine: {exc}")
+                continue
+            for sid, words in lines:
+                short = oh.session_doctrine(words)
+                if short:
+                    out.setdefault(sid, short)
+    return out
+
+
+class Doctrines:
+    """The install's doctrine hash and the stamps the folders hold, each
+    read once, when first asked: older(sid) is the one line said of a
+    sitting out under another doctrine, or None (the install's, or no
+    stamp: a sitting from before 0.33.0 is not compared)."""
+
+    def __init__(self, office_root, install=None):
+        self.office_root = office_root
+        self._install = install
+        self._stamps = None
+
+    @property
+    def install(self):
+        if self._install is None:
+            try:
+                self._install = install_doctrine_hash() or ""
+            except OSError as exc:
+                debug(f"the install's doctrine could not be read, so no sitting's is compared with it: {exc}")
+                self._install = ""
+        return self._install
+
+    def older(self, sid):
+        if self._stamps is None:
+            self._stamps = session_doctrines(self.office_root)
+        stamped = self._stamps.get(sid)
+        if not stamped or not self.install or stamped == oh.doctrine_short(self.install):
+            return None
+        return oh.older_doctrine_words(stamped, self.install)
+
+
+def doctrine_lines(rd, office_root):
+    """(lines, 0): office status's doctrine line, the install's OFFICE.md
+    by its short hash and release, then one line for each read-only sitting
+    open in the office whose Sessions line stamps another doctrine. bale is
+    asked which sessions are open only when a folder stamps another one."""
+    try:
+        install = install_doctrine_hash()
+    except OSError as exc:
+        return [f"doctrine:   the install's doctrine/OFFICE.md could not be read: {exc}"], 0
+    if not install:
+        return [f"doctrine:   the install at {INSTALL} holds no doctrine/OFFICE.md"], 0
+    head = f"doctrine:   OFFICE.md {oh.doctrine_short(install)}, the install's (office-src {install_version_here()})"
+    other = {sid: s for sid, s in session_doctrines(office_root).items() if s != oh.doctrine_short(install)}
+    own = office_registry(office_root) if other else None
+    if own is None:
+        return [head], 0
+    try:
+        out = [sid for sid, ro in rd.open_sessions(own) if ro and sid in other]
+    except BaleError as exc:
+        return [head, f"  the sittings out could not be read, so none is compared with it: {exc}"], 0
+    return [head] + [f"  {sid}: a read-only sitting {oh.older_doctrine_words(other[sid], install)}" for sid in out], 0
+
+
 def survey_before_pack(office_root):
     """office survey --before-pack in the office: the survey page again,
     committed alone, never fatal (doctrine section 13). Its words go to
@@ -3700,10 +3816,20 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         if opened["second_desk"]:
             kind += ", joined as a second desk: the session was already open"
     carried.insert(0, f"{name}: the request ({kind})")
+    # The doctrine a sitting from the office goes out under (0.33.0): the
+    # install's, which rides with it (inside a packed tree that ships the
+    # same one, or beside the request), for its folder's Sessions line.
+    doctrine = None
+    if sitting:
+        try:
+            doctrine = install_doctrine_hash()
+        except OSError as exc:
+            warnings.append(f"the install's doctrine could not be read, so the folder's Sessions line does not stamp "
+                            f"the doctrine this sitting went out under: {exc}")
     return {"sid": sid, "tray": str(final), "files": sorted(tray.files), "carried": carried,
             "opener": opened["opener"], "pack_dir": str(pack_dir), "request": str(final / name),
             "warnings": warnings, "sitting": forecast == [], "second_desk": opened["second_desk"],
-            "drops": len(riding)}
+            "drops": len(riding), "doctrine": doctrine}
 
 
 # --- a host's bale brought level: office projects level-bale ---------------------------
@@ -5018,6 +5144,9 @@ def build_parser(only=None):
     p = add("landed"); p.add_argument("office"); p.add_argument("path"); p.add_argument("--project")
     p = add("versions"); p.add_argument("office"); p.add_argument("--project")
     p = add("status-lines"); p.add_argument("office")
+    p = add("doctrine-lines", help="office status's doctrine line: the install's OFFICE.md by its short hash, and "
+                                   "each read-only sitting out under another (0.33.0)")
+    p.add_argument("office")
     p = add("provisional-lines", help="office status's structure lines: each folder still provisional though "
                                       "every session it records landed applied; nothing when none is")
     p.add_argument("office")
@@ -5380,6 +5509,8 @@ def main(argv=None):
             lines, bad = render_landed(rd, a.office, a.path, a.project)
         elif a.cmd == "versions":
             lines, bad = render_versions(rd, a.office, a.project)
+        elif a.cmd == "doctrine-lines":
+            lines, bad = doctrine_lines(rd, a.office)
         else:
             lines, bad = status_lines(rd, a.office)
     except oh.HelperError as exc:

@@ -64,7 +64,9 @@ projects in the office's scope, declares what rides with each and what
 runs after its sessions land, and renders what bale records about them.
 `office probe` runs a worker's probe block where a folder's project lives,
 on its host when it has one, after showing the block's header and asking
-once, and hands the output back with the block on the clipboard.
+once, and hands the output back with the block on the clipboard; a
+read-only sitting's probe of a project (`--project NAME`) runs there too,
+under the sitting's id.
 
 `office start` sends a session out, and it is the one door for new work:
 `office start new` takes the job in the occupant's words, names the
@@ -409,7 +411,19 @@ matters refuses and names them). Its brief is the office's, from the
 install's templates/sitting-brief.md: his words verbatim, what they
 concern and how that was found, and what rides and why, one line each, in
 the order to read them, where the planner reads first; the screen shows
-the same lines before the pack. What rides, in this order:
+the same lines before the pack. Its opening names the doctrine it goes out
+under, in one line (0.33.0): the sha256 of the install's
+doctrine/OFFICE.md as the doctrine rides with it (the bytes the rides-once
+check reads), with its release; and `office start` stamps the same
+doctrine in the folder's Sessions line, `- SID: sitting, doctrine SHORT`
+(its first twelve characters), for every sitting it sends from a folder,
+a bundle's included, whose brief is the planner's and so carries no such
+line. The walk-in's In flight, the home screen's item that ends a sitting
+and `office status` read the stamp back, and when it is not the install's
+(office-src moved on while the sitting was out) say that the sitting is
+out under an older doctrine, naming both short hashes, in one line.
+Nothing refuses: the sitting may finish on the doctrine it read. What
+rides, in this order:
 
 1. the sitting's own folder, whole, the drafting table with its digest
    written first, the hung items and the unsorted drops, as every
@@ -468,8 +482,10 @@ waits, with a key that sends its prep, `office start --prep MEETING`
 (MEETING its `YYYY-MM-DD HH:MM title`, or words that name one near): a
 read-only sitting from the office, through the planner sitting's
 gathering, its goal the meeting's words and its brief the office's, from
-the install's templates/prep-brief.md. No folder records it: the calendar's
-record line does, by its id. What rides, said on the screen and first in
+the install's templates/prep-brief.md, whose field block names the
+doctrine it goes out under as a planner sitting's opening does (0.33.0).
+No folder records it: the calendar's record line does, by its id, so no
+Sessions line stamps its doctrine and the walk-in does not compare it. What rides, said on the screen and first in
 its brief, one line each with why, inside bale's caps as for any sitting:
 the calendar; what every sitting carries (the drafting table with its
 digest, the hung items, the unsorted drops); each project's handbook
@@ -1218,7 +1234,7 @@ Kinds:
 | land | script: bring a session back: bale's apply in its repo, how it ended, the folder's walkthrough and delivery pages filed from the response, then its Sort on each drop's page, its questions and answers in the folder, its facts in the handbook and its Structure over the folder's provisional fields, and office moves when a drop was sorted, on a project with an audience the letterhead's review of what landed (what deliver would refuse, said, nothing refused), the project's after-land actions, the folder closed when its one session landed and the founding folder when the founding has, the watches that fired, what became of each action, and last the relay to carry on the clipboard; it asks nothing about ratification; or end a read-only sitting the office sent out, and for a meeting's prep record the meeting held and file what arose as drops (--arising FILE) | yes | occupant |
 | withdraw | script: close a session the office sent out and that was never worked (no response in the downloads, no apply begun), named by its folder and asked once (--yes the twin): bale's unlock with reason abandoned where it is open, and a withdrawn line in its folder's History; a folder that recorded it alone is said with the line that closes it | yes | occupant |
 | relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes | plumbing |
-| probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), stdin closed, once its purpose header has been shown and the occupant said yes; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes | plumbing |
+| probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), for the folder's session open there or, with --project, a read-only sitting of its open in the office, under the sitting's id, stdin closed, once its purpose header has been shown and the occupant said yes; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes | plumbing |
 | deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, checked by the letterhead, each commit shown whole and asked once, authored and committed as the declared author (asked once and kept when none is declared, --author the twin), recorded in the folder | yes | occupant |
 | letterhead check | script, read-only: name every line in a tree, a range or a file that holds what the letterhead refuses (in an office with a letterhead, the dashes and the ellipsis by default, a lift said; a pull-request template's lines exempt from the phrasing rule and the three characters) | yes | plumbing |
 | tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes | occupant |
@@ -1271,6 +1287,21 @@ question names its flag, offers its default or its keys, explains the
 field when the answer is `?`, and asks again, with the reason, when an
 answer is not one the field takes. A plain return skips a question that
 may be skipped.
+
+An answer in his words that may run to several lines (a new job's, a
+planner sitting's, a profile question's) ends on a blank line, and a line
+already ended cannot be edited at a terminal's prompt. So before anything
+is written or packed the whole answer is shown back, numbered, with one
+question (0.33.0): keep it, the default; redo it from its first line;
+more, for lines after the last; or a line's number, to type that line
+again (a blank one takes it out). The question names the answer's flag
+twin, `?` explains it, and piped input never reaches it. With VISUAL or
+EDITOR set and the terminal his, the answer is taken in that editor
+instead, as git takes a commit message: a scratch file seeded with the
+question and its explanation as comment lines, read back less them and
+less blank lines; he saw the whole there, so it is not shown back. An
+editor that fails, or comes back empty where an answer is needed, is said,
+and the answer is asked at the prompt.
 
 The verbs are on two surfaces, which the table above names and
 share/verbs.toml declares. The occupant's own (`occupant`) are the home
@@ -1329,7 +1360,9 @@ the installed commit (in the words `office status` uses), a line saying
 the install's bytecode cache is not level for the python3 that runs it,
 in any office, in status's words too (0.31.0), the sessions in flight in its projects and in the office
 itself, with the folder each belongs to (a read-only sitting a folder
-records says that `office land SID` ends it when the sitting is over;
+records says that `office land SID` ends it when the sitting is over,
+and, when its Sessions line stamps a doctrine that is not the install's,
+that it is out under an older one, both short hashes named (0.33.0);
 the Next line never names one, since nothing in the office knows when a
 sitting is over), how many folders are ready, parked and
 candidates, and the first three ready ones with their next moves, how
@@ -1673,7 +1706,8 @@ or whose founding session never went out): it keeps the answers a
 founding folder already holds and asks only for the rest, and `office
 start` on the founding folder goes through it. It refuses an office that
 is founded, and one whose founding session is out. On a terminal an
-answer may run to several lines, a blank line ending it. When the
+answer may run to several lines, a blank line ending it, and it is shown
+whole to keep, redo or mend before it is kept (section 7). When the
 founding session lands applied with the profile complete, `office land`
 closes the founding folder, done: the folder is the office's, and a
 founding has nothing more to do. Init refuses to build

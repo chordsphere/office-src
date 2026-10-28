@@ -282,14 +282,18 @@ class TestInitOnATerminal(DoorCase):
             (b"Purpose: why this office exists and what jobs come here (--purpose) [several lines welcome; "
              b"a blank line ends the answer, and return at once skips]:", "?"),
             (b"Name the kinds of job", "My own tools.\n"),
+            (b"(--purpose) [keep]: ", ""),  # 0.33.0: each answer shown whole, a plain return keeps it
             (b"Not for: what this office is not for", ""),
             (b"Site: machine, root, timezone", "the laptop, pushed nowhere\n"),
+            (b"(--site) [keep]: ", ""),
             (b"The timezone you live in, a zone name such as America/Chicago (--timezone) [America/Chicago]:",
              "America/Indianapolis"),
             (b"give another zone, or the same one again to keep it as given", "America/Indiana/Indianapolis"),
             (b"House rules: this office's own rules", "None beyond the four.\n"),
+            (b"(--house-rules) [keep]: ", ""),
             (b"When to open a session here: this office's threshold", ""),
             (b"Spaces in use: which spaces this office uses", "Only the base.\n"),
+            (b"(--spaces) [keep]: ", ""),
         ])
         self.assertEqual(code, 0, seen)
         self.assertNotIn("Audiences: who may read", seen, "a flag answered it")

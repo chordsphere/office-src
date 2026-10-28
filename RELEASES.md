@@ -4,6 +4,103 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.33.0
+
+Additive: no migration, nothing to do in any office. This release is the
+second of eight the planning sitting of 2026-10-27 drew from the M10
+walkthrough: three things a planner sitting runs into, each small on its
+own. What you see changes in three said ways: an answer of several lines
+is shown back to keep before it goes, `office probe` runs a sitting's
+probe of a project, and a sitting out under an older doctrine than the
+install's says so wherever the sitting is shown.
+
+An answer of several lines is seen whole before it goes. The home
+screen's p key, `office start new`, `start --planner` and the profile's
+questions take an answer that may run to several lines, a blank line
+ending it, and a line already ended could not be edited: the answer went
+into the folder, or out in a sitting's brief, as typed. Now, when the
+blank line ends it, the whole answer is shown numbered and one question
+follows: keep it (a plain return), redo it from its first line, more
+lines after the last, or a line's number to type that line again (a
+blank one takes it out). Nothing is written or packed until it is kept,
+and `?` explains. With VISUAL or EDITOR set and the terminal his, the
+answer is taken in that editor instead, as git takes a commit message: a
+scratch file seeded with the question and its explanation as comment
+lines, read back less them and less blank lines; he saw the whole there,
+so nothing is shown back. An editor that fails, or comes back empty where
+an answer is needed, is said, and the answer is asked at the prompt. The
+editor draws on the terminal stderr is, since office start new reads the
+words inside a command substitution. The flag twins (`--words`, the
+profile's section flags) are untouched, and piped input is never asked
+(bin/office `review_lines` and `edit_answer`, under `ask_words` and
+`ask_paragraph`).
+
+`office probe` serves a read-only sitting. A sitting is open in the
+office's own registry, never in a project, so a sitting's probe of a
+hosted project's repo found no session there and was refused; the
+sitting of 2026-10-27 ran six probes by hand through ssh instead. Now a
+read-only sitting the folder records, open in the office, is a session a
+probe can be for: with `--project NAME` the block runs in that project's
+repo, through its shell on a host, under the sitting's id, its
+fallback's files carried to the sitting's out tray and its History line
+counted against the sitting. The header, the one question, the
+one-writer rule and a `probe-output/` already there refusing hold as
+before. A folder with a sitting and a session open in the project keeps
+the project's session unless the block's slug or `--sid` names the
+sitting; without `--project`, a sitting's folder is asked where, or runs
+in the office root, as before. A writing office session is not a sitting
+and is never offered (lib/office_probe.py `open_sittings` and
+`choose_session`).
+
+The doctrine a sitting went out under is stamped and compared.
+office-src moved from 0.30.0 to 0.31.0 during that sitting, and the
+doctrine's bytes changed; the sitting learned it only because `office
+status` was run. Now office start writes the install's doctrine hash,
+the sha256 of doctrine/OFFICE.md as it rides (the bytes the rides-once
+check reads), in two places: one line in the opening of a planner
+sitting's brief, and of a meeting prep's (templates/sitting-brief.md,
+templates/prep-brief.md), and the folder's Sessions line for every
+sitting it sends from a folder, a bundle's included, `- SID: sitting,
+doctrine SHORT` (the first twelve characters). The walk-in's In flight,
+the home screen's item that ends a sitting and a new `doctrine:` line in
+`office status` read the stamp back, and when it is not the install's
+say that the sitting is out under an older doctrine, both short hashes
+named, in one line. Nothing refuses: the sitting may finish on the
+doctrine it read. A sitting from before this release has no stamp and is
+not compared, and a prep, which no folder records, carries the brief's
+line only. A brief whose install holds no readable OFFICE.md leaves the
+line out and says so (lib/office_bale.py `install_doctrine_hash`,
+`Doctrines` and `doctrine_lines`; lib/office_helper.py `sitting_words`
+and `session_doctrine`). The doctrine says it in section 4, continued,
+where it describes the sitting's brief.
+
+The doctrine also says the answer's review in section 7, beside the
+wizard rule, and the probe's sitting in its front sheet and verb table;
+README.md says all three where the verbs are.
+
+Tests: tests/test_answer_review.py, a new module
+(`TestAnAnswerIsSeenWholeBeforeItGoes`: a line typed again and more
+lines, redo, `?` and a key it does not take, no line left, the editor and
+its seed, an editor that fails or comes back empty and VISUAL on a dumb
+terminal; `TestPipedNothingIsAsked`; `TestTheProfilesAnswersAreSeenWhole`;
+the record);
+tests/test_probe.py `TestASittingsProbeOfAProject` (the project's repo
+under the sitting's id, the out tray, piped and without `--project` as
+before, both open, a writing office session, the choice as a unit) and a
+hosted case in `TestProbeOnAHost`; tests/test_planner_from_words.py
+`TestTheDoctrineASittingWentOutUnder` (the hash's bytes, the brief and
+the Sessions line, a read-only start and a project session, the walk-in
+and status quiet and then saying it, a sitting from before the stamp,
+the words as units, the prep's brief and an unreadable doctrine) and
+`TestTheDoctrineOnTheHomeScreen`. The terminal tests that type into these
+questions keep their answer with a plain return, and the sitting tests
+that pinned a bare Sessions line pin the stamp. `office status` prints
+its `doctrine:` line below `skew:`, so the bytecode line keeps its place
+above `built from:` (tests/test_office.py `TestTheInstallsBytecodeCache`),
+and 0.32.0's record pin in tests/test_walkthrough_tidy.py now reads
+0.32.0 or later, as test_probe's has since 0.19.0. The suite holds 1000
+tests, 974 at 0.32.0.
+
 ## 0.32.0
 
 Additive: no migration, nothing to do in any office. This release is the

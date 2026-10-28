@@ -101,7 +101,8 @@ whether it has arrived is still bale's to say, and `office land` asks
 it), a planner's bundle in your downloads that no session has opened
 (bale's records say which were), each unsorted drop and the sort, desk
 moves a sitting decided, an office out of step with the install, and a
-read-only sitting, which only you can say is over. Keys for a new job
+read-only sitting, which only you can say is over (its item says when it
+is out under an older doctrine than the install's). Keys for a new job
 (`o`), sending a session out (`s`), bringing one back (`l`), a note
 (`n`), a drop (`d`), the whole desk (`k`) and help (`h`) are always
 there, and `q` leaves. A key runs the verb's own code with its arguments
@@ -125,7 +126,9 @@ office that scopes the install's project, a `Suite: ...` line when the
 latest detached run of the project's suite, below, did not end `OK`:
 its `FAILED` or `BROKEN` verdict as written, or a `RUNNING` one over an
 hour old, with the log to read), the sessions in flight in its projects
-and in the office itself with the folder each belongs to, how many
+and in the office itself with the folder each belongs to (a read-only
+sitting out under an older doctrine than the install's says so on its
+line, both short hashes named, 0.33.0), how many
 folders are ready, parked and candidates and the first three ready ones,
 how many drops wait unsorted in the in-tray and how old the oldest is,
 this week and its gaps, the last notepad lines and the slips, and the
@@ -240,7 +243,12 @@ projects' documentation, as a planner's bundle you send or delete.
 New work comes in through one door: `office start new` (the home
 screen's `o` key) asks for the job in your own words, as many lines as
 you like (a blank line ends them), and sends its session out in the same
-motion. The first line is the folder's title and its slug comes from it;
+motion. Before anything is written your words are shown back, numbered,
+and asked about once: keep them (a plain return), redo them, more lines,
+or a line's number to type that line again, since a line already ended
+cannot be edited at the prompt. With `VISUAL` or `EDITOR` set, you write
+them in that editor instead, as for a git commit message, and nothing is
+shown back (0.33.0). The first line is the folder's title and its slug comes from it;
 the words are kept, word for word, in the folder's Asked section, and as
 one line they are the goal the session goes out with. It asks which
 project the job is on, by key, only when your words name none of the
@@ -312,7 +320,14 @@ rides. The office gathers what rides (each concerned project's handbook
 chapter, its folders on the desk, the walkthrough of each job that landed
 on it since the last sitting, and the last sitting's notepad pages),
 lists it with why on the screen, and writes the same list first in the
-sitting's brief. When drops wait in the in-tray, before any sitting goes
+sitting's brief. Your words are shown back to keep, redo or mend before
+anything goes, as a new job's are. The brief's opening names the doctrine
+the sitting goes out under (the sha256 of the install's
+doctrine/OFFICE.md), and the folder's Sessions line keeps its first
+twelve characters, `- SID: sitting, doctrine SHORT`; when office-src
+moves on while the sitting is out, the walk-in, the home screen's item
+for the sitting and `office status` say it is out under an older
+doctrine, both short hashes named, and nothing refuses (0.33.0). When drops wait in the in-tray, before any sitting goes
 out the office says how many and offers the sort first, by key: taken,
 the sort and then the sitting go out together, the sitting's opener left
 on the clipboard. A planner's bundle whose brief carries a LANDS line
@@ -360,7 +375,9 @@ in the office root. It shows the block's purpose header and asks once
 first, and refuses a block that is not a probe or does not say it is
 read-only. The output comes back to your terminal whole, the block goes
 on your clipboard to paste back, and the folder's History counts the
-probe. The details are below.
+probe. A planner sitting's probe of a project's repo works the same way:
+`office probe 21 --project office-src` runs it in that repo, under the
+sitting's id (0.33.0). The details are below.
 
 ### Deliver it to the audience
 
@@ -390,7 +407,9 @@ The office is unfounded until its founding session writes the profile,
 and init sends that session out itself. It asks the profile's questions,
 one per section of the profile's required shape (`share/profile-shape.toml`)
 in its order, each worded from the section's asks line. An answer may run
-to several lines: each line is kept as typed, and a blank line ends it.
+to several lines: each line is kept as typed, and a blank line ends it;
+then it is shown back, numbered, to keep, redo or mend line by line (or,
+with `VISUAL` or `EDITOR` set, written in that editor).
 `?` explains what a good answer holds, and a plain return at once leaves
 the section for the founding session to ask about. The timezone you live in is asked with
 Site, defaulting to the machine's when that resolves, checked against the
@@ -459,7 +478,7 @@ rendering says bale is missing and the rest of the command works.
 
 ### Looking after an office
 
-    office status              # version, skew, the install against its source, its bytecode cache, profile, survey age, timezone, hung items, catalogs, folders, filed pages, bale, projects, the letterhead, the push guards
+    office status              # version, skew, the install against its source, its bytecode cache, the doctrine and any sitting out under an older one, profile, survey age, timezone, hung items, catalogs, folders, filed pages, bale, projects, the letterhead, the push guards
     office survey              # rewrite floor-plan/survey.md, report what changed
     office upgrade             # run pending migrations: dry run, then one commit; a renovation goes out through office start; with or without one, the letterhead's missing pages and the current push guards
     office found               # an unfounded office's founding session, through the founding door
@@ -1068,7 +1087,18 @@ it finds where the block runs: the project the folder's lane names, or
 `--project office` is the office itself). It finds the session the probe
 is for: the session the folder records that is open there, by bale
 status; with several, the one the block's slug names, else `--sid`. A
-folder with none gets no probe run, since a probe is a session's. A
+read-only sitting the folder records, open in the office's own registry,
+is a session a probe can be for too (0.33.0): a sitting is open in the
+office, never in the project, so before this a sitting's probe of a
+project's repo was refused and had to be run by hand. With `--project
+NAME` it runs in that project's repo (through its shell on a host) under
+the sitting's id, its fallback's files go to the sitting's out tray, and
+the History line counts it against the sitting. A folder with a sitting
+and a session open in the project keeps the project's session, unless the
+block's slug or `--sid` names the sitting; without `--project`, a
+sitting's folder whose lane names no project is asked where (or told
+`--project office`) as before. A folder with none gets no probe run,
+since a probe is a session's. A
 `probe-output/` already where it runs stops it too, since a fallback
 probe's output could not be told from it. On a host all of this is one
 connection, which is the reach. Then it shows the header and where the
@@ -1426,10 +1456,10 @@ matches the floor plan.
 | path | what |
 |---|---|
 | bin/office | the command (bash); `pylib` starts each Python helper as a module, with -B, -P and (0.28.0) -S; since 0.29.0 the reads a command makes side by side go out as one call (`batch_call`, `batch_run`), the stamps and skew are read once per command (`skew_read`) and a helper's JSON answer is read back once (`json_read`); since 0.30.0 a landing's record, bale apply and its outcome are one `office_bale land` call |
-| lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library); since 0.28.0 the LazyPattern and OneSubcommand every module's start leans on; since 0.29.0 `batch`, several subcommands of any lib/ module in one process, and `skew-report`; since 0.30.0 `bytecode-check`, office status's line on the install's bytecode cache |
+| lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library); since 0.28.0 the LazyPattern and OneSubcommand every module's start leans on; since 0.29.0 `batch`, several subcommands of any lib/ module in one process, and `skew-report`; since 0.30.0 `bytecode-check`, office status's line on the install's bytecode cache; since 0.33.0 the doctrine stamp a sitting's Sessions line carries (`sitting_words`, `session_doctrine`) |
 | lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after (one `land` call since 0.30.0: the office's record out, bale apply or retry, the outcome) |
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
-| lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for, the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray |
+| lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray |
 | lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review |
 | lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin); the characters an office's letterhead refuses and lifts, and a repository's pull-request templates |
 | share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks, one list for office letterhead check and the suite's text rules; and the characters an office with a letterhead refuses by default |

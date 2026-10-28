@@ -255,6 +255,7 @@ class TestOneDoorOnATerminal(LandCase):
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start", "new"], self.root, self.e.env, [
             (b"The job, in your own words", "Write the alpha release notes"),
             (b"", ""),
+            (b"[keep]: ", ""),  # 0.33.0: the answer is shown whole, and a plain return keeps it
         ])
         self.assertEqual(code, 0, seen)
         self.assertIn("your words name alpha, one of this office's projects: the folder's lane", seen)

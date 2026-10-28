@@ -234,6 +234,26 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.33.0 (session 2026-10-28-m10-sitting-fixes-001): the sitting fixes,
+  the second of the eight sessions the planning sitting of 2026-10-27
+  drew from the M10 walkthrough: three things a planner sitting runs into.
+  - An answer of several lines (a new job's words, a planner sitting's,
+    a profile question's) is shown back numbered before it goes: keep (a
+    plain return), redo, more, or a line's number to type it again. With
+    VISUAL or EDITOR set it is written in that editor instead, drawn on
+    stderr's terminal, since start new reads the words inside `$(...)`.
+    A terminal test that types into one of these questions now answers
+    the keep question too, or it waits there for ever.
+  - `office probe FOLDER --project NAME` runs a read-only sitting's probe
+    in the project's repo under the sitting's id: a sitting is open in
+    the office's registry, never the project's
+    (lib/office_probe.py `choose_session`).
+  - office start stamps the install's doctrine hash in a planner
+    sitting's and a prep's brief, and `- SID: sitting, doctrine SHORT` in
+    a sitting's Sessions line; the walk-in, the home screen and `office
+    status` say when a sitting is out under an older doctrine. A pin on
+    a sitting's bare `- SID` line no longer holds.
+  - Additive: no migration.
 - 0.32.0 (session 2026-10-27-m10-tidy-002): the M10 tidy, the first of
   eight sessions the planning sitting of 2026-10-27 drew from the M10
   walkthrough: four small things, none depending on another.

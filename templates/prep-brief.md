@@ -7,6 +7,7 @@
 - the meeting: {{title}}
 - when: {{when}}, {{tz}}{{series}}
 - it concerns: {{concerns}}
+- the doctrine it goes out under: {{doctrine}}
 
 Its goal is the meeting's words. No folder records it: a meeting is a
 view over the work, not a job, and nothing else is opened for it. Work

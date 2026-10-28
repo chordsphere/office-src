@@ -434,8 +434,11 @@ def home_items(skew, founded, out, groups, projects, slips, behind, bundles, nam
                           + (f", {len(errors)} line(s) that do not read" if errors else ""), ["moves"]))
     # A sitting lands nothing, and nothing in the office knows when it is
     # over (doctrine section 7): never the Next line, but a key that ends it.
+    # One out under an older doctrine says so (0.33.0), its stale key set
+    # by home() from the folder's Sessions line.
     items += [item(f"End the sitting {names.of(s['sid'])} ({'the office' if s['label'] == ob.OFFICE_LABEL else s['label']}), "
-                   "once it is over", ["land", s["sid"]]) for s in sittings]
+                   "once it is over" + (f"; it is {s['stale']}" if s.get("stale") else ""), ["land", s["sid"]])
+              for s in sittings]
     items += [item(f"End the prep for {m['title']} once the meeting is over: land records it held and files what "
                    "arose", ["land", m["sid"]]) for m in meetings if m["state"] == "prep out"]
     # The Next line's move, first: an item above when it is one, else its
@@ -573,6 +576,9 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
     projects = ob.office_projects(office_root)
     every, _ = ob.open_anywhere(rd, office_root)
     sittings = [x for x in every if x["read_only"] and x["folders"]]
+    doctrines = ob.Doctrines(office_root)
+    for s in sittings:
+        s["stale"] = doctrines.older(s["sid"])
     rows = project_rows(rd, office_root, names, now, tz)
     bundles = waiting_bundles(rd, office_root, directories, now) if directories else []
     try:

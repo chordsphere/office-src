@@ -815,6 +815,11 @@ def concern_words(about):
 
 
 def render_brief(o, tz_name, day, rides, left, windows):
+    """The prep's brief, from the install's templates/prep-brief.md; its
+    field block names the doctrine the prep goes out under (0.33.0). No
+    folder records a prep, so the line says where the doctrine rides and
+    nothing of a Sessions line."""
+    import office_bale as ob
     import office_planner as op
     ride_lines = [f"- {path}: {why}" for path, why in rides]
     ride_lines += [f"- left out for bale's caps: {e['path']} ({e['why']})" for e in left]
@@ -824,7 +829,7 @@ def render_brief(o, tz_name, day, rides, left, windows):
         "day": day, "title": o["title"], "when": when_words(f"{o['date']} {o['time']}"), "tz": tz_name or "UTC",
         "series": f", one of a series (every {DAY_NAMES[o['series']]})" if o.get("series") else "",
         "concerns": concern_words(o["about"]), "windows": "\n".join(window_lines), "rides": "\n".join(ride_lines),
-        "first_window": str(FIRST_WINDOW_DAYS),
+        "first_window": str(FIRST_WINDOW_DAYS), "doctrine": ob.doctrine_brief_words(folder=False),
     })
 
 

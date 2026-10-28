@@ -7,6 +7,8 @@ sitting's goal, and nothing else was asked of him: no title, no size, no
 include list. The office chose what rides from what it knows, and says
 why each piece rides, so you can answer him without asking for files.
 
+- the doctrine it goes out under: {{doctrine}}
+
 ## His words, verbatim
 
 {{words}}

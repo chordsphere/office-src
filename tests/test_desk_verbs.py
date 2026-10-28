@@ -311,7 +311,8 @@ class TestWizards(unittest.TestCase):
         the title is the words' first line, the size small, the source the
         occupant, the goal the words as one line."""
         code, seen = terminal(self.env, self.o.root, [self.bin, "open"],
-                              [("The job, in your own words", "?"), ("works out the rest.", "Fix the login\n")])
+                              [("The job, in your own words", "?"), ("works out the rest.", "Fix the login\n"),
+                               ("[keep]: ", "")])  # 0.33.0: shown whole, a plain return keeps it
         self.assertEqual(code, 0, seen)
         for gone in ("(--title):", "(--size)", "(--lane)", "(--source)"):
             self.assertNotIn(gone, seen)
