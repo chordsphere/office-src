@@ -29,8 +29,11 @@ each, in the order to read them:
 A sitting lands nothing itself (doctrine section 3, principle 2). Its
 words reach the notepad in the brief of each session it authors, between
 the NOTEPAD PAGE markers; its ratification of a landed session travels as
-a RATIFIED line; and where each session it authors lands, and the folder
+a RATIFIED line; where each session it authors lands, and the folder
 that records it, travels as one LANDS line, so `office start` asks the
-occupant neither (doctrine section 4, continued, pins all three to the
-byte). The unsorted drops that ride are read, and owe no Sort here. When
+occupant neither; and when a session must build on a branch the project's
+clone would not otherwise be on (a review's answer, on the pull request's
+own branch), that branch travels as one BRANCH line, `--- BRANCH NAME
+---`, and `office start` checks it out before bale opens the bundle
+(doctrine section 4, continued, pins all four to the byte). The unsorted drops that ride are read, and owe no Sort here. When
 the sitting is over, `office land` ends it.

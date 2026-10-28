@@ -4264,7 +4264,16 @@ A planner's bundle whose brief carries a LANDS line (--- LANDS alpha,
 folder 14 ---, or the office, or a new folder: doctrine section 4) is sent
 without asking where it lands or which job, and start says both in one
 line; a line that does not read, or names a project or a folder the office
-does not hold, is said and that question is asked.
+does not hold, is said and that question is asked. A brief that names the
+branch its session builds on (--- BRANCH picklists ---: a review's answer
+goes onto the review's own branch) has that branch checked out in the
+project's clone, here or through its shell on a host, before bale open
+--check runs: its local branch, or a new one tracking the one remote that
+has it. A clone with uncommitted changes, with a session open in it (bale
+lands on the branch checked out), or with no such branch locally or on a
+remote it has fetched stops the start with nothing written and says what
+to do there (the office fetches nothing); a clone already on the branch is
+said. A BRANCH line in a bundle that lands in the office is refused.
 The one door for new work: office start new takes the job in your words
 (asked on a terminal; --words TEXT gives them), names the project only
 when your words name none of the office's (by key; --on PROJECT or
@@ -4554,6 +4563,18 @@ project_facts() {
 check_start_bundle() {
   local root="$1" where="$2" project="$3" bundle="$4" out place
   place="$([ "$where" = office ] && printf 'in the office' || printf 'on %s' "$project")"
+  # The branch the bundle's brief names (0.34.0) is checked out where the
+  # bundle opens before bale's rehearsal, which runs against the live tree:
+  # once per start, and nothing else is written before it either.
+  if [ -n "$START_BRANCH" ] && [ "$START_BRANCH_DONE" = 0 ]; then
+    local bargs=(--where "$where" --branch "$START_BRANCH")
+    [ "$where" != project ] || bargs+=(--project "$project")
+    [ "$where" != project ] || [ "${START_CHECKED_HOST:-}" != "$project" ] || bargs+=(--checked)
+    out="$(reader bundle-branch "$root" "${bargs[@]}")" \
+      || die "nothing was written: no folder, no survey, no out tray, no session (the bundle's brief names the branch $START_BRANCH, and the lines above say why it is not checked out)"
+    [ -z "$out" ] || while IFS= read -r line; do [ -n "$line" ] && log "$line"; done <<< "$out"
+    START_BRANCH_DONE=1
+  fi
   log "asking bale whether it can open $(basename "$bundle") $place (bale open --check, which writes nothing)"
   local cargs=(--where "$where")
   [ "$where" != project ] || cargs+=(--project "$project")
@@ -5204,9 +5225,13 @@ bundle_lands_read() {
       place) lands_where="$a"; lands_project="$b" ;;
       folder) lands_folder="$a" ;;
       words) lands_words="$a" ;;
+      branch) START_BRANCH="$a" ;;
       say) log "$a" ;;
     esac
   done <<< "$out"
+  # The branch the session builds on (0.34.0): checked out where the bundle
+  # opens, before bale open --check (check_start_bundle).
+  [ -z "$START_BRANCH" ] || log "the bundle's brief names the branch its session builds on: $START_BRANCH (its BRANCH line); start checks it out in the project's clone before bale opens the bundle"
   if [ -n "$lands_where" ]; then
     if [ -n "$where" ] && { [ "$where" != "$lands_where" ] || [ "$project" != "$lands_project" ]; }; then
       log "the bundle's brief says it lands $([ "$lands_where" = office ] && printf 'in the office' || printf 'on %s' "$lands_project"); $([ "$where" = office ] && printf -- '--in-office' || printf -- '--on %s' "$project") says otherwise, and stands"
@@ -5234,6 +5259,7 @@ cmd_start() {
   local planner=0 abouts=() sort_first="" in_office_given=0 prep=0
   PREP_WANT=""
   START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_BUNDLE_FOUND=""; START_DROP_PAGE=""
+  START_BRANCH=""; START_BRANCH_DONE=0
   PLANNER_FILE=""; PLANNER_CONCERNS=(); PLANNER_WHY=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -7651,7 +7677,7 @@ deliver_py() { pylib "$DELIVER" "$@"; }
 
 usage_deliver() {
   cat <<'USAGE'
-usage: office deliver [FOLDER] [--on PROJECT] [--branch NAME] [--author "Name <email>"] [--others-too] [--yes]
+usage: office deliver [FOLDER] [--on PROJECT] [--branch NAME] [--adopt] [--author "Name <email>"] [--others-too] [--yes]
 Carries a folder's landed work to its project's audience as curated
 commits: a branch named from the folder (--branch NAME overrides), made
 from the audience's base branch, holding the landed tree changes as one
@@ -7692,6 +7718,14 @@ deliver prints what you do next: open the review (a URL when the git
 host's compare-URL shape is known, GitHub or GitLab; the branch's name
 otherwise) and whom to send it to, when the words name a reviewer. A
 second delivery for the same folder adds to the same branch.
+A branch the audience already has that this folder's records do not cover
+was made outside the office (a pull request opened by hand, or another
+folder's): deliver says so and, on a terminal, asks once whether to add
+this delivery to it (--adopt is the twin; piped, it refuses and names it),
+which is how a review's answer lands on the review's own branch. Adopted,
+the folder's delivered line ends `; adopted`, the next line names the
+reviews open for that branch (GitHub or GitLab) rather than a new
+review's form, and the next delivery adds to the branch as to its own.
 The delivery is built on this machine, where the audience answers with
 your credentials: for a project on a host, the landed commits come here
 as a git bundle through the project's shell, into a temporary repo
@@ -7701,6 +7735,8 @@ any push to the audience from the clone that deliver did not make.
   FOLDER           the folder, by name, part of it, or folder N; asked on a terminal
   --on PROJECT     the project, when the folder's lane names none
   --branch NAME    the delivery branch's name (default: the folder's slug)
+  --adopt          add the delivery to a branch the audience already has that
+                   this folder never delivered to (made outside the office)
   --author "Name <email>"
                    the identity the audience expects, declared for the project and kept
   --others-too     deliver other folders' sessions riding in the landed work
@@ -7718,6 +7754,7 @@ Examples:
   office deliver 14 --yes
   office deliver 14 --author "Pat Example <pat@example.org>"
   office deliver health-route --branch api-health --others-too
+  office deliver 6 --branch picklists --adopt        (the review's answer onto the review's own branch)
 USAGE
 }
 
@@ -7727,7 +7764,10 @@ USAGE
 deliver_show() {
   local plan="$1" line
   printf '\nDelivery of %s to %s (%s):\n' "$(plan_field "$plan" folder)" "$(plan_field "$plan" audience)" "$(plan_field "$plan" url)"
-  printf '  branch:   %s%s, from %s\n' "$(plan_field "$plan" branch)" "$([ -n "$(plan_field "$plan" continuing)" ] && printf ' (adding to the branch on the audience)')" "$(plan_field "$plan" base)"
+  local how=""
+  if [ -n "$(plan_field "$plan" adopting)" ]; then how=" (adding to the branch on the audience, which was made outside the office: this folder records no delivery on it)"
+  elif [ -n "$(plan_field "$plan" continuing)" ]; then how=" (adding to the branch on the audience)"; fi
+  printf '  branch:   %s%s, from %s\n' "$(plan_field "$plan" branch)" "$how" "$(plan_field "$plan" base)"
   printf '  author:   %s (author and committer of every commit)\n' "$(plan_field "$plan" author)"
   printf '  sessions: %s' "$(plan_field "$plan" sessions | paste -sd, - | sed 's/,/, /g')"
   printf '  (%s commit(s) on the workbench since %s)\n' "$(plan_field "$plan" commits)" "$(plan_field "$plan" since_why)"
@@ -7773,13 +7813,14 @@ for l in plan.get("check_told") or []:
 }
 
 cmd_deliver() {
-  local want="" project="" branch="" others=0 yes=0 root name space tmp plan out line ans rc=0 url author="" who
+  local want="" project="" branch="" others=0 yes=0 adopt=0 root name space tmp plan out line ans rc=0 url author="" who
   while [ $# -gt 0 ]; do
     case "$1" in
       --on) [ $# -ge 2 ] || die "--on needs the project's name"; project="$2"; shift 2 ;;
       --author) [ $# -ge 2 ] || die "--author needs Name <email>"; author="$2"; shift 2 ;;
       --branch) [ $# -ge 2 ] || die "--branch needs a name"; branch="$2"; shift 2 ;;
       --others-too) others=1; shift ;;
+      --adopt) adopt=1; shift ;;
       --yes|-y) yes=1; shift ;;
       -h|--help) usage_deliver; return 0 ;;
       -*) usage_deliver >&2; die "office deliver does not know $1; the flags above are what it takes" ;;
@@ -7803,7 +7844,8 @@ cmd_deliver() {
   [ -z "$author" ] || author="$(helper check-audience-key author "$author")" || exit 1
   log "planning the delivery of $space/$name: the audience's base, the landed work, the words, the letterhead check, the commits"
   deliver_py plan "$root" "$name" --plan "$plan" ${branch:+--branch "$branch"} ${project:+--on "$project"} \
-    ${author:+--author "$author"} $([ "$others" = 1 ] && printf -- --others-too) $(can_ask && printf -- --interactive); rc=$?
+    ${author:+--author "$author"} $([ "$others" = 1 ] && printf -- --others-too) $([ "$adopt" = 1 ] && printf -- --adopt) \
+    $(can_ask && printf -- --interactive); rc=$?
   if [ "$rc" = 4 ]; then
     # The project declares no author: a fact only the occupant knows, asked
     # once here and kept (0.25.0); the clone's own identity is never used.
@@ -7821,13 +7863,23 @@ cmd_deliver() {
       printf '  %s\n' "${out#\[office\] error: }" >&2
     done
     deliver_py plan "$root" "$name" --plan "$plan" ${branch:+--branch "$branch"} ${project:+--on "$project"} \
-      --author "$author" $([ "$others" = 1 ] && printf -- --others-too) --interactive || exit 1
+      --author "$author" $([ "$others" = 1 ] && printf -- --others-too) $([ "$adopt" = 1 ] && printf -- --adopt) \
+      --interactive || exit 1
   elif [ "$rc" != 0 ]; then
     exit 1
   fi
   plan_field "$plan" author_told | while IFS= read -r line; do [ -n "$line" ] && log "$line"; done
   plan_field "$plan" guard | while IFS= read -r line; do [ -n "$line" ] && log "$line"; done
   deliver_show "$plan"
+  if [ -n "$(plan_field "$plan" adopting)" ] && [ "$adopt" = 0 ]; then
+    # Here only on a terminal: piped, the plan refused and named --adopt.
+    # A branch on the audience that this folder never delivered to was
+    # made outside the office (0.34.0): whether this delivery joins it is
+    # the occupant's to say, since only he knows whose branch it is.
+    ask ans "$(plan_field "$plan" audience) already has a branch named $(plan_field "$plan" branch), and this folder records no delivery on it, so it was made outside the office; add this delivery to it? (--adopt) (y/n)" "n" 0 \
+      "y adds the commit(s) shown to that branch on the audience, as a review's answer goes onto the review's own branch; the folder's History then records the branch as adopted, and later deliveries add to it as to one of its own. n stops here, with nothing pushed; --branch NAME names another branch instead."
+    case "$ans" in y|Y|yes) ;; *) deliver_py abandon "$root" --plan "$plan"; log "stopped before anything left"; return 0 ;; esac
+  fi
   if [ -n "$(plan_field "$plan" others_lines)" ] && [ "$others" = 0 ]; then
     # Here only on a terminal: piped, the plan refused and named --others-too.
     ask ans "Sessions of other folders ride in this delivery (the office does not split one branch's history by folder); deliver them too? (--others-too) (y/n)" "y" 0 \
@@ -8060,7 +8112,8 @@ usage_probe() {
   cat <<'USAGE'
 usage: office probe [FOLDER] [FILE | -] [--project NAME] [--sid SID] [--yes]
 Runs a worker's probe block where the folder's project lives and hands
-the output back. The block comes from FILE, from stdin (-), or, with
+the output back; a block that calls `office-on PROJECT COMMAND...` spans
+the office and each project it names (below). The block comes from FILE, from stdin (-), or, with
 neither, from the clipboard, read with paste_command in this machine's
 ~/.config/office-src/machine.toml (asked once on a terminal, with this
 machine's likely command offered). Before anything runs it shows the
@@ -8100,6 +8153,17 @@ probe-output/ carried to the sitting's out tray. With both, the block's
 slug or --sid says which, else the project's session. A folder with
 neither gets no probe run, since a probe is a session's and its output is
 kept under that session's out tray.
+A block that spans the office and a project's host calls `office-on
+PROJECT COMMAND...` on its own lines: office probe reads each PROJECT it
+names before anything runs (one of this office's projects, literally
+named), runs the block in the office root with office-on first on its
+PATH, and each call runs its command where that project lives, through
+its shell on a host, stdin closed, its output on the block's stream and
+its exit code returned (97 when the project cannot be reached). Such a
+block takes no --project (office is the only one that fits); its session
+is the folder's open in the office (a sitting or an office session) or in
+a project it reaches, chosen by the same rule; its fallback's
+probe-output/ is the office root's, carried the same way.
 Under the hood: bale status --json where the project lives (which sessions
 are open), then the block through bash -c there; OFFICE_DEBUG=1 shows every
 shell call, and OFFICE_PROBE_TIMEOUT=<seconds> (default 1800) stops a block
@@ -8109,6 +8173,7 @@ Examples:
   office probe fix-login probe.sh --project web-api
   office probe 13 - --project office-src --yes < probe.sh
   office probe 21 --project office-src         (a sitting's probe of office-src's repo, under the sitting's id)
+  office probe 6 probe.sh                      (a block calling office-on m10-api: the office root, reaching m10-api)
 USAGE
 }
 
@@ -8178,6 +8243,16 @@ cmd_probe() {
   # does not say it is read-only.
   probe_py check "$block_file" > /dev/null || exit 1
 
+  # A block that calls office-on PROJECT spans the office and the projects
+  # it names (0.34.0): it runs in the office root, so where is settled.
+  local reaches
+  reaches="$(probe_py reaches "$block_file")" || exit 1
+  if [ -n "$reaches" ]; then
+    [ -z "$project" ] || [ "$project" = office ] \
+      || die "the block calls office-on for $(printf '%s' "$reaches" | paste -sd, - | sed 's/,/, /g'), so it runs in the office root and reaches each of them through its shell; --project $project does not fit it (give --project office, or leave it out); nothing ran"
+    project=office
+    log "the block calls office-on for $(printf '%s' "$reaches" | paste -sd, - | sed 's/,/, /g'), so it runs in the office root and reaches each of them where it lives (--project is not needed)"
+  fi
   # Where it runs: the folder's lane, --project, or asked.
   if [ -z "$project" ]; then
     project="$(probe_py lane "$root" "desk/$name")" || exit 1

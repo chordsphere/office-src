@@ -19,7 +19,13 @@ as curated commits:
 - The audience's `base` branch (and the delivery branch, when an earlier
   delivery made it) is fetched first, into refs the office owns
   (refs/office/audience/...), never over the clone's own remote-tracking
-  refs.
+  refs. A branch the audience already has that this folder's records do
+  not cover was made outside the office (a pull request opened by hand,
+  say); it is adopted only when the occupant says so (0.34.0: `--adopt`,
+  or yes to the question on a terminal), and the delivery is then added
+  to it, so a review's answer lands on the review's own branch. Adopted
+  once, the folder records it, and the next delivery continues on it as
+  on any branch of its own.
 - In a temporary worktree at the audience's tip, the landed work is
   squashed on (git merge --squash), bale's files are taken out of the
   index, the diff and the folder's delivery words go through the
@@ -336,6 +342,26 @@ def review_url(url, branch, base, title=None, body=None):
     return None
 
 
+def branch_url(url, branch):
+    """The URL that lists the reviews open for a branch on the audience's
+    git host (0.34.0), for a delivery added to a branch made outside the
+    office, whose review is already open: GitHub's pull requests with
+    that head, GitLab's merge requests with that source branch. None when
+    the host's shape is not known."""
+    import urllib.parse
+    parsed = parse_remote_url(url)
+    if parsed is None:
+        return None
+    host, owner, repo = parsed
+    low = host.lower()
+    if "github" in low:
+        return f"https://{host}/{owner}/{repo}/pulls?" + urllib.parse.urlencode({"q": f"is:pr head:{branch}"})
+    if "gitlab" in low:
+        return f"https://{host}/{owner}/{repo}/-/merge_requests?" + urllib.parse.urlencode(
+            {"scope": "all", "source_branch": branch})
+    return None
+
+
 def branch_from_folder(folder_name):
     """The delivery branch's default name: the folder's slug, its date
     stripped (2026-10-08-audience-line -> audience-line)."""
@@ -379,7 +405,7 @@ def mirror_here(prefix="office-deliver-"):
 
 
 def plan(consumption, office_root, folder, branch=None, project_name=None, others_ok=False, interactive=False,
-         author_given=None):
+         author_given=None, adopt=False):
     """Everything a delivery needs before the one question, written as a
     dict for run(): the project and its audience, author and base; the
     sessions covered and whose folders they belong to; the words; the
@@ -548,15 +574,31 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
         # commit when there was one, else since the branch and the base
         # parted.
         records = oh.delivered_records(md)
-        if continuing and not any(rec["branch"] == branch for _, rec in records):
+        # A branch the audience has that no record of this folder's covers
+        # was made outside the office: adopted when the occupant says so
+        # (--adopt; on a terminal bin/office asks, and the plan goes on so
+        # the question shows the delivery whole), refused by name piped.
+        adopting = continuing and not any(rec["branch"] == branch for _, rec in records)
+        if adopting and not (adopt or interactive):
             raise DeliverError([f"{audience} already has a branch named {branch}, and {rel} records no delivery on it, "
-                                "so it is not this folder's to add to; name another: --branch NAME"])
+                                "so it was made outside the office (a pull request opened by hand, say) or is another "
+                                "folder's",
+                                f"office deliver {folder} --branch {branch} --adopt adds this delivery to it, as a "
+                                "review's answer goes onto the review's own branch; or name another: --branch NAME; "
+                                "piped input is never asked"])
         since, since_why = None, None
         for _, rec in reversed(records):
             if rec["branch"] == branch and g(repo, "cat-file", "-e", f"{rec['workbench']}^{{commit}}", check=False).returncode == 0 \
                     and g(repo, "merge-base", "--is-ancestor", rec["workbench"], workbench, check=False).returncode == 0:
                 since, since_why = rec["workbench"], f"the last delivery on {branch} ({rec['delivery'][:12]})"
                 break
+        if since is None and adopting:
+            # What the adopted branch does not have yet: the workbench since
+            # it and the branch parted (the branch's own commits, pushed by
+            # hand from the clone, are then not delivered twice).
+            mb = g(repo, "merge-base", REF_BRANCH, workbench, check=False)
+            since = mb.stdout.strip() if mb.returncode == 0 and mb.stdout.strip() else None
+            since_why = f"where the workbench branch and {audience}/{branch} parted" if since else None
         if since is None:
             mb = g(repo, "merge-base", REF_BASE, workbench, check=False)
             since = mb.stdout.strip() if mb.returncode == 0 and mb.stdout.strip() else None
@@ -614,7 +656,7 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             raise DeliverError([f"the letterhead check could not run: {exc}"])
         out = {
             "folder": rel, "folder_name": folder, "title": title, "project": name, "audience": audience, "url": url,
-            "author": author, "base": base, "branch": branch, "continuing": continuing,
+            "author": author, "base": base, "branch": branch, "continuing": continuing, "adopting": adopting,
             "place": {"path": place.path, "host": place.host, "shell": place.shell, "connect": place.connect, "name": name}
             if place.hosted else None,
             "repo": str(repo), "temp_dir": temp_dir, "wt_root": str(wt_root), "worktree": str(worktree),
@@ -822,8 +864,9 @@ def run(office_root, plan_, day):
         abandon(plan_)
     told = list(plan_.get("guard") or []) + list(plan_.get("author_told") or [])
     md = pathlib.Path(office_root) / plan_["folder"] / "folder.md"
+    adopting = bool(plan_.get("adopting"))
     text = oh.delivered_text(plan_["branch"], plan_["audience"], plan_["project"], plan_["sessions"] + sorted(plan_["others"]),
-                             plan_["workbench"][:12], shas[-1][:12])
+                             plan_["workbench"][:12], shas[-1][:12], adopted=adopting)
     recorded = False
     try:
         _, wrote = oh.folder_event(md, day, "delivered", text)
@@ -838,18 +881,35 @@ def run(office_root, plan_, day):
     except (OSError, oh.HelperError, ob.LandError) as exc:
         told.append(f"{plan_['folder']}/folder.md: the delivery could not be recorded ({exc}); the branch is on the audience")
     review = plan_["words"]["review"]
-    url = review_url(plan_["url"], plan_["branch"], plan_["base"], review["title"], review["body"])
     nxt = []
-    if url:
-        nxt.append(f"open the review: {url}")
-        nxt.append("(the review's title and body ride in that URL; the git host fills its form from them)")
+    if adopting:
+        # The review is the one already open on the branch (made outside
+        # the office): this delivery is added to it, and the review's words
+        # are the reply, not a new review's form.
+        url = branch_url(plan_["url"], plan_["branch"])
+        if url:
+            nxt.append(f"open the review: {url}")
+            nxt.append(f"(the reviews whose branch is {plan_['branch']}; this delivery is added to that branch, so the "
+                       "review already open there carries it, and the words in delivery.md's Review section are "
+                       "what to reply with)")
+        else:
+            nxt.append(f"open the review already open on the audience's git host ({plan_['url']}) for the branch "
+                       f"{plan_['branch']}: this delivery is added to it; reply with the words in delivery.md's "
+                       f"Review section: {review['title']}")
     else:
-        nxt.append(f"open the review on the audience's git host ({plan_['url']}): the branch is {plan_['branch']}, "
-                   f"onto {plan_['base']}; the review's title: {review['title']}")
+        url = review_url(plan_["url"], plan_["branch"], plan_["base"], review["title"], review["body"])
+        if url:
+            nxt.append(f"open the review: {url}")
+            nxt.append("(the review's title and body ride in that URL; the git host fills its form from them)")
+        else:
+            nxt.append(f"open the review on the audience's git host ({plan_['url']}): the branch is {plan_['branch']}, "
+                       f"onto {plan_['base']}; the review's title: {review['title']}")
     if plan_["words"].get("to"):
         nxt.append(f"send it to: {plan_['words']['to']}")
+    how = (" (added to the branch, adopted: it was made outside the office)" if adopting
+           else " (added to the branch)" if plan_["continuing"] else "")
     words = (f"Delivered: {plan_['branch']} is on {plan_['audience']} for {plan_['project']}, {len(shas)} commit(s) by "
-             f"{plan_['author']} onto {plan_['base']}" + (" (added to the branch)" if plan_["continuing"] else "")
+             f"{plan_['author']} onto {plan_['base']}" + how
              + f", covering {', '.join(plan_['sessions'] + sorted(plan_['others'])) or 'no session by name'}; "
              f"the workbench branch was not pushed." + ("" if recorded else " The folder does not record it."))
     return words, told, nxt
@@ -981,6 +1041,9 @@ def main(argv=None):
     p.add_argument("office"); p.add_argument("folder", help="the folder's directory name")
     p.add_argument("--plan", required=True); p.add_argument("--branch"); p.add_argument("--on", dest="project")
     p.add_argument("--others-too", action="store_true", help="deliver other folders' sessions riding in the work")
+    p.add_argument("--adopt", action="store_true",
+                   help="add the delivery to a branch the audience has that this folder's records do not cover "
+                        "(made outside the office)")
     p.add_argument("--author", help="the project's author, declared and kept, as office projects set --author does")
     p.add_argument("--interactive", action="store_true",
                    help="bin/office asks about other folders' sessions: keep the worktree and report them")
@@ -1054,7 +1117,7 @@ def main(argv=None):
         if a.cmd == "plan":
             try:
                 out = plan(ob.Consumption(), a.office, a.folder, a.branch, a.project, a.others_too, a.interactive,
-                           a.author)
+                           a.author, a.adopt)
             except NeedsAuthor as exc:
                 if not a.interactive:
                     raise

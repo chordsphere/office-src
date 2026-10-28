@@ -1971,6 +1971,55 @@ def brief_lands(text):
     return mark, problems
 
 
+# --- the branch a planner's session builds on, named in its brief (0.34.0) ------------
+#
+# bale opens a bundle in the clone as it stands, on whatever branch is
+# checked out there, and its bundle format names no branch. A session that
+# answers a review builds on the review's own branch (a pull request's,
+# made outside the office), so the planner names that branch in the brief,
+# as one line kept to the byte like the LANDS line and read where it is
+# read (doctrine section 4, continued; the value illustrative):
+#
+#   --- BRANCH picklists ---
+#
+# office start checks the branch out in the project's clone, here or
+# through its shell on a host, before bale open --check runs; a clone that
+# cannot be moved there (uncommitted changes, a session open in it on
+# another branch, no such branch locally or on a remote it has fetched) is
+# said, and nothing is written. A line that does not read, or a second
+# one, is said; the first is taken.
+
+BRANCH_MARK_RE = LazyPattern(r"^--- BRANCH (\S+) ---$")
+BRANCH_MARK_PREFIX = "--- BRANCH "
+
+
+def brief_branch(text):
+    """(branch, problems) from a brief's text: the branch the first
+    `--- BRANCH NAME ---` line outside fenced blocks and notepad pages
+    names, as git takes a branch name (check_base), or None when the brief
+    carries none that reads; problems names every line that begins like
+    the marker and does not read as one, and a second marker."""
+    branch, problems = None, []
+    for n, line in brief_marker_lines(text):
+        if not line.startswith(BRANCH_MARK_PREFIX):
+            continue
+        m = BRANCH_MARK_RE.match(line)
+        name = None
+        if m:
+            try:
+                name = check_base(m.group(1))
+            except HelperError:
+                name = None
+        if name is None:
+            problems.append(f"line {n}: not `--- BRANCH NAME ---` (NAME a branch name, as git takes one): {line}")
+            continue
+        if branch is not None:
+            problems.append(f"line {n}: a second BRANCH line; the first is taken: {line}")
+            continue
+        branch = name
+    return branch, problems
+
+
 def folders_recording(root, sid):
     """The folders (space/name) whose Sessions record sid, desk first."""
     out = []
@@ -2017,7 +2066,8 @@ PAGE_FILES = {"walkthrough": "walkthrough.md", "delivery": "delivery.md"}
 TO_LINE_RE = LazyPattern(r"^(?:- )?to:\s*(.+?)\s*$", re.I)
 PATHS_LINE_RE = LazyPattern(r"^(?:- )?paths:\s*(.+?)\s*$", re.I)
 DELIVERED_RE = LazyPattern(r"^(?P<branch>\S+) on (?P<audience>\S+) of (?P<project>\S+): sessions (?P<sessions>.*?); "
-                          r"workbench (?P<workbench>[0-9a-f]{7,40}); delivery (?P<delivery>[0-9a-f]{7,40})$")
+                          r"workbench (?P<workbench>[0-9a-f]{7,40}); delivery (?P<delivery>[0-9a-f]{7,40})"
+                          r"(?P<adopted>; adopted)?$")
 SUBJECT_LIMIT = 72
 
 
@@ -2229,14 +2279,19 @@ def delivered_records(folder_md):
             continue
         rec = m.groupdict()
         rec["sessions"] = [s.strip() for s in rec["sessions"].split(",") if s.strip() and s.strip() != "none"]
+        # `; adopted` (0.34.0): the branch was on the audience before this
+        # folder delivered to it, made outside the office, and the
+        # occupant said to add to it.
+        rec["adopted"] = rec["adopted"] is not None
         out.append((day, rec))
     return out
 
 
-def delivered_text(branch, audience, project, sessions, workbench, delivery):
-    """The `delivered` History line's text, as delivered_records reads it."""
+def delivered_text(branch, audience, project, sessions, workbench, delivery, adopted=False):
+    """The `delivered` History line's text, as delivered_records reads it;
+    adopted (0.34.0) ends it with `; adopted`."""
     return (f"{branch} on {audience} of {project}: sessions {', '.join(sessions) or 'none'}; "
-            f"workbench {workbench}; delivery {delivery}")
+            f"workbench {workbench}; delivery {delivery}" + ("; adopted" if adopted else ""))
 
 
 # --- office status's checks over the desk and the filed pages ------------------

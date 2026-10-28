@@ -2408,19 +2408,26 @@ def bundle_lands(office_root, bundle):
     when that half cannot be taken; and said, the lines that say why a
     half cannot (a line that does not read, a project the office does not
     scope, a folder it does not hold on the desk), so its question comes
-    back alone. absent is True when the brief carries no LANDS line at all,
-    or the bundle cannot be read here."""
+    back alone; and branch (0.34.0), the branch the brief's BRANCH line
+    names for the session to build on, or None. absent is True when the
+    brief carries no LANDS line and no BRANCH line at all, or the bundle
+    cannot be read here."""
     out = {"absent": False, "place": None, "project": None, "folder": None, "folder_words": None,
-           "words": None, "said": []}
+           "words": None, "said": [], "branch": None}
     name = pathlib.Path(bundle).name
     text = bundle_brief(bundle)
     if text is None:
         out["absent"] = True
         return out
+    # The branch the session builds on (0.34.0, office_helper.brief_branch):
+    # read beside the LANDS line, since office start acts on both before
+    # bale is asked anything.
+    out["branch"], branch_problems = oh.brief_branch(text)
+    out["said"] += [f"the bundle {name}'s brief: {p}" for p in branch_problems]
     mark, problems = oh.brief_lands(text)
     out["said"] += [f"the bundle {name}'s brief: {p}" for p in problems]
     if mark is None:
-        out["absent"] = not problems
+        out["absent"] = not problems and not branch_problems and out["branch"] is None
         return out
     root = pathlib.Path(office_root)
     names = [p["name"] for p in office_projects(root) or []]
@@ -2695,6 +2702,99 @@ def digest_before_pack(office_root):
         return
     if proc.returncode != 0:
         log(f"warning: the digest before the pack exited {proc.returncode}; the sitting reads the page as it was")
+
+
+def checkout_branch(rd, office_root, where, project, branch, checked=False):
+    """Check out the branch a planner's bundle names in its brief (0.34.0,
+    `--- BRANCH NAME ---`) in the project's clone, here or through its
+    shell on a host, before bale opens the bundle: bale packs the session
+    on the branch the clone has checked out, and a session that answers a
+    review builds on the review's own branch. Returns the lines to say.
+
+    Nothing is forced. The clone is left as it is, and a StartError names
+    why, when the session lands in the office (which works on one
+    branch), the clone has uncommitted changes (a checkout would carry
+    them), a session is open in the clone (bale lands it on the branch
+    checked out there, so moving the clone under it is refused), or no
+    branch of that name is in the clone, locally or as one remote's
+    tracking branch (the office fetches nothing: the clone's credentials
+    are not its own, and the line that fetches is named). A clone already
+    on the branch is said, and nothing moves."""
+    if where == "office":
+        raise StartError([f"the bundle's brief names the branch {branch} for its session to build on, and the "
+                          "session lands in the office, which works on one branch: a BRANCH line is for a "
+                          "project's bundle; nothing was written"])
+    place = pack_place(office_root, where, project, rd, checked)
+    where_words = str(place)  # a Place names its host; a path on this machine is the path
+    argvs = [["git", "symbolic-ref", "--short", "-q", "HEAD"],
+             ["git", "status", "--porcelain=v1", "-uno"],
+             ["git", "rev-parse", "--verify", "-q", f"refs/heads/{branch}"],
+             ["git", "for-each-ref", "--format=%(refname)", f"refs/remotes/*/{branch}"]]
+    try:
+        head, dirty, local, tracking = ohost.run_many(place, argvs, timeout=ohost.RUN_TIMEOUT)
+    except ohost.HostError as exc:
+        raise StartError([f"{project}: the clone could not be read for its branch: {exc}; nothing was written"])
+    current = head.stdout.strip() if head.returncode == 0 else None
+    if current == branch:
+        return [f"{project}'s clone at {where_words} is on {branch}, the branch the bundle's brief names (its BRANCH "
+                "line); nothing to check out"]
+    changed = [l for l in dirty.stdout.splitlines() if l.strip()]
+    if dirty.returncode != 0:
+        raise StartError([f"{project}: git status in {where_words} failed: {ohost._last_words(dirty.stderr)}; nothing "
+                          "was written"])
+    if changed:
+        raise StartError([f"the bundle's brief names the branch {branch}, and {project}'s clone at {where_words} has "
+                          f"uncommitted changes ({len(changed)} path(s): {', '.join(l[3:] for l in changed[:6])}"
+                          + (", ..." if len(changed) > 6 else "") + f"), so {branch} is not checked out over them",
+                          "commit or stash them there, then start again; nothing was written"])
+    # A session open in the clone lands on the branch checked out there.
+    try:
+        open_there = [sid for sid, _ in rd.open_sessions(place)] if _bale_registry_at(place, rd) else []
+    except BaleError as exc:
+        raise StartError([f"{project}: the sessions open in its clone could not be read: {exc}; nothing was written"])
+    if open_there:
+        raise StartError([f"the bundle's brief names the branch {branch}, and {project}'s clone at {where_words} is on "
+                          f"{current or 'a detached HEAD'} with {len(open_there)} session(s) open in it "
+                          f"({', '.join(open_there)}), which bale lands on the branch checked out there; it is not "
+                          "moved under them",
+                          "land or withdraw them first, then start again; nothing was written"])
+    remotes = [r for r in tracking.stdout.split() if r.startswith("refs/remotes/")]
+    if local.returncode == 0 and local.stdout.strip():
+        argv = ["git", "checkout", "-q", branch]
+        how = "its local branch"
+    elif len(remotes) == 1:
+        short = remotes[0][len("refs/remotes/"):]
+        argv = ["git", "checkout", "-q", "-b", branch, "--track", short]
+        how = f"a new local branch tracking {short}"
+    elif remotes:
+        raise StartError([f"the bundle's brief names the branch {branch}, which {project}'s clone at {where_words} has "
+                          f"on {len(remotes)} remotes and not locally ({', '.join(r[len('refs/remotes/'):] for r in remotes)}); "
+                          f"make the local branch there from the right one (git checkout -b {branch} --track REMOTE/{branch}), "
+                          "then start again; nothing was written"])
+    else:
+        raise StartError([f"the bundle's brief names the branch {branch}, and {project}'s clone at {where_words} has no "
+                          f"such branch, locally or on a remote it has fetched (it is on {current or 'a detached HEAD'})",
+                          f"fetch it there first (git fetch REMOTE {branch}, with the clone's own credentials; the "
+                          "office fetches nothing), then start again; nothing was written"])
+    try:
+        run = ohost.run_many(place, [argv, ["git", "symbolic-ref", "--short", "-q", "HEAD"]], timeout=ohost.RUN_TIMEOUT)
+    except ohost.HostError as exc:
+        raise StartError([f"{project}: {branch} could not be checked out in {where_words}: {exc}"])
+    if run[0].returncode != 0 or run[1].stdout.strip() != branch:
+        raise StartError([f"{project}: git checkout {branch} in {where_words} failed (exit {run[0].returncode}): "
+                          f"{ohost._last_words(run[0].stderr) or run[1].stdout.strip() or 'no words'}; the clone is "
+                          "as git left it, and nothing else was written"])
+    return [f"checked out {branch} in {project}'s clone at {where_words} ({how}; it was on {current or 'a detached HEAD'}), "
+            "the branch the bundle's brief names (its BRANCH line), so bale opens the bundle on it"]
+
+
+def _bale_registry_at(place, rd):
+    """Whether bale keeps a registry where the place is (a .bale/
+    directory): read through the shell for a hosted place, where the
+    reader's status asks bale anyway, else an existence check here."""
+    if isinstance(place, ohost.Place) and place.hosted:
+        return True
+    return (pathlib.Path(str(place)) / ".bale").is_dir()
 
 
 def bundle_read_only(bundle):
@@ -5257,8 +5357,16 @@ def build_parser(only=None):
     p.add_argument("--cwd"); p.add_argument("--downloads", action="append", default=[])
     p = add("bundle-lands", help="where a bundle's brief says it lands (its LANDS line): place<tab>office "
                                             "or place<tab>project<tab>NAME, folder<tab>NAME or folder<tab>new, "
-                                            "words<tab>LINE, say<tab>WHY, or absent")
+                                            "words<tab>LINE, branch<tab>NAME (its BRANCH line, 0.34.0), say<tab>WHY, "
+                                            "or absent")
     p.add_argument("office"); p.add_argument("--bundle", required=True)
+    p = add("bundle-branch", help="check out the branch a bundle's brief names (its BRANCH line) in the project's "
+                                             "clone, here or through its shell, before bale opens the bundle; the "
+                                             "lines to say on stdout, a refusal on stderr with nothing changed")
+    p.add_argument("office"); p.add_argument("--where", choices=("office", "project"), required=True)
+    p.add_argument("--project"); p.add_argument("--branch", required=True)
+    p.add_argument("--checked", action="store_true",
+                   help="bin/office has checked the project's host this start (start-check)")
     p = add("bundle-sitting", help="whether a bundle's pack line sends out a sitting: yes, no or unknown")
     p.add_argument("--bundle", required=True)
     p = add("withdraw-list", help="the sessions out that can be withdrawn: SID<tab>LABEL<tab>FOLDERS<tab>"
@@ -5294,8 +5402,22 @@ def main(argv=None):
             print(f"folder\t{got['folder']}")
         if got["words"]:
             print(f"words\t{got['words']}")
+        if got["branch"]:
+            print(f"branch\t{got['branch']}")
         for line in got["said"]:
             print(f"say\t{line}")
+        return 0
+    if a.cmd == "bundle-branch":
+        try:
+            for line in checkout_branch(Reader(), a.office, a.where, a.project, a.branch, a.checked):
+                print(line)
+        except StartError as exc:
+            for line in exc.lines:
+                log(f"error: {line}")
+            return 1
+        except (oh.HelperError, BaleError, ohost.HostError, OSError) as exc:
+            log(f"error: {exc}")
+            return 1
         return 0
     if a.cmd == "bundle-sitting":
         ro = bundle_read_only(a.bundle)

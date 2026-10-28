@@ -66,7 +66,9 @@ runs after its sessions land, and renders what bale records about them.
 on its host when it has one, after showing the block's header and asking
 once, and hands the output back with the block on the clipboard; a
 read-only sitting's probe of a project (`--project NAME`) runs there too,
-under the sitting's id.
+under the sitting's id; and a block that spans the office and a project's
+host (0.34.0) runs in the office root with `office-on PROJECT COMMAND` on
+its PATH, each call running its command where that project lives.
 
 `office start` sends a session out, and it is the one door for new work:
 `office start new` takes the job in the occupant's words, names the
@@ -393,6 +395,31 @@ its field (`--on`, `--in-office`, a folder given), and the line it
 overrides is said. A brief carries one LANDS line; a second is said and
 the first taken. Every planner bundle carries one from office-src 0.24.0
 on.
+
+A planner's brief may name the branch its session builds on (0.34.0), in
+the same shape and read in the same places (the value illustrative):
+
+  ```
+  --- BRANCH picklists ---
+  ```
+
+bale opens a bundle in the clone as it stands, on whatever branch is
+checked out there, and a session that answers a review builds on the
+review's own branch: a pull request's, made outside the office. So
+`office start` checks the named branch out in the project's clone, here
+or through its shell on a host, before `bale open --check` runs: its
+local branch, or a new one tracking the one remote that has it. A clone
+with uncommitted changes, a clone with a session open in it (bale lands
+that session on the branch checked out, so the clone is not moved under
+it), and a clone with no such branch locally or on a remote it has
+fetched each stop the start with nothing written and say what to do in
+the clone; the office fetches nothing, since the clone's credentials are
+not its own. A clone already on the branch is said, and nothing moves. A
+BRANCH line is for a project's bundle; one in a bundle that lands in the
+office is refused, since the office works on one branch. A line that does
+not read, or a second one, is said and the first taken. The planner
+writes the line whenever the session's work must land on a branch the
+clone would not otherwise be on, and leaves it out otherwise.
 
 A planner sitting from the occupant's words (0.24.0): `office start
 --planner`, the home screen's p key. He says what he wants a planner for,
@@ -749,7 +776,17 @@ it (`--author` is the twin, and sets the field); piped, deliver refuses
 and names the flag; the clone's own identity is never used. The folder's
 History gains a dated `delivered` line, and the review's URL is printed
 where the git host's shape is known. A second delivery for the same
-folder adds to the same branch.
+folder adds to the same branch. A branch the audience already has that
+the folder's records do not cover was made outside the office, a pull
+request opened by hand or another folder's (0.34.0): deliver says so and,
+on a terminal, asks once whether to add this delivery to it (`--adopt` is
+the twin; piped, it refuses and names it), which is how a review's answer
+lands on the review's own branch. Adopted, the delivery's range is what
+the branch does not have yet (where the workbench and the branch parted),
+the folder's `delivered` line ends `; adopted`, the next line names the
+reviews open for that branch on the git host rather than a new review's
+form, and the next delivery adds to the branch as to one of the folder's
+own.
 
 ## 5. Spaces
 
@@ -1230,12 +1267,12 @@ Kinds:
 | reopen | script: move a done folder back to the desk | yes | plumbing |
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes | plumbing |
 | projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace, a clone here brought there with --from), declare where it is, what rides with it and what runs after it lands, bring a host's bale level with this machine's (level-bale), render what bale records about them; a project with an audience is worked from a guarded clone on this machine, a host declared for it recorded as where it validates (validates_on), and the first one brings the letterhead | yes | occupant |
-| start | script: the one door for new work: with new, a job from the occupant's words (--words the twin), its folder minted through open's code and its session sent out in one motion; bare on a terminal, offer the planner's bundles in the downloads no session has opened, by key, and send a bundle whose brief carries a LANDS line where it says, asking neither where nor which job; with --planner, a read-only planner sitting from the occupant's words (--words, --about PROJECT or --in-office the twins), its folder minted or picked by key, what rides gathered and said in its brief; before any sitting, the in-tray's sort offered first when drops wait (--sort-first, --no-sort-first); pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; with --sort, send the standalone sort; with --prep, a meeting's prep, recorded in the calendar and in no folder; send a folder out with its goal and brief.md when it has them; record it in the folder, file the sitting's page and the planner's ratifications its brief carries, gather what to attach in one out tray, and put the opener on the clipboard last | yes | occupant |
+| start | script: the one door for new work: with new, a job from the occupant's words (--words the twin), its folder minted through open's code and its session sent out in one motion; bare on a terminal, offer the planner's bundles in the downloads no session has opened, by key, and send a bundle whose brief carries a LANDS line where it says, asking neither where nor which job, checking out the branch its BRANCH line names in the project's clone before bale opens it; with --planner, a read-only planner sitting from the occupant's words (--words, --about PROJECT or --in-office the twins), its folder minted or picked by key, what rides gathered and said in its brief; before any sitting, the in-tray's sort offered first when drops wait (--sort-first, --no-sort-first); pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; with --sort, send the standalone sort; with --prep, a meeting's prep, recorded in the calendar and in no folder; send a folder out with its goal and brief.md when it has them; record it in the folder, file the sitting's page and the planner's ratifications its brief carries, gather what to attach in one out tray, and put the opener on the clipboard last | yes | occupant |
 | land | script: bring a session back: bale's apply in its repo, how it ended, the folder's walkthrough and delivery pages filed from the response, then its Sort on each drop's page, its questions and answers in the folder, its facts in the handbook and its Structure over the folder's provisional fields, and office moves when a drop was sorted, on a project with an audience the letterhead's review of what landed (what deliver would refuse, said, nothing refused), the project's after-land actions, the folder closed when its one session landed and the founding folder when the founding has, the watches that fired, what became of each action, and last the relay to carry on the clipboard; it asks nothing about ratification; or end a read-only sitting the office sent out, and for a meeting's prep record the meeting held and file what arose as drops (--arising FILE) | yes | occupant |
 | withdraw | script: close a session the office sent out and that was never worked (no response in the downloads, no apply begun), named by its folder and asked once (--yes the twin): bale's unlock with reason abandoned where it is open, and a withdrawn line in its folder's History; a folder that recorded it alone is said with the line that closes it | yes | occupant |
 | relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes | plumbing |
-| probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), for the folder's session open there or, with --project, a read-only sitting of its open in the office, under the sitting's id, stdin closed, once its purpose header has been shown and the occupant said yes; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes | plumbing |
-| deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, checked by the letterhead, each commit shown whole and asked once, authored and committed as the declared author (asked once and kept when none is declared, --author the twin), recorded in the folder | yes | occupant |
+| probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), for the folder's session open there or, with --project, a read-only sitting of its open in the office, under the sitting's id, stdin closed, once its purpose header has been shown and the occupant said yes; a block that calls office-on PROJECT spans the office and the projects it names, run in the office root with the helper on its PATH, each call's command run where that project lives; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes | plumbing |
+| deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, checked by the letterhead, each commit shown whole and asked once, authored and committed as the declared author (asked once and kept when none is declared, --author the twin), recorded in the folder; a branch the audience has that the folder never delivered to (made outside the office) adopted when the occupant says so (asked once, --adopt the twin), so a review's answer lands on the review's own branch | yes | occupant |
 | letterhead check | script, read-only: name every line in a tree, a range or a file that holds what the letterhead refuses (in an office with a letterhead, the dashes and the ellipsis by default, a lift said; a pull-request template's lines exempt from the phrasing rule and the three characters) | yes | plumbing |
 | tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes | occupant |
 | moves | script: apply the in-tray's sorted drops (a folder minted through open's code for folder: new, or folder N; the page moved in whole with its brief, its History line, its goal and its tell), then the desk moves a sitting or a sort wrote, through open's, close's and the gate flags' own code, ticking each and writing a minted number onto its blueprint's decomposition line; stops at the first line it cannot apply | yes | plumbing |
@@ -1621,6 +1658,25 @@ relay in the repo the session is open in, through the project's shell
 for a hosted one, the answer file on this machine piped to it, and the
 block bale prints for the worker printed whole and, on WSL, put on the
 clipboard, as `office land` hands over a relay.
+
+A probe may span the office and a project's host (0.34.0). A worker, a
+planner sitting above all, sometimes needs the office's own pages and a
+hosted repo in one block: which folder records which session, and what
+that session's clone is on. Such a block calls `office-on PROJECT
+COMMAND...` on its own lines, naming one of the office's projects
+literally each time, and `office probe` reads those names before anything
+runs, refusing one the office does not scope. It then runs the block in
+the office root with `office-on` first on its PATH, a helper the office
+writes for that one run: each call runs its command where that project
+lives, through the project's shell on a host, stdin closed, its output on
+the block's own stream and its exit code returned (97 when the project
+cannot be reached). The block's purpose header still promises it is
+read-only, and the promise covers every command the calls run. Its
+session is the folder's open in the office, a sitting or an office
+session, or in a project it reaches, chosen by the rule a probe of one
+place uses; such a block takes no `--project`. Nothing on the host is
+left behind, since the calls write nothing; a fallback's probe-output/ is
+the office root's, carried to the session's out tray as before.
 
 A copy the office claims is a copy (0.23.0). Every block the office says
 it put on the clipboard is on it, whole, its non-ASCII intact, and it is

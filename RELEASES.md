@@ -4,7 +4,107 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
-## 0.33.0
+## 0.34.0
+
+Additive: no migration, nothing to do in any office. This release fixes
+the three gaps the M10 walkthrough hit on 2026-10-27, when a planner
+sitting answered a coworker's review of a pull request on a hosted
+project (the work office's folder 6): the answer's delivery could not
+reach the review's branch, its bundle could not say which branch to
+build on, and its probes could not read the office and the host in one
+block. What you see changes in three said ways: `office deliver` adopts
+a branch made outside the office when you say so, a bundle's brief names
+the branch its session builds on and `office start` checks it out first,
+and `office probe` runs a block that spans the office and a project's
+host.
+
+`office deliver` adopts a branch made outside the office. A branch the
+audience already has that the folder's records do not cover was refused
+by name, with "name another": right for a stranger's branch, wrong for
+the pull request the review is on, where the answer's commits must go.
+Now deliver says such a branch was made outside the office (a pull
+request opened by hand, or another folder's) and, on a terminal, asks
+once whether to add this delivery to it, default no; `--adopt` is the
+twin, and piped, deliver refuses and names it. Adopted, the delivery is
+built on the branch as it is on the audience, its own commits kept, and
+the range of landed work read is what the branch does not have yet,
+from where the workbench and the branch parted, so commits the branch
+got by hand from the same clone are not delivered twice. The folder's
+`delivered` line ends `; adopted`, the next line names the reviews open
+for that branch on the git host (GitHub's pull requests with that head,
+GitLab's merge requests with that source branch) and says the Review
+section's words are the reply, and the next delivery for the folder adds
+to the branch as to one of its own, no flag needed. A branch the folder
+delivered to before is never called adopted, and `--adopt` changes
+nothing for it (lib/office_deliver.py `plan`, `branch_url`;
+lib/office_helper.py `delivered_text`, `delivered_records`).
+
+A planner's bundle names the branch its session builds on. bale opens a
+bundle in the clone as it stands, on whatever branch is checked out
+there, and its bundle format names no branch; the review's answer was
+packed on the clone's main. Now a brief may carry one line, `--- BRANCH
+picklists ---`, in the shape of its LANDS line and read where that line
+is read (outside fences and notepad pages; a line that does not read, or
+a second one, is said and the first taken), and `office start` checks
+that branch out in the project's clone, here or through its shell on a
+host, before `bale open --check` runs: its local branch, or a new one
+tracking the one remote that has it. A clone with uncommitted changes, a
+clone with a session open in it (bale lands that session on the branch
+checked out, so the clone is not moved under it) and a clone with no such
+branch locally or on a remote it has fetched each stop the start with
+nothing written and say what to do in the clone; the office fetches
+nothing, since the clone's credentials are not its own. A clone already
+on the branch is said. A BRANCH line in a bundle that lands in the
+office is refused, since the office works on one branch
+(lib/office_helper.py `brief_branch`; lib/office_bale.py `bundle_lands`,
+`checkout_branch`; bin/office `bundle_lands_read`, `check_start_bundle`).
+
+`office probe` runs a block that spans the office and a project's host.
+A probe ran in one place: a project's repo, through its shell, or the
+office root; a sitting that needed the office's folder and the hosted
+repo in one block had none, and ran its reads by hand. Now a block that
+calls `office-on PROJECT COMMAND...` on its own lines runs in the office
+root with that helper first on its PATH, written beside the plan for the
+one run, and each call runs its command where that project lives, in its
+repo here or through its shell in its path on a host, stdin closed, its
+output on the block's stream and its exit code returned (97 when the
+project cannot be reached, or is not one the block named). The projects
+are read from the block before anything runs, each named literally, and
+one the office does not scope refuses by name. Such a block takes no
+`--project` (`office` alone fits, and is said); its session is the
+folder's open in the office, a sitting or an office session, or in a
+project it reaches, chosen by the rule a probe of one place uses, so a
+sitting's spanning probe is found without `--sid`; a fallback's
+`probe-output/` is the office root's, carried as before. The header's
+read-only promise covers every command the calls run (lib/office_probe.py
+`reaches_of`, `plan_spanning`, `write_on_helper`, `run_on`;
+lib/office_host.py `run_probe` takes an environment).
+
+The doctrine says the three in section 4, continued (the BRANCH line
+beside the LANDS line, and the adopted branch beside the delivery), in
+section 10 (the spanning probe beside the relay), in its front sheet and
+in its verb table; README.md says them where the verbs are;
+templates/sitting-brief.md names the BRANCH line among what a sitting
+owes.
+
+Tests: tests/test_three_gaps.py, a new module (`TestAnAdoptedBranch`:
+piped refused by name and `--adopt` adding to the branch, the record and
+the next line, a second delivery continuing, the folder's own branch
+never adopted, the URLs as units; `TestAnAdoptedBranchOnAHost`;
+`TestAnAdoptedBranchOnATerminal`; `TestTheBundlesBranch`: the reading as
+a unit, the checkout before bale's rehearsal and a clone already on the
+branch, a remote's branch tracked, what stops it with nothing written;
+`TestTheBundlesBranchOnAHost`: the checkout through the shell before the
+rehearsal; `TestASpanningProbe`: the reaches read from the block's own
+lines, the run in the office root and each call where the project lives,
+a project the office does not scope, `--project` not fitting, a sitting's
+spanning probe and its fallback, the helper as a unit;
+`TestASpanningProbeOnAHost`); 17 tests, and the suite holds 1017.
+tests/test_audience_line.py's pin on the old refusal holds as written,
+since its two phrases are in the new one. The eight touched modules, run
+whole in the worker's sandbox, passed their 308 tests; the whole suite's
+detached run after the landing is yours to record.
+
 
 Additive: no migration, nothing to do in any office. This release is the
 second of eight the planning sitting of 2026-10-27 drew from the M10
