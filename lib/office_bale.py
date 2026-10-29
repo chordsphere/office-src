@@ -2119,7 +2119,15 @@ def status_lines(rd, office_root):
     for p in hosted:
         place = ohost.place_of(p)
         try:
-            v = rd.installed_version(place)
+            # bale's version and the sandbox setting there, in one connection
+            # (0.39.0): the sandbox read rides after bale --version.
+            proc, shown, where = rd.invoke("version", place, also=[ohost.sandbox_argv(place)])
+            line = rd.parse("version", proc, shown, where)
+            m = re.match(cons.surface("version")["pattern"], line)
+            if not m:
+                raise BaleError("output", f"bale --version printed {line!r}, not `bale X.Y.Z`")
+            v = m.group(1)
+            sandbox = sandbox_status_line(p, place, rd.also_runs[0] if rd.also_runs else None)
             if oh.compare_versions(v, cons.floor) >= 0:
                 lines.append(f"  {p['name']}: {p['host']} answers; bale {v} there, within the read side's "
                              f"range (bale {cons.floor} or later)"
@@ -2129,12 +2137,36 @@ def status_lines(rd, office_root):
                 lines.append(f"  {p['name']}: {p['host']} answers; bale {v} on {p['host']} is older than the "
                              f"read side's floor {cons.floor}; {level_step(p['name'])} brings it level with "
                              f"this machine's bale{f' ({here})' if here else ''} before a session is sent there")
+            if sandbox:
+                lines.append(sandbox)
         except BaleError as exc:
             lines.append(f"  {p['name']}: {exc}" if exc.kind == "unreachable"
                          else f"  {p['name']}: {p['host']} answers, but bale there could not be read: {exc}")
         except oh.HelperError as exc:
             lines.append(f"  {p['name']}: bale's version on {p['host']} could not be compared: {exc}")
     return lines, 0
+
+
+def sandbox_status_line(project, place, run=None):
+    """office status's line on bale's sandbox for a hosted project (0.39.0),
+    or None when there is nothing to say: the setting the office wrote
+    (`sandbox: off by bale.toml, written DAY: WHY`), or, where bale's
+    sandbox cannot run and bale.toml does not turn it off, the step that
+    writes it. run is the sandbox read's Run when it rode another call;
+    a read that fails is a line."""
+    name = project["name"]
+    try:
+        written, table, refuses, said = (ohost.read_sandbox(place, run) if run is not None
+                                         else ohost.sandbox_state(place))
+    except ohost.HostError as exc:
+        return f"  {name}: sandbox: the setting could not be read: {exc}"
+    if written:
+        return f"  {name}: sandbox: off by bale.toml, written {written}"
+    if refuses and not table:
+        return (f"  {name}: sandbox: bale's sandbox cannot run on {place.host} ({said or 'the probe refused'}) and "
+                f"bale.toml does not turn it off, so every apply there asks; office projects set {name} --prepare "
+                "writes the setting")
+    return None
 
 
 # --- sending a session out: office start -------------------------------------------
@@ -5251,7 +5283,7 @@ def project_main(a):
                 print(line)
             return 0
         if a.cmd == "clone-to":
-            for line in ohost.clone_to(place, a.source):
+            for line in ohost.clone_to(place, a.source, day=a.day):
                 print(line)
             return 0
         if a.cmd == "git-facts":
@@ -5273,7 +5305,7 @@ def project_main(a):
                 return 0
             log(f"error: {text}")
             return NOT_PREPARED if "bale has not run in" in text else 1
-        for line in ohost.prepare(place):
+        for line in ohost.prepare(place, day=a.day, name=a.name):
             print(line)
         return 0
     except ohost.HostError as exc:
@@ -5564,6 +5596,8 @@ def build_parser(only=None):
         p = add(name, help=text)
         p.add_argument("--path", required=True); p.add_argument("--host"); p.add_argument("--shell")
         p.add_argument("--connect"); p.add_argument("--name")
+        # The office's date, for the sandbox setting prepare may write (0.39.0).
+        p.add_argument("--day")
         if name.startswith("clone-"):
             p.add_argument("--from", dest="source", required=True)
         if name == "install-guard":

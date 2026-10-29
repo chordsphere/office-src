@@ -4,6 +4,138 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.39.0
+
+Additive: no migration, nothing to do in any office. The second serial
+session of the plan begun on 2026-10-27: a clone on a host gets its view
+of the audience refreshed through this machine, start and deliver offer
+that refresh when the view is behind, deliver brings the base into the
+workbench itself when that merge is clean, and prepare writes bale's
+sandbox setting where bale's own sandbox cannot run, so an apply in a
+container stops asking. What you see changes for a project with an
+audience, and for a clone in a container; everything else is as it was.
+The merge that conflicts is not here: the office names the files and
+says the merge session is the next release's.
+
+A clone's view of its audience, refreshed. A clone on a host often has
+no credentials for the audience's git host, so its remote-tracking refs
+stayed where they were when it was made (found 2026-10-27: weeks stale;
+a hand-written script carried them over as a bundle, and a branch the
+audience force-pushed stayed stale until a second one). `office projects
+refresh NAME` fetches the audience's branches on this machine, with this
+machine's credentials and always with a forcing refspec; for a clone on a
+host it reads the clone's refs first, bundles the branches that moved,
+thin against what the clone already has, carries the bundle through the
+shell and fetches it there with `+refs/heads/*:refs/remotes/AUDIENCE/*`,
+removing it in the same connection; for a clone here it is a plain
+forced fetch. It fast-forwards the base (`--ff-only` when it is checked
+out, clean and no session is open there; the ref moved after an ancestry
+check otherwise), says and leaves a base with commits of its own (a
+refresh never merges), stops only that step for a dirty tree, says what
+moved (`origin/main: 59385bf..3f1a9c2, 14 commits`, `forced`, `new`) or
+`nothing moved`, never moves the workbench branch, deletes no ref and
+pushes nothing. It leaves one ref in the clone,
+`refs/office-refresh/AUDIENCE`, and `office projects` lists under each
+project with an audience when it was last refreshed and from where, read
+from the clone (one connection per hosted such project; the listing
+made none before). There is no `office refresh` short verb:
+`office projects refresh` is the one door, and start and deliver offer
+it.
+
+The offers. `office start`, for a project with an audience, compares the
+clone's view of the base with the audience's (`git ls-remote` here, and
+a count in a temporary repo only when they differ) before anything is
+packed and before a BRANCH checkout; `office deliver` compares it with
+the base it has just fetched. Behind, one line says by how much (`the
+clone's view of origin/main is 14 commits behind the audience's`), and on
+a terminal each asks once whether to refresh first (default yes;
+`--refresh` and `--no-refresh` are the twins); piped with neither, it is
+said and the work goes on without. Level or ahead, nothing is said. For
+a clone on this machine deliver's own fetch already moves that ref, so
+deliver says nothing there.
+
+The clean merge. Deliver's squash ran from where the workbench and the
+base parted, so after a review merged on the git host the squash onto
+the new main conflicted and the remedy, bring main into the workbench
+first, needed a terminal in the clone (the gaps of 2026-10-28, A5). Now,
+for a delivery made from the base, when the workbench is behind it and
+the clone's view of it is level, deliver merges the base into the
+workbench branch in the clone where the work lives (`git merge --no-ff`,
+`Bring origin/main into the workbench (office deliver)`, as the declared
+author), only when the merge is clean, the clone's tree is clean and no
+bale session is open there; each of the three is said when it stops the
+merge, and the plan goes on as before. The question's `merged:` line
+says it (`brought origin/main into the workbench: merge commit 8c2e1f0
+(14 commits of the audience's)`), the folder's History gains `- DATE
+merged: origin/main 3f1a9c2 into the workbench, 8c2e1f0` (a new verb in
+the closed set office status checks, changing no status), and the squash
+runs from the base's tip. A conflict is aborted and the abort checked
+(no MERGE_HEAD, no tracked change left), and the delivery refuses naming
+the files, with one line saying the merge session is the next release's
+and what to do by hand until then. A delivery adding to a branch is not
+merged (its squash is the next session's to read from its range), and
+`base_holds`, the refusal of work leaving twice, the squash and
+`--others-too` are as they were.
+
+bale's sandbox setting. bale's sandbox self-probe refuses in a container
+with no unprivileged user namespaces, and every apply there asked to run
+unconfined and recorded it (A12). Prepare (`office projects add
+--prepare`, `--from`) now tests that condition where the clone is,
+through the host's shell for a hosted one, with `unshare -Ur true` (one
+user namespace, the least bale's sandbox needs, so the office's test is
+never stricter than bale's), and only where it refuses writes
+bale.toml's project-layer `[sandbox] enabled = false`, under a comment
+naming why and the day; bale then runs unconfined there without asking
+and FORCE-logs the key on every run, as its help says. Where the sandbox
+runs nothing is written; a `[sandbox]` table already there is left; a
+test that cannot run writes nothing. `office projects set NAME --prepare`
+runs prepare again on a declared clone, asking nothing, so the clones
+added before this release get the setting without being added again.
+`office status` names it per hosted project (`proj: sandbox: off by
+bale.toml, written 2026-10-29: no unprivileged user namespaces where this
+clone is (...)`), read beside `bale --version` in the same connection,
+and where the sandbox cannot run and nothing turns it off, it names the
+line that writes it.
+
+What changed and where: lib/office_refresh.py (new: the refresh, its
+view of a clone, start's compare, the listing's line); lib/office_host.py
+(prepare's sandbox step, `sandbox_line`, `sandbox_state` with
+`sandbox_argv` and `read_sandbox`, `git_facts_argv` and `read_git_facts`,
+prepare and clone_to taking the office's day); lib/office_deliver.py
+(plan's step 4b and 4c, `merge_base_in`, `merged_text`, `NeedsRefresh`,
+`--refresh`, `--no-refresh` and `--day` on plan; the clone's facts and its
+view of the audience in one connection); lib/office_bale.py (status's
+sandbox line, `sandbox_status_line`; `--day` on prepare-project and
+clone-to); lib/office_helper.py (`merged` in HISTORY_VERBS, the
+listing's refreshed line); bin/office (`office projects refresh`, `office
+projects set --prepare`, start's `start_offer_refresh` and its two flags,
+deliver's planning loop over its two questions and its two flags, the
+`merged:` line, the usage texts); share/verbs.toml; README.md; and the
+doctrine past its core banner (section 4 continued, the verbs table,
+section 5's History verbs, section 10's word on bale's project layer).
+
+Tests: tests/test_host_refresh.py (new), one class per item:
+TestTheRefreshVerb and TestTheRefreshVerbOnAHost (what moved, forced and
+new, the base fast-forwarded checked out or not, a dirty tree and an
+open session stopping only that step, the workbench untouched, the thin
+bundle through the shell and its directory gone, the refusals);
+TestTheOffers and TestTheOffersOnATerminal (piped said, --refresh,
+--no-refresh, the twins refused together, a clone here, start's compare
+as a unit, the question on a terminal); TestTheCleanMerge and
+TestTheCleanMergeOnAHost (the merge commit as the author, the delivery
+from the base's tip carrying the folder's files alone, the History
+line, a conflict aborted and refused by name, a dirty clone and an open
+session left as they are); TestTheSandboxSetting and
+TestTheSandboxSettingOnAHost (written only where the probe refuses, the
+office's own table kept, the occupant's table left, a probe that cannot
+run, set --prepare through the shell, status's line in bale's
+connection); TestTheRecord (the History verb, the listing read from the
+clone). The suite's environment gives every test a sandbox that runs
+(OFFICE_SANDBOX_PROBE), and tests/test_suite_clock.py names the new
+module's top-level siblings. Twenty-two new tests; the suite holds
+1146, 1124 at 0.38.0. The whole suite, run in the worker's sandbox,
+passed all 1146; the detached run after the landing is yours to record.
+
 ## 0.38.0
 
 Additive: no migration, nothing to do in any office. Four sessions

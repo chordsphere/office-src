@@ -600,6 +600,43 @@ def read_check(place, run):
     return True, f"a git repo with {found}" + (f", no {missing}" if missing else "") + (f", {machine}" if place.hosted else "")
 
 
+# bale's sandbox (0.39.0, the gaps of 2026-10-28, A12). bale runs a
+# response's scripts in a namespace sandbox and refuses on a host without
+# unprivileged user namespaces, where on a terminal it asks at every apply
+# whether to run unconfined; its help names the durable form, bale.toml's
+# project-layer `[sandbox] enabled = false` (bale help apply, --no-sandbox:
+# same unconfined semantics, FORCE-logged naming the key on every run).
+# prepare tests that condition where the clone is, with the command below
+# (one user namespace, the least bale's sandbox needs, so the office's test
+# is never stricter than bale's own probe), and writes the table only where
+# it refuses, with a comment saying why and the day. Where the sandbox
+# runs, nothing is written; a [sandbox] table already in bale.toml is left
+# as it is; a probe that cannot run (no unshare there) writes nothing and
+# leaves the question to bale's own probe at apply. OFFICE_SANDBOX_PROBE,
+# on this machine, names another command for the suite.
+SANDBOX_PROBE = "unshare -Ur true"
+SANDBOX_PROBE_ENV = "OFFICE_SANDBOX_PROBE"
+SANDBOX_MARK = "# office sandbox: written "
+# PROBE, DAY and NAME arrive in the environment (as assignments in front of
+# the command through a host's shell). It prints sandbox=runs, unknown,
+# kept (a table was already there) or written, and the probe's last words.
+_SANDBOX_STEP = (
+    'if [ -n "$PROBE" ]; then '
+    'said=$(sh -c "$PROBE" </dev/null 2>&1); rc=$?; said=$(printf %s "$said" | tail -n 1 | tr -d "\\r"); '
+    'echo "probe_said=$said"; '
+    'if [ "$rc" = 0 ]; then echo "sandbox=runs"; '
+    'elif [ "$rc" = 127 ] || [ "$rc" = 126 ]; then echo "sandbox=unknown"; '
+    'elif grep -q "^$MARK" bale.toml 2>/dev/null; then echo "sandbox=already"; '
+    'elif grep -q "^[[:space:]]*\\[sandbox\\]" bale.toml 2>/dev/null; then echo "sandbox=kept"; '
+    'else { if [ -s bale.toml ] && [ -n "$(tail -c 1 bale.toml)" ]; then echo; fi; '
+    'printf "%s%s: no unprivileged user namespaces where this clone is (%s refused: %s)\\n" "$MARK" "$DAY" "$PROBE" "$said"; '
+    'printf "# bale runs its response scripts unconfined here and FORCE-logs this key on every run (bale help apply, '
+    '--no-sandbox); the office wrote it (office projects add --prepare, or office projects set %s --prepare) because '
+    'bale\'s own sandbox probe refuses here, and writes nothing else into this file\\n" "$NAME"; '
+    'printf "[sandbox]\\nenabled = false\\n"; } >> bale.toml && echo "sandbox=written"; fi; fi'
+)
+
+
 # What prepare writes, and only that: the exclude lines bale's files need
 # (appended to .git/info/exclude, each once) and an empty bale.toml, both
 # outside what git tracks. The repo's own .gitignore belongs to its
@@ -616,23 +653,33 @@ _PREPARE_SCRIPT = (
     'if [ "$added" = 0 ] && [ -n "$HEADER" ] && ! grep -qxF -- "$HEADER" "$ex"; then echo "$HEADER" >> "$ex"; fi; '
     'echo "$line" >> "$ex"; added=$((added + 1)); fi; done; '
     'echo "excluded=$added"; '
-    'if [ -e bale.toml ]; then echo "bale_toml=kept"; else printf %s "$STUB" > bale.toml && echo "bale_toml=written"; fi'
+    'if [ -e bale.toml ]; then echo "bale_toml=kept"; else printf %s "$STUB" > bale.toml && echo "bale_toml=written"; fi; '
+    # bale's sandbox (0.39.0): its self-probe's condition tested where the
+    # clone is, and the project-layer table written only where it refuses.
+    + _SANDBOX_STEP
 )
 
 
-def prepare(place):
+def prepare(place, day=None, name=None):
     """Prepare a clone for bale without a trace: the four exclude lines
     into .git/info/exclude and a comment-only bale.toml, through the
-    shell for a hosted place. Returns the lines to print. What the
-    office writes into a project's working copy is only ever outside
-    what git tracks."""
+    shell for a hosted place; and since 0.39.0 bale's sandbox setting where
+    bale's sandbox cannot run there (_SANDBOX_STEP). Returns the lines to
+    print. What the office writes into a project's working copy is only
+    ever outside what git tracks. day dates the sandbox setting (the
+    office's date; today on this machine's clock by default); name is the
+    project's, for the setting's comment."""
+    import time
     place = as_place(place)
-    env = {"HEADER": EXCLUDE_HEADER, "STUB": BALE_TOML_STUB}
+    day = day or time.strftime("%Y-%m-%d")
+    probe = os.environ.get(SANDBOX_PROBE_ENV) or SANDBOX_PROBE
+    env = {"HEADER": EXCLUDE_HEADER, "STUB": BALE_TOML_STUB, "PROBE": probe, "DAY": day, "MARK": SANDBOX_MARK,
+           "NAME": name or place.name or "NAME"}
     argv = ["sh", "-c", _PREPARE_SCRIPT, "office-prepare", place.path, *EXCLUDE_LINES]
     if place.hosted:
-        # Through the shell the environment is the remote shell's; the two
+        # Through the shell the environment is the remote shell's; the
         # values travel as assignments in front of the command.
-        argv = ["env", f"HEADER={EXCLUDE_HEADER}", f"STUB={BALE_TOML_STUB}", *argv]
+        argv = ["env", *[f"{k}={v}" for k, v in env.items()], *argv]
     run = run_in(place, argv, env=env, chdir=False)
     if run.returncode != 0:
         why = {3: "no such directory", 4: "not a git repo", 5: "could not write under .git/info"}.get(run.returncode)
@@ -640,9 +687,69 @@ def prepare(place):
     facts = dict(l.split("=", 1) for l in run.stdout.splitlines() if "=" in l)
     n = facts.get("excluded", "?")
     lines = [f"prepared {place} for bale: {n} line(s) added to .git/info/exclude "
-             f"({', '.join(EXCLUDE_LINES)}), bale.toml {facts.get('bale_toml', '?')} (empty: bale config init fills it)",
-             "nothing git tracks changed; the repo's .gitignore is its audience's and was not touched"]
+             f"({', '.join(EXCLUDE_LINES)}), bale.toml {facts.get('bale_toml', '?')}"
+             + (" (empty: bale config init fills it)" if facts.get("bale_toml") == "written" else ""),
+             "nothing git tracks changed; the repo's .gitignore is its audience's and was not touched",
+             sandbox_line(facts.get("sandbox"), probe, facts.get("probe_said", ""), day)]
     return lines
+
+
+def sandbox_line(state, probe, said, day):
+    """What prepare says of bale's sandbox where the clone is."""
+    said = said.strip() or "no words"
+    if state == "runs":
+        return f"bale's sandbox runs there ({probe} succeeds), so bale.toml says nothing of it"
+    if state == "written":
+        return (f"bale's sandbox cannot run there (no unprivileged user namespaces: {probe} refused: {said}), so "
+                f"bale.toml now holds the project-layer [sandbox] enabled = false, dated {day}: bale runs its response "
+                "scripts unconfined there without asking at every apply, and FORCE-logs the key on every run")
+    if state == "already":
+        return (f"bale's sandbox cannot run there ({probe} refused: {said}), and bale.toml already holds the "
+                "office's [sandbox] enabled = false, kept as it is")
+    if state == "kept":
+        return (f"bale's sandbox cannot run there ({probe} refused: {said}), and bale.toml already has a [sandbox] "
+                "table, which the office leaves as it is")
+    return (f"bale's sandbox could not be tested there ({probe}: {said}), so nothing was written: bale's own probe "
+            "decides at apply")
+
+
+# One script reads what office status says of the sandbox where a clone
+# is: the office's line in bale.toml, whether a [sandbox] table is there,
+# and the probe's outcome.
+_SANDBOX_READ = (
+    'd="$1"; ' + _EXPAND_D + 'cd "$d" || exit 3; '
+    'if [ -f bale.toml ]; then sed -n "s/^$MARK/written=/p" bale.toml | tail -n 1; '
+    'grep -q "^[[:space:]]*\\[sandbox\\]" bale.toml && echo "table=yes"; fi; '
+    'said=$(sh -c "$PROBE" </dev/null 2>&1); echo "probe_rc=$?"; echo "probe_said=$(printf %s "$said" | tail -n 1)"'
+)
+
+
+def sandbox_state(place):
+    """(written, table, refuses, said) where a clone is: the office's
+    setting's words (`2026-10-29: no unprivileged ...`) or None, whether
+    bale.toml has a [sandbox] table, whether the probe refuses (None when
+    it could not run) and its last words."""
+    place = as_place(place)
+    return read_sandbox(place, run_in(place, sandbox_argv(place), chdir=False))
+
+
+def sandbox_argv(place):
+    """sandbox_state's one argv, for a batch or a bale call that carries it
+    (office status reads it beside bale --version, one connection). It takes
+    the path as an argument, so it runs from wherever the shell lands."""
+    probe = os.environ.get(SANDBOX_PROBE_ENV) or SANDBOX_PROBE
+    return ["env", f"PROBE={probe}", f"MARK={SANDBOX_MARK}", "sh", "-c", _SANDBOX_READ, "office-sandbox",
+            as_place(place).path]
+
+
+def read_sandbox(place, run):
+    """sandbox_state's tuple from its Run."""
+    if run.returncode != 0:
+        raise HostError("refused", f"the sandbox setting at {place} could not be read: {_last_words(run.stderr)}")
+    facts = dict(l.split("=", 1) for l in run.stdout.splitlines() if "=" in l)
+    rc = facts.get("probe_rc", "")
+    refuses = None if rc in ("126", "127", "") else rc != "0"
+    return facts.get("written") or None, facts.get("table") == "yes", refuses, facts.get("probe_said", "")
 
 
 # --- files through the shell (0.15.0) ------------------------------------------------------
@@ -1034,7 +1141,19 @@ def git_facts(place):
     {remote: branch}, hooks_path, guard (none, other, or the audience the
     office's guard names) and dirty (changed paths, a count)."""
     place = as_place(place)
-    run = run_in(place, ["sh", "-c", _GIT_FACTS_SCRIPT, "office-git-facts", place.path], chdir=False)
+    return read_git_facts(place, run_in(place, git_facts_argv(place), chdir=False))
+
+
+def git_facts_argv(place):
+    """git_facts' one argv, for a batch that carries it beside other reads
+    (office deliver's first connection, since 0.39.0). It takes the path as
+    an argument, so it runs from wherever the shell lands."""
+    return ["sh", "-c", _GIT_FACTS_SCRIPT, "office-git-facts", as_place(place).path]
+
+
+def read_git_facts(place, run):
+    """git_facts' dict from its Run."""
+    place = as_place(place)
     if run.returncode != 0:
         why = {3: "no such directory", 4: "not a git repo"}.get(run.returncode, _last_words(run.stderr))
         raise HostError("refused", f"could not read the clone at {place}: {why}")
@@ -1273,7 +1392,7 @@ def path_exists(place, path=None):
     return "exists=yes" in run.stdout
 
 
-def clone_to(place, local, facts=None):
+def clone_to(place, local, facts=None, day=None):
     """Put a clone of the repo at local (this machine) at the place's
     path (on its host, or here), with every branch and tag, the
     remote-tracking refs, the remote and branch config and HEAD as the
@@ -1349,7 +1468,7 @@ def clone_to(place, local, facts=None):
     lines = [f"cloned {local} to {place.path} {where}: {heads} branch(es), {tags} tag(s) and the remote-tracking "
              f"refs, level with the clone here; {len(facts['config'])} remote and branch setting(s) as the clone "
              f"here has them; HEAD on {facts['head_ref'] or facts['head_sha']}"]
-    lines += prepare(place)
+    lines += prepare(place, day=day)
     status = run_in(place, ["git", "status", "--porcelain"])
     files = run_in(place, ["git", "ls-files"])
     if status.stdout.strip() or len(files.stdout.splitlines()) != facts["files"]:
