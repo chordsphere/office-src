@@ -1,0 +1,308 @@
+{
+  "record_version": 1,
+  "session_id": "2026-10-29-wave-one-release-005",
+  "created_at": "2026-10-29T02:44:29+00:00",
+  "attempts": [
+    {
+      "at": "2026-10-29T02:44:29+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib/office_sort.py",
+        "templates/drop-brief.md",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-10-29-wave-one-release-005.log",
+      "bundle": {
+        "stem": "2026-10-29-wave-one-release",
+        "brief_sha256": "d733768a81d4bf3c40798faeb184dd337ce4f4ff417169c78ca1027b55fbef4c",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "de991abc26a3ccfefd3a4e8d6fecab532794e864f291687c9f742ad6ae8f09e5"
+      },
+      "provenance": {
+        "work_class": "mixed",
+        "packer": "chordsphere",
+        "packed_at": "2026-10-29T02:44:28+00:00"
+      }
+    },
+    {
+      "at": "2026-10-29T13:12:38+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-10-29-wave-one-release-005.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "the four release paragraphs are the archived notes' bytes": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "RELEASES.md below the 0.38.0 entry is unchanged": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "VERSION is 0.38.0, the newest entry, and the front sheet's Recent changes names it": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "the doctrine's core stays under 300 lines and section 4's bullet within twelve": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "no em dash, en dash or ellipsis character in the changed text": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "tests/run.sh --fast with this session's classes": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "tests/run.sh, the five touched modules whole (--slow)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "the four release paragraphs are the archived notes' bytes": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "RELEASES.md below the 0.38.0 entry is unchanged": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "VERSION is 0.38.0, the newest entry, and the front sheet's Recent changes names it": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "the doctrine's core stays under 300 lines and section 4's bullet within twelve": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "no em dash, en dash or ellipsis character in the changed text": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "tests/run.sh --fast with this session's classes": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "tests/run.sh, the five touched modules whole (--slow)": {
+            "claim": "pass",
+            "verdict": "skip",
+            "agreement": "n/a"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "file syntax: bash -n bin/office, and the changed Python parsed",
+          "bin/office is executable",
+          "the four release paragraphs are the archived notes' bytes",
+          "RELEASES.md below the 0.38.0 entry is unchanged",
+          "VERSION is 0.38.0, the newest entry, and the front sheet's Recent changes names it",
+          "the doctrine's core stays under 300 lines and section 4's bullet within twelve",
+          "no em dash, en dash or ellipsis character in the changed text",
+          "tests/run.sh --fast with this session's classes",
+          "tests/run.sh, the five touched modules whole (--slow)"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib/office_sort.py",
+        "templates/drop-brief.md",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib/office_sort.py",
+        "templates/drop-brief.md",
+        "tests/test_audience_line.py",
+        "tests/test_clean_delivery.py",
+        "tests/test_land.py",
+        "tests/test_sessions_read.py",
+        "tests/test_sort.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.56",
+            "contract_docs": {
+              "AGENT.md": "31dcdded2a8fd175f7778c2bd1be09688e89e76b8fd4cd62b7646aacfa2782c4",
+              "TARBALL.md": "3037b905ee561af44f27cc83ec45d832feb7d429a98d4e07b4482a518cda6e94",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "a8e5714e51049768e52bb5bc0ede9338db1175e7095d9b2bdd0d314ab3e01078"
+            },
+            "packer": "chordsphere",
+            "work_class": "mixed",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-10-29T02:44:28+00:00",
+            "base_files": {
+              "README.md": "03f5a125fa899da3287a45e833235ff1a8c465bb7ee395fc1a8ce2c0d6153e5e",
+              "RELEASES.md": "7ef7de30d6c7b4147932b19eb4221d32aeecd2aaba84eabec2903f4e1e4d0ab2",
+              "VERSION": "f1a49cdeb0cce1d8c2d7cde8b8ae660a88ddd2fe44f9e8c2aac95b5d4dad6105",
+              "bin/office": "b33e11b636afd3477557ece49f846fc56f542d8143c70743925335ec3f1889d6",
+              "claude/context/front-sheet.md": "1052bc530fb88011f5d2a11f1e43ea8fa936af2a12ba9a25c5d032abbd895514",
+              "doctrine/OFFICE.md": "451e6c54f9205edacbf01dff2221546f44217352a84ff2444174c94924a1d1d8",
+              "lib/office_sort.py": "3e959359bb0112264804443e2508d53b92b7ec7ecb4c266fd4db3b469ab38250",
+              "templates/drop-brief.md": "81918706c4a38c89e21c4da590fc5e91d134daea1597806b0191f0b7ead239ff",
+              "tests/fakes/land_bale.py": "1c276d52e3d7b825743d8a54f2eb40b46db973a31edd214e408e49c014ef6e26",
+              "tests/fakes/pack_bale.py": "fbf35a9c88afa7d9c8d64dbb985e7985476196311911dd05b1fc143fc768d22b",
+              "tests/fakes/replay_bale.py": "f31101e58b28106452c4572b6e38a7642276937076b1f0cc320c9b185c56eea5",
+              "tests/fakes/small_bales.py": "25e74224d580bddfc5a2eb91696d7816c8a4e8f73ea20deb7c9dc2be0422bc4b",
+              "tests/fast-tier.toml": "c4155fe48e1d30e9ef67311794c6ed8f3a95ca6cd769c53eae7229b83bc8a705",
+              "tests/run.sh": "35b3954b5bf5d4e975ba58026bc8c313e11e94f1e97bd5f2140aa963f40829cf",
+              "tests/runner.py": "46930d62b25f6039b0bc877357063bf6cab4f1140bf0a29621c3990d4a66b5e2",
+              "tests/test_answer_review.py": "c8f6b8996e08ba64519cf9c5da5a25f7366cdbc0a33558130d680b5056542461",
+              "tests/test_audience_line.py": "a83e3b41b3610bdb7f3e87d3cdbd6514f0c84b454f7ff73f14f85855fa58fede",
+              "tests/test_bale_own_commits.py": "50d07c6ca6c51e282c56bc81aa9e1483fc4d72abcf73bbfd7104c8503b2b3514",
+              "tests/test_clean_delivery.py": "db5f802f3b2ef1b3f76d1db12d67b42ca0e964573a5527fb36b2c2988278b255",
+              "tests/test_delivery_words.py": "bdca1a4600299a6076d27372efe125356d8388dbbc66a9edd96f5f32fa16ecd2",
+              "tests/test_desk_verbs.py": "b656e75e0ff8b95e5f8e18818a45f9f924a2cb8726a6b759d8302826bfbecc94",
+              "tests/test_drafting_table.py": "d14930bf0c9c8a01b868ea7c7cdd7df13088765fc42655f25326addc772c4c4c",
+              "tests/test_drop.py": "7ed73e08c58fa70d4a3fa5253bb034f26f215a979002781c1f81cdc75484d889",
+              "tests/test_filed_append_only.py": "9daf033c18db0969190168fb2276dd835c3abd71a56f5bd01d0d6f0edd76d45b",
+              "tests/test_founding_door.py": "b02dcbbd571f7b10c23fd739a1aec5bfa467b3ffd7e924ead1be869a2fe7ddcd",
+              "tests/test_front_door.py": "be8231e228d56b75b6e790de1def723e6968bbce6958597c8cbfc5fe88fb40c0",
+              "tests/test_home_screen.py": "23e133962371fc2f71ecadadaeb179f6e537975aace5a1d33b94ca29f59744dc",
+              "tests/test_land.py": "34d5cbccc3600a3cd8d64c8b8c8601e3b146f4c032a7c77a92a49b401c55c301",
+              "tests/test_meetings_view.py": "30da684c8dde3cc468963727461946e921c8eb93424cc293426845517f7816f2",
+              "tests/test_office.py": "eda7a43514ca6c7f5a0ac74be9722db285147530086459d85b97d4d897daaedf",
+              "tests/test_one_door.py": "30abff9672dce9f22fea8fd5b005ee1d20715573692030730975405e440e5c9a",
+              "tests/test_out_trip_to_host.py": "291e9e1030ddd6ba84a1a462170049baa45bae72f7e669cd5521284d31a88824",
+              "tests/test_planner_from_words.py": "dd0baad2e54d147e2e7e65710b839738b819fb3f86e978533d9947c9aea3d3a0",
+              "tests/test_probe.py": "e944e04e5dbda739a29b25b40d4a932d8ad9c57b826cf1290f297d3fe232a320",
+              "tests/test_project_on_host.py": "aac408a2df6d73d5cdfe098ef50dd5d4d78b66d567d2b0f1d00f3ad85aae68e3",
+              "tests/test_read_side.py": "f69f3a9665e0d5d1e1bd2631d13c6436dbdba35867b1d78b3bfb50b0785fb600",
+              "tests/test_return_trip.py": "196d0844547377c8cb4cdc997fc97b8c640ba84170b7cc8aaa89decb4f6a1253",
+              "tests/test_second_trip.py": "b2e2972997e49f91ffe15b696357d2a94f94cc38db819e1f6e34e2621bb3dda5",
+              "tests/test_sessions_read.py": "f6dcb9443a8f1508f6a7e6268c7aef4d406eef14165c62a0c34f121cf6cdf42a",
+              "tests/test_sort.py": "4d2ea57a3ebb5603de4eded599317be95f9e792eb05ebfda5c53aa29bf40ed43",
+              "tests/test_start.py": "be36d8ffa8f0c9cda7dd4e54d9a184587a73705ccf78f10897a821fbc619a184",
+              "tests/test_suite_clock.py": "a772d584614df393680c242e81fbaf8e617624a58afe17fb3196c6698acc5873",
+              "tests/test_third_trip.py": "5b8b7d76b71c5fb153a698fe16b95f78453b2f68eb52cb1465a758cebe3e944a",
+              "tests/test_three_gaps.py": "06934c51f534820bbefeb7bf257deb0e5f96727a13ff2b224765ab111b028a23",
+              "tests/test_tidy.py": "4522fe1fa74eca8a3a55a0f71e53468ab0be4d530e6b68199fae61d97660815e",
+              "tests/test_walkthrough_tidy.py": "41992df92329fecd0f5fe8c13057947d3764ab5bb4c9a9839490f9824ecfd9a0",
+              "tests/test_watches_digest.py": "bd90d845ff9faf2ae3081fe1b174e2df3df4efc7fd0d9c93989199c6046e924d"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "The four landings are applied as the tree this request carries shows them, so the merged-tree count is this tree's (1111 before this session, 1124 after).",
+            "The facts named cut off in notes.md are inferred from the archived notes read the way office land read them before 0.38.0; whether each was filed depends on land having found each response on the machine, which this session cannot see.",
+            "The brief's 'section 1 (line 64 on)' is the probe sentence on the doctrine's front sheet at line 64, in the core; section 1 proper, past the banner, holds no probe sentence."
+          ],
+          "judgment_calls": [
+            "deliver_show's branch line is one line, NAME[ (HOW)], from BASE (WHY), keeping 0.34.0's parenthesis after the name so earlier assertions stand; joined replaces the plain continuing words, and branch_why's joined clause is cut from the line so the folder and day are said once.",
+            "office letterhead check --added with --on PROJECT is refused by name rather than carried, since the subcommand that travels is lib/office_deliver.py's, outside the forecast.",
+            "The doctrine core's two added lines are paid for by two one-word tail lines rewritten (principle 5's 'them.' and boundary 2's 'work.'), not by trimming content.",
+            "parse_sort keeps a Sort's continuation lines verbatim among its field lines so the drop's page holds the fact as written; a continuation above facts: still makes the section a problem, as before.",
+            "The RELEASES.md closing paragraph says how many facts read cut off in 0.37.0's notes and in two of wave 1's, beyond the brief's five."
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [],
+          "compaction_occurred": {
+            "occurred": false,
+            "disclosure_ref": null
+          },
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md core (META through 11.2)",
+            "README.md (the brief)",
+            "TARBALL.md sections 1, 2, 5, 7 and 10.1",
+            "the four wave-1 notes.md (release paragraphs, stale-doc lists, proposals)",
+            "templates/walkthrough.md",
+            "templates/delivery.md",
+            "tools/craft_response.py header",
+            "tools/response_lint.py schema"
+          ]
+        }
+      },
+      "log": ".bale/logs/2026-10-29-wave-one-release-005.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-10-29T13:12:38+00:00",
+  "outcome": "applied"
+}
