@@ -750,5 +750,238 @@ class TestTheRecord(unittest.TestCase):
         self.assertIn("office probe", readme)
 
 
+# --- 8. the mask: no credential in what office probe hands back (0.38.0) --------------------------------
+#
+# A probe printed `git remote -v` in a project whose remote URL held a
+# personal access token, and the token went to chat, the clipboard and the
+# probe's record (2026-10-28). The secrets here are made up, built from
+# pieces so no line of this file holds one whole.
+
+SECRET = "s3cr" + "et-Tok3n"
+TOKEN = "ghp_" + "Ab0Cd1Ef2Gh3Ij4Kl5Mn6Op7Qr8St9Uv0Wx1Yz"
+REMOTE = f"https://alice:{SECRET}@git.example.com/team/repo.git"
+REMOTE_MASKED = "https://alice:xxx@git.example.com/team/repo.git"
+
+
+def credential_block(slug="fix-login", extra=()):
+    """A probe block whose output is `git remote -v` with a credential in
+    the remote's URL, as the one of 2026-10-28 printed it, and a bare
+    GitHub token: five lines between the sentinels, the trailer matching."""
+    return probe_block(slug=slug, lines=(f"origin\t{REMOTE} (fetch)", f"origin\t{REMOTE} (push)",
+                                         f"GH_TOKEN={TOKEN}", *extra))
+
+
+class TestTheMask(unittest.TestCase):
+    """Item 1: the mask itself, and the writer that masks the screen line
+    by line as the block streams."""
+
+    def test_a_credential_in_a_url_is_masked_and_its_user_kept(self):
+        cases = [
+            (f"origin\t{REMOTE} (fetch)", f"origin\t{REMOTE_MASKED} (fetch)", 1, 0),
+            ("git+ssh://bob:pw:with:colons@host/x", "git+ssh://bob:xxx@host/x", 1, 0),
+            ("https://al%40ice:pw@host", "https://al%40ice:xxx@host", 1, 0),
+            # A bare @ in the password: the host is after the last one.
+            ("postgres://u:p@ss@db.example:5432/app", "postgres://u:xxx@db.example:5432/app", 1, 0),
+            ("https://:tok@host/x", "https://:xxx@host/x", 1, 0),
+            ('url = "https://u:pw@h/x" and https://v:qq@k', 'url = "https://u:xxx@h/x" and https://v:xxx@k', 2, 0),
+            (f"https://x-access-token:{TOKEN}@github.com/o/r", "https://x-access-token:xxx@github.com/o/r", 1, 0),
+            # A GitHub token bare, or as a URL's user part.
+            (f"GH_TOKEN={TOKEN}", "GH_TOKEN=ghp_xxx", 0, 1),
+            (f"https://{TOKEN}@github.com/o/r", "https://ghp_xxx@github.com/o/r", 0, 1),
+            ("github_pat_" + "A1b2C3d4E5_" * 6, "github_pat_xxx", 0, 1),
+        ]
+        for line, want, urls, tokens in cases:
+            self.assertEqual(op.mask_text(line), (want, {"url": urls, "token": tokens}), line)
+
+    def test_what_is_not_a_credential_is_left_as_it_is(self):
+        for line in ("ssh://git@host:22/team/repo.git", "https://host:8443/path@v2", "https://user@host/x",
+                     "git@github.com:team/repo.git", "https://a:xxx@host", "user:pw@host (no scheme)",
+                     "ghp_short", "ghs_" + "x" * 29, "=== PROBE BEGIN fix-login ===", "--- integrity: 5 lines ---",
+                     "caf\u00e9 \ufffd https://h/"):
+            self.assertEqual(op.mask_text(line), (line, op.no_masks()), line)
+
+    def test_a_line_is_masked_never_dropped_or_split(self):
+        text = f"one\n{REMOTE}\n\n{REMOTE} {REMOTE}\nend"
+        masked, counts = op.mask_text(text)
+        self.assertEqual(masked.split("\n"), ["one", REMOTE_MASKED, "", f"{REMOTE_MASKED} {REMOTE_MASKED}", "end"])
+        self.assertEqual(counts, {"url": 3, "token": 0})
+
+    def test_the_screen_is_masked_wherever_the_reads_split_a_credential(self):
+        data = (f"before\norigin\t{REMOTE} (fetch)\nGH_TOKEN={TOKEN}\n").encode()
+        want = op.mask_text(data.decode())[0].encode()
+        for cut in range(1, len(data)):
+            for second in (cut, min(cut + 7, len(data))):
+                screen = types.SimpleNamespace(out=bytearray(), flushes=0)
+                screen.write = screen.out.extend
+                screen.flush = lambda s=screen: setattr(s, "flushes", s.flushes + 1)
+                w = op.MaskedScreen(screen)
+                for piece in (data[:cut], data[cut:second], data[second:]):
+                    self.assertEqual(w.write(piece), len(piece))
+                    w.flush()
+                    # Never a byte of the secret on the screen, at any point.
+                    self.assertNotIn(SECRET[:4].encode(), bytes(screen.out), cut)
+                w.close()
+                self.assertEqual(bytes(screen.out), want, cut)
+                self.assertEqual(w.counts, {"url": 1, "token": 1})
+
+    def test_a_last_line_with_no_end_is_held_until_the_block_ends(self):
+        import io
+        screen = io.BytesIO()
+        w = op.MaskedScreen(screen)
+        w.write(b"done\nhttps://u:pw")
+        w.flush()
+        self.assertEqual(screen.getvalue(), b"done\n")
+        w.write(b"@h")
+        w.close()
+        self.assertEqual(screen.getvalue(), b"done\nhttps://u:xxx@h")
+        w.close()
+        self.assertEqual(screen.getvalue(), b"done\nhttps://u:xxx@h", "a second close writes nothing")
+
+    def test_bytes_that_are_not_utf8_pass_through_as_they_came(self):
+        import io
+        screen = io.BytesIO()
+        w = op.MaskedScreen(screen)
+        w.write(b"\xff\xfe caf\xc3\xa9 https://u:p\xe9@h\n")
+        w.close()
+        self.assertEqual(screen.getvalue(), b"\xff\xfe caf\xc3\xa9 https://u:xxx@h\n")
+
+
+class TestTheMaskedRun(ProbeCase):
+    """Items 1 and 4: every copy office probe makes of the block's stdout
+    is masked (the screen, the result's block and so the clipboard), and
+    the block's own words are otherwise what it printed: the sentinels,
+    the count, the trailer."""
+
+    def plan_here(self, where):
+        return {"place": {"path": str(where), "host": None, "shell": None, "connect": None, "name": "alpha"},
+                "where": f"in {where}", "project": "alpha", "sid": self.sid}
+
+    def test_run_masks_the_screen_and_the_block_it_keeps(self):
+        import io
+        # A line far longer than one of run_probe's 4096-byte reads, the
+        # credential at its end: held whole, then masked whole.
+        long_line = "p" * 9000 + " " + REMOTE
+        self.block.write_text(credential_block(extra=(long_line,)))
+        screen = io.BytesIO()
+        result = op.run(self.plan_here(self.proj), self.block, self.tray_root, screen=screen)
+        shown = screen.getvalue().decode()
+        for copy in (shown, "\n".join(result["block"]), result["words"]):
+            self.assertNotIn(SECRET, copy)
+            self.assertNotIn(TOKEN[4:], copy)
+        self.assertIn(f"origin\t{REMOTE_MASKED} (fetch)\n", shown)
+        self.assertIn("p" * 9000 + " " + REMOTE_MASKED + "\n", shown)
+        self.assertIn("GH_TOKEN=ghp_xxx\n", shown)
+        self.assertEqual(result["block"][0], "=== PROBE BEGIN fix-login ===")
+        self.assertEqual(result["block"][-1], "=== PROBE END fix-login ===")
+        self.assertEqual(result["block"][1:4], [f"origin\t{REMOTE_MASKED} (fetch)", f"origin\t{REMOTE_MASKED} (push)",
+                                                "GH_TOKEN=ghp_xxx"])
+        # A masked line still counts as one: the trailer still matches.
+        self.assertEqual((result["count"], result["trailer"]), (6, 6))
+        self.assertEqual(result["block"][-2], "--- integrity: 6 lines ---")
+        self.assertEqual(result["masked"], {"url": 3, "token": 1})
+        self.assertEqual(result["words"], "6 line(s) came back between PROBE BEGIN and PROBE END, and the integrity "
+                                          "trailer's count matches; 3 credentials in URLs and 1 GitHub token were "
+                                          "masked (xxx stands for each)")
+        # What the screen showed is the block the result keeps, line for line.
+        self.assertTrue(shown.endswith("\n".join(result["block"]) + "\n"), shown[-200:])
+
+    def test_office_probe_hands_back_no_credential_and_says_how_many_it_masked(self):
+        self.block.write_text(credential_block())
+        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=0)
+        self.assertNotIn(SECRET, proc.stdout + proc.stderr)
+        self.assertNotIn(TOKEN[4:], proc.stdout + proc.stderr)
+        self.assertIn(f"origin\t{REMOTE_MASKED} (fetch)\norigin\t{REMOTE_MASKED} (push)\nGH_TOKEN=ghp_xxx\n",
+                      proc.stdout)
+        self.assertIn("5 line(s) came back between PROBE BEGIN and PROBE END, and the integrity trailer's count "
+                      "matches; 2 credentials in URLs and 1 GitHub token were masked (xxx stands for each)", proc.stderr)
+        # The History line is as it always was, the count unchanged.
+        self.assertRegex(self.history()[0], HISTORY_RE.format(sid=re.escape(self.sid), n=5))
+        self.assertNotIn(SECRET, self.folder_md())
+
+    def test_a_spanning_blocks_office_on_output_is_masked_with_it(self):
+        text = probe_block(lines=())
+        call = f"  office-on alpha {shlex.quote('echo ' + shlex.quote(REMOTE))}"
+        self.block.write_text(text.replace('  echo "cwd: $(pwd -P)"', call + '\n  echo "cwd: $(pwd -P)"'))
+        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=0)
+        self.assertIn("office-on is on the block's PATH for alpha", proc.stderr)
+        self.assertIn(f"{REMOTE_MASKED}\ncwd: {os.path.realpath(self.root)}", proc.stdout)
+        self.assertNotIn(SECRET, proc.stdout + proc.stderr)
+        self.assertIn("; 1 credential in a URL was masked (xxx stands for it)", proc.stderr)
+
+    def test_with_nothing_to_mask_nothing_is_said_and_the_output_is_byte_for_byte(self):
+        import io
+        screen = io.BytesIO()
+        result = op.run(self.plan_here(self.proj), self.block, self.tray_root, screen=screen)
+        self.assertEqual(result["masked"], op.no_masks())
+        self.assertEqual(result["words"], "4 line(s) came back between PROBE BEGIN and PROBE END, and the integrity "
+                                          "trailer's count matches")
+        self.assertIn(("\n".join(result["block"]) + "\n").encode(), screen.getvalue())
+        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=0)
+        self.assertNotIn("masked", proc.stderr)
+
+
+class TestTheMaskIsSaid(unittest.TestCase):
+    """Items 2 and 3: the count's line says how many the mask replaced, in
+    plain words, and nothing when it replaced nothing; and the module says
+    the mask is defense in depth, not a promise."""
+
+    def test_the_words(self):
+        said = op.masked_words
+        self.assertEqual(said({"url": 1, "token": 0}), "; 1 credential in a URL was masked (xxx stands for it)")
+        self.assertEqual(said({"url": 2, "token": 0}), "; 2 credentials in URLs were masked (xxx stands for each)")
+        self.assertEqual(said({"url": 0, "token": 1}), "; 1 GitHub token was masked (xxx stands for it)")
+        self.assertEqual(said({"url": 1, "token": 2}),
+                         "; 1 credential in a URL and 2 GitHub tokens were masked (xxx stands for each)")
+        for none in ({"url": 0, "token": 0}, {}, None):
+            self.assertEqual(said(none), "")
+
+    def test_every_count_line_carries_them_and_one_with_no_counts_is_as_before(self):
+        out = "=== PROBE BEGIN s ===\na\n--- integrity: 1 lines ---\n=== PROBE END s ===\n"
+        r = op.read_output(out)
+        self.assertEqual(op.count_words(r), "1 line(s) came back between PROBE BEGIN and PROBE END, and the "
+                                            "integrity trailer's count matches")
+        r["masked"] = {"url": 1, "token": 0}
+        self.assertTrue(op.count_words(r).endswith("matches; 1 credential in a URL was masked (xxx stands for it)"))
+        lost = dict(op.read_output("nothing\n"), masked={"url": 0, "token": 1})
+        self.assertEqual(op.count_words(lost), "no probe block came back: its output has no PROBE BEGIN line; 1 "
+                                               "GitHub token was masked (xxx stands for it)")
+
+    def test_the_module_says_what_the_mask_does_not_catch(self):
+        for doc in (op.__doc__, op.mask_text.__doc__):
+            said = " ".join(doc.split())
+            self.assertIn("defense in depth, not a promise", said.lower())
+            self.assertIn("git remote -v", said)
+            self.assertIn("git config --get remote.NAME.url", said)
+            self.assertIn("printed bare", said)
+            self.assertIn("is not caught", said)
+        said = " ".join(op.__doc__.split())
+        self.assertIn("The block's stderr, the fallback's probe-output/ files and the block's own closing clipboard "
+                      "step (bale clipboard, run inside the block) are not masked", said)
+
+
+class TestTheMaskOnATerminal(ProbeCase):
+    """Item 1, the clipboard: the office's copy is the result's block, so
+    it is the masked one."""
+    serial_group = "terminal"  # drives a pseudo-terminal: tests/run.sh runs it in the serial lane
+
+    def test_the_block_on_the_clipboard_is_the_masked_one(self):
+        copied = self.e.tmp / "copied.txt"
+        self.machine.parent.mkdir(parents=True, exist_ok=True)
+        self.machine.write_text(f'clipboard_command = "tee {copied}"\npaste_command = "cat {copied}"\n')
+        self.block.write_text(credential_block())
+        code, screen = on_a_terminal(self, [str(self.e.office_bin), "probe", "fix-login", str(self.block)],
+                                     self.root, self.e.env, [(b"Run it? y or N (--yes) [N]:", "y")])
+        self.assertEqual(code, 0, screen)
+        lines = copied.read_text().splitlines()
+        self.assertEqual(lines[0], "=== PROBE BEGIN fix-login ===")
+        self.assertEqual(lines[1:4], [f"origin\t{REMOTE_MASKED} (fetch)", f"origin\t{REMOTE_MASKED} (push)",
+                                      "GH_TOKEN=ghp_xxx"])
+        self.assertEqual(lines[-2:], ["--- integrity: 5 lines ---", "=== PROBE END fix-login ==="])
+        self.assertNotIn(SECRET, copied.read_text() + screen)
+        self.assertNotIn(TOKEN[4:], copied.read_text() + screen)
+        self.assertIn("2 credentials in URLs and 1 GitHub token were masked", " ".join(screen.split()))
+        self.assertIn("the probe block (PROBE BEGIN to PROBE END) is on the clipboard", screen)
+
+
 if __name__ == "__main__":
     unittest.main()

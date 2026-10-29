@@ -34,6 +34,20 @@ hands at the terminal (doctrine section 1), so office probe runs it:
          to the clipboard with the office's own clipboard command and
          writes the folder's History line, `- DATE probe: SID, N lines`.
 
+What run hands back is masked (0.38.0): a credential written into a URL,
+`scheme://user:SECRET@host`, reaches the screen, the result's block (and
+so the clipboard) and the result's words as `scheme://user:xxx@host`, and
+so does a GitHub token in one of its own shapes (ghp_, gho_, ghu_, ghs_,
+ghr_, github_pat_), as `ghp_xxx`; the words say how many were masked. A
+probe printed `git remote -v` in a project whose remote URL held a
+personal access token, and it went to chat, the clipboard and the
+probe's record (2026-10-28). The mask is defense in depth, not a promise:
+a probe should not print a remote URL with a credential in it in the first
+place (git remote -v, git config --get remote.NAME.url), and a token of
+any other shape printed bare is not caught. The block's stderr, the
+fallback's probe-output/ files and the block's own closing clipboard step
+(bale clipboard, run inside the block) are not masked.
+
 A block that calls `office-on PROJECT ...` (0.34.0) spans the office and
 the projects it names: it runs in the office root, under the folder's
 session open in the office or in one of those projects, and each
@@ -78,6 +92,24 @@ REACH_RE = oh.LazyPattern(r"(?<![\w./-])office-on\s+([A-Za-z0-9_][A-Za-z0-9_-]*)
 # The exit code office-on gives when the project cannot be reached at all
 # (a host that stopped answering), told apart from the command's own.
 EXIT_ON_UNREACHED = 97
+# The mask (0.38.0). A credential in a URL: the scheme, `://`, the user
+# part (kept: it says whose credential it was; it may hold %40 and stops
+# at the first colon), then the secret, which runs to the last `@` before
+# the authority ends (whitespace, / ? #, a quote or a bracket). The last
+# `@`, not the first, because that is where a URL's host starts
+# (urllib.parse reads it so) and a password with a bare `@` in it is
+# still hidden whole. A URL with no password (https://user@host,
+# ssh://git@host:22/x) and a port (https://host:8443/x) do not match.
+MASK = "xxx"
+URL_CREDENTIAL_RE = oh.LazyPattern(
+    r"(?P<head>\b[A-Za-z][A-Za-z0-9+.-]*://[^\s/?#@:\"'<>`\[\]]*:)(?P<secret>[^\s/?#\"'<>`\[\]]+)(?=@)")
+# A GitHub token in one of its own shapes, bare or as a URL's user part
+# (https://ghp_...@github.com): the prefix kept, the rest masked. The
+# lengths are the shortest GitHub issues (36 after ghp_ and its kin, 82
+# after github_pat_), less some margin, so a short name that merely starts
+# so is left alone.
+GITHUB_TOKEN_RE = oh.LazyPattern(
+    r"(?<![A-Za-z0-9_])(?P<head>gh[pousr]_|github_pat_)(?P<secret>[A-Za-z0-9_]{30,})(?![A-Za-z0-9_])")
 
 
 class ProbeError(Exception):
@@ -192,7 +224,12 @@ def read_output(text):
 
 
 def count_words(result):
-    """The one line that says what came back."""
+    """The one line that says what came back, and, when the mask replaced
+    anything (result["masked"], from mask_text), how many it replaced."""
+    return _came_back_words(result) + masked_words(result.get("masked"))
+
+
+def _came_back_words(result):
     if not result["found"]:
         return "no probe block came back: its output has no PROBE BEGIN line"
     if not result["closed"]:
@@ -205,6 +242,113 @@ def count_words(result):
         return f"{n} line(s) came back between PROBE BEGIN and PROBE END, and the integrity trailer's count matches"
     return (f"{n} line(s) came back between PROBE BEGIN and PROBE END, but the integrity trailer says "
             f"{result['trailer']}: the block is not whole")
+
+
+# --- the mask (0.38.0) ---------------------------------------------------------------------
+
+def no_masks():
+    """The mask's counts when it has replaced nothing: credentials in URLs,
+    and bare GitHub tokens."""
+    return {"url": 0, "token": 0}
+
+
+def mask_text(text):
+    """text with every credential in a URL (`scheme://user:SECRET@host`,
+    the user part kept) and every GitHub token in one of its own shapes
+    replaced by xxx, and the counts of each it replaced: (text, {"url": N,
+    "token": M}). A secret that already reads xxx is left and not counted.
+    Neither pattern crosses a line end, so a line is masked, never split,
+    joined or dropped, and the block's line count and its trailer are what
+    the probe printed. The URL form is masked first, so a token that is a
+    URL's password counts once, as the URL's.
+
+    Defense in depth, not a promise: a probe should never print a remote
+    URL with a credential in it (git remote -v, git config --get
+    remote.NAME.url), and a token of any other shape printed bare, outside
+    a URL, is not caught."""
+    counts = no_masks()
+
+    def replace(kind):
+        def one(m):
+            if m.group("secret") == MASK:
+                return m.group(0)
+            counts[kind] += 1
+            return m.group("head") + MASK
+        return one
+
+    text = URL_CREDENTIAL_RE.sub(replace("url"), text)
+    text = GITHUB_TOKEN_RE.sub(replace("token"), text)
+    return text, counts
+
+
+def add_masks(total, more):
+    """Add the counts more to total, in place, and return total."""
+    for kind, n in more.items():
+        total[kind] = total.get(kind, 0) + n
+    return total
+
+
+def masked_words(masked):
+    """The end of the count's line when the mask replaced anything, in
+    plain words ('; 1 credential in a URL was masked (xxx stands for
+    it)'); '' when it replaced nothing, or there are no counts."""
+    masked = masked or {}
+    urls, tokens = masked.get("url", 0), masked.get("token", 0)
+    parts = []
+    if urls:
+        parts.append(f"{urls} credential in a URL" if urls == 1 else f"{urls} credentials in URLs")
+    if tokens:
+        parts.append(f"{tokens} GitHub token" if tokens == 1 else f"{tokens} GitHub tokens")
+    if not parts:
+        return ""
+    one = urls + tokens == 1
+    return f"; {' and '.join(parts)} {'was' if one else 'were'} masked ({MASK} stands for {'it' if one else 'each'})"
+
+
+class MaskedScreen:
+    """A writer for office_host.run_probe's screen that masks what the
+    block prints before it reaches the real one (the terminal's stdout,
+    as bytes). run_probe writes each chunk of the block's stdout as it
+    comes, 4096 bytes at a time, and flushes after each: this holds a
+    partial line back until its line end arrives, so a credential split
+    between two reads is still caught, and writes each whole line through
+    mask_text. A line with no line end yet is shown when its end arrives
+    or the block ends (close). Bytes that are not UTF-8 pass through as
+    they came. counts adds up what was masked on the screen."""
+
+    def __init__(self, screen):
+        self.screen = screen
+        self.held = bytearray()
+        self.counts = no_masks()
+
+    def write(self, chunk):
+        chunk = bytes(chunk)
+        end = chunk.rfind(b"\n")
+        if end < 0:
+            self.held += chunk
+            return len(chunk)
+        lines = bytes(self.held) + chunk[:end + 1]
+        self.held = bytearray(chunk[end + 1:])
+        self._show(lines)
+        return len(chunk)
+
+    def flush(self):
+        """Flush the real screen. A partial line stays held: showing it
+        now could show half of a credential the next read completes."""
+        self.screen.flush()
+
+    def close(self):
+        """Show the partial line held back, masked, and flush: the block
+        has ended. The real screen is not closed."""
+        if self.held:
+            held, self.held = bytes(self.held), bytearray()
+            self._show(held)
+        self.screen.flush()
+
+    def _show(self, data):
+        text, counts = mask_text(data.decode("utf-8", "surrogateescape"))
+        add_masks(self.counts, counts)
+        self.screen.write(text.encode("utf-8", "surrogateescape"))
 
 
 # --- where it runs, and for which session ------------------------------------------------
@@ -524,10 +668,21 @@ def run(plan_data, block_file, tray_root, screen=None, plan_file=None):
     """Run the block where the plan says, then read what came back and
     carry the fallback's directory. Returns the result: code, stopped
     (the office's backstop stopped it), found, closed, block (lines),
-    count, trailer, words (the count's line), carried (the out tray
-    path, or None), carry_problem. A block that spans (plan reaches, with
+    count, trailer, words (the count's line), masked (what the mask
+    replaced: {"url": N, "token": M}), carried (the out tray path, or
+    None), carry_problem. A block that spans (plan reaches, with
     plan_file) gets the office-on helper first on its PATH, written beside
-    the plan for this run."""
+    the plan for this run.
+
+    Everything run hands back is masked (mask_text, 0.38.0): the block's
+    stdout reaches screen (this terminal's stdout when None) through a
+    MaskedScreen, line by line as it streams, and the text run_probe kept
+    is masked the same way before the block is read out of it, so the
+    result's block, which bin/office copies to the clipboard, holds no
+    credential the mask knows. A spanning block's office-on output comes
+    back on the same stream and is masked with it. The block's stderr goes
+    to the terminal as it is, and a fallback's probe-output/ files are
+    carried unread: neither is masked."""
     import os
     import office_host as ohost
     place = place_from(plan_data["place"])
@@ -541,11 +696,22 @@ def run(plan_data, block_file, tray_root, screen=None, plan_file=None):
         log(f"{ON_HELPER} is on the block's PATH for {', '.join(plan_data['reaches'])}: each call runs its command "
             "where that project lives, stdin closed")
     log(f"running the probe {plan_data['where']}, stdin closed; its output follows, whole")
+    masked_screen = MaskedScreen(screen if screen is not None else sys.stdout.buffer)
     try:
-        code, text, stopped = ohost.run_probe(place, block["text"], screen=screen, env=env)
+        code, text, stopped = ohost.run_probe(place, block["text"], screen=masked_screen, env=env)
     except ohost.HostError as exc:
         raise ProbeError([f"{plan_data['project']}: {exc}; the block did not run to its end, and nothing was carried"])
-    out = read_output(text)
+    finally:
+        # A last line with no line end is shown now, masked, however the
+        # run ended.
+        masked_screen.close()
+    text, masked = mask_text(text)
+    if masked != masked_screen.counts:
+        # The two masks read the same bytes, decoded two ways; a difference
+        # is a bug to see, never to pass over.
+        log(f"warning: the mask counted {masked} in the kept output but {masked_screen.counts} on the screen; "
+            "the block handed back is the kept output's, masked")
+    out = dict(read_output(text), masked=masked)
     result = dict(out, code=code, stopped=stopped, words=count_words(out), carried=None, carry_problem=None,
                   carried_files=0)
     if stopped:
