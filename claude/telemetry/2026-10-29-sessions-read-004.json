@@ -1,0 +1,216 @@
+{
+  "record_version": 1,
+  "session_id": "2026-10-29-sessions-read-004",
+  "created_at": "2026-10-29T01:41:43+00:00",
+  "attempts": [
+    {
+      "at": "2026-10-29T01:41:43+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "lib/office_bale.py",
+        "tests/test_land.py"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-10-29-sessions-read-004.log",
+      "bundle": {
+        "stem": "2026-10-29-sessions-read",
+        "brief_sha256": "7dca123bc953694af1b6bcc6552d91b0c64fd69aa5c04a00f62d143b138a7512",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "0f1e0ab1fbb7fbde1f8d97c8e24bd9f26236cd81a07fbb8274e1da613c98dd9d"
+      },
+      "provenance": {
+        "work_class": "code",
+        "packer": "chordsphere",
+        "packed_at": "2026-10-29T01:41:42+00:00"
+      }
+    },
+    {
+      "at": "2026-10-29T02:06:01+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-10-29-sessions-read-004.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "no VERSION, README, RELEASES, doctrine, bin/office or front sheet change": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "a lost RELEASES.md heading is named against the front sheet": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "tests/run.sh --fast with this session's tests": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "tests/run.sh test_land test_read_side test_project_on_host test_sessions_read (--slow)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "no VERSION, README, RELEASES, doctrine, bin/office or front sheet change": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "a lost RELEASES.md heading is named against the front sheet": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "tests/run.sh --fast with this session's tests": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "tests/run.sh test_land test_read_side test_project_on_host test_sessions_read (--slow)": {
+            "claim": "pass",
+            "verdict": "skip",
+            "agreement": "n/a"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "python syntax (lib/office_bale.py, tests/test_land.py, tests/test_sessions_read.py)",
+          "no VERSION, README, RELEASES, doctrine, bin/office or front sheet change",
+          "a lost RELEASES.md heading is named against the front sheet",
+          "tests/run.sh --fast with this session's tests",
+          "tests/run.sh test_land test_read_side test_project_on_host test_sessions_read (--slow)"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "lib/office_bale.py",
+        "tests/test_land.py"
+      ],
+      "overridden_paths": [
+        "tests/test_sessions_read.py"
+      ],
+      "overridden_path_sources": {
+        "tests/test_sessions_read.py": "prompt"
+      },
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [
+        "lib/office_bale.py",
+        "tests/test_land.py",
+        "tests/test_sessions_read.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.56",
+            "contract_docs": {
+              "AGENT.md": "31dcdded2a8fd175f7778c2bd1be09688e89e76b8fd4cd62b7646aacfa2782c4",
+              "TARBALL.md": "3037b905ee561af44f27cc83ec45d832feb7d429a98d4e07b4482a518cda6e94",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "a8e5714e51049768e52bb5bc0ede9338db1175e7095d9b2bdd0d314ab3e01078"
+            },
+            "packer": "chordsphere",
+            "work_class": "code",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-10-29T01:41:42+00:00",
+            "base_files": {
+              "lib/office_bale.py": "00330cdcbd02afe77af0cc4e389008a341d827071b0d0396249a400a94e88fdc",
+              "tests/test_land.py": "77f6dfb5b6386c12b3e0790ac59e7a75b9fa7979f19bd5592ea81faaf368a0ab"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "a broken clone takes the same path as the suite's fake bale refusing in a directory it has no captures for: bale exits non-zero in a directory that exists"
+          ],
+          "judgment_calls": [
+            "projects are read lazily, only when a search reaches them, so the hosted dossier prefetch moved from an up-front loop over every host into each host's first read, at the same two connections",
+            "a dossier failure of kind missing, path, refused or unreachable passes the project over; output or key stays that one session's cannot-read line (PROJECT_WIDE_KINDS)",
+            "the unreadable project's line goes after the sessions, before the tally, unindented: NAME: not read: WHY",
+            "the tally's not found list now includes uncertain misses",
+            "the lane is read in render_folder_sessions from the folder page, so the reader's argv and bin/office are unchanged",
+            "the releases test is its own class beside TestTheLandFlagsRecord, with module-level helpers validation.sh reuses"
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [],
+          "compaction_occurred": {
+            "occurred": false,
+            "disclosure_ref": null
+          },
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md META through 11.2 and 11.7",
+            "README.md (the brief)",
+            "TARBALL.md sections 1, 2, 5, 7 and 10.1",
+            "claude/responses/2026-10-28-m10-land-flags-005/notes.md",
+            "templates/walkthrough.md",
+            "templates/delivery.md",
+            "RELEASES.md the 0.37.0 entry"
+          ],
+          "forecast_departures": [
+            {
+              "path": "tests/test_sessions_read.py",
+              "why": "the sessions verb's tests live in tests/test_read_side.py, outside the forecast, and the brief puts new ones in a new module in that case"
+            }
+          ]
+        }
+      },
+      "log": ".bale/logs/2026-10-29-sessions-read-004.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-10-29T02:06:01+00:00",
+  "outcome": "applied"
+}
