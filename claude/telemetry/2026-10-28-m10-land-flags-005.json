@@ -1,0 +1,276 @@
+{
+  "record_version": 1,
+  "session_id": "2026-10-28-m10-land-flags-005",
+  "created_at": "2026-10-28T12:27:25+00:00",
+  "attempts": [
+    {
+      "at": "2026-10-28T12:27:25+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "lib/office_bale.py",
+        "share/bale-consumption.toml",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-10-28-m10-land-flags-005.log",
+      "bundle": {
+        "stem": "2026-10-27-m10-land-flags",
+        "brief_sha256": "8fcd9ac264ce748900353a35b8cb48aa558b6c823d22f1291d169a91f25ff46b",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "583ec6fd84ffe36f69b9cc4d66c8852b0d3132310f634c376180983444da6c5d"
+      },
+      "provenance": {
+        "work_class": "code",
+        "packer": "chordsphere",
+        "packed_at": "2026-10-28T12:27:25+00:00"
+      }
+    },
+    {
+      "at": "2026-10-29T00:36:47+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-10-28-m10-land-flags-005 (1).tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "session assertions": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "tests/run.sh --fast, with this session's tests": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "tests/run.sh, the touched modules whole (--slow)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "session assertions": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "tests/run.sh --fast, with this session's tests": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "tests/run.sh, the touched modules whole (--slow)": {
+            "claim": "pass",
+            "verdict": "skip",
+            "agreement": "n/a"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "bash -n bin/office",
+          "python syntax: lib/office_bale.py tests/test_land.py tests/test_return_trip.py tests/fakes/land_bale.py",
+          "bin/office is executable",
+          "session assertions",
+          "tests/run.sh --fast, with this session's tests",
+          "tests/run.sh, the touched modules whole (--slow)"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "lib/office_bale.py",
+        "share/bale-consumption.toml",
+        "tests"
+      ],
+      "overridden_paths": [
+        "doctrine/OFFICE.md"
+      ],
+      "overridden_path_sources": {
+        "doctrine/OFFICE.md": "prompt"
+      },
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib/office_bale.py",
+        "share/bale-consumption.toml",
+        "tests/fakes/land_bale.py",
+        "tests/test_bale_own_commits.py",
+        "tests/test_land.py",
+        "tests/test_return_trip.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.56",
+            "contract_docs": {
+              "AGENT.md": "31dcdded2a8fd175f7778c2bd1be09688e89e76b8fd4cd62b7646aacfa2782c4",
+              "TARBALL.md": "3037b905ee561af44f27cc83ec45d832feb7d429a98d4e07b4482a518cda6e94",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "a8e5714e51049768e52bb5bc0ede9338db1175e7095d9b2bdd0d314ab3e01078"
+            },
+            "packer": "chordsphere",
+            "work_class": "code",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-10-28T12:27:25+00:00",
+            "base_files": {
+              "README.md": "231bf39a4d1b2f672d515752c40a249d05adb07c671ffc5a1fd2ae7983ec7891",
+              "RELEASES.md": "5312dd0abc43704fe449a00ee53e2c12d2643373e619bf4dea1a94d07bfa4e5a",
+              "VERSION": "867a70774294546ebe3cac14fa311d8d27922466625e3fd9a42e9a26682a86e7",
+              "bin/office": "4e54d9b90c0daf7add243d6e03fd14725f294437fbb94f49eac003fce20aa030",
+              "claude/context/front-sheet.md": "9bc9889ec9451f25ce7281cc29a8c28cb4f186fe8086e0451daa0a3bbaf6efc0",
+              "lib/office_bale.py": "290bc220a40b26f24d39fdaaeb2d0eb76c51aaa1fab5f909741e0b47dd8af3c2",
+              "share/bale-consumption.toml": "0677af105ad75544f5f60b4c47e07ea2853843f436c07e9fb69fd9d5e79a7cf3",
+              "tests/fakes/land_bale.py": "732d30ec3f4bf8aeadbf3d208a62d902bc6c043455f16cadc817b1b1e471fa6d",
+              "tests/fakes/pack_bale.py": "fbf35a9c88afa7d9c8d64dbb985e7985476196311911dd05b1fc143fc768d22b",
+              "tests/fakes/replay_bale.py": "f31101e58b28106452c4572b6e38a7642276937076b1f0cc320c9b185c56eea5",
+              "tests/fakes/small_bales.py": "25e74224d580bddfc5a2eb91696d7816c8a4e8f73ea20deb7c9dc2be0422bc4b",
+              "tests/fast-tier.toml": "c4155fe48e1d30e9ef67311794c6ed8f3a95ca6cd769c53eae7229b83bc8a705",
+              "tests/run.sh": "35b3954b5bf5d4e975ba58026bc8c313e11e94f1e97bd5f2140aa963f40829cf",
+              "tests/runner.py": "46930d62b25f6039b0bc877357063bf6cab4f1140bf0a29621c3990d4a66b5e2",
+              "tests/test_answer_review.py": "c8f6b8996e08ba64519cf9c5da5a25f7366cdbc0a33558130d680b5056542461",
+              "tests/test_audience_line.py": "13d4e927f8b1ee7742fc89a0060cd7a50f1aef8ba5af66ec60305ebb3b504a57",
+              "tests/test_bale_own_commits.py": "f0094eb3f33fdcf5c86a28247635b7ae3a12897b38028330ec12a12d9541df8f",
+              "tests/test_clean_delivery.py": "5c2c39364785ec6582ad3d7343d798aa1f3c3497d117891054f04176ba92b906",
+              "tests/test_delivery_words.py": "210b2c6ce4e1b76749b7d5921b34ff05aac56ba153a8ae44544d776c8405c00a",
+              "tests/test_desk_verbs.py": "b656e75e0ff8b95e5f8e18818a45f9f924a2cb8726a6b759d8302826bfbecc94",
+              "tests/test_drafting_table.py": "d14930bf0c9c8a01b868ea7c7cdd7df13088765fc42655f25326addc772c4c4c",
+              "tests/test_drop.py": "7ed73e08c58fa70d4a3fa5253bb034f26f215a979002781c1f81cdc75484d889",
+              "tests/test_filed_append_only.py": "9daf033c18db0969190168fb2276dd835c3abd71a56f5bd01d0d6f0edd76d45b",
+              "tests/test_founding_door.py": "b02dcbbd571f7b10c23fd739a1aec5bfa467b3ffd7e924ead1be869a2fe7ddcd",
+              "tests/test_front_door.py": "be8231e228d56b75b6e790de1def723e6968bbce6958597c8cbfc5fe88fb40c0",
+              "tests/test_home_screen.py": "23e133962371fc2f71ecadadaeb179f6e537975aace5a1d33b94ca29f59744dc",
+              "tests/test_land.py": "a95be3db479dfdf192ec75baea56fa3a6eba34c8e94da2447ace491b5fb7238c",
+              "tests/test_meetings_view.py": "30da684c8dde3cc468963727461946e921c8eb93424cc293426845517f7816f2",
+              "tests/test_office.py": "eda7a43514ca6c7f5a0ac74be9722db285147530086459d85b97d4d897daaedf",
+              "tests/test_one_door.py": "30abff9672dce9f22fea8fd5b005ee1d20715573692030730975405e440e5c9a",
+              "tests/test_out_trip_to_host.py": "291e9e1030ddd6ba84a1a462170049baa45bae72f7e669cd5521284d31a88824",
+              "tests/test_planner_from_words.py": "dd0baad2e54d147e2e7e65710b839738b819fb3f86e978533d9947c9aea3d3a0",
+              "tests/test_probe.py": "787485d9066289896284f7e8ed203a553cb989abb3aa127a6b34698fe13cb5e0",
+              "tests/test_project_on_host.py": "aac408a2df6d73d5cdfe098ef50dd5d4d78b66d567d2b0f1d00f3ad85aae68e3",
+              "tests/test_read_side.py": "f69f3a9665e0d5d1e1bd2631d13c6436dbdba35867b1d78b3bfb50b0785fb600",
+              "tests/test_return_trip.py": "315350d82b5d10cb255622b6b9c04de106564af9769c20cf044b82153b9be5e7",
+              "tests/test_second_trip.py": "b2e2972997e49f91ffe15b696357d2a94f94cc38db819e1f6e34e2621bb3dda5",
+              "tests/test_sort.py": "feab3a04c21257f0008e564b65aa50ebbc285d6f5f456494963824f2079b0f28",
+              "tests/test_start.py": "be36d8ffa8f0c9cda7dd4e54d9a184587a73705ccf78f10897a821fbc619a184",
+              "tests/test_suite_clock.py": "a772d584614df393680c242e81fbaf8e617624a58afe17fb3196c6698acc5873",
+              "tests/test_third_trip.py": "5b8b7d76b71c5fb153a698fe16b95f78453b2f68eb52cb1465a758cebe3e944a",
+              "tests/test_three_gaps.py": "06934c51f534820bbefeb7bf257deb0e5f96727a13ff2b224765ab111b028a23",
+              "tests/test_tidy.py": "4522fe1fa74eca8a3a55a0f71e53468ab0be4d530e6b68199fae61d97660815e",
+              "tests/test_walkthrough_tidy.py": "41992df92329fecd0f5fe8c13057947d3764ab5bb4c9a9839490f9824ecfd9a0",
+              "tests/test_watches_digest.py": "bd90d845ff9faf2ae3081fe1b174e2df3df4efc7fd0d9c93989199c6046e924d"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          },
+          "linkage": {
+            "kind": "probe",
+            "point": "mid-build",
+            "depends_on": null
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "bale 0.4.56's changed-checkpoint refusal reaches stderr and records no attempt, as its source reads (fail() before staging); not observed live"
+          ],
+          "judgment_calls": [
+            "restored only the 0.33.0 heading line: its body was still on the tree under 0.34.0, so the whole entry pasted back would have doubled it; the result is the tag's bytes (notes.md, decision 1)",
+            "a changed checkpoint's next line is offered conditionally after a refused retry, since land keeps stdout only (decision 2)",
+            "a read-only sitting refuses an accept and ends nothing",
+            "the argv's flags follow the builder's group order (base drift before the checkpoint switch), both before the tarball"
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [
+            "decision: the 0.33.0 tag's bytes and the git log (no history rides in a request; a probe read them)"
+          ],
+          "compaction_occurred": {
+            "occurred": false,
+            "disclosure_ref": null
+          },
+          "docs_read": [
+            "manifest.json",
+            "README.md",
+            "AGENT.md (META to 11.2)",
+            "README.md (the brief)",
+            "TARBALL.md (1, 2, 4, 5, 7)",
+            "BALE_HELP.md (apply, retry, amend-checkpoint)",
+            "PLANNER.md (5, the bad-oracle correction)"
+          ],
+          "forecast_departures": [
+            {
+              "path": "doctrine/OFFICE.md",
+              "why": "The brief asks doctrine/OFFICE.md to change wherever a verb's behavior changes; the landing paragraph gains one sentence on the two accepts, and the forecast did not name the file."
+            }
+          ]
+        }
+      },
+      "log": ".bale/logs/2026-10-28-m10-land-flags-005.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-10-29T00:36:47+00:00",
+  "outcome": "applied"
+}
