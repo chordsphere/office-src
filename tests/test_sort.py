@@ -353,6 +353,77 @@ class TestADoubledLineFiledBeforeStays(unittest.TestCase):
         self.assertEqual(lines, [old, f"- 2026-10-29: tests run in a minute ({SID})"])
 
 
+class TestAWrappedFactIsFiledWhole(unittest.TestCase):
+    """0.38.0: a fact that wraps onto indented continuation lines, as
+    markdown wraps a list item, is read whole, in a Handbook section and in
+    a Sort's facts: lines alike, joined with one space; a session id that
+    fell on a continuation line is dropped as on the first; a fact filed
+    cut off before stays, and a refiling adds the whole fact beside it."""
+
+    WRAPPED = ("- office land passes bale's two accepts (--accept-checkpoint-change,\n"
+               "  --accept-base-drift) through, as typed ({sid})\n")
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.root = small_office(self.tmp / "office")
+
+    def test_the_handbook_section_reads_a_wrapped_fact_whole(self):
+        notes = ("## Handbook\n\n### alpha\n\n" + self.WRAPPED.format(sid=SID) + "- one line\n"
+                 "- a fact that\n    wraps twice,\n  the second time less\n\n  after a blank line: not the fact's\n"
+                 "```\n- fenced\n  still fenced\n```\n  under a fence: not the fact's\n"
+                 "#### Front sheet\n\nThe sheet.\n")
+        (project, facts, front), = osort.parse_notes(notes)["handbook"]
+        self.assertEqual(project, "alpha")
+        self.assertEqual(facts, [f"office land passes bale's two accepts (--accept-checkpoint-change, --accept-base-drift) "
+                                 f"through, as typed ({SID})", "one line", "a fact that wraps twice, the second time less"])
+        self.assertEqual(front, ["The sheet."])
+        # Before 0.38.0 the first line alone was read: the cut-off form.
+        self.assertEqual(osort.list_items(["- a fact that", "  wraps", "x", "  not joined"]), ["a fact that wraps"])
+
+    def test_a_sorts_facts_lines_wrap_too_and_stay_verbatim_on_the_page(self):
+        facts = ("- facts: the page is served by the api's", f"  static route ({SID})", "- tests run",
+                 "  in a minute")
+        sort = osort.parse_sort("2026-10-14-login.md", sort_block("2026-10-14-login.md", folder="1", brief=None,
+                                                                   facts=facts).splitlines()[2:])
+        self.assertEqual(sort["problems"], [])
+        self.assertEqual(sort["facts"], [f"the page is served by the api's static route ({SID})", "tests run in a minute"])
+        self.assertEqual(sort["field_lines"][-4:], list(facts))
+        back = osort.page_sort(osort.sort_section(sort, SID, "2026-10-29")[1:])
+        self.assertEqual((back["facts"], back["problems"]), (sort["facts"], []))
+        # Above facts: a field does not wrap, as before 0.38.0.
+        bad = osort.parse_sort("2026-10-14-login.md", ["- project: alpha", "- folder: 1", "- goal: a goal", "  that wraps",
+                                                       "- size: small", "- tell: nobody", "- facts: none"])
+        self.assertIn("its field lines are not project, folder, goal, size, tell, facts", " ".join(bad["problems"]))
+        none = osort.parse_sort("2026-10-14-login.md", ["- project: alpha", "- folder: 1", "- goal: g", "- size: small",
+                                                        "- tell: nobody", "- facts: none", "  but a fact"])
+        self.assertIn("facts: says none, and fact lines follow it", none["problems"])
+
+    def test_an_id_on_the_continuation_is_dropped_and_a_cut_off_line_stays(self):
+        rel, _, _ = osort.ensure_chapter(self.root, "alpha")
+        path = self.root / rel
+        cut = f"- 2026-10-28: office land passes bale's two accepts (--accept-checkpoint-change, ({SID})"
+        osort.append_facts(path, [cut])
+        (_, facts, _), = osort.parse_notes("## Handbook\n\n### alpha\n\n" + self.WRAPPED.format(sid=SID))["handbook"]
+        changed, words = osort.file_handbook(self.root, "alpha", facts, None, SID, "2026-10-29")
+        self.assertEqual(changed, [rel])
+        lines = path.read_text().split("## Facts\n", 1)[1].strip("\n").splitlines()
+        self.assertEqual(lines, [cut, f"- 2026-10-29: office land passes bale's two accepts (--accept-checkpoint-change, "
+                                      f"--accept-base-drift) through, as typed ({SID})"])
+        self.assertIn("dropped before filing", "\n".join(words))
+        self.assertEqual(osort.chapter_problems(path), [])
+
+    def test_the_doctrine_and_the_drop_brief_say_it(self):
+        doctrine = " ".join(DOCTRINE.read_text().split())
+        self.assertIn("a fact may wrap onto indented lines as a list item does, and is filed whole, on one line",
+                      doctrine)
+        self.assertIn("each bare (no date in front, no session id behind: `office land` adds both) and filed whole when "
+                      "it wraps as a list item does", doctrine)
+        brief = " ".join((TEMPLATES / "drop-brief.md").read_text().split())
+        self.assertIn("Write each fact bare: the fact alone, no date in front and no session id behind, since office "
+                      "land adds both.", brief)
+
+
 class TestTheSortBriefSaysWriteFactsBare(unittest.TestCase):
     """Item 3: the sort session's brief says to write each fact bare, beside
     its Handbook words and outside the Sort format it pins."""
@@ -547,6 +618,19 @@ class TestLandFilesAFactBare(LandCase):
         self.assertRegex(chapter, rf"\n## Facts\n\n- {DAY_RE}: the api answers on port 8080 \({re.escape(sid)}\)\n"
                                   rf"- {DAY_RE}: the login page is static \({re.escape(sid)}\)\n$")
         self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
+
+    def test_a_wrapped_fact_lands_whole(self):
+        # 0.38.0: before, the chapter took the first line alone.
+        sid = self.start(self.name, "--on", "alpha", "--goal", "g", "--write", "src")
+        notes = ("# Notes\n\n## Handbook\n\n### alpha\n\n"
+                 f"- the api answers on port 8080, behind the proxy that\n  the login page shares ({sid})\n"
+                 + NOTES_TAIL)
+        tb = response_tarball(self.downloads, sid, {"src/a.py": "fixed\n"}, notes=notes)
+        proc = self.run_office("land", sid, "--ratified", "--leave-open", "--response", str(tb), check=0)
+        self.assertIn(f"Landed: {sid}", proc.stdout)
+        chapter = (self.root / "handbook/alpha.md").read_text()
+        self.assertRegex(chapter, rf"\n## Facts\n\n- {DAY_RE}: the api answers on port 8080, behind the proxy that the "
+                                  rf"login page shares \({re.escape(sid)}\)\n$")
 
 
 # --- office moves and the sorted drops ---------------------------------------------------------------

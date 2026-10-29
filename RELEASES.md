@@ -4,6 +4,236 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.38.0
+
+Additive: no migration, nothing to do in any office. Four sessions
+landed beside each other on 0.37.0 as wave 1 of the plan the planning
+sitting of 2026-10-27 began (the friction of a work office's first
+deliveries, and the gaps found on 2026-10-28), each in the lib/ modules
+it owned, and none bumped the version or wrote a release of its own. So
+this release carries their four paragraphs as they wrote them, in this
+order: deliver's, the probe's, land's filing of a fact and office
+sessions'. Then what this session changed itself: every doc line those
+four left stale, made true again; two lines on deliver's question, the
+rule that chose the branch and the folder whose branch it continues;
+`office letterhead check --added`; and a wrapped handbook fact filed
+whole.
+
+office deliver reads what a delivery adds, names its branch by one rule,
+continues on a branch another folder delivered to, and refuses words
+that name a cleanup. What you see: a delivery is refused only for a line
+it adds, a commit message or its words; a file it touches that already
+held a refused character on other lines gets one line under the
+question's letterhead verdict (`src/views/UploadView.vue: 6 line(s) the
+file already had hold the em dash (U+2014); not this delivery's, not
+refused`) and nothing stops (found 2026-10-28: a delivery was refused
+for six em dashes written weeks earlier, already on the audience's own
+main, and a whole session went to removing them). The delivery branch
+is chosen in one order, and `[office] the delivery branch is BRANCH:
+WHY` says which rule chose it: `--branch NAME`; else a `- branch: NAME`
+line in delivery.md beside `- to:` (a short name the session supplies,
+like `results-view`); else the branch the clone has checked out, when
+the audience has it and it is not the base (office start checks out the
+branch a brief's BRANCH line names, so it is the one the session built
+on); else the folder's slug. A project's `branch_prefix` in the floor
+plan (`feature/`, kept with one trailing slash) goes before the words'
+short name and the slug, never before a `--branch` name, the clone's
+branch or a name that holds a slash; no verb sets it yet. A branch
+another folder of the office delivered to is the office's: a delivery
+continues on it with no `--adopt`, from that folder's last delivery
+there, and the next line names the review already open on it. A branch
+no folder's record names keeps 0.34.0's meaning, and `--adopt` now acts
+on the clone's branch with no `--branch` (it changed nothing before). A
+delivery whose range carries a session another folder already delivered
+is refused by name, with the folder, the branch and the day, and
+`office deliver N --branch THAT-BRANCH` as the remedy, unless the
+audience's base holds that delivery (its workbench or delivery commit is
+on the base; a review merged as a squash leaves neither, so that case
+refuses, and a branch gone from the audience is said rather than
+offered); `--others-too` does not admit it. And the words that leave,
+the commit messages and delivery.md's words, are refused for naming a
+cleanup made only to keep the letterhead (`delivery.md:L: names a
+cleanup: 'em dashes' in: ...`), since such a fix is shipped clean and
+never mentioned; files are never held to it, office-src's own text
+included. What changed: lib/office_letterhead.py reads a diff's added
+lines (`changed_in_diff`, `added_line_numbers`, `git_lines`,
+`held_line`, `check(added=, added_base=)`, and `--added` on the module)
+and keeps a words-only list (`WORDS_ONLY_SECTIONS`,
+`compile_rules(words=)`, the `cleanup` kind rendered `names a cleanup`);
+share/letterhead.toml gains `[cleanup]` (em dash, en dash, ellipsis and
+their code points); lib/office_deliver.py's plan reads the staged
+squash's added lines, as each commit's read-back and office land's
+review now do, chooses the branch (`named_branch`, `slug_branch`, the
+plan's new `branch_why`, `branch_rule` and `joined` fields), reads the
+other folders' records (`other_deliveries`) to continue on their branch
+or refuse their work twice (`base_holds`, `twice_lines`), and run()'s
+Next lines name the open review for a continued branch;
+lib/office_helper.py has `branch_prefix` as the audience line's fifth key
+(`check_branch_prefix`, `prefixed_branch`) and parse_delivery returns the
+words' `branch`; templates/delivery.md says the line in one sentence.
+The tests: tests/test_clean_delivery.py `TestTheLinesADeliveryAdds` and
+`TestDeliverReadsTheLinesItAdds`, tests/test_audience_line.py
+`TestTheBranchRule`, `TestABranchAnotherFolderDeliveredTo` and
+`TestWorkAnotherFolderDelivered`, and tests/test_delivery_words.py
+`TestTheWordsNeverNameACleanup` and
+`TestDeliverRefusesWordsThatNameACleanup`, 18 tests in seven classes.
+
+office probe masks a credential in a URL. A probe printed `git remote
+-v` in a project whose remote URL held a personal access token, and the
+token went to the screen, the clipboard and the paste back to chat
+(found 2026-10-28; the token was revoked). Now everything `office probe`
+hands back is masked: on your terminal as the block streams, in the
+block it puts on your clipboard, and in what it says after. A credential
+written into a URL, `scheme://user:SECRET@host`, any scheme, comes back
+as `scheme://user:xxx@host`, its user kept so you still know whose it
+was; a GitHub token in one of its own shapes (`ghp_`, `gho_`, `ghu_`,
+`ghs_`, `ghr_`, `github_pat_`), bare or as a URL's user part, comes back
+as `ghp_xxx`. When anything was masked, the line after the output says
+how many (`4 line(s) came back between PROBE BEGIN and PROBE END, and
+the integrity trailer's count matches; 1 credential in a URL was masked
+(xxx stands for it)`); when nothing was, nothing is said. A line is
+masked, never dropped, so the block's count and its integrity trailer
+still match, and the folder's History line is as it was. The mask is a
+seatbelt, not a promise: a probe should still never print a remote URL
+with a credential in it (`git remote -v`, `git config --get
+remote.NAME.url`), a token of any other shape printed bare is not
+caught, and the block's stderr, a fallback's probe-output/ files and the
+block's own closing `bale clipboard` copy are not masked.
+lib/office_probe.py `mask_text`, `masked_words` and the writer
+`MaskedScreen`, which `run` hands `office_host.run_probe` as its screen:
+it holds a partial line until its end arrives, so a credential split
+between two reads is still caught, and writes each line masked; `run`
+masks the text run_probe kept the same way before it reads the block out
+of it, and puts the counts in its result as `masked`, which
+`count_words` says. lib/office_host.py and bin/office are unchanged.
+tests/test_probe.py's TestTheMask, TestTheMaskedRun, TestTheMaskIsSaid
+and TestTheMaskOnATerminal, 14 tests: the mask's bounds, a credential
+split at every byte between reads, the screen and the block of a run,
+`office probe` piped and on a terminal with its clipboard, a spanning
+block's `office-on` output, and the words.
+
+A handbook fact is filed bare. A session that wrote a fact the way it
+sees one in a chapter, `2026-10-28: the api answers on port 8080
+(2026-10-28-fix-login-001)`, got land's day and session added again, so
+the chapter read `- 2026-10-27: 2026-10-28: ... (sid) (sid)` (the gaps of
+2026-10-28, A8, in work-office's m10-api chapter). Now `office land`
+drops a leading `YYYY-MM-DD:` and a trailing `(SID)` the session wrote,
+each as many times as it wrote them, before it adds its own: a trailing
+id is a session id, or the filing session's own slug in parentheses
+(`(fix-login)` from 2026-10-28-fix-login-001). A date or an id inside
+the fact's own sentence stays, and so does any other closing
+parenthesis. land says when it dropped something (`N fact(s) from SID
+came with a date or a session id of their own, dropped before filing,
+since office land adds both (write facts bare)`), and when a fact was
+nothing but a date and an id and so is not filed. The fact is keyed
+bare too. A doubled line filed before this release still keys as its
+bare fact, so refiling an old response adds nothing, and a fact one
+filing gives twice (a Handbook line and a Sort's `facts:` line) is filed
+once, said as `N given twice, filed once`. Nothing filed is rewritten:
+the doubled lines already in a chapter stay, for you to clean by hand
+once if you want to. The day on the line is still the office's own clock;
+it differs from the session id's UTC date for a few hours of every day,
+by design. The sort session's brief now says to write each fact bare.
+lib/office_sort.py `bare_fact`, used by `fact_line`, and `fact_key`,
+used by `filed_facts`, with `file_handbook` keying and counting through
+them; templates/sort-brief.md, one sentence beside its Handbook words.
+Tests: tests/test_sort.py TestAFactIsFiledBare (the doubled form and each
+half come out bare; a date or an id in the fact's own sentence stays;
+filed bare, said, and a second filing adds nothing; a Sort's facts and
+the Handbook section file bare together), TestADoubledLineFiledBeforeStays,
+TestTheSortBriefSaysWriteFactsBare and TestLandFilesAFactBare (through
+office land, the office's day and one session id on each line). Seven new
+tests; the suite holds 1060, 1053 at 0.37.0. The whole suite, run in the
+worker's sandbox, passed all 1060; the detached run after the landing is
+yours to record.
+
+`office sessions FOLDER` reads past a project it cannot read. When one
+project in the floor plan could not be read (a clone where git cannot
+read HEAD, a directory gone, a host not answering), the verb searched
+every project, hit that one, and reported the folder's sessions as
+unreadable or not found (found 2026-10-28: distributions-app's broken
+clone stopped `office sessions 10`, and a probe had to do its job). Now
+each project is read in its own try, and only when the search for one
+of the folder's sessions reaches it. The folder's own project, the one
+its lane names, is searched first, then the projects whose records name
+the session, then the rest. So a folder's session is found with one
+read in the common case, and an unrelated broken clone or a host that
+is down is never even opened. A project that cannot be read is said
+once, in one line after the sessions (`distributions-app: not read:
+WHY`, with bale's or the host's words), and the search goes on. A
+session found renders as it always did. The verb stops (exit 3 from the
+reader, bin/office's "some of this office's projects could not be
+read") only when a session was not found while some project could not
+be read, since only then is "not found" in doubt, and its line says so
+(`not found in the projects that could be read; distributions-app could
+not`). A record bale holds but cannot parse stays that session's own
+`cannot read` line, and its project stays in the search for the others.
+lib/office_bale.py `project_records`, `folder_lane` and
+`PROJECT_WIDE_KINDS` are new; `locate` and `render_folder_sessions`
+carry them, and the hosted batch of dossiers now rides the first read
+of each host rather than a loop over every host up front, at the same
+two connections per host. And a test that no release heading is lost
+again: tests/test_land.py TestTheReleasesMatchTheFrontSheet reads
+RELEASES.md's `## X.Y.Z` headings and the front sheet's `- X.Y.Z
+(session SID)` lines under Recent changes, the older record, and fails
+naming any version in one and not the other, so a heading lost in a
+whole-file overlay (what 87ce51a did to 0.33.0's) fails the suite on the
+next run, a minor or a patch release alike. Tests:
+tests/test_sessions_read.py, new (TestOneUnreadableProjectIsALine,
+TestTheFoldersOwnProjectFirst, TestLocate, TestAHostThatDoesNotAnswer),
+and tests/test_land.py TestTheReleasesMatchTheFrontSheet. Nineteen new
+tests.
+
+What this session changed. The docs the four left stale say what the
+tool does now: README.md (deliver's summary and its details, the branch
+rule among them; the probe's mask; land's filing and its review; the
+letterhead check and its cleanup list; office projects' fifth audience
+key, read and not yet settable; office sessions' search; the layout's
+rows), doctrine/OFFICE.md (the probe's output masked, on its front sheet
+and in the verb table; a fact written bare and filed whole, in section
+4's bullet, the landing's paragraph and the Handbook's; deliver's
+paragraph and its row; the letterhead's cleanup list; the office's one
+clock for every date it writes, beside Calendar; office sessions' search
+in section 10), bin/office's usage for probe, deliver and letterhead
+check, and templates/drop-brief.md, which now says to write each fact
+bare as the sort brief does. Deliver's question prints what its plan
+already knew: the branch line ends with the rule that chose the branch
+(`branch: feature/results-view, from main (delivery.md's branch line
+names results-view, behind api's branch prefix feature/)`), and on a
+branch another folder of the office delivered to it names that folder
+and its day in place of the plain continuing words (`branch:
+health-route (adding to the branch desk/6-picklists delivered to on
+2026-10-28), from main (...)`); an adoption keeps its sentence. `office
+letterhead check --added` passes the module's flag through, with
+`--range` or on the index against HEAD; the module refuses it beside
+`--all`, and bin/office refuses it with `--on PROJECT` by name, since
+the check that travels to a project's repo does not carry it yet. office
+sessions' stop says what stopped it (`a session was not found and some
+of this office's projects could not be read; the lines above say
+which`). And a handbook fact that wraps onto indented lines, as a list
+item does, is filed whole: lib/office_sort.py `list_items` joins each
+continuation line (two or more spaces, outside a fence) onto the `- `
+fact above it with one space, in a Handbook section (`parse_handbook`)
+and in a Sort's `facts:` lines (`parse_sort`, which keeps them verbatim
+on the drop's page), so a session id that fell on a continuation line is
+dropped as one on the first line is. Before, only a wrapped fact's first
+line was filed: read that way, 0.37.0's own notes give office-src's
+chapter five facts cut off, and wave 1's probe and sessions notes six
+each. Those lines stay, the handbook being append-only, and a cut-off
+fact does not key as the whole one, so filing such a response again adds
+the whole fact beside the cut-off line; mend the chapter by hand once,
+if you want to. Tests: tests/test_audience_line.py
+TestTheBranchLineSaysWhichRule, tests/test_clean_delivery.py
+TestTheHandCheckTakesAdded, tests/test_sort.py
+TestAWrappedFactIsFiledWhole and TestLandFilesAFactBare's wrapped fact,
+and tests/test_land.py TestTheWaveOneRecord (the four paragraphs above
+held to the archived notes they came from, byte for byte); thirteen new
+tests. Each of the four paragraphs' counts was true for its session
+alone on 0.37.0; the merged tree held 1111 tests before this
+session and holds 1124 with it, and the whole suite, run in the
+worker's sandbox, passed all 1124; the detached run after the
+landing is yours to record.
+
 ## 0.37.0
 
 Additive: no migration, nothing to do in any office. A small session

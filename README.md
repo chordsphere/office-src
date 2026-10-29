@@ -383,7 +383,9 @@ in the office root. It shows the block's purpose header and asks once
 first, and refuses a block that is not a probe or does not say it is
 read-only. The output comes back to your terminal whole, the block goes
 on your clipboard to paste back, and the folder's History counts the
-probe. A planner sitting's probe of a project's repo works the same way:
+probe. A credential written into a URL and a GitHub token are masked in
+both, as `xxx`, and the office says how many it masked (0.38.0). A
+planner sitting's probe of a project's repo works the same way:
 `office probe 21 --project office-src` runs it in that repo, under the
 sitting's id (0.33.0). A block that spans the office and a project's host
 calls `office-on PROJECT COMMAND` on its own lines (0.34.0): it runs in
@@ -401,10 +403,15 @@ host as a branch of curated commits in your words, the folder's
 `delivery.md`, made from the audience's base, holding none of bale's
 commits, merges, tags, branches or files, and nothing a commit of bale's
 own changed (0.36.0: what `bale: ignore .bale/` put in `.gitignore` stays
-on the workbench); it shows what leaves and asks once. A branch the audience already has that the folder never delivered
-to, a pull request opened by hand, is adopted when you say so (`--adopt`,
-or yes on a terminal; 0.34.0), so a review's answer lands on the review's
-own branch. `office letterhead check` is the guard it runs first, on its
+on the workbench); it shows what leaves and asks once. It reads the lines
+the delivery adds, never a file whole, so a refused character a file
+already held is told and not refused, and the question says which rule
+chose the branch (0.38.0). A branch another folder of the office
+delivered to is continued with no question; a branch the audience
+already has that no folder delivered to, a pull request opened by hand,
+is adopted when you say so (`--adopt`, or yes on a terminal; 0.34.0), so
+a review's answer lands on the review's own branch.
+`office letterhead check` is the guard it runs first, on its
 own for any tree. The details are below.
 
 ### Build an office
@@ -1004,7 +1011,11 @@ page's status set to sorted (a page sorted already is left as it is; a
 subsection naming a page that is nowhere is said and skipped); its `##
 Questions and answers` lines in the folder, after a line naming the
 session; and its `## Handbook` facts, each as `- DATE: fact (SID)` at the
-end of the project's chapter, with a Sort's `facts:` lines, and a `####
+end of the project's chapter, with a Sort's `facts:` lines, each made
+bare first (a leading date and a trailing session id the session wrote
+are dropped and said, since land adds both; 0.38.0) and read whole when
+it wraps onto indented lines as a list item does (0.38.0; before, only
+its first line was filed), and a `####
 Front sheet` in place of the chapter's, whole; and its `## Structure`,
 the folder's title, size and goal as the session judged them, each filed
 over a field the folder marks provisional, the rest kept as they are, in
@@ -1168,13 +1179,29 @@ command the calls run.
 The block runs with its stdin closed: in the project's repo, or through
 the project's shell in its path, in the plain form with no terminal
 asked for (a probe never waits on one), or in the office root. Its
-stdout and stderr come back to your terminal whole, as they come. The
+stdout and stderr come back to your terminal whole, its stdout line by
+line as each line ends (a partial line shows when its end arrives). The
 lines from `PROBE BEGIN` to `PROBE END` go on your clipboard with the
 office's own `clipboard_command` (on WSL, `clip.exe`), since the block's
 closing `bale clipboard` step runs where no clipboard is; the office says
 how many lines came back between the sentinels and whether the integrity
-trailer's count matches them. A block that never closes is said, and
-nothing is copied. `OFFICE_PROBE_TIMEOUT` (seconds, default 1800) stops a
+trailer's count matches them, and, when it masked any, how many. A block
+that never closes is said, and nothing is copied.
+
+Everything `office probe` hands back from the block's stdout is masked
+(0.38.0): a credential written into a URL, `scheme://user:SECRET@host`
+of any scheme, comes back as `scheme://user:xxx@host`, its user kept so
+you still know whose it was, and a GitHub token in one of its own shapes
+(`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), bare or as a
+URL's user part, as `ghp_xxx`: on the screen, on the clipboard and in the
+count's line, which then ends `1 credential in a URL was masked (xxx
+stands for it)`. A line is masked, never dropped, so the block's count
+and its trailer still match. The mask is a seatbelt, not a promise: a
+probe should still never print a remote URL with a credential in it
+(`git remote -v`, `git config --get remote.NAME.url`), a token of any
+other shape printed bare is not caught, and stderr, a fallback's
+`probe-output/` files and the block's own closing `bale clipboard` copy
+are not masked. `OFFICE_PROBE_TIMEOUT` (seconds, default 1800) stops a
 block that runs past it.
 
 The file-based fallback (TARBALL.md 4.4) leaves `probe-output/` where it
@@ -1216,23 +1243,47 @@ session applied in that project. In order, each step logged:
 - The audience's base branch is fetched (the project's `base`, or the
   audience remote's HEAD branch read from the clone), and the delivery
   branch when an earlier delivery made it: a second delivery for the
-  same folder adds to the same branch. A branch the audience has that the
-  folder's records do not cover was made outside the office (a pull
-  request opened by hand, or another folder's): deliver says so and, on a
-  terminal, asks once whether to add this delivery to it, default no
-  (`--adopt` is the twin; piped, it refuses and names it); this is how a
-  review's answer lands on the review's own branch (0.34.0). Adopted, the
-  range read next is what the branch does not have yet, from where the
-  workbench and the branch parted.
+  same folder adds to the same branch. The branch is chosen in one order
+  (0.38.0), and `[office] the delivery branch is BRANCH: WHY` says which
+  rule chose it: `--branch NAME`; else a `- branch: NAME` line in
+  `delivery.md` (a short name, like `results-view`); else the branch the
+  clone has checked out, when the audience has it and it is not the base
+  (`office start` checks out the branch a brief's BRANCH line names, so
+  it is the one the session built on); else the folder's slug. A
+  project's `branch_prefix` in the floor plan (`feature/`, kept with one
+  trailing slash) goes before the words' short name and the slug, never
+  before a `--branch` name, the clone's branch or a name that holds a
+  slash. A branch another folder of the office delivered to is the
+  office's: the delivery continues on it with no `--adopt`, from that
+  folder's last delivery there, and the next line names the review
+  already open on it (0.38.0). A branch the audience has that no folder's
+  records cover was made outside the office (a pull request opened by
+  hand): deliver says so and, on a terminal, asks once whether to add
+  this delivery to it, default no (`--adopt` is the twin, and acts on the
+  branch whichever rule chose it; piped, it refuses and names it); this
+  is how a review's answer lands on the review's own branch (0.34.0). A
+  branch renamed on the git host is told to the office the same way:
+  `office deliver N --branch NEW --adopt` on the next delivery. Adopted,
+  the range read next is what the branch does not have yet, from where
+  the workbench and the branch parted.
 - The landed work since the last delivery, or since the workbench branch
   and the base parted, is read: every applied session in it is named by
   its id and the folder it belongs to. Sessions of other folders ride in
   the same delivery (the office does not split one branch's history by
   folder); deliver says so, names them, and on a terminal asks whether
-  to go on (`--others-too`; piped, it refuses without it).
+  to go on (`--others-too`; piped, it refuses without it). A session
+  another folder already delivered is refused by name (0.38.0), with the
+  folder, the branch and the day, and `office deliver N --branch
+  THAT-BRANCH` as the remedy, since that work would leave twice;
+  `--others-too` does not admit it. The one exception is a base that
+  holds that delivery already (its workbench or delivery commit is on
+  the base); a review merged as a squash leaves neither there, so that
+  case refuses too, and a branch gone from the audience is said rather
+  than offered.
 - The words come from `desk/FOLDER/delivery.md`: the commit subject and
-  body, the review request's title and body, and `- to: NAME` for the
-  reviewer (the install's templates/delivery.md says the shape; a build
+  body, the review request's title and body, `- to: NAME` for the
+  reviewer, and, beside it, `- branch: NAME` when the session names the
+  branch (0.38.0; the install's templates/delivery.md says the shape; a build
   session writes it and `office land` files it). Missing, deliver stops
   and says what to write where.
 - In a temporary worktree at the audience's tip, what bale's own commits
@@ -1252,9 +1303,20 @@ session applied in that project. In order, each step logged:
   (found 2026-10-28, delivering a work office's folder 6). Then the landed
   work is squashed on (`git merge --squash`), the names bale makes are
   taken out of the index whatever the clone tracks (and named never read
-  to the check, since they stay on the worktree's disk), and the diff and
-  the words go through the letterhead check, the office's letterhead
-  with it (a bale path (`.bale/`, `bale.toml`, `.baleignore`) is one of
+  to the check, since they stay on the worktree's disk), and the lines
+  the squash adds and the words go through the letterhead check, the
+  office's letterhead with it. Since 0.38.0 the check reads only the
+  lines a delivery adds, never the files it touches whole: a line a file
+  already had is not the delivery's, and what such lines hold is told
+  under the verdict, one line per file (`src/views/UploadView.vue: 6
+  line(s) the file already had hold the em dash (U+2014); not this
+  delivery's, not refused`), and nothing stops (found 2026-10-28: a
+  delivery was refused for six em dashes already on the audience's own
+  main). The words, and only they, are also held to the letterhead's
+  `[cleanup]` list: a fix made only to keep the letterhead is shipped
+  clean and never named, so words naming one (`delivery.md:L: names a
+  cleanup: 'em dashes' in: ...`) refuse the delivery; files are never
+  held to it (a bale path (`.bale/`, `bale.toml`, `.baleignore`) is one of
   the letterhead's marks since 0.36.0, so a line that leaves naming one
   refuses the delivery, whatever put it there; the
   dashes and the ellipsis refused by default; the lines of the
@@ -1281,7 +1343,11 @@ session applied in that project. In order, each step logged:
 - Each commit is shown whole, as it will be pushed: its subject and
   body, its author and committer, its date, the files it touches, and the
   letterhead's verdict on it; with the diff's stat, the sessions covered
-  and the branch (named from the folder's slug, or `--branch NAME`).
+  and the branch, with the rule that chose it (0.38.0: `branch:
+  feature/results-view, from main (delivery.md's branch line names
+  results-view, behind api's branch prefix feature/)`) and, on a branch
+  another folder delivered to, that folder and its day (`adding to the
+  branch desk/6-picklists delivered to on 2026-10-28`).
   Several commits are dated a second apart, oldest first (0.32.0), so a
   reader sees their order and never a burst made in one second, and one
   line before them says how many leave: one commit per delivery is the
@@ -1331,8 +1397,9 @@ set NAME` replaces it. A clone with `core.hooksPath` set, or another
 pre-push hook, is said and left alone.
 
 After a session lands on a project with an audience, `office land`
-reviews it against the letterhead as deliver will (the files its landing
-changed, bale's own aside, and the folder's `delivery.md` words) and says
+reviews it against the letterhead as deliver will (the lines its landing
+added, since 0.38.0, never the files it changed whole, bale's own aside,
+and the folder's `delivery.md` words) and says
 in a line what deliver would refuse, each line named, so the fix rides
 the next session; it refuses nothing.
 Known gap: a push from the host itself is not built (the probe found the
@@ -1344,6 +1411,7 @@ The letterhead check:
     office letterhead check                      # the files the tree here changed, as they are
     office letterhead check --all ~/work/api     # the whole tree
     office letterhead check --on api --range origin/main..HEAD   # in a project's repo, on its host
+    office letterhead check --added --range origin/main..HEAD    # the lines the range adds, as deliver reads
     office letterhead check --words desk/14-health-route/delivery.md
 
 It names every line that holds what the letterhead refuses, as
@@ -1361,6 +1429,12 @@ non-blank, non-comment line of `letterhead/forbidden.txt` as a fixed
 string, and the em dash, the en dash and the ellipsis character, refused
 by default with no line needed and each named in a refusal (a line
 `lift: em dash` in the forbidden list lifts one, said on every check).
+Words and commit messages, never files, are held to one list more, the
+`[cleanup]` list (0.38.0): a fix made only to keep the letterhead is
+shipped clean and never mentioned, so words that name the cleanup (`em
+dashes`, `en dash`, `ellipsis`, their code points) are a hit, rendered
+`names a cleanup`; a project's own text may name the characters, and
+office-src's does.
 The letterhead arrives with the first project given an audience: its
 front page, its voice page (`letterhead/voice.md`, the occupant's style
 rule for text that leaves the office, an empty marked place for his
@@ -1380,8 +1454,15 @@ held to it too. Scope: the files a range changed and its commit messages
 (`--range A..B`, which is how deliver checks a delivery's diff); else the
 files a dirty tree changed, as they are; else the whole tree (`--all`,
 or a directory that is not a git repo, said so). `--words FILE` checks a
-text as it is. Binary files are skipped by name and by a NUL byte;
-`OFFICE_DEBUG=1` names every file read. `--on PROJECT` runs it in the
+text as it is. `--added` (0.38.0) reads the lines a diff adds, not the
+files it touches whole, as office deliver reads a delivery: with
+`--range`, what the range adds; else what the index adds against HEAD.
+Each added line is read at its line in the new file, and a new or
+renamed file is all added lines; a line a file already had is never a
+hit, and what such lines hold is told, one line per file. It is refused
+beside `--all`, and does not travel with `--on PROJECT` yet (refused by
+name; run it in the clone). Binary files are skipped by name and by a NUL
+byte; `OFFICE_DEBUG=1` names every file read. `--on PROJECT` runs it in the
 project's repo, through its shell on a host, where the check travels as
 the program python3 reads from stdin and writes nothing.
 
@@ -1397,6 +1478,15 @@ typed:
 what bale records about the session: its outcome, dates, claims beside
 verdicts and exchange rounds. The folder keeps the id and any words you
 add with `-m`; it never copies what bale records about the session.
+Each session is searched for where it is likely to be (0.38.0): the
+project the folder's lane names first, then the projects whose records
+name the session, then the rest, each read in its own try and only when
+the search reaches it, so the common case is one read and an unrelated
+broken clone or a host that is down is never opened. A project that
+cannot be read is one line after the sessions (`distributions-app: not
+read: WHY`), not a stop; the verb stops (exit 1) only when a session was
+not found while some project could not be read, since only then is "not
+found" in doubt, and its line says so.
 
 The folder's two pages. Nearly every job produces two deliverables
 (doctrine section 3, principle 6): the thing, in the project, and the
@@ -1404,7 +1494,8 @@ message about it. A build session writes the message as two sections at
 the end of its notes.md, Walkthrough (what changed, why, how to explain
 each piece, the questions a reviewer will ask, a hand test for what only
 eyes can check) and Delivery (the commit subject and body, the review
-request's title and body, `- to: NAME` for the reviewer), each heading
+request's title and body, `- to: NAME` for the reviewer, and `- branch:
+NAME` when the session names the delivery branch), each heading
 one level down from the page's; the install's templates/walkthrough.md
 and templates/delivery.md ride beside every build session's request to
 say the shape, and the folder's own Walkthrough and Delivery sections
@@ -1525,7 +1616,12 @@ audience expects on the delivery commits, as both author and committer
 (unset, `office deliver` asks for it once on a terminal and keeps it;
 piped, it refuses and names `--author`; the clone's own identity is
 never used); and `--base BRANCH`, the audience branch deliveries branch
-from (unset, the audience remote's HEAD branch, read from the clone). On
+from (unset, the audience remote's HEAD branch, read from the clone).
+The audience line has a fifth key, `branch_prefix` (`feature/`, kept
+with one trailing slash), which `office deliver` reads from the floor
+plan and puts before a branch named by the words or the folder's slug
+(0.38.0); no verb sets it yet, so it is written into the floor plan by
+hand until its flag is built. On
 a terminal `add` and `set` ask the three after the host question,
 defaults read from the clone; `--no-audience` takes a project off the
 audience line, `--no-author` and `--no-base` clear one. Declaring an
@@ -1565,12 +1661,12 @@ matches the floor plan.
 |---|---|
 | bin/office | the command (bash); `pylib` starts each Python helper as a module, with -B, -P and (0.28.0) -S; since 0.29.0 the reads a command makes side by side go out as one call (`batch_call`, `batch_run`), the stamps and skew are read once per command (`skew_read`) and a helper's JSON answer is read back once (`json_read`); since 0.30.0 a landing's record, bale apply and its outcome are one `office_bale land` call |
 | lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library); since 0.28.0 the LazyPattern and OneSubcommand every module's start leans on; since 0.29.0 `batch`, several subcommands of any lib/ module in one process, and `skew-report`; since 0.30.0 `bytecode-check`, office status's line on the install's bytecode cache; since 0.33.0 the doctrine stamp a sitting's Sessions line carries (`sitting_words`, `session_doctrine`) |
-| lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after (one `land` call since 0.30.0: the office's record out, bale apply or retry, the outcome); since 0.37.0 bale's two accepts, passed as typed, said, and named after a refusal (`accept_flags`, `accept_said`, `accepts_bale_names`, `accept_line`) |
+| lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after (one `land` call since 0.30.0: the office's record out, bale apply or retry, the outcome); since 0.37.0 bale's two accepts, passed as typed, said, and named after a refusal (`accept_flags`, `accept_said`, `accepts_bale_names`, `accept_line`); since 0.38.0 office sessions' search, the lane's project first and an unreadable project a line (`project_records`, `folder_lane`) |
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
-| lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives) |
-| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so; since 0.36.0 what bale's own commits changed taken out before the squash, own_commits and take_out_own), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review; since 0.35.0 a folder's delivery.md read as the letterhead reads it at deliver and at land's review alike, the words that leave and nothing of the office's (delivery_words) |
-| lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin); the characters an office's letterhead refuses and lifts, and a repository's pull-request templates |
-| share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks (its commit subjects, tags, branches, session ids and, since 0.36.0, its paths), one list for office letterhead check and the suite's text rules; and the characters an office with a letterhead refuses by default |
+| lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives); since 0.38.0 the mask over what it hands back, a credential in a URL and a GitHub token (`mask_text`, `MaskedScreen`) |
+| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so; since 0.36.0 what bale's own commits changed taken out before the squash, own_commits and take_out_own; since 0.38.0 the lines the squash adds checked rather than its files whole, the branch rule and the rule that chose it, `branch_why`, a branch another folder delivered to continued and work it delivered refused twice, `other_deliveries`), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review; since 0.35.0 a folder's delivery.md read as the letterhead reads it at deliver and at land's review alike, the words that leave and nothing of the office's (delivery_words) |
+| lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin); the characters an office's letterhead refuses and lifts, and a repository's pull-request templates; since 0.38.0 the lines a diff adds read rather than its files whole (`--added`), and the words-only lists (`WORDS_ONLY_SECTIONS`) |
+| share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks (its commit subjects, tags, branches, session ids and, since 0.36.0, its paths), one list for office letterhead check and the suite's text rules; and the characters an office with a letterhead refuses by default; since 0.38.0 `[cleanup]`, the names of a cleanup, read in words and commit messages only |
 | doctrine/OFFICE.md | how every office works; it opens with a reading card naming what each kind of session reads, and what a build session reads sits above its PAST THE CORE banner |
 | doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |
 | share/spaces.toml | every space an office can have; the base ones are the default floor plan; a space files itself whole or as a list of paths |
@@ -1579,7 +1675,7 @@ matches the floor plan.
 | share/verbs.toml | what each verb ships, where it lands, whether a person must be present and what may set it off; a session kind with no declared landing may not run unattended |
 | lib/office_drafting.py | the drafting table: its arrival in an office (the steps take the space they arrive, so the in-tray arrives through them too), the one reader of its pages (blueprints, riders, the agenda, the ledgers, desk moves), the citation grammar's resolver, and what the drafting-table verbs write |
 | lib/office_drop.py | the in-tray: a drop's page, written and read, and its status line's one writer; the in-tray's arrival with the first drop; the unsorted drops office start carries, the desk lists and the Next line reads; the brief office start --drop sends; office status's in-tray line |
-| lib/office_sort.py | the return of a sort (0.20.0): a notes.md's Sort, Questions and answers and Handbook sections read (fence-aware) and filed; a sorted drop's move into its folder; the handbook's arrival, its chapters and office status's handbook line; the standalone sort's brief and id |
+| lib/office_sort.py | the return of a sort (0.20.0): a notes.md's Sort, Questions and answers and Handbook sections read (fence-aware) and filed, each fact filed bare and, since 0.38.0, whole when it wraps (`bare_fact`, `list_items`); a sorted drop's move into its folder; the handbook's arrival, its chapters and office status's handbook line; the standalone sort's brief and id |
 | lib/office_watches.py | the watches: the query catalog, the register and its log, the check and its fired records |
 | lib/office_digest.py | the digest: the sitting-open page, every section computed |
 | lib/office_planner.py | a planner sitting from the occupant's words: what it concerns, and what the office gathers for it |

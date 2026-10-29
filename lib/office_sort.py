@@ -158,6 +158,36 @@ def trimmed(lines):
     return lines
 
 
+def is_continuation(line):
+    """True for a list item's continuation line as markdown wraps one: two
+    or more spaces, then words (0.38.0). A blank line is not one."""
+    return line.startswith("  ") and bool(line.strip())
+
+
+def list_items(lines):
+    """The `- ` items of lines outside fenced blocks, each joined whole
+    (0.38.0): an indented continuation line (is_continuation) right below
+    an item, or below another continuation, joins it with one space, so a
+    fact wrapped the way markdown wraps a list item is read whole rather
+    than cut off at its first line. Before 0.38.0 only the first line was
+    read (the gaps of 2026-10-28: five of office-src's facts were filed
+    so). Each item comes back without its `- ` and stripped."""
+    inside = fenced(lines)
+    items, open_ = [], False
+    for n, line in enumerate(lines):
+        if inside[n]:
+            open_ = False
+            continue
+        if line.startswith("- "):
+            items.append(line[2:].strip())
+            open_ = True
+        elif open_ and is_continuation(line):
+            items[-1] = f"{items[-1]} {line.strip()}".strip()
+        else:
+            open_ = False
+    return items
+
+
 def parse_sort(name, body, brief_level=4):
     """One `### NAME.md` subsection as a dict: name, field_lines (verbatim),
     fields, facts, brief (lines, or None), problems. A subsection with
@@ -179,12 +209,30 @@ def parse_sort(name, body, brief_level=4):
     i = 0
     while i < len(head) and not head[i].strip():
         i += 1
-    while i < len(head) and head[i].startswith("- "):
+    # The field lines run to the first line that is neither a `- ` line
+    # nor, below one, an indented continuation line (0.38.0: a fact that
+    # wraps is kept whole, verbatim, and read whole below).
+    inside = fenced(head)
+    while i < len(head) and not inside[i] and (head[i].startswith("- ")
+                                               or (out["field_lines"] and is_continuation(head[i]))):
         out["field_lines"].append(head[i])
         i += 1
     out["ignored"] = sum(1 for line in head[i:] if line.strip())
     keys = []
     for line in out["field_lines"]:
+        if is_continuation(line):
+            # A continuation joins the fact above it, with one space: the
+            # facts: line's own fact, or the last fact line. Above the
+            # facts: line a field does not wrap, as before 0.38.0.
+            if len(keys) != len(SORT_FIELDS):
+                break
+            if out["facts"]:
+                out["facts"][-1] = f"{out['facts'][-1]} {line.strip()}"
+            elif out["fields"]["facts"] == "none":
+                out["facts"].append(line.strip())  # said below: none, and a fact follows it
+            else:
+                out["fields"]["facts"] = f"{out['fields']['facts']} {line.strip()}".strip()
+            continue
         if len(keys) == len(SORT_FIELDS):
             out["facts"].append(line[2:].strip())  # after facts:, a line is a fact
             continue
@@ -226,13 +274,14 @@ def folder_ref(value):
 
 
 def parse_handbook(body):
-    """[(project, facts, front lines or None)] from a Handbook section."""
+    """[(project, facts, front lines or None)] from a Handbook section. A
+    fact that wraps onto indented continuation lines is read whole
+    (list_items, 0.38.0)."""
     out = []
     for project, sub in subsections(body, 3):
         front_at = next((i for i, lv, t in headings(sub) if lv == 4 and t == "Front sheet"), None)
         head = sub[:front_at] if front_at is not None else sub
-        inside = fenced(head)
-        facts = [line[2:].strip() for n, line in enumerate(head) if line.startswith("- ") and not inside[n]]
+        facts = list_items(head)
         front = trimmed(sub[front_at + 1:]) if front_at is not None else None
         out.append((project.strip(), [f for f in facts if f], front or None))
     return out

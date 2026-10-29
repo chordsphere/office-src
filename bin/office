@@ -2999,7 +2999,10 @@ cmd_sessions() {
     reader folder-sessions "$root" "$root/$space/$name/folder.md"
     case $? in
       0) return 0 ;;
-      3) die "some of this office's projects could not be read; the lines above say why" ;;
+      # Exit 3 only for an uncertain miss (0.38.0): a session not found
+      # while some project could not be read. A project that cannot be
+      # read is otherwise a line under the sessions, never a stop.
+      3) die "a session was not found and some of this office's projects could not be read; the lines above say which" ;;
       *) die "could not render the sessions of $space/$name" ;;
     esac
   fi
@@ -7704,8 +7707,8 @@ usage_deliver() {
   cat <<'USAGE'
 usage: office deliver [FOLDER] [--on PROJECT] [--branch NAME] [--adopt] [--author "Name <email>"] [--others-too] [--yes]
 Carries a folder's landed work to its project's audience as curated
-commits: a branch named from the folder (--branch NAME overrides), made
-from the audience's base branch, holding the landed tree changes as one
+commits: a branch named by the branch rule below, made from the
+audience's base branch, holding the landed tree changes as one
 commit (several only when delivery.md marks them) with the words from
 desk/FOLDER/delivery.md, authored and committed as the project's declared
 author, pushed to the audience remote, and nothing else: no bale commit,
@@ -7728,8 +7731,10 @@ where); what bale's own commits in that work changed (its housekeeping
 commits, `bale: ignore .bale/`, and its sweeps; never a session's work)
 is taken out before the squash and each is named, so no bale commit
 leaves in content any more than in name, and one that cannot be taken
-out refuses the delivery by name (0.36.0); the diff and the words go
-through the letterhead check (the
+out refuses the delivery by name (0.36.0); the lines the squash adds
+and the words go through the letterhead check (a line a file already
+had is told under the verdict, never refused; the words, and only they,
+are also refused for naming a cleanup made to keep the letterhead; the
 office's letterhead: in an office that has one, the em dash, the en dash
 and the ellipsis are refused by default; the lines of the repository's
 own pull-request template, as the audience holds it, are not held to the
@@ -7748,11 +7753,21 @@ deliver prints what you do next: open the review (a URL when the git
 host's compare-URL shape is known, GitHub or GitLab; the branch's name
 otherwise) and whom to send it to, when the words name a reviewer. A
 second delivery for the same folder adds to the same branch.
-A branch the audience already has that this folder's records do not cover
-was made outside the office (a pull request opened by hand, or another
-folder's): deliver says so and, on a terminal, asks once whether to add
-this delivery to it (--adopt is the twin; piped, it refuses and names it),
-which is how a review's answer lands on the review's own branch. Adopted,
+The branch, by one rule, and the question's branch line says which rule
+chose it: --branch NAME; else a `- branch: NAME` line in delivery.md;
+else the branch the clone has checked out, when the audience has it and
+it is not the base; else the folder's slug. A project's branch_prefix in
+the floor plan goes before the words' name and the slug (no verb sets it
+yet). A branch another folder of this office delivered to is continued
+with no --adopt, from that folder's last delivery there, and the branch
+line names the folder and the day; a delivery carrying a session another
+folder already delivered is refused by name, with that folder's branch
+as the remedy (--others-too does not admit it), unless the base holds it.
+A branch the audience already has that no folder's records cover was
+made outside the office (a pull request opened by hand): deliver says so
+and, on a terminal, asks once whether to add this delivery to it
+(--adopt is the twin; piped, it refuses and names it), which is how a
+review's answer lands on the review's own branch. Adopted,
 the folder's delivered line ends `; adopted`, the next line names the
 reviews open for that branch (GitHub or GitLab) rather than a new
 review's form, and the next delivery adds to the branch as to its own.
@@ -7764,9 +7779,12 @@ with the audience declaration and by deliver when it is missing) refuses
 any push to the audience from the clone that deliver did not make.
   FOLDER           the folder, by name, part of it, or folder N; asked on a terminal
   --on PROJECT     the project, when the folder's lane names none
-  --branch NAME    the delivery branch's name (default: the folder's slug)
+  --branch NAME    the delivery branch's name (default: delivery.md's branch
+                   line, else the clone's branch on the audience, else the
+                   folder's slug)
   --adopt          add the delivery to a branch the audience already has that
-                   this folder never delivered to (made outside the office)
+                   no folder of this office delivered to (made outside the
+                   office), whichever rule chose the branch
   --author "Name <email>"
                    the identity the audience expects, declared for the project and kept
   --others-too     deliver other folders' sessions riding in the landed work
@@ -7775,7 +7793,7 @@ Under the hood: git fetch of the audience's base and branch, a thin git
 bundle of the clone's HEAD carried back for a hosted project, git revert
 of bale's own commits on the workbench's tip in a temporary worktree
 (temporary commits, never pushed), git merge --squash of the result
-there, office letterhead-check on it and on
+there, office letterhead-check on the lines it adds and on
 delivery.md, git commit as the author (author and committer, and
 GIT_AUTHOR_DATE and GIT_COMMITTER_DATE a second apart), each commit
 read back and checked, git push --no-follow-tags AUDIENCE
@@ -7796,10 +7814,20 @@ USAGE
 deliver_show() {
   local plan="$1" line
   printf '\nDelivery of %s to %s (%s):\n' "$(plan_field "$plan" folder)" "$(plan_field "$plan" audience)" "$(plan_field "$plan" url)"
-  local how=""
-  if [ -n "$(plan_field "$plan" adopting)" ]; then how=" (adding to the branch on the audience, which was made outside the office: this folder records no delivery on it)"
-  elif [ -n "$(plan_field "$plan" continuing)" ]; then how=" (adding to the branch on the audience)"; fi
-  printf '  branch:   %s%s, from %s\n' "$(plan_field "$plan" branch)" "$how" "$(plan_field "$plan" base)"
+  # The branch line says which rule chose the branch (the plan's
+  # branch_why, 0.38.0) and, when another folder of this office delivered
+  # to it, which folder and when (joined); an adoption keeps its fixed
+  # sentence. branch_why ends with the joined clause when there is one,
+  # and the line says that once, in the parentheses after the name.
+  local how="" branch base why adopting continuing jfolder jday
+  json_read "$plan" branch=branch base=base why=branch_why? adopting=adopting? continuing=continuing? \
+    jfolder=joined.folder? jday=joined.day?
+  if [ -n "$adopting" ]; then how=" (adding to the branch on the audience, which was made outside the office: this folder records no delivery on it)"
+  elif [ -n "$jfolder" ]; then
+    how=" (adding to the branch $jfolder delivered to on $jday)"
+    why="${why%"; $jfolder delivered to it on $jday, so this delivery continues on it"}"
+  elif [ -n "$continuing" ]; then how=" (adding to the branch on the audience)"; fi
+  printf '  branch:   %s%s, from %s%s\n' "$branch" "$how" "$base" "${why:+ ($why)}"
   printf '  author:   %s (author and committer of every commit)\n' "$(plan_field "$plan" author)"
   printf '  sessions: %s' "$(plan_field "$plan" sessions | paste -sd, - | sed 's/,/, /g')"
   printf '  (%s commit(s) on the workbench since %s)\n' "$(plan_field "$plan" commits)" "$(plan_field "$plan" since_why)"
@@ -7949,7 +7977,7 @@ cmd_deliver() {
 
 usage_letterhead_check() {
   cat <<'USAGE'
-usage: office letterhead check [PATH | --on PROJECT] [--all] [--range A..B] [--words FILE]...
+usage: office letterhead check [PATH | --on PROJECT] [--all | --added] [--range A..B] [--words FILE]...
 The letterhead's guard on what leaves the office, run by hand: names
 every line that holds what the letterhead refuses, as file:line: what,
 and exits 1 with a hit, 0 clean. What it refuses is one list in the
@@ -7961,7 +7989,10 @@ and .baleignore) plus, when this office has a letterhead, the em dash, the en da
 character, refused by default and each named in a refusal, and each
 non-blank, non-comment line of its letterhead/forbidden.txt as a fixed
 string; a `lift: em dash` line there lifts one, said on every check
-(read when the files exist; never written).
+(read when the files exist; never written). Words and commit messages,
+never files, are also held to the [cleanup] list (since 0.38.0): a fix
+made only to keep the letterhead is shipped clean and never named, so
+words that name one (`em dashes`, say) are a hit.
 Scope: the files a range changed and the range's commit messages
 (--range A..B, as office deliver checks a delivery); else the files a
 dirty tree changed, as they are; else the whole tree, with --all or when
@@ -7969,7 +8000,11 @@ the directory is not a git repo (said so). --words FILE checks a text as
 it is (a delivery's words); in a git repo, a line of the words that is a
 line of the repo's own pull-request template, as HEAD holds it, is not
 held to the phrasing rule or the three characters (names, bale's marks
-and the forbidden list still read it). Binary
+and the forbidden list still read it). --added (since 0.38.0) reads the
+lines a diff adds, not the files it touches whole, as office deliver
+reads a delivery: with --range, what the range adds; else what the index
+adds against HEAD; a line a file already had is told, one line per file,
+never a hit (not with --all, nor with --on yet). Binary
 files are skipped by name and by a NUL byte; OFFICE_DEBUG=1 names every
 file read.
   PATH             a tree on this machine (default: here)
@@ -7979,17 +8014,19 @@ Examples:
   office letterhead check
   office letterhead check --all ~/work/api
   office letterhead check --on api --range origin/main..HEAD
+  office letterhead check --added --range origin/main..HEAD
   office letterhead check --words desk/14-health-route/delivery.md
 USAGE
 }
 
 cmd_letterhead_check() {
-  local path="" project="" args=() root="" forbidden=() w
+  local path="" project="" args=() root="" forbidden=() w added=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --on) [ $# -ge 2 ] || die "--on needs the project's name"; project="$2"; shift 2 ;;
       --all) args+=(--all); shift ;;
       --range) [ $# -ge 2 ] || die "--range needs A..B"; args+=(--range "$2"); shift 2 ;;
+      --added) added=1; args+=(--added); shift ;;
       --words) [ $# -ge 2 ] || die "--words needs a file"; [ -f "$2" ] || die "--words $2: no such file"; args+=(--words "$(readlink -f "$2")"); shift 2 ;;
       -h|--help) usage_letterhead_check; return 0 ;;
       -*) usage_letterhead_check >&2; die "office letterhead check does not know $1; the flags above are what it takes" ;;
@@ -8003,6 +8040,10 @@ cmd_letterhead_check() {
   [ -z "$root" ] || forbidden=(--letterhead "$root/letterhead")
   if [ -n "$project" ]; then
     [ -n "$root" ] || die "--on PROJECT needs an office (OFFICE_ROOT, the office around here, or the default)"
+    # The module takes --added (0.38.0); the check that travels to a
+    # project's repo does not carry it yet, so it is refused by name
+    # rather than dropped.
+    [ "$added" = 0 ] || die "--added reads a tree on this machine, not --on PROJECT yet: run it in the project's clone (office letterhead check --added PATH)"
     deliver_py check "$root" --project "$project" "${args[@]}"
     return $?
   fi
@@ -8164,11 +8205,20 @@ The block runs with stdin closed: in the project's repo for a project on
 this machine; through the project's shell, in its path, for a project on
 a host (the plain form, with no terminal: a probe never waits on one); in
 the office root for the office itself. One reach of the host, as every
-verb reaches. Its output, stdout and stderr, comes back whole; the lines
-from PROBE BEGIN to PROBE END go on this machine's clipboard
-(clipboard_command; on WSL clip.exe), since the block's own closing
-clipboard step runs where no clipboard is, and the office says how many
-lines came back and whether the integrity trailer's count matches them.
+verb reaches. Its output, stdout and stderr, comes back whole, its stdout
+masked (since 0.38.0): a credential in a URL comes back as
+scheme://user:xxx@host, its user kept, and a GitHub token (ghp_ and its
+kin, github_pat_) as ghp_xxx, on the screen as the block streams and on
+the clipboard. The lines from PROBE BEGIN to PROBE END go on this
+machine's clipboard (clipboard_command; on WSL clip.exe), since the
+block's own closing clipboard step runs where no clipboard is, and the
+office says how many lines came back, whether the integrity trailer's
+count matches them, and how many credentials it masked, when any. The
+mask is a seatbelt, not a promise: a probe should still not print a
+remote URL with a credential in it (git remote -v, git config --get
+remote.NAME.url); a token of another shape printed bare is not caught,
+and stderr, a fallback's probe-output/ files and the block's own closing
+clipboard step are not masked.
 A probe-output/ directory the run leaves (the file-based fallback) is
 carried to the session's out tray, ~/out-tray/SID/probe-output/, and
 removed where it ran. The folder's History gains `- DATE probe: SID, N
@@ -9107,11 +9157,12 @@ Bring one back
   office probe FOLDER [FILE]
                             runs a worker's probe block where the folder's project lives
                             (on its host, in its container), after showing its header and
-                            asking once; the output back whole and the block on the clipboard
+                            asking once; the output back whole, a credential in a URL masked,
+                            and the block on the clipboard
 
 Deliver it to the audience
   office deliver [FOLDER]   the folder's landed work to its project's audience as
-                            curated commits on a branch named from the folder, the words
+                            curated commits on a branch chosen by one rule, the words
                             from the folder's delivery.md; asks once before pushing
   office letterhead check   what the letterhead refuses, in a tree, a range or a file:
                             names, phrasing, bale's marks, the office's forbidden words
