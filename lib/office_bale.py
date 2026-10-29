@@ -1672,32 +1672,120 @@ def next_line(rd, office_root, skew, founded, groups):
     return f"Next: {command}  ({why})"
 
 
-def locate(rd, projects, sid, statuses):
-    """(project, dossier) for a sid: first the projects whose outbox or
-    open list names it, then every readable project. (None, None) when
-    no project's records hold it."""
-    readable_projects = []
-    for p in projects:
+# A dossier read that fails with one of these kinds failed at the project
+# (bale refused there, the directory went, the host stopped answering), so
+# the project is not read again in this rendering. Any other kind is bale
+# answering about this one session in words that do not read (a record it
+# could not parse, say): that session's line, and the project stays in
+# the search for the others.
+PROJECT_WIDE_KINDS = ("missing", "path", "refused", "unreachable")
+
+
+def project_records(rd, project, statuses, unread, batch=()):
+    """(cwd, the sids its surfaces name) for one project, read once per
+    rendering and kept in statuses; None when it cannot be read, its one
+    line's words kept in unread (name: why), so it is said once and passed
+    over from then on. Through a host's shell the dossiers of the sids in
+    batch that its records name ride one more connection, so the reads
+    that follow ask it nothing more. Since 0.38.0 a project is read only
+    when a search reaches it, so a project no search needs is never
+    opened."""
+    name = project["name"]
+    if name in unread:
+        return None
+    if name not in statuses:
         try:
-            cwd = readable(p)
-        except BaleError:
+            cwd = readable(project)
+            sids = rd.known_sids(cwd)
+            if rd.hosted(cwd):
+                rd.prefetch(cwd, [("dossier", {"sid": sid}) for sid in batch if sid in sids])
+        except BaleError as exc:
+            unread[name] = str(exc)
+            debug(f"{name}: not read, and passed over for the rest of this rendering: {exc}")
+            return None
+        statuses[name] = (cwd, sids)
+    return statuses[name]
+
+
+def locate(rd, projects, sid, statuses, unread, lane=None, batch=()):
+    """(project, dossier, record_errors) for a sid. The search goes, each
+    project read in its own try (project_records): the folder's own
+    project (lane, its name) first, so a folder's session is found with
+    one read in the common case; then the projects whose outbox or open
+    list names the sid; then the rest. A project that cannot be read is
+    kept in unread and the search goes on. record_errors is [(project,
+    BaleError)] for this sid's own dossier reads that did not read, which
+    leave the project in the search for other sids. (None, None, errors)
+    when no readable project's records hold it."""
+    errors = []
+
+    def dossier_in(p, cwd):
+        try:
+            return rd.dossier(cwd, sid)
+        except BaleError as exc:
+            if exc.kind in PROJECT_WIDE_KINDS:
+                unread[p["name"]] = str(exc)
+                debug(f"{p['name']}: not read, and passed over for the rest of this rendering: {exc}")
+            else:
+                errors.append((p, exc))
+            return None
+
+    first = [p for p in projects if lane is not None and p["name"] == lane]
+    for p in first:
+        got = project_records(rd, p, statuses, unread, batch)
+        if got is not None:
+            d = dossier_in(p, got[0])
+            if d is not None:
+                return p, d, errors
+    rest = []
+    for p in projects:
+        if p in first:
             continue
-        if p["name"] not in statuses:
-            statuses[p["name"]] = rd.known_sids(cwd)
-        readable_projects.append((p, cwd))
-    ordered = ([pc for pc in readable_projects if sid in statuses[pc[0]["name"]]]
-               + [pc for pc in readable_projects if sid not in statuses[pc[0]["name"]]])
-    for p, cwd in ordered:
-        d = rd.dossier(cwd, sid)
+        got = project_records(rd, p, statuses, unread, batch)
+        if got is not None:
+            rest.append((p, got))
+    ordered = [pg for pg in rest if sid in pg[1][1]] + [pg for pg in rest if sid not in pg[1][1]]
+    for p, (cwd, _) in ordered:
+        if p["name"] in unread:
+            continue
+        d = dossier_in(p, cwd)
         if d is not None:
-            return p, d
-    return None, None
+            return p, d, errors
+    return None, None, errors
+
+
+def folder_lane(folder_md, projects):
+    """The project the folder's lane names, when this office scopes it;
+    None otherwise (no lane, a lane naming no project, or one the office
+    does not scope, each a debug line), and the search then has no first
+    project."""
+    try:
+        lane = oh.folder_lane_project(folder_md)
+    except (oh.HelperError, OSError, ValueError) as exc:
+        debug(f"the folder's lane could not be read, so no project is searched first: {exc}")
+        return None
+    if lane is None:
+        debug("the folder's lane names no project, so no project is searched first")
+        return None
+    if lane not in {p["name"] for p in projects}:
+        debug(f"the folder's lane names {lane}, which this office does not scope; no project is searched first")
+        return None
+    return lane
 
 
 def render_folder_sessions(rd, office_root, folder_md):
-    """(lines, unreadable): the folder's own Sessions lines, each followed
+    """(lines, uncertain): the folder's own Sessions lines, each followed
     by what bale's records say about the session. Nothing rendered here
-    is written into the folder."""
+    is written into the folder.
+
+    Since 0.38.0 one project that cannot be read is a line, not a stop:
+    each project is read in its own try, only when a search reaches it,
+    the folder's own project (its lane) first; one that cannot be read is
+    said once, in one line after the sessions, and the search goes on
+    through the others. uncertain counts the recorded sessions not found
+    while some project could not be read for them, since only then is
+    "not found" in doubt; it is 0 whenever every recorded session was
+    found, and main's exit 3 (bin/office's stop) follows it."""
     recorded = oh.folder_session_lines(folder_md)
     lines = [f"- {sid}" + (f": {words}" if words else "") for sid, words in recorded]
     if not recorded:
@@ -1705,34 +1793,27 @@ def render_folder_sessions(rd, office_root, folder_md):
     projects = office_projects(office_root)
     if not projects:
         return lines + [f"{no_projects_line(projects)}; no outcomes are rendered"], 0
-    out, bad, found, missing = [], 0, 0, []
-    statuses = {}
+    out, uncertain, found, missing = [], 0, 0, []
+    statuses, unread = {}, {}
     try:
         rd.bale()
     except BaleError as exc:
         return lines + [f"  cannot read bale's records: {exc}"], 1
-    for p in projects:
-        try:
-            cwd = readable(p)
-            if rd.hosted(cwd):
-                # One batch per host: the dossiers of the recorded sessions
-                # its records name, so locate below asks nothing more.
-                statuses[p["name"]] = rd.known_sids(cwd)
-                rd.prefetch(cwd, [("dossier", {"sid": sid}) for sid, _ in recorded if sid in statuses[p["name"]]])
-        except BaleError as exc:
-            bad += 1
-            out.append(f"  {p['name']}: cannot read: {exc}")
+    lane = folder_lane(folder_md, projects)
+    batch = [sid for sid, _ in recorded]
     for (sid, words), line in zip(recorded, lines):
         out.append(line)
-        try:
-            p, d = locate(rd, projects, sid, statuses)
-        except BaleError as exc:
-            bad += 1
+        p, d, errors = locate(rd, projects, sid, statuses, unread, lane, batch)
+        for _, exc in errors:
             out.append(f"    cannot read: {exc}")
-            continue
         if d is None:
             missing.append(sid)
-            out.append("    not in the records of any project this office scopes")
+            could_not = sorted(set(unread) | {e[0]["name"] for e in errors})
+            if could_not:
+                uncertain += 1
+                out.append(f"    not found in the projects that could be read; {', '.join(could_not)} could not")
+            else:
+                out.append("    not in the records of any project this office scopes")
             continue
         found += 1
         v = session_view(rd, d)
@@ -1755,10 +1836,14 @@ def render_folder_sessions(rd, office_root, folder_md):
         links = [f"{a['linkage'][0]} {a['linkage'][1]}" for a in v["attempts"] if a["linkage"]]
         out.append(f"    exchange rounds: {rounds[-1] if rounds else 'none recorded'}"
                    + (f"; linkage: {', '.join(links)}" if links else ""))
+    # Each project that could not be read, once, in the floor plan's order.
+    for p in projects:
+        if p["name"] in unread:
+            out.append(f"{p['name']}: not read: {unread[p['name']]}")
     out.append(f"recorded in this folder: {len(recorded)} session id(s); found in bale's records: {found}"
                + (f"; not found: {', '.join(missing)}" if missing else ""))
     out.append("bale version per session: not on bale's dossier (a slip for bale-src)")
-    return out, bad
+    return out, uncertain
 
 
 def all_views(rd, cwd):

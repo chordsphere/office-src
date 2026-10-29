@@ -668,6 +668,59 @@ class TestTheLandFlagsRecord(unittest.TestCase):
         self.assertLess(data.index(b"\n## 0.34.0\n"), start)
 
 
+def release_headings(text):
+    """The versions of RELEASES.md's `## X.Y.Z` headings, in its order."""
+    return re.findall(r"^## (\d+\.\d+\.\d+)$", text, re.M)
+
+
+def front_sheet_releases(text):
+    """The versions of the front sheet's `- X.Y.Z (session SID)` lines
+    under its Recent changes, in its order."""
+    recent = text.split("\n## Recent changes\n", 1)[1].split("\n## ", 1)[0]
+    return re.findall(r"^- (\d+\.\d+\.\d+) \(session ", recent, re.M)
+
+
+def releases_differ(releases, sheet):
+    """(in RELEASES.md alone, on the front sheet alone), each sorted."""
+    headings, lines = set(release_headings(releases)), set(front_sheet_releases(sheet))
+    return sorted(headings - lines), sorted(lines - headings)
+
+
+class TestTheReleasesMatchTheFrontSheet(unittest.TestCase):
+    """RELEASES.md's headings and the front sheet's releases are the same
+    versions (0.38.0). The front sheet's `- X.Y.Z (session SID)` lines
+    under Recent changes are the older record: one is owed per VERSION
+    bump (tests/test_suite_clock.py TestTheRecord), and each names the
+    session that made the release. 87ce51a lost RELEASES.md's 0.33.0
+    heading in a whole-file overlay that every gate passed; with this test
+    a heading lost that way, of a minor or a patch release, fails the
+    suite on the next run, since the front sheet still names the version.
+    It fails only when one record moves without the other."""
+
+    SHEET = REPO / ("cla" + "ude") / "context" / "front-sheet.md"
+
+    def test_the_two_records_name_the_same_releases(self):
+        releases = (REPO / "RELEASES.md").read_text(encoding="utf-8")
+        sheet = self.SHEET.read_text(encoding="utf-8")
+        # Neither record reads as empty: a change in either's shape fails
+        # here rather than passing on two empty sets.
+        self.assertTrue(release_headings(releases), "RELEASES.md has no `## X.Y.Z` heading")
+        self.assertTrue(front_sheet_releases(sheet), "the front sheet's Recent changes has no `- X.Y.Z (session` line")
+        only_releases, only_sheet = releases_differ(releases, sheet)
+        self.assertEqual(only_releases, [], f"in RELEASES.md and not on the front sheet: {', '.join(only_releases)}")
+        self.assertEqual(only_sheet, [], f"on the front sheet and not a RELEASES.md heading: {', '.join(only_sheet)}")
+
+    def test_a_lost_patch_heading_is_named(self):
+        releases = "# Releases\n\n## 0.2.1\n\nA fix.\n\n## 0.2.0\n\nTwo.\n\n## 0.1.0\n\nOne.\n"
+        sheet = ("# front sheet\n\n## Recent changes\n\n- 0.2.1 (session S): a fix.\n"
+                 "- 0.2.0 (session S): two.\n- 0.1.0 (session S): one.\n\n## Known problems\n\n- 0.9.9 (session S)\n")
+        self.assertEqual(releases_differ(releases, sheet), ([], []))
+        # The patch release's heading lost in an overlay, its words kept.
+        self.assertEqual(releases_differ(releases.replace("## 0.2.1\n", ""), sheet), ([], ["0.2.1"]))
+        # A release written in RELEASES.md and not on the front sheet.
+        self.assertEqual(releases_differ("## 0.3.0\n\n" + releases, sheet), (["0.3.0"], []))
+
+
 class TestLandWhichSession(LandCase):
     def test_nothing_out_says_so(self):
         proc = self.run_office("land", check=1)
