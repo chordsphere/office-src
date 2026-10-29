@@ -1,0 +1,230 @@
+{
+  "record_version": 1,
+  "session_id": "2026-10-29-deliver-adds-001",
+  "created_at": "2026-10-29T01:41:36+00:00",
+  "attempts": [
+    {
+      "at": "2026-10-29T01:41:36+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "lib/office_deliver.py",
+        "lib/office_helper.py",
+        "lib/office_letterhead.py",
+        "share/letterhead.toml",
+        "templates/delivery.md",
+        "tests/test_audience_line.py",
+        "tests/test_clean_delivery.py",
+        "tests/test_delivery_words.py"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-10-29-deliver-adds-001.log",
+      "bundle": {
+        "stem": "2026-10-29-deliver-adds",
+        "brief_sha256": "7d9d00b3fb228156da674fd3216ec0aa54b7061173e1e386b1695c5bc85d1b1a",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "be1114edbe426c10ff6a0c3dd1216a924270c2a727af42b11f3c84e9f0a02f6b"
+      },
+      "provenance": {
+        "work_class": "code",
+        "packer": "chordsphere",
+        "packed_at": "2026-10-29T01:41:35+00:00"
+      }
+    },
+    {
+      "at": "2026-10-29T02:33:31+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-10-29-deliver-adds-001.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "assert: deliver's check reads added lines; a line a file already had is told, not refused": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "assert: the cleanup list refuses words, never files": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "assert: branch_prefix is the fifth audience key and delivery.md's branch line parses": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "assert: bin/office, README.md, RELEASES.md, VERSION, doctrine/OFFICE.md and the front sheet are byte-identical to the request's": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "tests/run.sh --fast with this session's classes": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "tests/run.sh test_audience_line test_clean_delivery test_delivery_words test_three_gaps test_bale_own_commits (--slow)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {},
+        "reconciliation_parsed": false,
+        "validation_will_run": [
+          "python syntax (ast.parse) of the six changed modules",
+          "share/letterhead.toml parses",
+          "assert: deliver's check reads added lines; a line a file already had is told, not refused",
+          "assert: the cleanup list refuses words, never files",
+          "assert: branch_prefix is the fifth audience key and delivery.md's branch line parses",
+          "assert: bin/office, README.md, RELEASES.md, VERSION, doctrine/OFFICE.md and the front sheet are byte-identical to the request's",
+          "tests/run.sh --fast with this session's classes",
+          "tests/run.sh test_audience_line test_clean_delivery test_delivery_words test_three_gaps test_bale_own_commits (--slow)"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "lib/office_deliver.py",
+        "lib/office_helper.py",
+        "lib/office_letterhead.py",
+        "share/letterhead.toml",
+        "templates/delivery.md",
+        "tests/test_audience_line.py",
+        "tests/test_clean_delivery.py",
+        "tests/test_delivery_words.py"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [
+        "lib/office_deliver.py",
+        "lib/office_letterhead.py",
+        "lib/office_helper.py",
+        "share/letterhead.toml",
+        "templates/delivery.md",
+        "tests/test_audience_line.py",
+        "tests/test_clean_delivery.py",
+        "tests/test_delivery_words.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.56",
+            "contract_docs": {
+              "AGENT.md": "31dcdded2a8fd175f7778c2bd1be09688e89e76b8fd4cd62b7646aacfa2782c4",
+              "TARBALL.md": "3037b905ee561af44f27cc83ec45d832feb7d429a98d4e07b4482a518cda6e94",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "a8e5714e51049768e52bb5bc0ede9338db1175e7095d9b2bdd0d314ab3e01078"
+            },
+            "packer": "chordsphere",
+            "work_class": "code",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-10-29T01:41:35+00:00",
+            "base_files": {
+              "lib/office_deliver.py": "97150e51f847a61b5129469e800f5cba5ab83b68cea4862882da8b2db9d897b4",
+              "lib/office_helper.py": "a1ff134d7e20f06b024c417e13a22c86d80da3bfc66278038dc5bb0d78f182c7",
+              "lib/office_letterhead.py": "f9f8ee23da15174fa6d50583bae0e03ab3eeda92dcee5c263f8f69bf3e579ec5",
+              "share/letterhead.toml": "5b6654f0209b203785b5529a2d2923e48b3686dfa533e66c63a11b6baf84f3d2",
+              "templates/delivery.md": "e979fd4cd74009c64a7f7023d2108ceb5a01eba57d29ac9849bdc0c259c5198c",
+              "tests/test_audience_line.py": "13d4e927f8b1ee7742fc89a0060cd7a50f1aef8ba5af66ec60305ebb3b504a57",
+              "tests/test_clean_delivery.py": "5c2c39364785ec6582ad3d7343d798aa1f3c3497d117891054f04176ba92b906",
+              "tests/test_delivery_words.py": "210b2c6ce4e1b76749b7d5921b34ff05aac56ba153a8ae44544d776c8405c00a"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "an audience may merge a review as a squash, which leaves no commit rule 4 can find on the base; such a delivery refuses rather than guess",
+            "telling what a modified file's other lines hold may read those lines; the refusal reads the added lines alone"
+          ],
+          "judgment_calls": [
+            "land's review and each commit's read-back read added lines too, so no read in a delivery refuses a whole file",
+            "the module gained --added for the hosted review; bin/office's hand check is unchanged",
+            "the cleanup list gains a fourth tell, the three code points written U+2013, U+2014, U+2026",
+            "rule 4's base test accepts the record's delivery commit as well as its workbench commit, and runs for a continued delivery onto a different branch too",
+            "run()'s Next lines name the open review for a branch another folder delivered to",
+            "the adopt refusal's words drop 'or is another folder's' and say why the branch was chosen"
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [],
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md META through section 11.2",
+            "README.md (the brief)",
+            "TARBALL.md sections 1, 2, 5, 7 and 10.1",
+            "tools/response_lint.py",
+            "lib/office_deliver.py",
+            "lib/office_letterhead.py",
+            "lib/office_helper.py (the audience keys, the delivery words and records)",
+            "lib/office_host.py git_facts",
+            "share/letterhead.toml",
+            "templates/delivery.md",
+            "templates/walkthrough.md",
+            "tests/test_audience_line.py, tests/test_clean_delivery.py, tests/test_delivery_words.py, tests/test_three_gaps.py, tests/test_bale_own_commits.py and tests/test_office.py (the parts that read deliver and the letterhead)",
+            "claude/responses/2026-10-28-office-deliver-squashes-the-content-of-004/notes.md",
+            "RELEASES.md (the 0.37.0 entry)",
+            "office-src's own README and doctrine/OFFICE.md (the deliver and letterhead passages, for the stale-doc list)",
+            "bin/office deliver_show, cmd_deliver and the two usage texts"
+          ],
+          "compaction_occurred": {
+            "occurred": false,
+            "disclosure_ref": null
+          },
+          "light_blocks": 0
+        }
+      },
+      "log": ".bale/logs/2026-10-29-deliver-adds-001.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-10-29T02:33:31+00:00",
+  "outcome": "applied"
+}
