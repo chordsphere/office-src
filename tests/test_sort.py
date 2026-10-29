@@ -162,18 +162,24 @@ class TestThePinnedBlocks(unittest.TestCase):
 
 # --- the filing, in an office on disk ------------------------------------------------------------
 
+def small_office(root):
+    """The floor plan and bale.toml of an office written by hand, all the
+    handbook needs to arrive in it."""
+    (root / "floor-plan").mkdir(parents=True)
+    (root / "floor-plan/manifest.toml").write_text(
+        '[office]\nname = "t"\n\n[spaces.desk]\npath = "desk"\nhung = false\nfiled = false\n')
+    (root / "bale.toml").write_text('[pack]\ninclude_group = "hung"\ninclude_group_triggers = ["desk"]\n'
+                                    'include_group_pulls = ["profile.md"]\n')
+    return root
+
+
 class TestFiling(unittest.TestCase):
     """file_notes on a small office written by hand: no bale, no command."""
 
     def setUp(self):
         self.tmp = pathlib.Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
-        root = self.root = self.tmp / "office"
-        (root / "floor-plan").mkdir(parents=True)
-        (root / "floor-plan/manifest.toml").write_text(
-            '[office]\nname = "t"\n\n[spaces.desk]\npath = "desk"\nhung = false\nfiled = false\n')
-        (root / "bale.toml").write_text('[pack]\ninclude_group = "hung"\ninclude_group_triggers = ["desk"]\n'
-                                        'include_group_pulls = ["profile.md"]\n')
+        root = self.root = small_office(self.tmp / "office")
         folder = root / "desk/2026-10-14-job"
         folder.mkdir(parents=True)
         (folder / "folder.md").write_text(h.render_template((TEMPLATES / "folder.md").read_text(), {
@@ -234,6 +240,139 @@ class TestFiling(unittest.TestCase):
         self.assertGreaterEqual(problems, 4)
         self.assertIn("README.md is missing", "\n".join(lines))
         self.assertIn("its first line is not '# alpha'", "\n".join(lines))
+
+
+# --- a fact is filed bare (0.38.0, the gaps of 2026-10-28, A8) -------------------------------------
+
+SID = "2026-10-28-fix-login-001"
+
+
+class TestAFactIsFiledBare(unittest.TestCase):
+    """Item 1: before land adds the day and the session, a leading date and
+    a trailing session id the session wrote are dropped, and the bare form
+    is what a filing keys on."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.root = small_office(self.tmp / "office")
+
+    def facts(self):
+        text = (self.root / "handbook/alpha.md").read_text()
+        return text.split("## Facts\n", 1)[1].strip("\n").splitlines()
+
+    def test_the_doubled_form_and_each_half_come_out_bare(self):
+        bare = "the api answers on port 8080"
+        for dressed in (f"2026-10-27: 2026-10-28: {bare} ({SID}) ({SID})",  # A8's line, after its dash
+                        f"2026-10-28: {bare}", f"{bare} ({SID})", f"2026-10-28: {bare} (2026-10-01-other-job-002)",
+                        f"  2026-10-28:   {bare}  ({SID})  ", f"{bare} (fix-login)", bare):
+            self.assertEqual(osort.bare_fact(dressed, SID), bare, dressed)
+        self.assertEqual(osort.fact_line("2026-10-29", f"2026-10-28: {bare} ({SID})", SID),
+                         f"- 2026-10-29: {bare} ({SID})")
+
+    def test_a_date_or_an_id_in_the_facts_own_sentence_stays(self):
+        for fact in ("the route moved since 2026-10-14: see the api's notes",
+                     "folder 3 took it over from 2026-10-01-other-job-002 for good",
+                     "2026-10-28 is the day the port changed",  # no colon: a sentence, not land's date
+                     "it needs python 3.11 (tomllib)", "it reads utf-8 (fix-login is another ask)",
+                     "a slug is not an ask unless it is this one (other-job)"):
+            self.assertEqual(osort.bare_fact(fact, SID), fact, fact)
+        # A slug is only an ask's name for the session it is filed from.
+        self.assertEqual(osort.bare_fact("x (fix-login)", "2026-10-28-other-job-001"), "x (fix-login)")
+        self.assertEqual(osort.bare_fact("x (fix-login)"), "x (fix-login)")
+        self.assertEqual(osort.bare_fact(f"2026-10-28: ({SID})", SID), "")
+
+    def test_filed_bare_said_once_and_a_second_filing_adds_nothing(self):
+        facts = ["2026-10-28: the api answers on port 8080", f"the login page is static ({SID})",
+                 f"2026-10-27: 2026-10-28: tests run in a minute ({SID}) ({SID})", "the api answers on port 8080",
+                 f"2026-10-28: ({SID})"]
+        changed, words = osort.file_handbook(self.root, "alpha", facts, None, SID, "2026-10-29")
+        self.assertIn("handbook/alpha.md", changed)
+        self.assertEqual(self.facts(), [f"- 2026-10-29: the api answers on port 8080 ({SID})",
+                                        f"- 2026-10-29: the login page is static ({SID})",
+                                        f"- 2026-10-29: tests run in a minute ({SID})"])
+        text = "\n".join(words)
+        self.assertIn(f"handbook/alpha.md: 3 fact(s) from {SID}; 1 given twice, filed once", text)
+        self.assertIn("3 fact(s) from 2026-10-28-fix-login-001 came with a date or a session id of their own, "
+                      "dropped before filing, since office land adds both (write facts bare)", text)
+        self.assertIn("1 fact(s) from 2026-10-28-fix-login-001 held nothing but a date and a session id", text)
+        before = (self.root / "handbook/alpha.md").read_bytes()
+        # Filed again on a later day, dressed or bare: nothing is added.
+        changed, words = osort.file_handbook(self.root, "alpha", facts + ["tests run in a minute"], None, SID,
+                                             "2026-10-30")
+        self.assertEqual(changed, [])
+        self.assertEqual((self.root / "handbook/alpha.md").read_bytes(), before)
+        self.assertIn(f"all 5 fact(s) from {SID} already there, left as they are", "\n".join(words))
+        # The same fact from another session is that session's, and is filed.
+        osort.file_handbook(self.root, "alpha", ["the api answers on port 8080"], None, "2026-10-30-other-job-001",
+                            "2026-10-30")
+        self.assertEqual(self.facts()[-1], "- 2026-10-30: the api answers on port 8080 (2026-10-30-other-job-001)")
+        self.assertEqual(osort.chapter_problems(self.root / "handbook/alpha.md"), [])
+
+    def test_a_sorts_facts_lines_and_the_handbook_section_file_bare_together(self):
+        folder = self.root / "desk/2026-10-14-job"
+        (folder / "drops").mkdir(parents=True)
+        (folder / "folder.md").write_text(h.render_template((TEMPLATES / "folder.md").read_text(), {
+            "title": "job", "number": "1", "status": "open", "queued": "2026-10-14",
+            "history": "2026-10-14 queued: office open"}))
+        page, _ = odrop.render_page(MESSAGE, "alpha", "stdin", "2026-10-14 09:12")
+        (folder / "drops/2026-10-14-login.md").write_text(page)
+        notes = ("## Sort\n\n" + sort_block("2026-10-14-login.md", folder="1", brief=None,
+                                            facts=("- facts:", f"- 2026-10-28: the page is static ({SID})"))
+                 + f"\n## Handbook\n\n### alpha\n\n- the page is static\n- 2026-10-28: port 8080 ({SID})\n")
+        said, _ = osort.file_notes(self.root, notes, SID, "2026-10-29", "desk/2026-10-14-job", ["alpha"])
+        self.assertEqual(self.facts(), [f"- 2026-10-29: the page is static ({SID})",
+                                        f"- 2026-10-29: port 8080 ({SID})"])
+        self.assertIn("1 given twice, filed once", "\n".join(said))
+
+
+class TestADoubledLineFiledBeforeStays(unittest.TestCase):
+    """Item 2: a line filed doubled before 0.38.0 is not rewritten, still
+    reads as a Facts line, and keys as its fact filed bare, so filing the
+    same response again writes nothing."""
+
+    def test_the_old_line_stays_and_keys_bare(self):
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        root = small_office(tmp / "office")
+        rel, _, _ = osort.ensure_chapter(root, "alpha")
+        path = root / rel
+        old = f"- 2026-10-27: 2026-10-28: the api answers on port 8080 ({SID}) ({SID})"
+        osort.append_facts(path, [old])
+        before = path.read_bytes()
+        self.assertEqual(osort.filed_facts(path), {("the api answers on port 8080", SID)})
+        self.assertEqual(osort.chapter_problems(path), [])
+        for fact in (f"2026-10-28: the api answers on port 8080 ({SID})", "the api answers on port 8080"):
+            changed, words = osort.file_handbook(root, "alpha", [fact], None, SID, "2026-10-29")
+            self.assertEqual(changed, [])
+            self.assertIn("already there, left as they are", "\n".join(words))
+            self.assertEqual(path.read_bytes(), before)
+        # A new fact grows the chapter at its end, the old line kept to the byte.
+        osort.file_handbook(root, "alpha", ["tests run in a minute"], None, SID, "2026-10-29")
+        lines = path.read_text().split("## Facts\n", 1)[1].strip("\n").splitlines()
+        self.assertEqual(lines, [old, f"- 2026-10-29: tests run in a minute ({SID})"])
+
+
+class TestTheSortBriefSaysWriteFactsBare(unittest.TestCase):
+    """Item 3: the sort session's brief says to write each fact bare, beside
+    its Handbook words and outside the Sort format it pins."""
+
+    SENTENCE = ("Write each fact bare, there and in a Sort's `facts:` lines alike: the fact alone, no date in front "
+                "and no session id behind, since office land adds both.")
+
+    def test_the_template_and_the_brief_it_renders_carry_the_sentence(self):
+        template = (TEMPLATES / "sort-brief.md").read_text()
+        flat = " ".join(template.split())
+        self.assertIn("as `- ` lines. " + self.SENTENCE + " The handbook chapters you carry", flat)
+        fence_free = re.sub(r"^```.*?^```$", "", template, flags=re.M | re.S)
+        self.assertIn(self.SENTENCE, " ".join(fence_free.split()))
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        (tmp / "in-tray").mkdir()
+        page, _ = odrop.render_page(MESSAGE, "alpha", "stdin", "2026-10-14 09:12")
+        (tmp / "in-tray/2026-10-14-alpha-login-error.md").write_text(page)
+        brief = osort.render_sort_brief(tmp, "folder 1  job\n", drafting=False)
+        self.assertIn(self.SENTENCE, " ".join(brief.split()))
 
 
 # --- the Next line's sort rule, as a pure function ------------------------------------------------
@@ -388,6 +527,26 @@ class TestLandFilesTheNotes(LandCase):
         self.assertIn("handbook:   matches the install's catalog; 1 chapter(s)", status)
         self.assertIn("hung items: bale.toml include group matches the floor plan", status)
         self.assertIn("in-tray:    matches the install's catalog; 0 unsorted drop(s)", status)
+
+
+class TestLandFilesAFactBare(LandCase):
+    """Item 1, through office land: a session that wrote its facts dated
+    and signed (A8) gets one day, the office's, and one session id on each
+    line, and land says what it dropped."""
+
+    def test_a_dated_and_signed_fact_lands_once_bare(self):
+        sid = self.start(self.name, "--on", "alpha", "--goal", "g", "--write", "src")
+        notes = ("# Notes\n\n## Handbook\n\n### alpha\n\n"
+                 f"- {sid[:10]}: {sid[:10]}: the api answers on port 8080 ({sid}) ({sid})\n"
+                 f"- the login page is static ({sid})\n" + NOTES_TAIL)
+        tb = response_tarball(self.downloads, sid, {"src/a.py": "fixed\n"}, notes=notes)
+        proc = self.run_office("land", sid, "--ratified", "--leave-open", "--response", str(tb), check=0)
+        self.assertIn(f"Landed: {sid}", proc.stdout)
+        self.assertIn("came with a date or a session id of their own, dropped before filing", proc.stderr)
+        chapter = (self.root / "handbook/alpha.md").read_text()
+        self.assertRegex(chapter, rf"\n## Facts\n\n- {DAY_RE}: the api answers on port 8080 \({re.escape(sid)}\)\n"
+                                  rf"- {DAY_RE}: the login page is static \({re.escape(sid)}\)\n$")
+        self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
 
 
 # --- office moves and the sorted drops ---------------------------------------------------------------

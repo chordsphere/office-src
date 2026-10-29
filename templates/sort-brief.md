@@ -29,10 +29,13 @@ so nobody has to read the thread again. A drop you cannot judge gets no
 subsection: say why in a line, and it waits for the occupant.
 
 What you learn about a project, and every fact the occupant gives you,
-goes under `## Handbook`, `### PROJECT`, as `- ` lines. The handbook
-chapters you carry say what is known already: read them before you ask
-anything. Record each light block you send, and the occupant's answer,
-under `## Questions and answers`, one `- DATE question? answer` line each.
+goes under `## Handbook`, `### PROJECT`, as `- ` lines. Write each fact
+bare, there and in a Sort's `facts:` lines alike: the fact alone, no date
+in front and no session id behind, since office land adds both. The
+handbook chapters you carry say what is known already: read them before
+you ask anything. Record each light block you send, and the occupant's
+answer, under `## Questions and answers`, one `- DATE question? answer`
+line each.
 
 {{moves}}
 
