@@ -28,6 +28,13 @@ the template's whatever its box holds (0.32.0): `- [x]`, `- [X]` and
 `- [ ]` read as one (template_key), and words added after the box make
 it a changed line.
 
+Words are held to one list more than files are: a fix made only to keep
+the letterhead (a dash or an ellipsis taken out) is shipped clean and
+never mentioned, so the words that leave (commit messages, a delivery's
+words) are refused for naming the cleanup, the [cleanup] list of
+share/letterhead.toml (WORDS_ONLY_SECTIONS). Files are never read for
+it: a project's own text may name the characters, and office-src's does.
+
 What it reads, in order of what it was told:
 
   --range A..B   the files the range changed, at B's version, and the
@@ -36,6 +43,14 @@ What it reads, in order of what it was told:
   --all          the whole tree (git's tracked and untracked files,
                  or every file when the directory is not a git repo,
                  which the check says)
+  --added        the lines a diff adds, not the files it touches whole:
+                 with --range, what the range adds; else what the index
+                 adds against HEAD (git diff --cached). Each added line is
+                 read at its line in the new file; a new or renamed file
+                 is all added lines. A line the file already had is never
+                 a hit: what such lines hold is told, one line per file
+                 (office deliver reads a delivery this way, since a line
+                 already on the audience is not the delivery's)
   --words FILE   a text checked as it is (a delivery's words), any
                  number of times
   --words-json   [[label, text], ...]: words that travel as one argument
@@ -64,6 +79,18 @@ import re
 import sys
 
 RULE_SECTIONS = ("names", "phrasing", "marks")
+# The pattern lists read against words alone, never against files (the
+# gaps of 2026-10-28, C2): a cleanup's name. compile_rules leaves them out
+# unless it is compiling for words.
+WORDS_ONLY_SECTIONS = ("cleanup",)
+# How render names a kind whose bare name would not say what it refuses.
+KIND_LABELS = {"cleanup": "names a cleanup"}
+# A unified diff's hunk header, -U0: where the new file's lines start and
+# how many there are (one when the count is left out).
+HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@")
+# How a pre-existing line's hit is said, by kind, in the one told line a
+# touched file gets; at most this many distinct things are named.
+PRE_SHOWN = 4
 # What a line of a repository's own pull-request template, as the repo
 # holds it, is not held to: the phrasing rule (0.25.0) and the three
 # characters (0.26.0, the exception to session 3's decision 3), since its
@@ -111,7 +138,7 @@ def load_rules_toml(path):
     with open(path, "rb") as fh:
         data = tomllib.load(fh)
     rules = {}
-    for section in RULE_SECTIONS:
+    for section in RULE_SECTIONS + WORDS_ONLY_SECTIONS:
         patterns = (data.get(section) or {}).get("patterns")
         if not isinstance(patterns, list) or not all(isinstance(p, str) and p for p in patterns):
             raise CheckError(f"{path}: [{section}] patterns is not a list of non-empty strings")
@@ -198,17 +225,20 @@ def char_label(name, char):
     return f"the {name} (U+{ord(char):04X})"
 
 
-def compile_rules(rules):
+def compile_rules(rules, words=False):
     """[(kind, pattern text, compiled)] in the order hits are reported:
     the office's forbidden strings first (the occupant's own words), then
-    names, phrasing and marks. A pattern that does not compile is the
+    names, phrasing and marks, and, when words is true (the rules a text
+    that leaves is read with: a commit message, a delivery's words), the
+    words-only lists after them (WORDS_ONLY_SECTIONS: a cleanup's name),
+    which files are never held to. A pattern that does not compile is the
     check's error, never a silent skip."""
     out = []
     for text in rules.get("forbidden") or []:
         out.append(("forbidden", text, re.compile(re.escape(text), re.I)))
     for name, char in rules.get("characters") or []:
         out.append(("character", char_label(name, char), re.compile(re.escape(char))))
-    for section in RULE_SECTIONS:
+    for section in RULE_SECTIONS + (WORDS_ONLY_SECTIONS if words else ()):
         for pat in rules.get(section) or []:
             try:
                 out.append((section, pat, re.compile(pat, re.I)))
@@ -234,8 +264,14 @@ def hits_in_text(text, compiled, label, exempt=None):
     to the three characters (0.26.0): it is the repository's, not the
     occupant's, whatever its checklist box holds (0.32.0). Names, bale's
     marks and the forbidden list still read it."""
+    return hits_in_lines(enumerate(text.splitlines(), 1), compiled, label, exempt)
+
+
+def hits_in_lines(numbered, compiled, label, exempt=None):
+    """hits_in_text's reading over (line number, line) pairs, so a diff's
+    added lines are read each at its own line of the new file."""
     out = []
-    for n, line in enumerate(text.splitlines(), 1):
+    for n, line in numbered:
         templated = exempt is not None and template_key(line) in exempt
         for kind, what, rx in compiled:
             if templated and kind in TEMPLATE_EXEMPT_KINDS:
@@ -363,6 +399,84 @@ def changed_in_tree(cwd):
     return paths
 
 
+# --- the lines a diff adds (the gaps of 2026-10-28, A2) -------------------------------------
+#
+# A delivery is held to what it adds, never to what a file it touches
+# already held: a refused character on a line written weeks earlier, and
+# already on the audience's own main, is not the delivery's, and refusing
+# it cost a whole session. The diff names the added lines; the new file's
+# text gives each one at its own line, so a hit is named where it is.
+
+def diff_ends(a, b):
+    """git diff's ends: commit a against commit b, or, with b None, the
+    index against a (git diff --cached A)."""
+    return ["--cached", a] if b is None else [a, b]
+
+
+def changed_in_diff(cwd, a, b=None):
+    """[(status, path, old path)] for each file a diff from a to b (the
+    index when b is None) adds or changes, deletions aside: status is
+    git's letter (A, C, M, R, T), a rename (git's -M) is named by its new
+    path with the old beside it, and old path is None for the rest."""
+    out = git(cwd, "diff", "--name-status", "-z", "-M", "--no-color", "--diff-filter=ACMRT", *diff_ends(a, b)).stdout
+    items = out.split("\0")
+    found, i = [], 0
+    while i < len(items):
+        status = items[i]
+        i += 1
+        if not status:
+            continue
+        if status[0] in "RC" and i + 1 < len(items):
+            found.append((status[0], items[i + 1], items[i]))
+            i += 2
+        else:
+            found.append((status[0], items[i] if i < len(items) else "", None))
+            i += 1
+    return [f for f in found if f[1]]
+
+
+def added_line_numbers(cwd, path, a, b=None):
+    """The numbers, in the new file, of the lines a diff from a to b (the
+    index when b is None) adds to a path it modified, from git diff -U0's
+    hunk headers. The path is literal, never a pattern."""
+    out = git(cwd, "--literal-pathspecs", "diff", "-U0", "--no-color", "--no-ext-diff", "--no-textconv",
+              *diff_ends(a, b), "--", path).stdout
+    numbers = set()
+    for line in out.splitlines():
+        m = HUNK_RE.match(line)
+        if m:
+            start = int(m.group("start"))
+            count = 1 if m.group("count") is None else int(m.group("count"))
+            numbers.update(range(start, start + count))
+    return numbers
+
+
+def git_lines(text):
+    """A text's lines numbered as git numbers them, from 1: split at a
+    newline alone, so a form feed or a line separator inside a line keeps
+    the lines after it where git's hunks put them."""
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return list(enumerate(lines, 1))
+
+
+def held_line(path, pre):
+    """The one told line for a touched file's lines that it already had
+    and that hold something refused: never a hit (not the delivery's), and
+    never silent. pre is the hits on those lines; the line counts the
+    lines and names what they hold, PRE_SHOWN things at most."""
+    count = len({h[1] for h in pre})
+    named = []
+    for _, _, kind, what, _ in pre:
+        said = what if kind == "character" else f"{KIND_LABELS.get(kind, kind)} {what.lower()!r}"
+        if said not in named:
+            named.append(said)
+    shown = named[:PRE_SHOWN] + ([f"{len(named) - PRE_SHOWN} thing(s) more"] if len(named) > PRE_SHOWN else [])
+    held = shown[0] if len(shown) == 1 else ", ".join(shown[:-1]) + " and " + shown[-1]
+    return f"{path}: {count} line(s) the file already had hold {held}; not this delivery's, not refused"
+
+
 def whole_tree(cwd, in_git):
     if in_git:
         out = git(cwd, "ls-files", "-z", "--cached", "--others", "--exclude-standard").stdout
@@ -402,17 +516,29 @@ def read_file(cwd, path, at=None):
 
 
 def check(cwd, rules, scope_all=False, range_spec=None, words=(), files_only=False, never=(),
-          words_text=(), template_rev=None):
+          words_text=(), template_rev=None, added=False, added_base=None):
     """Run the check. Returns (hits, lines told): hits as hits_in_text
     gives them, told as the lines the check says about what it read.
     words are files, words_text (label, text) pairs; both are words, and
     in a git repo the lines of its pull-request templates at template_rev
     (HEAD when not given) are not held to the phrasing rule or the three
-    characters there."""
+    characters there. Words and commit messages are held to the
+    words-only lists too (a cleanup's name); files never are.
+
+    added (--added) reads the lines a diff adds rather than the files it
+    touches whole: the range's, with range_spec, else the index's against
+    added_base (HEAD when not given), as office deliver reads its staged
+    squash. A hit on an added line is a hit, named at its line in the new
+    file; a new or renamed file is all added lines. A line a modified file
+    already had is never a hit: the file's other lines are read only so
+    that what they hold is told, one line per file (held_line)."""
     cwd = str(pathlib.Path(cwd).resolve())
     compiled = compile_rules(rules)
+    compiled_words = compile_rules(rules, words=True)
     suffixes = rules.get("binary") or []
     told, hits, read = [], [], 0
+    if added and scope_all:
+        raise CheckError("--added reads the lines a diff adds, and --all the whole tree; give one of them")
     for name, where in rules.get("lifted") or []:
         told.append(f"the letterhead lifts the {name} ({where}), so it is not refused")
     if rules.get("no_letterhead"):
@@ -427,18 +553,45 @@ def check(cwd, rules, scope_all=False, range_spec=None, words=(), files_only=Fal
     if in_git:
         top = git(cwd, "rev-parse", "--show-toplevel").stdout.strip() or cwd
     at = None
+    # With added: (a, b) for the diff whose added lines are read (b None:
+    # the index), and each path's status in it.
+    diff, statuses, on_disk = None, {}, []
+    messages = []
     if range_spec:
         if not in_git:
             raise CheckError(f"--range needs a git repo, and {cwd} is not in one")
         a, b = range_ends(range_spec)
         paths, messages = changed_in_range(top, a, b)
         at = b
-        if files_only:
-            told.append(f"the files {range_spec} changed ({len(paths)}), at {b}'s version (not its commit messages)")
+        if added:
+            changes = changed_in_diff(top, a, b)
+            paths = [p for _, p, _ in changes]
+            statuses = {p: s for s, p, _ in changes}
+            diff = (a, b)
+            what = f"the lines {range_spec} adds to the {len(paths)} file(s) it changed, each at its line in {b}'s version"
         else:
-            told.append(f"the files {range_spec} changed ({len(paths)}), at {b}'s version, and its {len(messages)} commit message(s)")
+            what = f"the files {range_spec} changed ({len(paths)}), at {b}'s version"
+        if files_only:
+            messages = []
+            told.append(f"{what} (not its commit messages)")
+        else:
+            told.append(f"{what}, and its {len(messages)} commit message(s)")
             for sha, body in messages:
-                hits += hits_in_text(body, compiled, f"commit {sha[:12]}")
+                hits += hits_in_text(body, compiled_words, f"commit {sha[:12]}")
+    elif added:
+        if not in_git:
+            raise CheckError(f"--added reads the lines a diff adds, and {cwd} is not in a git repo")
+        base = added_base or "HEAD"
+        changes = changed_in_diff(top, base)
+        paths = [p for _, p, _ in changes]
+        statuses = {p: s for s, p, _ in changes}
+        diff, at = (base, None), ""
+        shown_base = base[:12] if len(base) == 40 else base
+        told.append(f"the lines the index adds against {shown_base} to the {len(paths)} file(s) it changed, each at "
+                    "its line in the new file")
+        # What was taken out of the index is still on the disk (a
+        # delivery's bale paths, 0.36.0): named never read, as before.
+        on_disk = [p for p in changed_in_tree(top) if never_read(p, never) and p not in statuses]
     elif scope_all or not in_git:
         paths = whole_tree(top, in_git)
         told.append(f"the whole tree, {len(paths)} file(s)" + ("" if in_git else f" (not a git repo, so the changed set cannot be told: {cwd})"))
@@ -448,10 +601,11 @@ def check(cwd, rules, scope_all=False, range_spec=None, words=(), files_only=Fal
             told.append(f"the files the working tree changed ({len(paths)}), as they are")
         else:
             told.append("nothing changed in the working tree, so no file was read (--all reads the whole tree)")
-    skipped = [p for p in paths if never_read(p, never)]
+    skipped = [p for p in paths if never_read(p, never)] + on_disk
     if skipped:
         told.append(f"{len(skipped)} file(s) of bale's never read: " + ", ".join(skipped[:6])
                     + (" ..." if len(skipped) > 6 else ""))
+    held, added_count = [], 0
     for path in paths:
         if never_read(path, never):
             continue
@@ -462,8 +616,28 @@ def check(cwd, rules, scope_all=False, range_spec=None, words=(), files_only=Fal
         if text is None:
             continue
         read += 1
-        debug(f"read {path}" + (f" at {at}" if at else ""))
-        hits += hits_in_text(text, compiled, path)
+        if diff is None:
+            debug(f"read {path}" + (f" at {at}" if at else ""))
+            hits += hits_in_text(text, compiled, path)
+            continue
+        lines = git_lines(text)
+        if statuses.get(path) != "M":
+            # New, renamed, copied or changed in type: every line is added.
+            debug(f"read {path}: all {len(lines)} line(s) added ({statuses.get(path)})")
+            added_count += len(lines)
+            hits += hits_in_lines(lines, compiled, path)
+            continue
+        numbers = added_line_numbers(top, path, *diff)
+        added_count += len(numbers)
+        debug(f"read {path}: {len(numbers)} added line(s) of {len(lines)}")
+        found = hits_in_lines(lines, compiled, path)
+        hits += [h for h in found if h[1] in numbers]
+        pre = [h for h in found if h[1] not in numbers]
+        if pre:
+            held.append(held_line(path, pre))
+    if diff is not None:
+        told.append(f"{added_count} added line(s) read in {read} file(s); a line a file already had is never a hit")
+        told += held
     texts = []
     for w in words:
         try:
@@ -474,10 +648,14 @@ def check(cwd, rules, scope_all=False, range_spec=None, words=(), files_only=Fal
     exempt, templates, rev = set(), [], template_rev or "HEAD"
     if texts and in_git:
         exempt, templates, rev = pr_template_lines(top, rev)
+    cleanup = sum(len(rules.get(s) or []) for s in WORDS_ONLY_SECTIONS)
+    if cleanup and (texts or messages):
+        told.append(f"the words are held to the cleanup list too ({cleanup} pattern(s)): a fix made only to keep the "
+                    "letterhead is never named in words that leave; files are not held to it")
     for label, text in texts:
         read += 1
         debug(f"read the words in {label}")
-        hits += hits_in_text(text, compiled, label, exempt if templates else None)
+        hits += hits_in_text(text, compiled_words, label, exempt if templates else None)
         if templates:
             kept = sum(1 for l in text.splitlines() if l.strip() and template_key(l) in exempt)
             told.append(f"{label}: {kept} line(s) are the repository's pull-request template's as it holds them "
@@ -488,7 +666,9 @@ def check(cwd, rules, scope_all=False, range_spec=None, words=(), files_only=Fal
 
 
 def render(hits):
-    return [f"{label}:{n}: {kind}: {what if kind == 'character' else repr(what)} in: {shown}"
+    """One line per hit, `label:line: kind: what in: the line`; a kind
+    KIND_LABELS names is said by its label (a cleanup's name)."""
+    return [f"{label}:{n}: {KIND_LABELS.get(kind, kind)}: {what if kind == 'character' else repr(what)} in: {shown}"
             for label, n, kind, what, shown in hits]
 
 
@@ -501,6 +681,9 @@ def main(argv=None):
     ap.add_argument("--words-json", help="[[label, text], ...]: words that travel as one argument")
     ap.add_argument("--template-rev", help="where the repo's pull-request templates are read (default: HEAD)")
     ap.add_argument("--files-only", action="store_true", help="with --range, not the commit messages")
+    ap.add_argument("--added", action="store_true",
+                    help="the lines a diff adds, not the files it touches whole: the range's with --range, else the "
+                         "index's against HEAD; a line a file already had is told, never a hit")
     ap.add_argument("--never", action="append", default=[], help="a path never read, nor anything under it")
     ap.add_argument("--letterhead", help="the office's letterhead directory: its forbidden list, and the characters "
                                          "it refuses by default, less what it lifts")
@@ -540,7 +723,7 @@ def main(argv=None):
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
                 raise CheckError(f"--words-json is not [[label, text], ...]: {exc}")
         hits, told = check(a.directory, rules, a.all, a.range_spec, a.words, a.files_only, a.never,
-                           words_text, a.template_rev)
+                           words_text, a.template_rev, added=a.added)
     except CheckError as exc:
         print(f"[office] error: letterhead: {exc}", file=sys.stderr)
         return 2

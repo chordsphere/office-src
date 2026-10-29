@@ -16,6 +16,9 @@ could not deliver without a hand edit (found 2026-10-27).
    with its old comment as it is.
 2. The comment office land files on delivery.md names no session
    (office_helper.filing_note); walkthrough.md's still names it.
+3. (the gaps of 2026-10-28, C2) The words that leave never name a
+   cleanup: share/letterhead.toml's [cleanup] list, read against words
+   and commit messages alone.
 
 The suite makes no network call: a bare repo on this machine is the
 audience, and the fake land bale answers bale's verbs. Run with the rest
@@ -24,6 +27,7 @@ of the suite:
     tests/run.sh test_delivery_words
 """
 
+import os
 import pathlib
 import re
 import subprocess
@@ -257,6 +261,88 @@ class TestTheReviewAtLandReadsTheWordsThatLeave(LandCase):
                       "words", said)
         self.assertNotIn("would refuse", said)
         self.assertEqual((self.root / self.folder / "delivery.md").read_text(), page)
+
+
+# --- 3. words never name a cleanup (the gaps of 2026-10-28, C2) ------------------------------------
+
+class TestTheWordsNeverNameACleanup(unittest.TestCase):
+    """A fix made only to keep the letterhead is shipped clean and never
+    mentioned: share/letterhead.toml's [cleanup] list is read against the
+    words that leave (commit messages, delivery.md's words), never against
+    files, and never against office-src's own text."""
+
+    def test_the_list_refuses_the_names_in_words_and_render_says_so(self):
+        rules = install_rules()
+        words = [olh.compile_rules(rules, words=True), olh.compile_rules(rules)]
+        for text, what in (("Replaced the em dashes with commas.", "em dashes"), ("an en-dash, gone", "en-dash"),
+                           ("No Ellipses left", "Ellipses"), ("one ellipsis", "ellipsis"), ("U+2014 out", "U+2014"),
+                           ("swap the emdash", "emdash")):
+            found = olh.hits_in_text(text, words[0], "delivery.md")
+            self.assertEqual([(h[2], h[3]) for h in found], [("cleanup", what)], text)
+            self.assertEqual(olh.hits_in_text(text, words[1], "a.py"), [], text)  # files never
+        self.assertEqual(olh.render(olh.hits_in_text("the em dash, fixed", words[0], "delivery.md")),
+                         ["delivery.md:1: names a cleanup: 'em dash' in: the em dash, fixed"])
+        for fine in ("a dashboard", "the end of the line", "emphasis", "U+2019"):
+            self.assertEqual(olh.hits_in_text(fine, words[0], "delivery.md"), [], fine)
+
+    def test_the_list_is_one_section_of_the_one_toml_and_lifts_nothing(self):
+        import tomllib
+        text = RULES.read_text()
+        self.assertTrue(text.isascii())
+        data = tomllib.loads(text)
+        self.assertIn("cleanup", olh.WORDS_ONLY_SECTIONS)
+        self.assertEqual(len(data["cleanup"]["patterns"]), 4)
+        rules = install_rules()
+        self.assertEqual(rules["cleanup"], data["cleanup"]["patterns"])
+        # The three characters, names, phrasing and marks are as before.
+        self.assertEqual([n for n, _ in rules["characters"]], ["em dash", "en dash", "ellipsis"])
+        for section in ("names", "phrasing", "marks"):
+            self.assertEqual(rules[section], data[section]["patterns"])
+        # office-src's own text names the characters, and is never held to it.
+        from test_office import FINGERPRINTS, MODEL_NAMES
+        self.assertNotIn(data["cleanup"]["patterns"][0], FINGERPRINTS + MODEL_NAMES)
+        readme = (REPO / "README.md").read_text()
+        self.assertIn("em dash", readme)
+        self.assertEqual([h for h in olh.hits_in_text(readme, olh.compile_rules(rules), "README.md")
+                          if h[2] == "cleanup"], [])
+
+    def test_the_check_reads_it_in_words_and_commit_messages_never_in_files(self):
+        with tempfile.TemporaryDirectory(prefix="office-test-cleanup-") as tmp:
+            repo = pathlib.Path(tmp) / "r"
+            repo.mkdir()
+            env = dict(os.environ, GIT_AUTHOR_NAME="A", GIT_AUTHOR_EMAIL="a@example.org", GIT_COMMITTER_NAME="A",
+                       GIT_COMMITTER_EMAIL="a@example.org", GIT_CONFIG_GLOBAL=os.devnull)
+            git(repo, "init", "-q", "-b", "main", env=env)
+            (repo / "typography.md").write_text("How the renderer sets an em dash.\n")
+            git(repo, "add", "-A", env=env)
+            git(repo, "commit", "-qm", "Initial commit", env=env)
+            (repo / "typography.md").write_text("How the renderer sets an em dash, and an ellipsis.\n")
+            git(repo, "commit", "-qam", "Take the en dashes out", env=env)
+            rules = install_rules()
+            hits_, told = olh.check(str(repo), rules, range_spec="HEAD~1..HEAD", added=True)
+            self.assertEqual([(h[0].split()[0], h[2]) for h in hits_], [("commit", "cleanup")])
+            self.assertTrue(any("held to the cleanup list too" in t for t in told), told)
+            hits_, _ = olh.check(str(repo), rules, scope_all=True)
+            self.assertEqual(hits_, [])
+            words = pathlib.Path(tmp) / "words.md"
+            words.write_text("## Commit\n\nTidy the view\n\nThe ellipses are gone.\n")
+            proc = subprocess.run([sys.executable, "-B", str(REPO / "lib" / "office_letterhead.py"), "--rules",
+                                   str(RULES), "--words", str(words), str(repo)], capture_output=True, text=True, env=env)
+            self.assertEqual(proc.returncode, 1, proc.stderr)
+            self.assertIn(f"{words}:5: names a cleanup: 'ellipses' in: The ellipses are gone.", proc.stdout)
+
+
+class TestDeliverRefusesWordsThatNameACleanup(AudienceCase):
+    def test_the_words_are_refused_by_name_with_nothing_pushed(self):
+        before = self.audience_refs()
+        page = WORDS.replace("One route and its test.", "One route and its test; the em dashes became commas.")
+        self.write_words(page)
+        line = next(n for n, l in enumerate(page.splitlines(), 1) if "em dashes" in l)
+        proc = self.run_office("deliver", self.name, "--yes")
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn(f"delivery.md:{line}: names a cleanup: 'em dashes' in: ", proc.stdout)
+        self.assertIn("the letterhead refuses 1 line(s)", proc.stderr)
+        self.assertEqual(self.audience_refs(), before)
 
 
 if __name__ == "__main__":

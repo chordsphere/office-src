@@ -872,6 +872,219 @@ class TestDeliverOnAHost(AudienceCase):
 
 # --- 4. the folder's two pages --------------------------------------------------------------------
 
+# --- 3b. the delivery branch and other folders' deliveries (the gaps of 2026-10-28, A3 and A4) ---------
+
+DOCS_WORDS = """# Delivery: docs job
+
+- to: Pat Reviewer
+
+## Commit
+
+Document the health route
+
+How to call it.
+
+## Review
+
+Docs for the health route
+
+One page.
+"""
+
+
+class BranchCase(AudienceCase):
+    """AudienceCase with what these tests share: the branch the plan says
+    it chose, the project's branch prefix written as office projects set
+    will write it, and a second folder on the desk with a session of its
+    own landed after the first."""
+
+    def chosen(self, proc):
+        m = re.search(r"^\[office\] the delivery branch is (\S+): (.*)$", proc.stderr, re.M)
+        return (m.group(1), m.group(2)) if m else (None, None)
+
+    def set_prefix(self, value):
+        h.set_declarations(self.root / "floor-plan" / "manifest.toml", "proj", audience_keys={"branch_prefix": value})
+        git(self.root, "commit", "-qam", "the branch prefix", env=self.e.env)
+
+    def second_folder(self, words=DOCS_WORDS):
+        other = self.run_office("open", "docs job", "--lane", "proj: docs", "--size", "small", check=0).stdout.strip()
+        self.land_session(SID2, {"docs.md": "# health\n"}, "Document the route")
+        self.run_office("sessions", other.split("/")[1], SID2, check=0)
+        (self.root / other / "delivery.md").write_text(words)
+        git(self.root, "add", "-A", env=self.e.env)
+        git(self.root, "commit", "-qm", "the second folder's words", env=self.e.env)
+        return other, other.split("/")[1]
+
+
+class TestTheBranchRule(BranchCase):
+    """--branch; else delivery.md's branch line, behind the project's
+    branch_prefix; else the clone's branch when the audience has it and it
+    is not the base; else the folder's slug, behind the prefix. The plan
+    says which rule chose."""
+
+    def test_the_prefix_key_and_the_branch_line_as_units(self):
+        self.assertIn("branch_prefix", h.AUDIENCE_KEYS)
+        for given, kept in (("feature", "feature/"), ("feature/", "feature/"), ("feature//", "feature/"),
+                            (" users/pat/ ", "users/pat/")):
+            self.assertEqual(h.check_branch_prefix(given), kept)
+        for bad in ("", "/", "a b", "refs/heads/", "x..y/"):
+            with self.assertRaises(h.HelperError):
+                h.check_branch_prefix(bad)
+        self.assertEqual(h.prefixed_branch("results-view", "feature/"), ("feature/results-view", True))
+        self.assertEqual(h.prefixed_branch("team/results-view", "feature/"), ("team/results-view", False))
+        self.assertEqual(h.prefixed_branch("results-view", None), ("results-view", False))
+        self.assertIsNone(h.parse_delivery(WORDS)["branch"])
+        lined = WORDS.replace("- to: Pat Reviewer", "- to: Pat Reviewer\n- branch: results-view")
+        self.assertEqual(h.parse_delivery(lined)["branch"], "results-view")
+        self.assertEqual(h.parse_delivery(lined)["to"], "Pat Reviewer")
+        with self.assertRaises(h.HelperError) as cm:
+            h.parse_delivery(lined.replace("results-view", "results view"))
+        self.assertIn("the branch: line names 'results view'", str(cm.exception))
+        # --branch first, then the words, each saying so.
+        self.assertEqual(odl.named_branch("mine", "results-view", "proj", "feature/"), ("mine", "--branch names it", "flag"))
+        self.assertEqual(odl.named_branch(None, "results-view", "proj", "feature/"),
+                         ("feature/results-view", "delivery.md's branch line names results-view, behind proj's branch "
+                                                  "prefix feature/", "words"))
+        self.assertEqual(odl.named_branch(None, None, "proj", "feature/"), (None, None, None))
+        # The floor plan keeps it, reads it back and names a bad one.
+        self.set_prefix("feature")
+        manifest = self.root / "floor-plan" / "manifest.toml"
+        self.assertIn('branch_prefix = "feature/"', manifest.read_text())
+        entry = next(p for p in h.read_projects(h.read_toml(manifest)) if p["name"] == "proj")
+        self.assertEqual(entry["branch_prefix"], "feature/")
+        manifest.write_text(manifest.read_text().replace('branch_prefix = "feature/"', 'branch_prefix = "a b"'))
+        entry = next(p for p in h.read_projects(h.read_toml(manifest)) if p["name"] == "proj")
+        self.assertTrue(any("branch prefix" in p for p in entry["declaration_problems"]), entry)
+
+    def test_the_words_name_it_behind_the_prefix_and_the_slug_takes_it_too(self):
+        self.set_prefix("feature/")
+        # The clone on a branch the audience does not have: the slug decides.
+        git(self.clone, "checkout", "-q", "-b", "workbench", env=self.e.env)
+        proc = self.run_office("deliver", self.name)
+        self.assertEqual(self.chosen(proc), ("feature/health-route", "the folder's slug, behind proj's branch prefix "
+                                                                    "feature/ (the clone's branch workbench is not on "
+                                                                    "origin)"))
+        self.assertIn("branch:   feature/health-route, from main", proc.stdout)
+        # The words' branch line comes before the slug.
+        self.write_words(WORDS.replace("- to: Pat Reviewer", "- to: Pat Reviewer\n- branch: results-view"))
+        proc = self.run_office("deliver", self.name, "--yes")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.chosen(proc), ("feature/results-view", "delivery.md's branch line names results-view, "
+                                                                    "behind proj's branch prefix feature/"))
+        self.assertIn("refs/heads/feature/results-view", self.audience_refs())
+        self.assertIn("delivered: feature/results-view on origin of proj:", self.folder_md())
+
+    def test_the_clones_branch_when_the_audience_has_it_and_adopt_honours_it(self):
+        # The branch a brief's BRANCH line named, which office start checked
+        # out: a pull request's branch on the audience, made by hand.
+        cow = self.e.tmp / "cow"
+        git(self.e.tmp, "clone", "-q", str(self.audience), str(cow), env=self.e.env)
+        git(cow, "push", "-q", "origin", "main:refs/heads/picklists", env=self.e.env)
+        git(self.clone, "checkout", "-q", "-b", "picklists", env=self.e.env)
+        self.set_prefix("feature/")
+        proc = self.run_office("deliver", self.name, "--yes")
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(self.chosen(proc)[0], "picklists")  # the prefix never goes before the clone's branch
+        self.assertIn("it is the branch because the clone has picklists checked out and origin has it: the branch the "
+                      "session was built on", proc.stderr)
+        self.assertIn(f"office deliver {self.name} --branch picklists --adopt adds this delivery to it", proc.stderr)
+        # --adopt with no --branch now acts on that branch (it changed nothing before).
+        proc = self.run_office("deliver", self.name, "--yes", "--adopt")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.audience_subjects("picklists"), ["Add the health route", "Initial commit"])
+        self.assertIn("; adopted", self.folder_md())
+        # The base is never the clone's choice: on main, the slug.
+        git(self.clone, "checkout", "-q", "main", env=self.e.env)
+        self.land_session(SID3, {"more.md": "m\n"}, "More")
+        self.run_office("sessions", self.name, SID3, check=0)
+        proc = self.run_office("deliver", self.name)
+        self.assertEqual(self.chosen(proc), ("feature/health-route", "the folder's slug, behind proj's branch prefix "
+                                                                    "feature/ (the clone's branch is main, the base)"))
+
+
+class TestABranchAnotherFolderDeliveredTo(BranchCase):
+    """A branch some other folder of this office delivered to is the
+    office's: a delivery continues on it with no --adopt, from that
+    folder's last delivery there."""
+
+    def test_it_continues_on_it_and_names_the_folder(self):
+        self.run_office("deliver", self.name, "--yes", check=0)
+        other, other_name = self.second_folder(DOCS_WORDS.replace("- to: Pat Reviewer",
+                                                                  "- to: Pat Reviewer\n- branch: health-route"))
+        proc = self.run_office("deliver", other_name, "--yes")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        branch, why = self.chosen(proc)
+        self.assertEqual(branch, "health-route")
+        self.assertRegex(why, rf"^delivery\.md's branch line names health-route; {re.escape(self.folder)} delivered to "
+                              r"it on \d{4}-\d{2}-\d{2}, so this delivery continues on it$")
+        self.assertIn("branch:   health-route (adding to the branch on the audience), from main", proc.stdout)
+        self.assertIn(f"since {self.folder}'s last delivery on health-route", proc.stdout)
+        self.assertIn(f"covering {SID2};", proc.stdout)
+        self.assertIn(f"(added to the branch {self.folder} delivered to)", proc.stdout)
+        self.assertNotIn("adopted", proc.stdout)
+        self.assertIn("open the review already open on the audience's git host", proc.stdout)
+        self.assertIn(f"({self.folder} delivered to health-route on", proc.stdout)
+        self.assertEqual(self.audience_subjects(), ["Document the health route", "Add the health route", "Initial commit"])
+        page = (self.root / other / "folder.md").read_text()
+        self.assertRegex(page, rf"delivered: health-route on origin of proj: sessions {SID2}; workbench [0-9a-f]{{12}}; "
+                               r"delivery [0-9a-f]{12}\n")
+        # The first folder's page is never written by the second's delivery.
+        self.assertEqual(self.folder_md().count("delivered:"), 1)
+
+
+class TestWorkAnotherFolderDelivered(BranchCase):
+    """A squash that would carry a session another folder's delivered
+    record covers is refused by name, with the branch to continue on,
+    unless the audience's base already holds that delivery."""
+
+    def test_a_new_branch_carrying_it_is_refused_and_the_remedy_continues(self):
+        self.run_office("deliver", self.name, "--yes", check=0)
+        other, other_name = self.second_folder()
+        before = self.audience_refs()
+        for extra in ((), ("--others-too",)):
+            proc = self.run_office("deliver", other_name, "--yes", *extra)
+            self.assertEqual(proc.returncode, 1, proc.stdout)
+            self.assertIn("carries work another folder of this office already delivered, which is on the audience under "
+                          "its own review, so a new branch from main would deliver it twice", proc.stderr)
+            self.assertRegex(proc.stderr, rf"{SID} \({re.escape(self.folder)} delivered it to health-route on "
+                                          r"\d{4}-\d{2}-\d{2}\)")
+            self.assertIn(f"office deliver {other_name} --branch health-route continues on that branch instead",
+                          proc.stderr)
+        self.assertEqual(self.audience_refs(), before)
+        self.assertNotIn("delivered:", (self.root / other / "folder.md").read_text())
+        proc = self.run_office("deliver", other_name, "--yes", "--branch", "health-route")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.audience_subjects(), ["Document the health route", "Add the health route", "Initial commit"])
+
+    def test_the_base_holding_it_lets_it_through_and_a_gone_branch_is_said(self):
+        self.run_office("deliver", self.name, "--yes", check=0)
+        other, other_name = self.second_folder()
+        # The branch gone from the audience, its work not on main: refused,
+        # and the remedy says it cannot continue there.
+        git(self.audience, "update-ref", "-m", "kept", "refs/kept/health-route", "refs/heads/health-route", env=self.e.env)
+        git(self.audience, "branch", "-q", "-D", "health-route", env=self.e.env)
+        proc = self.run_office("deliver", other_name, "--yes")
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertIn("health-route is no longer on the audience", proc.stderr)
+        self.assertNotIn("--branch health-route continues", proc.stderr)
+        # The review merged into main: the base holds the delivery, so the
+        # squash adds nothing of it, and nothing refuses it as twice; the
+        # session still rides as another folder's, admitted as before.
+        cow = self.e.tmp / "cow"
+        git(self.e.tmp, "clone", "-q", str(self.audience), str(cow), env=self.e.env)
+        git(cow, "fetch", "-q", "origin", "refs/kept/health-route:refs/remotes/origin/health-route", env=self.e.env)
+        git(cow, "merge", "-q", "--no-ff", "-m", "Merge the health route", "origin/health-route", env=self.e.env)
+        git(cow, "push", "-q", "origin", "main", env=self.e.env)
+        proc = self.run_office("deliver", other_name, "--yes", "--others-too")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn("deliver it twice", proc.stderr)
+        self.assertIn("refs/heads/docs-job", self.audience_refs())
+        self.assertIn(" docs.md | 1 +", proc.stdout)
+        self.assertNotIn("src/health.py", proc.stdout.split("changes:")[1].split("words")[0])
+        self.assertEqual(git(self.audience, "ls-tree", "-r", "--name-only", "docs-job", env=self.e.env).split(),
+                         ["README.md", "docs.md", "src/a.py", "src/health.py"])
+
+
 class TestThePages(LandCase):
     def test_land_files_them_from_the_responses_notes(self):
         sid = self.start(self.name, "--on", "alpha", "--goal", "g", "--write", "src")

@@ -6,7 +6,9 @@ writes this page as the Delivery section at the end of its notes.md,
 every heading one level down (### Commit, ### Review); office land files
 it in the folder as delivery.md, and office deliver reads it. Written by
 hand, it is this file, in the folder. A `to:` line names the reviewer.
-Nothing here names a model, a tool or a session: the letterhead check
+A `branch:` line beside it names the delivery branch by a short name the
+session supplies (`- branch: results-view`); the project's prefix goes
+before it. Nothing here names a model, a tool or a session: the letterhead check
 reads the words that leave, the `to:` line and the Commit and Review
 sections, before anything leaves (this heading and this paragraph stay in
 the office, and are not read). When the office has a

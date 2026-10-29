@@ -25,16 +25,28 @@ as curated commits:
   or yes to the question on a terminal), and the delivery is then added
   to it, so a review's answer lands on the review's own branch. Adopted
   once, the folder records it, and the next delivery continues on it as
-  on any branch of its own.
+  on any branch of its own. A branch another folder of this office
+  delivered to is the office's, and a delivery continues on it with no
+  --adopt; a squash that would carry work another folder delivered onto
+  a branch of its own is refused, since that work would leave twice.
+- The delivery branch is chosen by one rule, and the plan says which
+  chose it (branch_why): --branch; else delivery.md's `branch:` line;
+  else the clone's checked-out branch, when the audience has it and it
+  is not the base (office start checks out the branch a brief names);
+  else the folder's slug. A project's branch_prefix goes before the
+  words' short name and the slug.
 - In a temporary worktree at the audience's tip, the landed work is
   squashed on (git merge --squash), less what bale's own commits changed
   (0.36.0: the commits bale makes for itself, with no session's work in
   them, its housekeeping `bale: ignore .bale/` and its sweeps, are undone
   on the workbench's tip first, in temporary commits that never leave;
-  take_out_own), bale's files are taken out of the index, the diff and
-  the folder's delivery words go through the letterhead check (the
+  take_out_own), bale's files are taken out of the index, the lines the
+  squash adds (never the files it touches whole: a line already on the
+  audience is not the delivery's, and is told, not refused) and the
+  folder's delivery words go through the letterhead check (the
   office's letterhead: its forbidden list, and the dashes and the
-  ellipsis it refuses by default; the lines of the repository's own
+  ellipsis it refuses by default, and, in the words alone, a cleanup's
+  name; the lines of the repository's own
   pull-request template, as the audience holds it, are not held to the
   phrasing rule or the three characters; a bale path named in a line that
   leaves is one of bale's marks, 0.36.0), and the words become one commit
@@ -542,6 +554,99 @@ def delivery_words(delivery_md, label=None):
     return (label or str(path), text), unread
 
 
+def named_branch(given, words_branch, project, prefix):
+    """(branch, why, rule) for a delivery branch the occupant or the words
+    name, the first two of the branch rule (the gaps of 2026-10-28, A3):
+    --branch NAME as given; else delivery.md's `branch:` line, the
+    project's branch_prefix before it unless the name holds a slash.
+    (None, None, None) when neither names one: the clone's branch or the
+    folder's slug decides, once the audience can be asked (plan step 4)."""
+    if given:
+        return oh.check_base(given), "--branch names it", "flag"
+    if words_branch:
+        name, put = oh.prefixed_branch(words_branch, prefix)
+        why = f"delivery.md's branch line names {words_branch}"
+        if put:
+            why += f", behind {project}'s branch prefix {prefix}"
+        elif prefix:
+            why += f" (it holds a slash, so {project}'s branch prefix {prefix} is not put before it)"
+        return name, why, "words"
+    return None, None, None
+
+
+def slug_branch(folder, project, prefix, clone_said=None):
+    """(branch, why) for the last of the branch rule: the folder's slug,
+    the project's branch_prefix before it; clone_said says why the clone's
+    checked-out branch was not the one."""
+    slug = branch_from_folder(folder)
+    name, put = oh.prefixed_branch(slug, prefix)
+    why = "the folder's slug" + (f", behind {project}'s branch prefix {prefix}" if put else "")
+    return name, why + (f" ({clone_said})" if clone_said else "")
+
+
+def other_deliveries(office_root, rel, project, audience):
+    """[(folder, day, record)] for every `delivered` History line another
+    folder of this office keeps for this project and audience, on the desk
+    and in the filing cabinet, oldest first by day (oh.delivered_records
+    per folder page). A page that cannot be read is said, never skipped
+    silently: a delivery it records is not known to this plan."""
+    root = pathlib.Path(office_root)
+    out = []
+    for space in ("desk", "filing-cabinet"):
+        for md in sorted((root / space).glob("*/folder.md")):
+            where = f"{space}/{md.parent.name}"
+            if where == rel:
+                continue
+            try:
+                records = oh.delivered_records(md)
+            except (OSError, UnicodeDecodeError, oh.HelperError) as exc:
+                log(f"warning: {where}/folder.md cannot be read, so what it delivered is not known to this "
+                    f"delivery: {exc}")
+                continue
+            out += [(where, day, rec) for day, rec in records
+                    if rec["project"] == project and rec["audience"] == audience]
+    return sorted(out, key=lambda x: x[1])
+
+
+def commit_known(repo, sha):
+    """Whether a commit (an abbreviated sha from a History line) is in the
+    repo the delivery is built in."""
+    return g(repo, "cat-file", "-e", f"{sha}^{{commit}}", check=False).returncode == 0
+
+
+def is_ancestor(repo, sha, of):
+    return commit_known(repo, sha) and g(repo, "merge-base", "--is-ancestor", sha, of, check=False).returncode == 0
+
+
+def base_holds(repo, rec):
+    """Whether the audience's base, as fetched, already holds a delivery a
+    record names: its workbench commit or its delivery commit is on it. A
+    review merged as a squash leaves neither there, and is not seen."""
+    return any(is_ancestor(repo, rec[k], REF_BASE) for k in ("workbench", "delivery"))
+
+
+def twice_lines(folder, base, branch, continuing, since_why, twice, gone):
+    """The refusal of a squash that would carry work another folder
+    already delivered (the gaps of 2026-10-28, A4): the sessions by name,
+    the folder and branch that delivered them, and the remedy, continuing
+    on that branch (or why it cannot be, when the audience no longer has
+    it)."""
+    onto = f"this delivery onto {branch}" if continuing else f"a new branch from {base}"
+    named = "; ".join(f"{', '.join(carried)} ({where} delivered {'it' if len(carried) == 1 else 'them'} to "
+                      f"{rec['branch']} on {day})" for where, day, rec, carried in twice)
+    lines = [f"the landed work since {since_why} carries work another folder of this office already delivered, which "
+             f"is on the audience under its own review, so {onto} would deliver it twice: {named}"]
+    for b in dict.fromkeys(rec["branch"] for _, _, rec, _ in twice):
+        if b in gone:
+            lines.append(f"{b} is no longer on the audience (merged and deleted, it may be), and {base} as fetched "
+                         "does not hold that delivery's commits (a review merged as a squash leaves none the office "
+                         "can find), so the office cannot tell the work is there; nothing was pushed")
+        else:
+            lines.append(f"office deliver {folder} --branch {b} continues on that branch instead, so this delivery is "
+                         "added to the review already open there; nothing was pushed")
+    return lines
+
+
 def unread_line(label, unread):
     """What the check says of delivery.md's lines it did not read, since a
     line skipped without a word is a silent skip."""
@@ -633,8 +738,17 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
     if not base:
         raise DeliverError([f"{name}'s clone does not say which branch {audience} points at (no {audience}/HEAD), "
                             f"so the base is not known; office projects set {name} --base BRANCH names it"])
-    branch = oh.check_base(branch) if branch else branch_from_folder(folder)
-    if branch == base:
+    # The delivery branch, by the branch rule (the gaps of 2026-10-28, A3):
+    # --branch; else the words' branch line, behind the project's prefix;
+    # else the clone's checked-out branch when the audience has it and it
+    # is not the base (step 4, which can ask the audience); else the
+    # folder's slug, behind the prefix. branch_why says which rule chose.
+    prefix = entry.get("branch_prefix")
+    try:
+        branch, branch_why, branch_rule = named_branch(branch, words.get("branch"), name, prefix)
+    except oh.HelperError as exc:
+        raise DeliverError([f"the delivery branch: {exc}"])
+    if branch is not None and branch == base:
         raise DeliverError([f"the delivery branch would be {branch}, which is the base itself; name another: --branch NAME"])
     guard_lines = []
     if facts["guard"] == "none":
@@ -662,8 +776,42 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             raise DeliverError([f"{audience} ({url}) did not answer for {base} from this machine (git fetch exit "
                                 f"{fetched.returncode}): {ohost._last_words(fetched.stderr)}; the audience is reached "
                                 "with this machine's credentials, so check them (git ls-remote there, by hand)"])
-        on_branch = g(repo, "fetch", "-q", where, f"+refs/heads/{branch}:{REF_BRANCH}", check=False,
-                      timeout=ohost.TRANSFER_TIMEOUT).returncode == 0
+        def fetch_branch(name_):
+            return g(repo, "fetch", "-q", where, f"+refs/heads/{name_}:{REF_BRANCH}", check=False,
+                     timeout=ohost.TRANSFER_TIMEOUT).returncode == 0
+
+        on_branch = None
+        if branch is None:
+            # The clone's checked-out branch: office start checks out the
+            # branch a brief's BRANCH line names, so it is the branch the
+            # session was built on, when the audience has it (A4).
+            checked_out, clone_said = facts.get("branch") or None, None
+            if checked_out:
+                try:
+                    checked_out = oh.check_base(checked_out)
+                except oh.HelperError:
+                    clone_said, checked_out = f"the clone's branch {checked_out} is not a name git pushes", None
+            if not checked_out:
+                clone_said = clone_said or "the clone has no branch checked out"
+            elif checked_out == base:
+                clone_said = f"the clone's branch is {base}, the base"
+            elif fetch_branch(checked_out):
+                branch, on_branch, branch_rule = checked_out, True, "clone"
+                branch_why = (f"the clone has {checked_out} checked out and {audience} has it: the branch the "
+                              "session was built on")
+            else:
+                clone_said = f"the clone's branch {checked_out} is not on {audience}"
+            if branch is None:
+                try:
+                    branch, branch_why = slug_branch(folder, name, prefix, clone_said)
+                except oh.HelperError as exc:
+                    raise DeliverError([f"the delivery branch from the folder's slug: {exc}; name one: --branch NAME"])
+                branch_rule = "slug"
+            if branch == base:
+                raise DeliverError([f"the delivery branch would be {branch}, which is the base itself; name another: "
+                                    "--branch NAME"])
+        if on_branch is None:
+            on_branch = fetch_branch(branch)
         continuing = on_branch
         # 5. The landed work: the clone's HEAD here, or carried as a bundle.
         applied = []
@@ -721,15 +869,25 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
         # commit when there was one, else since the branch and the base
         # parted.
         records = oh.delivered_records(md)
-        # A branch the audience has that no record of this folder's covers
+        # Another folder of this office that delivered to the branch made it
+        # (the gaps of 2026-10-28, A4): the delivery continues on it with no
+        # --adopt, the range starting at that folder's last delivery there.
+        elsewhere = other_deliveries(office_root, rel, name, audience)
+        own_on = any(rec["branch"] == branch for _, rec in records)
+        joined = [x for x in elsewhere if x[2]["branch"] == branch] if continuing and not own_on else []
+        if joined:
+            where_, day_, _ = joined[-1]
+            branch_why += f"; {where_} delivered to it on {day_}, so this delivery continues on it"
+        log(f"the delivery branch is {branch}: {branch_why}")
+        # A branch the audience has that no record of this office's covers
         # was made outside the office: adopted when the occupant says so
         # (--adopt; on a terminal bin/office asks, and the plan goes on so
         # the question shows the delivery whole), refused by name piped.
-        adopting = continuing and not any(rec["branch"] == branch for _, rec in records)
+        adopting = continuing and not own_on and not joined
         if adopting and not (adopt or interactive):
             raise DeliverError([f"{audience} already has a branch named {branch}, and {rel} records no delivery on it, "
-                                "so it was made outside the office (a pull request opened by hand, say) or is another "
-                                "folder's",
+                                "nor does any other folder of this office, so it was made outside the office (a pull "
+                                f"request opened by hand, say); it is the branch because {branch_why}",
                                 f"office deliver {folder} --branch {branch} --adopt adds this delivery to it, as a "
                                 "review's answer goes onto the review's own branch; or name another: --branch NAME; "
                                 "piped input is never asked"])
@@ -739,7 +897,12 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
                     and g(repo, "merge-base", "--is-ancestor", rec["workbench"], workbench, check=False).returncode == 0:
                 since, since_why = rec["workbench"], f"the last delivery on {branch} ({rec['delivery'][:12]})"
                 break
-        if since is None and adopting:
+        if since is None and joined:
+            for where_, _, rec in reversed(joined):
+                if is_ancestor(repo, rec["workbench"], workbench):
+                    since, since_why = rec["workbench"], f"{where_}'s last delivery on {branch} ({rec['delivery'][:12]})"
+                    break
+        if since is None and (adopting or joined):
             # What the adopted branch does not have yet: the workbench since
             # it and the branch parted (the branch's own commits, pushed by
             # hand from the clone, are then not delivered twice).
@@ -772,6 +935,23 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             raise DeliverError([f"the landed work since {since_why} ({commits} commit(s)) carries none of {rel}'s applied "
                                 f"sessions ({', '.join(folder_sids)}); its sessions are not on the workbench branch's "
                                 "history since the base"])
+        # Work another folder already delivered (its record's sessions name
+        # a session the range carries) is on the audience under its own
+        # review: a squash that carries it again delivers it twice, refused
+        # by name unless the base already holds it. A record on the branch
+        # this delivery continues on is that branch's own history.
+        twice = []
+        for where_, day_, rec in elsewhere:
+            if continuing and rec["branch"] == branch:
+                continue
+            carried = [s for s in covered if s in rec["sessions"]]
+            if carried and not base_holds(repo, rec):
+                twice.append((where_, day_, rec, carried))
+        if twice:
+            gone = [b for b in dict.fromkeys(rec["branch"] for _, _, rec, _ in twice)
+                    if g(repo, "ls-remote", "--exit-code", "--heads", where, f"refs/heads/{b}", check=False,
+                         timeout=ohost.TRANSFER_TIMEOUT).returncode == 2]
+            raise DeliverError(twice_lines(folder, base, branch, continuing, since_why, twice, gone))
         # 7. The worktree at the audience's tip, the landed work squashed
         # on, less what bale's own commits in the range changed (0.36.0):
         # those are undone on the workbench's tip first, in temporary
@@ -805,10 +985,14 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
                                 f"{branch if continuing else base}"])
         stat = g(worktree, "diff", "--cached", "--stat=100").stdout.rstrip().splitlines()
         shown_stat = stat if len(stat) <= STAT_LINES else stat[:STAT_LINES - 1] + [f"  ... {len(stat) - STAT_LINES + 1} more line(s)", stat[-1]]
-        # 8. The letterhead check: the diff as staged, and the words, the
-        # lines of the repository's pull-request template as the audience
-        # holds it (at the delivery's start) aside from the phrasing rule
-        # and the three characters (0.26.0). The words are what of
+        # 8. The letterhead check: the lines the staged squash adds against
+        # the delivery's start (git diff --cached; the gaps of 2026-10-28,
+        # A2), never the files it touches whole: a line a file already had
+        # is told, one line per file, and never refuses. The words are read
+        # with the cleanup list too (C2), the lines of the repository's
+        # pull-request template as the audience holds it (at the delivery's
+        # start) aside from the phrasing rule and the three characters
+        # (0.26.0). The words are what of
         # delivery.md leaves (0.35.0, delivery_words): the page's heading
         # and office land's filing note stay in the office, so a page
         # office land filed is never refused for a line of its own. The
@@ -819,7 +1003,7 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             rules = office_rules(office_root)
             words_text, unread = delivery_words(delivery_md)
             hits, told = olh.check(str(worktree), rules, words_text=[words_text], never=NEVER_DELIVERED,
-                                   template_rev=start_sha)
+                                   template_rev=start_sha, added=True, added_base=start_sha)
         except (olh.CheckError, OSError) as exc:
             raise DeliverError([f"the letterhead check could not run: {exc}"])
         if unread:
@@ -827,6 +1011,11 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
         out = {
             "folder": rel, "folder_name": folder, "title": title, "project": name, "audience": audience, "url": url,
             "author": author, "base": base, "branch": branch, "continuing": continuing, "adopting": adopting,
+            # Additive (the gaps of 2026-10-28): which rule chose the branch
+            # (flag, words, clone or slug) and why, in one sentence, and the
+            # other folder whose branch this delivery continues on, if any.
+            "branch_why": branch_why, "branch_rule": branch_rule,
+            "joined": {"folder": joined[-1][0], "day": joined[-1][1]} if joined else None,
             "place": {"path": place.path, "host": place.host, "shell": place.shell, "connect": place.connect, "name": name}
             if place.hosted else None,
             "repo": str(repo), "temp_dir": temp_dir, "wt_root": str(wt_root), "worktree": str(worktree),
@@ -962,8 +1151,9 @@ def read_commits(worktree, start, rules):
     """Each commit since start in the worktree, oldest first, as the
     question shows it: sha, subject, body, author, committer, their dates
     (0.32.0; git's strict ISO form), the files it touches (status and path)
-    and the letterhead's verdict on it (its message and the files it
-    changed, at its version). Returns (shown, hits across them)."""
+    and the letterhead's verdict on it (its message, and the lines it adds
+    to the files it changed, at its version: never a file whole). Returns
+    (shown, hits across them)."""
     import office_letterhead as olh
     log_ = g(worktree, "log", "--reverse", "--format=%H%x00%an <%ae>%x00%cn <%ce>%x00%aI%x00%cI%x00%B%x1e",
              f"{start}..HEAD").stdout
@@ -975,7 +1165,7 @@ def read_commits(worktree, start, rules):
         subject, _, body = message.strip("\n").partition("\n")
         files = g(worktree, "diff-tree", "--root", "-r", "--no-commit-id", "--name-status", "-M", sha).stdout.splitlines()
         try:
-            hits, _ = olh.check(str(worktree), rules, range_spec=f"{sha}^..{sha}")
+            hits, _ = olh.check(str(worktree), rules, range_spec=f"{sha}^..{sha}", added=True)
         except olh.CheckError as exc:
             raise DeliverError([f"the letterhead check could not run on commit {sha[:12]}: {exc}"])
         all_hits += hits
@@ -1049,8 +1239,19 @@ def run(office_root, plan_, day):
     except (OSError, oh.HelperError, ob.LandError) as exc:
         told.append(f"{plan_['folder']}/folder.md: the delivery could not be recorded ({exc}); the branch is on the audience")
     review = plan_["words"]["review"]
+    joined = plan_.get("joined")
     nxt = []
-    if adopting:
+    if joined and not adopting:
+        # Another folder of this office delivered to the branch, so its
+        # review is open there already: this delivery is added to it.
+        url = branch_url(plan_["url"], plan_["branch"])
+        said = (f"{joined['folder']} delivered to {plan_['branch']} on {joined['day']}, so the review open there "
+                "carries this delivery too, and the words in delivery.md's Review section are what to reply with")
+        nxt.append(f"open the review: {url}" if url else
+                   f"open the review already open on the audience's git host ({plan_['url']}) for the branch "
+                   f"{plan_['branch']}")
+        nxt.append(f"({said})")
+    elif adopting:
         # The review is the one already open on the branch (made outside
         # the office): this delivery is added to it, and the review's words
         # are the reply, not a new review's form.
@@ -1075,6 +1276,7 @@ def run(office_root, plan_, day):
     if plan_["words"].get("to"):
         nxt.append(f"send it to: {plan_['words']['to']}")
     how = (" (added to the branch, adopted: it was made outside the office)" if adopting
+           else f" (added to the branch {joined['folder']} delivered to)" if joined
            else " (added to the branch)" if plan_["continuing"] else "")
     words = (f"Delivered: {plan_['branch']} is on {plan_['audience']} for {plan_['project']}, {len(shas)} commit(s) by "
              f"{plan_['author']} onto {plan_['base']}" + how
@@ -1108,13 +1310,14 @@ def letterhead_argv(install, args):
 
 
 def check_in_project(office_root, project, scope_all=False, range_spec=None, words=(), files_only=False,
-                     never=(), words_text=(), template_rev=None):
+                     never=(), words_text=(), template_rev=None, added=False):
     """Run the letterhead check in a project's repo where it is. On a
     host the module travels as the program python3 reads from stdin and
     the rules as one JSON argument, through the project's shell, writing
     nothing there; the hits come back on stdout. words_text, (label,
-    text) pairs, travel as one argument too, so words reach a host.
-    Returns (exit code, stdout, stderr)."""
+    text) pairs, travel as one argument too, so words reach a host. added
+    reads the lines the range adds, not its files whole (--added), as
+    office deliver reads a delivery. Returns (exit code, stdout, stderr)."""
     import json
     import shlex
     import office_letterhead as olh
@@ -1134,7 +1337,7 @@ def check_in_project(office_root, project, scope_all=False, range_spec=None, wor
     flags = (["--all"] if scope_all else []) + (["--range", range_spec] if range_spec else []) \
         + (["--files-only"] if files_only else []) + [x for n in never for x in ("--never", n)] \
         + (["--words-json", json.dumps([list(w) for w in words_text])] if words_text else []) \
-        + (["--template-rev", template_rev] if template_rev else [])
+        + (["--template-rev", template_rev] if template_rev else []) + (["--added"] if added else [])
     if not place.hosted:
         argv = letterhead_argv(INSTALL, ["--rules-json", json.dumps(rules), *flags,
                                          *[w for f in words for w in ("--words", str(f))], str(place.path)])
@@ -1160,9 +1363,10 @@ REVIEW_SHOWN = 12
 
 def land_review(office_root, project, sid, folder_rel=None):
     """The letterhead's review of what a session landed on a project with
-    an audience: the files its landing changed (applied/SID's first
-    parent to it, bale's own files aside, never its commit messages, which
-    never travel) and the folder's delivery.md words, read as office
+    an audience: the lines its landing added (applied/SID's first parent
+    to it, bale's own files aside, never its commit messages, which never
+    travel; the files' other lines were there before, and deliver does not
+    refuse them either) and the folder's delivery.md words, read as office
     deliver reads them. Lines to say; it refuses nothing, and a review
     that cannot run is a line, never a failed landing. [] for a project
     with no audience."""
@@ -1182,7 +1386,8 @@ def land_review(office_root, project, sid, folder_rel=None):
     tag = f"applied/{sid}"
     try:
         rc, out, err = check_in_project(root, project, range_spec=f"{tag}^1..{tag}", files_only=True,
-                                        never=NEVER_DELIVERED, words_text=words_text, template_rev=template_rev)
+                                        never=NEVER_DELIVERED, words_text=words_text, template_rev=template_rev,
+                                        added=True)
     except DeliverError as exc:
         return [f"letterhead: the review of {sid}'s landing could not run: {'; '.join(exc.lines)}"]
     what = "the change it landed" + (" and the delivery words" if words_text else " (no delivery words filed yet)")

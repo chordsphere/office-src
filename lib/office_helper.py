@@ -808,7 +808,7 @@ def read_projects(manifest):
         item = {"name": name, "path": None, "resolved": None, "problem": None,
                 "rides": [], "after_land": [], "declaration_problems": [],
                 "host": None, "shell": None, "connect": None,
-                "audience": None, "author": None, "base": None, "validates_on": None}
+                "audience": None, "author": None, "base": None, "validates_on": None, "branch_prefix": None}
         if not PROJECT_NAME_RE.match(name):
             item["problem"] = "the name must be letters, digits, dash or underscore"
         elif not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
@@ -900,7 +900,14 @@ HOST_KEYS = ("host", "shell", "connect")
 #             it is worked: such a project is worked from a guarded
 #             clone on this machine by default (ruling 2 of the front-door
 #             arc). Recorded and rendered; nothing validates there yet.
-AUDIENCE_KEYS = ("audience", "author", "base", "validates_on")
+#   branch_prefix
+#             (the gaps of 2026-10-28, A3) what goes before a delivery
+#             branch's short name, a git ref prefix kept with one trailing
+#             slash (`feature/`): before the name delivery.md's branch line
+#             gives and before the folder's slug, never before a --branch
+#             name, the clone's own branch or a name that holds a slash.
+#             Unset, none. Read and checked here; no verb sets it yet.
+AUDIENCE_KEYS = ("audience", "author", "base", "validates_on", "branch_prefix")
 REMOTE_NAME_RE = LazyPattern(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 AUTHOR_RE = LazyPattern(r"^(?P<name>[^<>]+?)\s*<(?P<email>[^<>@\s]+@[^<>@\s]+)>$")
 # A branch name as git takes one: no space, no control character, none
@@ -955,8 +962,31 @@ def check_validates_on(host):
         raise HelperError(f"validates_on: {exc}")
 
 
+def check_branch_prefix(text):
+    """A branch prefix as it is kept: a git ref prefix, one trailing slash
+    (`feature` and `feature//` are kept as `feature/`), whose every part
+    is a branch name as check_base takes one."""
+    value = (text or "").strip().rstrip("/")
+    if not value:
+        raise HelperError("a branch prefix goes before a delivery branch's name (feature/, say), and is empty")
+    try:
+        check_base(value)
+    except HelperError:
+        raise HelperError(f"a branch prefix is a git ref prefix ending in one slash (feature/, say), not {text!r}")
+    return value + "/"
+
+
+def prefixed_branch(name, prefix):
+    """(the branch, whether the prefix went before it): a short name with
+    the project's branch prefix before it, unless there is no prefix or
+    the name already holds a slash (a name written whole, feature/x)."""
+    if not prefix or "/" in name:
+        return name, False
+    return check_base(prefix + name), True
+
+
 AUDIENCE_CHECKS = {"audience": check_audience, "author": check_author, "base": check_base,
-                   "validates_on": check_validates_on}
+                   "validates_on": check_validates_on, "branch_prefix": check_branch_prefix}
 
 
 def check_ride(path):
@@ -1106,6 +1136,9 @@ def describe_audience(entry):
         where = f"on {entry['host']}" if entry.get("host") else "on this machine"
         out.append(f"validates on: {entry['validates_on']}, not where it is worked ({where}); nothing validates "
                    "there yet")
+    if entry.get("branch_prefix"):
+        out.append(f"branch prefix: {entry['branch_prefix']} (before a delivery branch's short name: delivery.md's "
+                   "branch line, or the folder's slug)")
     return out
 
 
@@ -2064,6 +2097,10 @@ def cmd_ratifications(a):
 PAGE_SECTIONS = {"walkthrough": "Walkthrough", "delivery": "Delivery"}
 PAGE_FILES = {"walkthrough": "walkthrough.md", "delivery": "delivery.md"}
 TO_LINE_RE = LazyPattern(r"^(?:- )?to:\s*(.+?)\s*$", re.I)
+# The delivery branch's short name (the gaps of 2026-10-28, A3), beside the
+# `to:` line above the first section: `- branch: results-view`, the
+# project's branch_prefix put before it by office deliver.
+BRANCH_LINE_RE = LazyPattern(r"^(?:- )?branch:\s*(.+?)\s*$", re.I)
 PATHS_LINE_RE = LazyPattern(r"^(?:- )?paths:\s*(.+?)\s*$", re.I)
 DELIVERED_RE = LazyPattern(r"^(?P<branch>\S+) on (?P<audience>\S+) of (?P<project>\S+): sessions (?P<sessions>.*?); "
                           r"workbench (?P<workbench>[0-9a-f]{7,40}); delivery (?P<delivery>[0-9a-f]{7,40})"
@@ -2187,8 +2224,11 @@ def cmd_file_pages(a):
 
 
 def parse_delivery(text):
-    """What a folder's delivery.md says: {to, commits: [{subject, body,
-    paths}], review: {title, body}}, or HelperError naming what is wrong.
+    """What a folder's delivery.md says: {to, branch, commits: [{subject,
+    body, paths}], review: {title, body}}, or HelperError naming what is
+    wrong. A `branch:` line beside the `to:` line names the delivery
+    branch by a short name (checked as a branch name; None when absent),
+    which office deliver puts the project's branch prefix before.
     A Commit section's first paragraph is the subject (one line); the
     rest is the body. Several Commit sections make several commits, each
     but the last naming the paths it takes on a `paths:` line (comma-
@@ -2200,11 +2240,18 @@ def parse_delivery(text):
     template's own `## ` headings filled into the Review stay in its body."""
     lines = text.splitlines()
     first, spans = delivery_sections(lines)
-    to = None
+    to, branch = None, None
     for line in lines[:first]:
         m = TO_LINE_RE.match(line.strip())
         if m:
             to = m.group(1)
+        m = BRANCH_LINE_RE.match(line.strip())
+        if m:
+            try:
+                branch = check_base(m.group(1))
+            except HelperError:
+                raise HelperError(f"the branch: line names {m.group(1)!r}, which is not a branch name as git takes "
+                                  "one (a short name like results-view; the project's prefix goes before it)")
     sections = [(lines[s][3:].strip(), lines[s + 1:e]) for s, e in spans]
 
     def paragraphs(body):
@@ -2265,7 +2312,7 @@ def parse_delivery(text):
                               "starts with a paths: line naming what it takes")
     if commits[-1]["paths"]:
         raise HelperError("the last Commit section takes everything the others left, so it names no paths")
-    return {"to": to, "commits": commits, "review": review}
+    return {"to": to, "branch": branch, "commits": commits, "review": review}
 
 
 LEAVING_SECTIONS = ("commit", "review")
