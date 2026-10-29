@@ -2,9 +2,9 @@
 # (lib/office_letterhead.py), and the suite's text rules with it
 # (tests/test_office.py reads names and phrasing from here, so the tool's
 # own text is held to the same list). The check runs on what leaves the
-# office for an audience: the files a delivery changes, its commit
-# messages and the delivery's words (office deliver runs it before
-# anything is pushed), or any tree or range by hand.
+# office for an audience: the lines a delivery adds, its commit messages
+# and the delivery's words (office deliver runs it before anything is
+# pushed), or any tree or range by hand.
 #
 # Every pattern is a Python regular expression matched case-insensitively
 # against one line; a fixed string is a pattern with nothing special in
@@ -83,6 +83,22 @@ patterns = [
   "\\.bale\\b",          # .bale/, and the files named after it (.bale-bundle, .bale-manifest.json)
   "\\.baleignore\\b",
   "\\bbale\\.toml\\b",
+]
+
+# cleanup    words that name a cleanup, read only against the words that
+#            leave (commit messages, and delivery.md's to: line and its
+#            Commit and Review sections), never against files and never
+#            against office-src's own text, which names the characters it
+#            refuses. A fix made only to keep the letterhead is shipped
+#            clean and never mentioned (the gaps of 2026-10-28, C2: a pull
+#            request's body said the em dashes were replaced). The code
+#            points are the same three characters named another way.
+[cleanup]
+patterns = [
+  "\\bem[- ]?dash(?:es)?\\b",
+  "\\ben[- ]?dash(?:es)?\\b",
+  "\\bellips[ie]s\\b",
+  "\\bu\\+20(?:13|14|26)\\b",
 ]
 
 [characters]

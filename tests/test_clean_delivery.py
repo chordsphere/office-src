@@ -15,6 +15,9 @@ front-door arc: landing and delivery hold the audience line by default.
    named and replaced.
 6. A project with an audience is worked from a guarded clone on this
    machine; a host declared for it is where it validates.
+7. (the gaps of 2026-10-28, A2) A delivery is held to the lines it adds,
+   never the files it touches whole: a refused character on a line the
+   file already had is told, one line per file, and refuses nothing.
 
 Most are units; one command test per outcome. Every remote a test
 pushes to is a bare repository the test made. Run with the rest of the
@@ -36,7 +39,7 @@ from test_office import REPO, Env, h  # noqa: E402
 from test_start import on_a_terminal  # noqa: E402
 from test_land import LandCase, response_tarball  # noqa: E402
 from test_project_on_host import HOST  # noqa: E402
-from test_audience_line import AudienceCase, SID, SID2, WORDS, git  # noqa: E402
+from test_audience_line import AudienceCase, SID, SID2, SID3, WORDS, git  # noqa: E402
 
 import office_deliver as odl  # noqa: E402
 import office_host as ohost  # noqa: E402
@@ -614,6 +617,143 @@ class TestTheDeliveryCommitsDates(AudienceCase):
 
 
 # --- the record ----------------------------------------------------------------------------------------
+
+# --- 7. the lines a delivery adds (the gaps of 2026-10-28, A2) --------------------------------------------
+
+# A file that already holds six em dashes, written long before the
+# delivery, as src/views/UploadView.vue did.
+OLD_DASHES = "".join(f"line {n} {EM} written long ago\n" for n in range(1, 7)) + "the line a session changes\n"
+
+
+class TestTheLinesADeliveryAdds(unittest.TestCase):
+    """The check's added-lines read, as units on a repo of its own: the
+    staged index against a start, a range, the hand check unchanged."""
+
+    def setUp(self):
+        self.e = Env(self)
+        self.letterhead = self.e.tmp / "office" / "letterhead"
+        self.letterhead.mkdir(parents=True)
+        self.repo = repo_with(self.e.tmp / "r", {"src/view.vue": OLD_DASHES, "keep.txt": "kept\n",
+                                                 "pic.png": "not read\n"}, self.e.env)
+        self.start = git(self.repo, "rev-parse", "HEAD", env=self.e.env).strip()
+        self.rules = olh.apply_letterhead(olh.load_rules_toml(RULES), self.letterhead, "letterhead")
+
+    def stage(self, files):
+        for rel, text in files.items():
+            (self.repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.repo / rel).write_text(text)
+        git(self.repo, "add", "-A", env=self.e.env)
+
+    def test_a_line_the_file_already_had_is_told_never_a_hit(self):
+        self.stage({"src/view.vue": OLD_DASHES.replace("the line a session changes", "the line, changed")})
+        hits, told = olh.check(str(self.repo), self.rules, added=True, added_base=self.start)
+        self.assertEqual(hits, [])
+        self.assertIn("src/view.vue: 6 line(s) the file already had hold the em dash (U+2014); not this delivery's, "
+                      "not refused", told)
+        self.assertIn(f"the lines the index adds against {self.start[:12]} to the 1 file(s) it changed, each at its "
+                      "line in the new file", told)
+        self.assertIn("1 added line(s) read in 1 file(s); a line a file already had is never a hit", told)
+        # The same tree read whole, as before: six hits.
+        whole, _ = olh.check(str(self.repo), self.rules)
+        self.assertEqual(len(whole), 6)
+
+    def test_an_added_line_refuses_named_at_its_line_in_the_new_file(self):
+        self.stage({"src/view.vue": "a new first line\n" + OLD_DASHES + f"an added {EN} line\n"})
+        hits, told = olh.check(str(self.repo), self.rules, added=True, added_base=self.start)
+        self.assertEqual(olh.render(hits), [f"src/view.vue:9: character: the en dash (U+2013) in: an added {EN} line"])
+        self.assertIn("src/view.vue: 6 line(s) the file already had hold the em dash (U+2014); not this delivery's, "
+                      "not refused", told)
+
+    def test_a_new_or_renamed_file_is_all_added_lines_and_a_binary_one_is_skipped(self):
+        git(self.repo, "mv", "keep.txt", "moved.txt", env=self.e.env)
+        (self.repo / "moved.txt").write_text(f"kept {ELL}\n")
+        self.stage({"new.md": f"new {EM}\n", "pic.png": f"still {EM} not read\n"})
+        hits, told = olh.check(str(self.repo), self.rules, added=True, added_base=self.start)
+        self.assertEqual(sorted(olh.render(hits)), [f"moved.txt:1: character: the ellipsis (U+2026) in: kept {ELL}",
+                                                    f"new.md:1: character: the em dash (U+2014) in: new {EM}"])
+        self.assertFalse(any("the file already had hold" in t for t in told), told)
+
+    def test_a_form_feed_inside_a_line_keeps_the_numbers_where_git_puts_them(self):
+        self.stage({"src/view.vue": "page\f break\n" + OLD_DASHES + f"added {EN}\n"})
+        hits, _ = olh.check(str(self.repo), self.rules, added=True, added_base=self.start)
+        self.assertEqual([h[1] for h in hits], [9])
+
+    def test_a_range_reads_what_each_commit_adds_and_its_messages(self):
+        self.stage({"src/view.vue": OLD_DASHES + f"one more {EM}\n"})
+        git(self.repo, "commit", "-qm", "Add a line", env=self.e.env)
+        hits, told = olh.check(str(self.repo), self.rules, range_spec=f"{self.start}..HEAD", added=True)
+        self.assertEqual([(h[0], h[1]) for h in hits], [("src/view.vue", 8)])
+        self.assertTrue(any(t.startswith(f"the lines {self.start}..HEAD adds to the 1 file(s) it changed") for t in told),
+                        told)
+        # Without --added the range reads its files whole, as before.
+        whole, _ = olh.check(str(self.repo), self.rules, range_spec=f"{self.start}..HEAD")
+        self.assertEqual(len(whole), 7)
+
+    def test_the_hand_check_keeps_its_reads_and_the_flag_reads_the_index(self):
+        self.stage({"src/view.vue": OLD_DASHES + "plain\n"})
+        cli = [sys.executable, "-B", str(REPO / "lib" / "office_letterhead.py"), "--rules", str(RULES),
+               "--letterhead", str(self.letterhead)]
+        proc = subprocess.run(cli, cwd=self.repo, capture_output=True, text=True, env=self.e.env)
+        self.assertEqual(proc.returncode, 1, proc.stderr)  # the dirty tree, whole, as before
+        self.assertIn("the files the working tree changed (1), as they are", proc.stderr)
+        proc = subprocess.run(cli + ["--added"], cwd=self.repo, capture_output=True, text=True, env=self.e.env)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("6 line(s) the file already had hold the em dash", proc.stderr)
+        proc = subprocess.run(cli + ["--added", "--all"], cwd=self.repo, capture_output=True, text=True, env=self.e.env)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("--added reads the lines a diff adds, and --all the whole tree", proc.stderr)
+
+    def test_the_hosted_form_reads_a_range_the_same_way(self):
+        # As office land's review sends it to a host: the module on stdin,
+        # the rules as one argument, --added with the landing's range.
+        import json
+        self.stage({"src/view.vue": OLD_DASHES + "plain\n"})
+        git(self.repo, "commit", "-qm", "Add a line", env=self.e.env)
+        argv = [sys.executable, "-", "--rules-json", json.dumps(self.rules), "--range", "HEAD^1..HEAD",
+                "--files-only", "--added", "."]
+        proc = subprocess.run(argv, cwd=self.repo, capture_output=True, text=True, env=self.e.env,
+                              input=(REPO / "lib" / "office_letterhead.py").read_text())
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("6 line(s) the file already had hold the em dash", proc.stderr)
+
+
+class TestDeliverReadsTheLinesItAdds(AudienceCase):
+    """office deliver on a file the audience's main already holds with
+    refused characters: the line the session changed is the delivery's,
+    the six it did not are not."""
+
+    def dashes_on_main(self):
+        cow = self.e.tmp / "cow"
+        git(self.e.tmp, "clone", "-q", str(self.audience), str(cow), env=self.e.env)
+        (cow / "src" / "view.vue").write_text(OLD_DASHES)
+        git(cow, "add", "-A", env=self.e.env)
+        git(cow, "commit", "-qm", "Add the view", env=self.e.env)
+        git(cow, "push", "-q", "origin", "main", env=self.e.env)
+        git(self.clone, "pull", "-q", "--no-rebase", "--no-edit", "origin", "main", env=self.e.env)
+        self.assertTrue((self.root / "letterhead").is_dir())  # it arrived with the project's audience
+
+    def test_lines_already_on_the_audience_are_told_and_an_added_one_refuses(self):
+        self.dashes_on_main()
+        self.land_session(SID2, {"src/view.vue": OLD_DASHES.replace("the line a session changes", "changed")}, "View")
+        self.run_office("sessions", self.name, SID2, check=0)
+        proc = self.run_office("deliver", self.name, "--yes")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("src/view.vue: 6 line(s) the file already had hold the em dash (U+2014); not this delivery's, "
+                      "not refused", proc.stdout)
+        self.assertIn("letterhead on the diff and the words: clean", proc.stdout)
+        self.assertIn("refs/heads/health-route", self.audience_refs())
+        # A line the next session adds with a dash is the delivery's own.
+        self.land_session(SID3, {"src/view.vue": f"again {EM}\n" + OLD_DASHES.replace("the line a session changes",
+                                                                                     "changed")}, "View again")
+        self.run_office("sessions", self.name, SID3, check=0)
+        before = git(self.audience, "rev-parse", "health-route", env=self.e.env)
+        proc = self.run_office("deliver", self.name, "--yes")
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn(f"src/view.vue:1: character: the em dash (U+2014) in: again {EM}", proc.stdout, proc.stderr)
+        self.assertNotIn("src/view.vue:2:", proc.stdout)
+        self.assertIn("the letterhead refuses 1 line(s)", proc.stderr)
+        self.assertEqual(git(self.audience, "rev-parse", "health-route", env=self.e.env), before)
+
 
 class TestTheRecord(unittest.TestCase):
     def test_the_release_and_the_doctrine(self):
