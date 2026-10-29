@@ -4236,8 +4236,9 @@ usage: office start new [--words TEXT] [--in-office | --on PROJECT] [--goal TEXT
        office start [FOLDER] [--in-office | --on PROJECT] [--goal TEXT] [--slug SLUG]
                     [--write PATH]... [--include PATH]... [--brief FILE] [--read-only]
                     [--leave-out PATH]... [--no-rides] [--carry N... | --carry none]
+                    [--refresh | --no-refresh]
        office start [FOLDER] [--in-office | --on PROJECT] --bundle FILE [--leave-out PATH]... [--no-rides]
-                    [--carry N... | --carry none]
+                    [--carry N... | --carry none] [--refresh | --no-refresh]
        office start --drop PAGE [--title TITLE] [--lane LANE] [--size SIZE] [--goal TEXT] [--slug SLUG]
                     [--write PATH]... [--include PATH]... [--leave-out PATH]... [--no-rides]
        office start --sort
@@ -4275,8 +4276,15 @@ project's clone, here or through its shell on a host, before bale open
 has it. A clone with uncommitted changes, with a session open in it (bale
 lands on the branch checked out), or with no such branch locally or on a
 remote it has fetched stops the start with nothing written and says what
-to do there (the office fetches nothing); a clone already on the branch is
+to do there (the checkout fetches nothing); a clone already on the branch is
 said. A BRANCH line in a bundle that lands in the office is refused.
+For a project with an audience, start compares the clone's view of the
+audience's base (origin/main, say) with the base as this machine sees it
+(git ls-remote) before anything is packed and before that checkout (0.39.0).
+Behind, one line says by how much and, on a terminal, start asks once
+whether to refresh it first (office projects refresh NAME; the default is
+yes; --refresh and --no-refresh are the twins); piped with neither, it says
+so and packs on the clone's view as it is. Level or ahead, nothing is said.
 The one door for new work: office start new takes the job in your words
 (asked on a terminal; --words TEXT gives them), names the project only
 when your words name none of the office's (by key; --on PROJECT or
@@ -4531,13 +4539,53 @@ start_check_place() {
   local on_host out
   project_facts "$root" "$2"
   on_host="$(project_host "$root" "$2")"
-  [ -n "$on_host" ] || return 0
-  [ "${START_CHECKED_HOST:-}" != "$2" ] || return 0
-  log "$2 is on $on_host: asking it to answer, and checking its bale and its repo, before anything is written"
-  out="$(reader start-check "$root" --project "$2")" \
-    || die "nothing was written: no folder, no survey, no out tray, no session"
-  START_CHECKED_HOST="$2"
-  log "$on_host answers, with bale ${out#*$'\t'}: the session is packed there and its request carried back to the out tray"
+  if [ -n "$on_host" ] && [ "${START_CHECKED_HOST:-}" != "$2" ]; then
+    log "$2 is on $on_host: asking it to answer, and checking its bale and its repo, before anything is written"
+    out="$(reader start-check "$root" --project "$2")" \
+      || die "nothing was written: no folder, no survey, no out tray, no session"
+    START_CHECKED_HOST="$2"
+    log "$on_host answers, with bale ${out#*$'\t'}: the session is packed there and its request carried back to the out tray"
+  fi
+  start_offer_refresh "$root" "$2"
+}
+
+# start_offer_refresh ROOT PROJECT (0.39.0): for a project with an
+# audience, before anything is packed and before the BRANCH checkout a
+# bundle's brief asks for (so a branch it names is checked out at its
+# current tip), the clone's view of the audience's base against the base
+# as this machine sees it (git ls-remote, one call; counted in a temporary
+# mirror only when it differs). Behind: one line says by how much, and on
+# a terminal the office asks once whether to refresh (default yes;
+# --refresh and --no-refresh are the twins); piped with neither, it says
+# so and goes on without. Level or ahead: nothing is said. A compare that
+# cannot be made is a warning, never a refusal. Once per start.
+start_offer_refresh() {
+  local root="$1" project="$2" line ans
+  [ "$START_REFRESH_DONE" = 0 ] || return 0
+  START_REFRESH_DONE=1
+  printf '%s\n' "$PROJECT_FACTS" | grep -q "^audience"$'\t' || return 0
+  if ! line="$(refresh_py compare "$root" --project "$project")"; then
+    warn "the clone's view of $project's audience could not be compared with the audience (the lines above say why); the session is packed on the clone as it is"
+    return 0
+  fi
+  [ -n "$line" ] || return 0
+  log "$project: $line"
+  case "$START_REFRESH" in
+    --refresh) ans=y ;;
+    --no-refresh) log "not refreshed (--no-refresh): the session is packed on the clone's view as it is"; return 0 ;;
+    *)
+      if ! can_ask; then
+        log "not refreshed (piped: office start ... --refresh, or office projects refresh $project first): the session is packed on the clone's view as it is"
+        return 0
+      fi
+      ask ans "Refresh $project's clone's view of the audience before the session is packed (office projects refresh $project)? (--refresh) (y/n)" "y" 0 \
+        "y fetches the audience's branches on this machine and carries them into the clone (as a bundle, for a clone on a host) with a forcing refspec, and fast-forwards its base where it can, so the session builds on what the audience has now; the workbench branch is never moved. n packs the session on the clone's view as it is (--no-refresh)." ;;
+  esac
+  case "$ans" in
+    y|Y|yes) refresh_py refresh "$root" --project "$project" | sed 's/^/[office] /' >&2
+             [ "${PIPESTATUS[0]}" = 0 ] || die "the refresh did not finish (the lines above say why): no survey, no out tray and no session were written" ;;
+    *) log "not refreshed: the session is packed on the clone's view as it is" ;;
+  esac
 }
 
 # project_host ROOT NAME: the host a project declares, or nothing.
@@ -5263,6 +5311,7 @@ cmd_start() {
   PREP_WANT=""
   START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_BUNDLE_FOUND=""; START_DROP_PAGE=""
   START_BRANCH=""; START_BRANCH_DONE=0
+  START_REFRESH=""; START_REFRESH_DONE=0
   PLANNER_FILE=""; PLANNER_CONCERNS=(); PLANNER_WHY=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -5298,6 +5347,8 @@ cmd_start() {
       --leave-out) [ $# -ge 2 ] || die "--leave-out needs a path that rides with the project (office projects lists them)"
                    leave_out+=("$2"); shift 2 ;;
       --no-rides) no_rides=1; shift ;;
+      --refresh|--no-refresh) [ -z "$START_REFRESH" ] || [ "$START_REFRESH" = "$1" ] || die "--refresh and --no-refresh contradict each other"
+                              START_REFRESH="$1"; shift ;;
       --carry) [ $# -ge 2 ] || die "--carry needs a rider's number (office riders lists them), or none"
                if [ "$2" = none ]; then carry_none=1; else v="$(bare_number rider "$2")" || exit 1; carry+=("$v"); fi; shift 2 ;;
       -h|--help) usage_start; return 0 ;;
@@ -6954,6 +7005,13 @@ usage: office projects                       list the projects this office scope
                            [--validates-on HOST] [--no-validates-on]
                            [--ride PATH]... [--no-rides]            every session on it, and
                            [--after-land CMD]... [--no-after-land]  what runs after one lands
+       office projects set NAME --prepare    prepare its clone again (the exclude lines,
+                                             bale.toml, bale's sandbox setting where its
+                                             sandbox cannot run)
+       office projects refresh [NAME] [--yes]
+                                             bring the clone's view of its audience level:
+                                             the audience's branches fetched here, carried
+                                             into the clone, its base fast-forwarded
        office projects level-bale [NAME] [--yes]
                                              install on a hosted project's host the
                                              bale this machine runs, keeping its user/
@@ -7000,7 +7058,39 @@ or on the host: the four paths bale writes (.bale/, bale.toml, .baleignore
 and bale's record directory) go into .git/info/exclude and an empty
 bale.toml is written, so git status stays clean and git ls-files unchanged;
 the repo's own .gitignore is never touched. On a terminal, add offers it;
-piped, add refuses and names it.
+piped, add refuses and names it. Since 0.39.0 it also tests, where the clone
+is, whether bale's sandbox can run there (unshare -Ur true: one unprivileged
+user namespace, the least bale's sandbox needs), and only where it cannot
+(a container with no user namespaces, say) writes bale.toml's project-layer
+[sandbox] enabled = false, with a comment naming why and the day, so bale
+runs a response's scripts unconfined there without asking at every apply;
+bale FORCE-logs the key on every run. Where the sandbox runs nothing is
+written, a [sandbox] table already there is left as it is, and nothing
+else of bale's project layer is ever written. office projects set NAME
+--prepare runs prepare again on a clone already declared (nothing is
+asked), and office status names, per hosted project, the setting the office
+wrote, or the step that writes it where the sandbox cannot run.
+refresh brings a clone's view of its audience level, for a project that
+declares one (a clone on a host often has no credentials for the
+audience's git host, so its remote-tracking refs stay where they were): the
+audience's branches are fetched on this machine, with this machine's
+credentials, always with a forcing refspec (a branch the audience
+force-pushed moves too); for a clone on a host its refs are read first, and
+a bundle of the branches that moved, thin against what the clone already
+has, is carried through the shell and fetched there with
++refs/heads/*:refs/remotes/AUDIENCE/*, the bundle removed after; for a clone
+here it is a plain forced fetch. The base branch is then fast-forwarded:
+--ff-only when it is checked out and clean and no bale session is open
+there, the ref moved after an ancestry check when another branch is checked
+out; a base with commits of its own is said and left (a refresh never
+merges), and a dirty tree stops only that step, said. It says what moved,
+one line per branch (origin/main: 59385bf..3f1a9c2, 14 commits), or nothing
+moved; it never moves the workbench branch, never deletes a ref and pushes
+nothing. Nothing is asked (--yes is taken). It leaves one ref in the clone,
+refs/office-refresh/AUDIENCE, from which the listing reads when the clone's
+view was last refreshed and from where (one connection per hosted project
+with an audience). office start and office deliver offer it when the
+clone's view of the base is behind.
 The audience line (office deliver): --audience names the remote in the
 workbench clone that points at the audience's git host (origin, usually;
 checked against the clone's remotes); a project with none is never
@@ -7040,6 +7130,8 @@ Examples:
   office projects add office-src ~/office-src
   office projects add api ~/development/api --host me@workhost --prepare
   office projects add api ~/development/api --host me@workhost --from ~/work/api
+  office projects refresh api
+  office projects set api --prepare
   office projects level-bale api
   office projects set api --shell "ssh me@workhost docker exec -i -u me box bash -lc"
   office projects set api --connect "start the VPN client, then retry"
@@ -7186,6 +7278,16 @@ install_guard() {
   return 1
 }
 
+# prepare_args: the office's date and the project's name for what prepare
+# writes (0.39.0: bale's sandbox setting is dated, and names the step that
+# re-runs it), read from the calling command's root and name when it has
+# them. Words for an unquoted expansion: a name goes only when it is one
+# word of the characters a project's name takes.
+prepare_args() {
+  [ -z "${root:-}" ] || printf -- '--day %s ' "$(office_date "$(office_tz "$root")")"
+  case "${name:-}" in ""|*[!A-Za-z0-9_-]*) ;; *) printf -- '--name %s ' "$name" ;; esac
+}
+
 # check_project FOUNDVAR PATH HOST SHELL CONNECT PREPARE: the check office
 # projects add makes, here or through the host's shell (reach first).
 # Sets FOUNDVAR to what was found. A repo bale has not run in is prepared
@@ -7209,7 +7311,7 @@ check_project() {
       fi
     fi
     [ "$prepare" = yes ] || return 1
-    reader prepare-project --path "$path" "${hargs[@]}" | sed 's/^/[office] /' >&2
+    reader prepare-project --path "$path" "${hargs[@]}" $(prepare_args) | sed 's/^/[office] /' >&2
     [ "${PIPESTATUS[0]}" = 0 ] || return 1
     out="$(reader check-project --path "$path" "${hargs[@]}" 2>&1)"; rc=$?
   fi
@@ -7255,7 +7357,7 @@ bring_clone() {
     fi
   fi
   host_args hargs "$host" "$shell" "$connect"
-  reader clone-to --path "$path" --from "$from" "${hargs[@]}" | sed 's/^/[office] /' >&2
+  reader clone-to --path "$path" --from "$from" "${hargs[@]}" $(prepare_args) | sed 's/^/[office] /' >&2
   [ "${PIPESTATUS[0]}" = 0 ] || return 1
   log "$from was not changed; once you are satisfied with the clone on $host, you can remove it (the office never does)"
 }
@@ -7459,9 +7561,10 @@ letterhead_arrives() {
 cmd_projects_set() {
   local name="" root facts rides=() afters=() set_r=0 set_a=0 args=() current keep line
   local host="" shell="" connect="" set_h=0 hargs=() cur_host
-  local audience="" author="" base="" set_aud=0 clear_aud=() gitfacts="" url="" cur_aud path k validates=""
+  local audience="" author="" base="" set_aud=0 clear_aud=() gitfacts="" url="" cur_aud path k validates="" prepare=0
   while [ $# -gt 0 ]; do
     case "$1" in
+      --prepare) prepare=1; shift ;;
       --validates-on) [ $# -ge 2 ] || die "--validates-on needs an ssh target"; validates="$2"; set_aud=1; shift 2 ;;
       --no-validates-on) clear_aud+=(--no-validates-on); set_aud=1; shift ;;
       --audience|--author|--base)
@@ -7480,7 +7583,7 @@ cmd_projects_set() {
       --after-land) [ $# -ge 2 ] || die "--after-land needs a command"; afters+=("$2"); set_a=1; shift 2 ;;
       --no-after-land) set_a=2; shift ;;
       -h|--help) usage_projects; return 0 ;;
-      -*) usage_projects >&2; die "office projects set does not know $1; it takes a project's name, --host, --shell, --connect, --on-this-machine, --audience, --author, --base, --validates-on, --no-audience, --no-author, --no-base, --no-validates-on, --ride, --no-rides, --after-land and --no-after-land" ;;
+      -*) usage_projects >&2; die "office projects set does not know $1; it takes a project's name, --prepare, --host, --shell, --connect, --on-this-machine, --audience, --author, --base, --validates-on, --no-audience, --no-author, --no-base, --no-validates-on, --ride, --no-rides, --after-land and --no-after-land" ;;
       *) [ -z "$name" ] || die "office projects set takes one project"; name="$1"; shift ;;
     esac
   done
@@ -7500,6 +7603,15 @@ cmd_projects_set() {
   fi
   facts="$(helper project-facts "$root/$MANIFEST_REL" "$name")" || exit 1
   cur_host="$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "host" {print $2}')"
+  # --prepare alone (0.39.0): prepare re-run on the clone as declared, here
+  # or through its host's shell, so a clone added before bale's sandbox
+  # setting gets it without being added again; nothing is asked.
+  if [ "$prepare" = 1 ] && [ "$set_r" = 0 ] && [ "$set_a" = 0 ] && [ "$set_h" = 0 ] && [ "$set_aud" = 0 ]; then
+    prepare_declared "$name" "$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "path" {print $2}')" "$cur_host" \
+      "$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "shell" {print $2}')" \
+      "$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "connect" {print $2}')" || exit 1
+    return 0
+  fi
   if [ "$set_r" = 0 ] && [ "$set_a" = 0 ] && [ "$set_h" = 0 ] && [ "$set_aud" = 0 ] && ! can_ask; then
     # Nothing to set, piped: a project with an audience still gets its
     # push guard brought up to date (0.25.0), and nothing is asked.
@@ -7597,6 +7709,7 @@ cmd_projects_set() {
   args+=("${clear_aud[@]}")
   helper project-declare "$root/$MANIFEST_REL" "$name" "${args[@]}" || exit 1
   commit_paths "$root" "office projects: set $name" "$MANIFEST_REL" || true
+  [ "$prepare" = 0 ] || prepare_declared "$name" "$path" "$eff_host" "$eff_shell" "$eff_connect" || exit 1
   if [ -n "$audience" ]; then
     install_guard "$path" "$eff_host" "$eff_shell" "$eff_connect" "$audience" "$url" || true
     letterhead_arrives "$root"
@@ -7606,6 +7719,53 @@ cmd_projects_set() {
     deliver_py guard "$root" --project "$name" || true
     letterhead_arrives "$root"
   fi
+}
+
+# prepare_declared NAME PATH HOST SHELL CONNECT: prepare run again on a
+# clone already declared (office projects set NAME --prepare, 0.39.0), here
+# or through its host's shell: the exclude lines and bale.toml as add
+# --prepare writes them, each only when missing, and bale's sandbox setting
+# where bale's sandbox cannot run there. Said; returns 1 when it failed.
+prepare_declared() {
+  local hargs=()
+  host_args hargs "$3" "$4" "$5"
+  log "preparing $1's clone at $2${3:+ on $3} for bale again (office projects set $1 --prepare)"
+  reader prepare-project --path "$2" "${hargs[@]}" $(prepare_args) | sed 's/^/[office] /' >&2
+  [ "${PIPESTATUS[0]}" = 0 ]
+}
+
+# office projects refresh NAME (0.39.0): the clone's view of its audience
+# brought level (lib/office_refresh.py): the audience's branches fetched
+# here with this machine's credentials, carried to a hosted clone as a thin
+# bundle and fetched there with a forcing refspec, the base fast-forwarded
+# when it can be, and what moved said. Nothing is asked; --yes is taken, so
+# a script that passes it to every step is not refused.
+REFRESH_PY="$OFFICE_SRC/lib/office_refresh.py"
+refresh_py() { pylib "$REFRESH_PY" "$@"; }
+
+cmd_projects_refresh() {
+  local name="" root
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --yes|-y) shift ;;
+      -h|--help) usage_projects; return 0 ;;
+      -*) usage_projects >&2; die "office projects refresh does not know $1; it takes a project's name and --yes" ;;
+      *) [ -z "$name" ] || die "office projects refresh takes one project"; name="$1"; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  require_tools git
+  if [ -z "$name" ]; then
+    can_ask || { usage_projects >&2; die "name the project: office projects refresh NAME; piped input is never asked"; }
+    local pvals=() pn
+    while IFS= read -r pn; do [ -n "$pn" ] && pvals+=("$pn" "$pn"); done < <(helper project-names "$root/$MANIFEST_REL")
+    [ "${#pvals[@]}" -gt 0 ] || die "this office scopes no project (office projects add adds one)"
+    printf 'Projects:\n' >&2
+    pick name "Which project's clone, by its key (office projects refresh NAME)" \
+      "A project with an audience, by its key in the list above: its clone's view of the audience is brought level." "" 0 "${pvals[@]}"
+  fi
+  refresh_py refresh "$root" --project "$name" || exit 1
 }
 
 # office projects level-bale NAME: the host's bale brought level with this
@@ -7657,6 +7817,7 @@ cmd_projects() {
     add) shift; cmd_projects_add "$@"; return ;;
     set) shift; cmd_projects_set "$@"; return ;;
     level-bale) shift; cmd_projects_level_bale "$@"; return ;;
+    refresh) shift; cmd_projects_refresh "$@"; return ;;
   esac
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -7705,7 +7866,8 @@ deliver_py() { pylib "$DELIVER" "$@"; }
 
 usage_deliver() {
   cat <<'USAGE'
-usage: office deliver [FOLDER] [--on PROJECT] [--branch NAME] [--adopt] [--author "Name <email>"] [--others-too] [--yes]
+usage: office deliver [FOLDER] [--on PROJECT] [--branch NAME] [--adopt] [--author "Name <email>"] [--others-too]
+                      [--refresh | --no-refresh] [--yes]
 Carries a folder's landed work to its project's audience as curated
 commits: a branch named by the branch rule below, made from the
 audience's base branch, holding the landed tree changes as one
@@ -7771,6 +7933,23 @@ review's answer lands on the review's own branch. Adopted,
 the folder's delivered line ends `; adopted`, the next line names the
 reviews open for that branch (GitHub or GitLab) rather than a new
 review's form, and the next delivery adds to the branch as to its own.
+The clone's view of the audience (0.39.0): when its AUDIENCE/BASE is behind
+the base as fetched here, one line says by how much and, on a terminal,
+deliver asks once whether to refresh it first (office projects refresh;
+default yes; --refresh and --no-refresh are the twins); piped with neither,
+it says so and goes on without. Then, for a delivery made from the base
+(not one adding to a branch), when the workbench is behind the base and
+the clone's view of it is level, the base is brought into the workbench in
+the clone where the work lives: a real merge commit (git merge --no-ff,
+"Bring origin/main into the workbench (office deliver)", as the declared
+author), made only when the merge is clean, the clone's tree is clean and
+no bale session is open there; the question's merged line says it, and the
+folder's History gains a dated merged line (the base's tip, the merge
+commit). The squash then runs from the base's tip, so the range carries
+the folder's own work. A merge that conflicts is aborted, checked, and
+refuses the delivery naming the files: the office does not resolve a
+conflict in this release (a merge session is the next release's), and the
+remedy line says what to do by hand until then.
 The delivery is built on this machine, where the audience answers with
 your credentials: for a project on a host, the landed commits come here
 as a git bundle through the project's shell, into a temporary repo
@@ -7788,6 +7967,8 @@ any push to the audience from the clone that deliver did not make.
   --author "Name <email>"
                    the identity the audience expects, declared for the project and kept
   --others-too     deliver other folders' sessions riding in the landed work
+  --refresh        refresh the clone's view of the audience when it is behind
+  --no-refresh     do not; say it is behind and go on
   --yes            do not ask before pushing
 Under the hood: git fetch of the audience's base and branch, a thin git
 bundle of the clone's HEAD carried back for a hosted project, git revert
@@ -7828,6 +8009,10 @@ deliver_show() {
     why="${why%"; $jfolder delivered to it on $jday, so this delivery continues on it"}"
   elif [ -n "$continuing" ]; then how=" (adding to the branch on the audience)"; fi
   printf '  branch:   %s%s, from %s%s\n' "$branch" "$how" "$base" "${why:+ ($why)}"
+  # The base brought into the workbench before the squash (0.39.0).
+  local merged_line
+  merged_line="$(plan_field "$plan" merged.line)"
+  [ -z "$merged_line" ] || printf '  merged:   %s\n' "$merged_line"
   printf '  author:   %s (author and committer of every commit)\n' "$(plan_field "$plan" author)"
   printf '  sessions: %s' "$(plan_field "$plan" sessions | paste -sd, - | sed 's/,/, /g')"
   printf '  (%s commit(s) on the workbench since %s)\n' "$(plan_field "$plan" commits)" "$(plan_field "$plan" since_why)"
@@ -7881,6 +8066,7 @@ for l in plan.get("check_told") or []:
 
 cmd_deliver() {
   local want="" project="" branch="" others=0 yes=0 adopt=0 root name space tmp plan out line ans rc=0 url author="" who
+  local refresh=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --on) [ $# -ge 2 ] || die "--on needs the project's name"; project="$2"; shift 2 ;;
@@ -7888,6 +8074,8 @@ cmd_deliver() {
       --branch) [ $# -ge 2 ] || die "--branch needs a name"; branch="$2"; shift 2 ;;
       --others-too) others=1; shift ;;
       --adopt) adopt=1; shift ;;
+      --refresh|--no-refresh) [ -z "$refresh" ] || [ "$refresh" = "$1" ] || die "--refresh and --no-refresh contradict each other"
+                              refresh="$1"; shift ;;
       --yes|-y) yes=1; shift ;;
       -h|--help) usage_deliver; return 0 ;;
       -*) usage_deliver >&2; die "office deliver does not know $1; the flags above are what it takes" ;;
@@ -7909,34 +8097,50 @@ cmd_deliver() {
   TMP_PATHS+=("$tmp")
   plan="$tmp/plan.json"
   [ -z "$author" ] || author="$(helper check-audience-key author "$author")" || exit 1
+  local day
+  day="$(office_date "$(office_tz "$root")")"
   log "planning the delivery of $space/$name: the audience's base, the landed work, the words, the letterhead check, the commits"
-  deliver_py plan "$root" "$name" --plan "$plan" ${branch:+--branch "$branch"} ${project:+--on "$project"} \
-    ${author:+--author "$author"} $([ "$others" = 1 ] && printf -- --others-too) $([ "$adopt" = 1 ] && printf -- --adopt) \
-    $(can_ask && printf -- --interactive); rc=$?
-  if [ "$rc" = 4 ]; then
-    # The project declares no author: a fact only the occupant knows, asked
-    # once here and kept (0.25.0); the clone's own identity is never used.
-    who="$(python3 -B -P -S -c 'import json,sys; p=json.load(open(sys.argv[1])); print(p["need_author"]); print(p.get("clone_identity") or "")' "$plan")"
-    project="$(printf '%s\n' "$who" | sed -n 1p)"
-    local own help
-    own="$(printf '%s\n' "$who" | sed -n 2p)"
-    help="The name and address the people who read $project know you by, as git writes them: Name <email>. Every commit office deliver makes or pushes carries it as both author and committer, and the floor plan keeps it, so this is asked once (office projects set $project --author changes it)."
-    [ -z "$own" ] || help="$help The clone's own identity is $own, and it is never used unless you give it here."
-    if [ -n "$own" ]; then log "$project declares no author, and the clone's own identity is never used silently: the clone's is $own"
-    else log "$project declares no author, and the clone has no identity of its own"; fi
-    while :; do
-      ask author "The identity $project's audience expects on the commits, Name <email>; kept for every delivery (--author)" "" 1 "$help"
-      if out="$(helper check-audience-key author "$author" 2>&1)"; then author="$out"; break; fi
-      printf '  %s\n' "${out#\[office\] error: }" >&2
-    done
-    deliver_py plan "$root" "$name" --plan "$plan" ${branch:+--branch "$branch"} ${project:+--on "$project"} \
-      --author "$author" $([ "$others" = 1 ] && printf -- --others-too) $([ "$adopt" = 1 ] && printf -- --adopt) \
-      --interactive || exit 1
-  elif [ "$rc" != 0 ]; then
-    exit 1
-  fi
+  # The plan, and the two facts only the occupant has, each asked once on a
+  # terminal and the plan made again with the answer: the author, when the
+  # project declares none (exit 4, 0.25.0), and whether to refresh the
+  # clone's view of the audience when it is behind (exit 5, 0.39.0).
+  while :; do
+    deliver_py plan "$root" "$name" --plan "$plan" --day "$day" ${branch:+--branch "$branch"} ${project:+--on "$project"} \
+      ${author:+--author "$author"} ${refresh:+"$refresh"} $([ "$others" = 1 ] && printf -- --others-too) \
+      $([ "$adopt" = 1 ] && printf -- --adopt) $(can_ask && printf -- --interactive); rc=$?
+    case "$rc" in
+      0) break ;;
+      5)
+        project="$(python3 -B -P -S -c 'import json,sys; print(json.load(open(sys.argv[1]))["need_refresh"])' "$plan")"
+        log "$(python3 -B -P -S -c 'import json,sys; print(json.load(open(sys.argv[1]))["behind"])' "$plan")"
+        ask ans "Refresh $project's clone's view of the audience first (office projects refresh $project)? (--refresh) (y/n)" "y" 0 \
+          "y fetches the audience's branches on this machine, carries them into the clone (as a bundle, for a clone on a host) with a forcing refspec and fast-forwards its base where it can, so the delivery and the merge of the base into the workbench see the base as it is; the workbench branch is never moved. n goes on with the clone's view as it is (--no-refresh)."
+        case "$ans" in y|Y|yes) refresh=--refresh ;; *) refresh=--no-refresh ;; esac ;;
+      4)
+        # The project declares no author: a fact only the occupant knows, asked
+        # once here and kept (0.25.0); the clone's own identity is never used.
+        who="$(python3 -B -P -S -c 'import json,sys; p=json.load(open(sys.argv[1])); print(p["need_author"]); print(p.get("clone_identity") or "")' "$plan")"
+        project="$(printf '%s\n' "$who" | sed -n 1p)"
+        local own help
+        own="$(printf '%s\n' "$who" | sed -n 2p)"
+        help="The name and address the people who read $project know you by, as git writes them: Name <email>. Every commit office deliver makes or pushes carries it as both author and committer, and the floor plan keeps it, so this is asked once (office projects set $project --author changes it)."
+        [ -z "$own" ] || help="$help The clone's own identity is $own, and it is never used unless you give it here."
+        if [ -n "$own" ]; then log "$project declares no author, and the clone's own identity is never used silently: the clone's is $own"
+        else log "$project declares no author, and the clone has no identity of its own"; fi
+        while :; do
+          ask author "The identity $project's audience expects on the commits, Name <email>; kept for every delivery (--author)" "" 1 "$help"
+          if out="$(helper check-audience-key author "$author" 2>&1)"; then author="$out"; break; fi
+          printf '  %s\n' "${out#\[office\] error: }" >&2
+        done ;;
+      *) exit 1 ;;
+    esac
+  done
   plan_field "$plan" author_told | while IFS= read -r line; do [ -n "$line" ] && log "$line"; done
   plan_field "$plan" guard | while IFS= read -r line; do [ -n "$line" ] && log "$line"; done
+  # The clone's view of the audience (0.39.0): behind, refreshed or not,
+  # and what the clean merge did or why it did not run.
+  plan_field "$plan" view_told | while IFS= read -r line; do [ -n "$line" ] && log "$line"; done
+  plan_field "$plan" merged.history | while IFS= read -r line; do [ -n "$line" ] && log "$line"; done
   deliver_show "$plan"
   if [ -n "$(plan_field "$plan" adopting)" ] && [ "$adopt" = 0 ]; then
     # Here only on a terminal: piped, the plan refused and named --adopt.

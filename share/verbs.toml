@@ -239,12 +239,18 @@ trigger = ["manual", "after-build"]
 # first project given an audience brings the letterhead (its pages from
 # the install's templates, its floor-plan entry and bale.toml's trigger),
 # and add and set write or replace the push guard in an audience clone's
-# .git/hooks, outside what git tracks.
+# .git/hooks, outside what git tracks. Since 0.39.0 refresh brings a
+# clone's view of its audience level (its remote-tracking refs, its base
+# fast-forwarded when it can be, and one ref saying when and from where),
+# and prepare (add --prepare, set --prepare) writes bale.toml's [sandbox]
+# enabled = false in the clone only where bale's sandbox cannot run.
 [verbs.projects]
 kind = "script"
 built = true
 surface = "occupant"
-writes = ["floor-plan/manifest.toml", "letterhead", "bale.toml", "the push guard in the clone's .git/hooks"]
+writes = ["floor-plan/manifest.toml", "letterhead", "bale.toml", "the push guard in the clone's .git/hooks",
+          "the clone's remote-tracking refs, its base branch and refs/office-refresh/AUDIENCE (refresh)",
+          "the clone's bale.toml, [sandbox] only (prepare)"]
 lands = ["floor-plan/manifest.toml"]
 attended = true
 trigger = ["manual"]
@@ -273,7 +279,8 @@ built = true
 surface = "occupant"
 writes = ["desk/{folder}", "in-tray/{date}-{slug}.md", "notepad/{date}-{slug}.md", "floor-plan/survey.md", "drafting-table/riders.md",
           "drafting-table/moves.md", "drafting-table/README.md", "floor-plan/manifest.toml", "bale.toml", "calendar/record.md",
-          "bale's registry where the session is packed", "the out tray"]
+          "bale's registry where the session is packed", "the out tray",
+          "the clone's remote-tracking refs and base branch, when the occupant says to refresh them (0.39.0)"]
 lands = ["desk/{folder}/folder.md"]
 attended = true
 trigger = ["manual"]
@@ -324,13 +331,18 @@ trigger = ["manual"]
 # Nothing is guaranteed to exist after it: a letterhead hit, a conflict
 # or a refused push leaves nothing pushed and nothing recorded. Since
 # 0.25.0 a project's author, asked once when none is declared (or given
-# as --author), is kept in the floor plan.
+# as --author), is kept in the floor plan. Since 0.39.0 it may refresh the
+# clone's view of the audience (when the occupant says so) and bring the
+# base into the workbench in the clone as a merge commit when that merge
+# is clean, with a dated merged line in the folder's History.
 [verbs.deliver]
 kind = "script"
 built = true
 surface = "occupant"
 writes = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md", "a delivery branch on the project's audience",
-          "the push guard in the clone's .git/hooks", "floor-plan/manifest.toml"]
+          "the push guard in the clone's .git/hooks", "floor-plan/manifest.toml",
+          "the clone's remote-tracking refs and base branch, when the occupant says to refresh them (0.39.0)",
+          "a merge commit of the audience's base on the clone's workbench branch, when that merge is clean (0.39.0)"]
 lands = []
 attended = true
 trigger = ["manual"]

@@ -238,6 +238,29 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.39.0 (session 2026-10-29-m10-host-refresh-006): a hosted clone's view
+  of its audience refreshed through this machine, offered where a stale
+  base hurts; deliver brings the base into the workbench when that merge
+  is clean; bale's sandbox setting written where its sandbox cannot run.
+  - `office projects refresh NAME`: the audience's branches fetched here
+    with a forcing refspec, carried to a hosted clone as a thin bundle and
+    fetched there with `+refs/heads/*:refs/remotes/AUDIENCE/*`, the base
+    fast-forwarded where it can be, what moved said; never the workbench,
+    never a deleted ref, nothing pushed (lib/office_refresh.py). `office
+    projects` lists when each audience clone was last refreshed, read from
+    the clone's `refs/office-refresh/AUDIENCE`.
+  - `office start` and `office deliver` say when the clone's view of the
+    base is behind, and ask once on a terminal (`--refresh`,
+    `--no-refresh`); piped, said and not refreshed.
+  - deliver merges the base into the workbench in the clone (a merge
+    commit as the declared author, a dated `merged` History line) when the
+    workbench is behind and the merge is clean; a conflict is aborted,
+    checked and refused by name, and the merge session is the next
+    release's. A delivery adding to a branch is not merged.
+  - prepare writes bale.toml's `[sandbox] enabled = false` only where
+    `unshare -Ur true` refuses where the clone is; `office projects set
+    NAME --prepare` re-runs prepare on a declared clone; `office status`
+    names the setting per hosted project.
 - 0.38.0 (session 2026-10-29-wave-one-release-005): wave 1 of the plan
   begun on 2026-10-27, released. Four sessions landed beside each other
   on 0.37.0, each in its own lib/ modules with no release of its own;

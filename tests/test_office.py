@@ -159,6 +159,11 @@ class Env:
             # A test that wants a tool recorded names a directory of its own.
             "OFFICE_SURVEY_PATH": "",
             "OFFICE_CONTAINER_MARKER": "",
+            # bale's sandbox probe (0.39.0: lib/office_host.py, prepare): the
+            # sandbox runs, so prepare writes nothing into bale.toml for it,
+            # whatever the running machine allows. A test that wants a host
+            # where it refuses names its own probe.
+            "OFFICE_SANDBOX_PROBE": "true",
         }
         # The runner's bytecode cache for this run (tests/runner.py,
         # seed_bytecode), when the runner made one: compiled code of the

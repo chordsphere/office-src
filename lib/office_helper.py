@@ -1397,10 +1397,14 @@ STATUSES = DESK_STATUSES + CABINET_STATUSES
 # that went out and was never worked (bale unlock, reason abandoned), `-
 # DATE withdrawn: SID, never worked; closed in bale by office withdraw`
 # (0.24.0); it changes no status.
+# `merged` is the line office deliver writes when it brings the audience's
+# base into the workbench before a delivery because that merge is clean,
+# `- DATE merged: origin/main 3f1a9c2 into the workbench, 8c2e1f0` (0.39.0:
+# the base's tip, then the merge commit); it changes no status.
 HISTORY_VERBS = ("candidate", "queued", "opened", "ratified", "gated", "cleared", "grown",
                  "re-scoped", "corrected", "ruled", "carried", "consumed", "done",
                  "absorbed", "split", "retired", "reopened", "note", "ended", "delivered", "probe",
-                 "dropped", "withdrawn")
+                 "dropped", "withdrawn", "merged")
 # The state-changing verbs and the status each leaves the folder in:
 # candidate -> queued -> open -> done; any desk status -> absorbed,
 # split or retired; done -> reopened -> open.
@@ -3363,8 +3367,10 @@ def cmd_projects(a):
         if p["problem"]:
             ok, text = False, p["problem"]
         elif p["host"]:
-            # Listing makes no network call: reach is checked where it
-            # matters (office status, and every read through the shell).
+            # Listing makes no network call for the project itself: reach is
+            # checked where it matters (office status, and every read through
+            # the shell). A project with an audience is the one exception
+            # (0.39.0): its refresh line is read from the clone, below.
             ok, text = True, f"on {p['host']}; office status checks that it answers"
         else:
             ok, text = check_project_dir(p["resolved"])
@@ -3373,6 +3379,14 @@ def cmd_projects(a):
               + (f"({text})" if ok else f"CANNOT BE READ: {text}"))
         for line in describe_declarations(p):
             print(f"{'':<{width}}  {line}")
+        if ok and p.get("audience"):
+            # When the clone's view of its audience was last refreshed, and
+            # from where, read from the clone itself (the ref office projects
+            # refresh leaves there; never a file of the office's), through
+            # the host's shell for a hosted clone: one connection, and a host
+            # that does not answer is said on the line, never a failure.
+            import office_refresh
+            print(f"{'':<{width}}  {office_refresh.refreshed_line(p)}")
     return 3 if bad else 0
 
 

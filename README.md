@@ -410,7 +410,11 @@ chose the branch (0.38.0). A branch another folder of the office
 delivered to is continued with no question; a branch the audience
 already has that no folder delivered to, a pull request opened by hand,
 is adopted when you say so (`--adopt`, or yes on a terminal; 0.34.0), so
-a review's answer lands on the review's own branch.
+a review's answer lands on the review's own branch. When a clone on a
+host has a stale view of the audience, deliver says by how much and
+offers `office projects refresh` first; and when the workbench is behind
+the audience's base and the merge is clean, it brings the base into the
+workbench itself, as one merge commit, before the squash (0.39.0).
 `office letterhead check` is the guard it runs first, on its
 own for any tree. The details are below.
 
@@ -865,6 +869,21 @@ reach is carried from one step to the next) and the reads it needs there
 share a connection: a pack makes about four connections, five with a
 brief, eight for a bundle (0.15.0 made seven, ten and eighteen in the
 suite's count).
+
+The clone's view of the audience (0.39.0). For a project with an
+audience, start compares the clone's `AUDIENCE/BASE` (origin/main, say)
+with the base as this machine sees it, once, before anything is packed
+and before the checkout a brief's BRANCH line asks for, so a branch it
+names is checked out at its current tip: `git ls-remote` here, and only
+when the two differ, the base fetched into a temporary repo here to
+count (one more connection for a hosted clone, to read its view). Behind,
+one line says by how much (`the clone's view of origin/main is 14
+commits behind the audience's`), and on a terminal start asks once
+whether to refresh it first (`office projects refresh NAME`; default
+yes; `--refresh` and `--no-refresh` are the twins); piped with neither,
+it says so and packs on the clone's view as it is. Ahead or level,
+nothing is said; a compare that cannot be made is a warning, never a
+refusal.
 
 The in-tray rides too (0.19.0). Every session start sends out carries
 each drop in the in-tray whose status is `unsorted`: in the pack's
@@ -1376,9 +1395,40 @@ host the landed commits come here as a thin git bundle made in the clone
 there and carried through the project's shell, into a temporary bare
 repo removed after, and the push goes from here. Nothing the office
 writes on a host outside the project's repo is left. A hosted delivery
-makes three connections (the clone's facts, the bundle, its read). A
-conflict with the audience's base refuses with the remedy: bring the
-base into the workbench branch first, land that, and deliver again.
+makes three connections when its clone's view of the audience is level
+and nothing is merged (the clone's facts and its view of the audience in
+one, the bundle, its read).
+
+The clone's view, and the clean merge (0.39.0). Deliver compares the
+clone's `AUDIENCE/BASE` with the base it has just fetched here; for a
+clone on this machine its own fetch moves that ref already. Behind, one
+line says by how much, and on a terminal deliver asks once whether to
+refresh it first (`office projects refresh`; default yes; `--refresh`
+and `--no-refresh` are the twins); piped with neither, it says so and
+goes on without. Ahead or level, nothing is said. Then, for a delivery
+made from the base (not one adding to a branch), when the workbench is
+behind the base and the clone's view of the base is level with it,
+deliver brings the base into the workbench in the clone where the work
+lives, through the shell for a host: `git merge --no-ff` of
+`AUDIENCE/BASE` on the workbench branch, as the project's declared
+author, with the message `Bring origin/main into the workbench (office
+deliver)`, only when the merge is clean, the clone's tree is clean and
+no bale session is open there (each of the three is said when it stops
+the merge, and the plan goes on as before). The question's `merged:`
+line says it (`brought origin/main into the workbench: merge commit
+8c2e1f0 (14 commits of the audience's)`), and the folder's History gains
+`- DATE merged: origin/main 3f1a9c2 into the workbench, 8c2e1f0`. It is
+a real merge commit, so the workbench and the base now part at the
+base's tip: the squash runs from there and the range carries the
+folder's own work. A merge that conflicts is aborted, and the abort
+checked (no `MERGE_HEAD`, no tracked change left), and the delivery
+refuses naming the files: the office does not resolve a conflict in
+this release (a merge session, a bale session with both sides in
+context, is the next release's), and the remedy line says what to do by
+hand until then (`git merge origin/main` on the workbench branch in the
+clone, resolve and commit, then deliver again). The merge does not
+change which sessions another folder delivered: `base_holds` and the
+refusal of work leaving twice are as they were.
 
 The push guard. Declaring an audience (`office projects add --audience`,
 `set --audience`) writes a pre-push hook into the clone's `.git/hooks`,
@@ -1520,6 +1570,8 @@ delivery's names none, since a session id is one of bale's marks and
     office projects add api ~/development/api --host me@workhost --prepare   # one on another host
     office projects add api ~/development/api --host me@workhost --from ~/work/api   # bring a clone there
     office projects level-bale api           # the host's bale brought level with this machine's
+    office projects refresh api              # the clone's view of its audience brought level
+    office projects set api --prepare        # prepare the clone again: bale's sandbox setting where it cannot run
     office projects set api --shell "ssh me@workhost docker exec -i -u me box bash -lc"
     office projects set api --connect "start the VPN client, then retry"
     office projects set office-src --ride ~/other-repo/docs --after-land ./install.sh
@@ -1599,6 +1651,58 @@ clean, `git ls-files` is unchanged, and the repo's own `.gitignore`,
 which belongs to its audience, is never touched; `bale config init`
 there fills the `bale.toml` in. What the office writes into a project's
 working copy is only ever outside what git tracks.
+
+bale's sandbox (0.39.0). bale runs a response's scripts in a namespace
+sandbox, and on a host without unprivileged user namespaces (a container,
+often) its self-probe refuses and, on a terminal, every apply asks
+whether to run unconfined. bale's own help names the durable form,
+`bale.toml`'s project-layer `[sandbox] enabled = false`, with the same
+unconfined semantics, FORCE-logged naming the key on every run. Prepare
+now tests that condition where the clone is, through the host's shell for
+a hosted one (`unshare -Ur true`: one unprivileged user namespace, the
+least bale's sandbox needs, so the office's test is never stricter than
+bale's), and only where it refuses writes that table into the
+`bale.toml` it keeps out of git, under a comment naming why and the day
+(`# office sandbox: written 2026-10-29: no unprivileged user namespaces
+where this clone is (...)`). Where the sandbox runs, nothing is written;
+a `[sandbox]` table already there is left as it is; a test that cannot
+run (no `unshare` there) writes nothing; and the office writes nothing
+else into bale's project layer. `office projects set NAME --prepare`
+runs prepare again on a clone already declared, asking nothing, so a
+clone added before this release gets the setting without being added
+again. `office status` names it per hosted project (`proj: sandbox: off
+by bale.toml, written 2026-10-29: ...`), and where the sandbox cannot
+run and nothing turns it off, the line that writes it; nothing when it
+is not needed.
+
+A clone's view of its audience (0.39.0). A clone on a host often cannot
+reach the audience's git host (it has no credentials there), so its
+remote-tracking refs stay where they were and a session builds on what
+the clone last saw. `office projects refresh NAME`, for a project that
+declares an audience, fetches the audience's branches on this machine,
+with this machine's credentials, always with a forcing refspec, so a
+branch the audience force-pushed moves too. For a clone on a host it
+reads the clone's refs first, makes a bundle of the branches that moved,
+thin against what the clone already has, carries it through the shell
+and fetches it there with `+refs/heads/*:refs/remotes/AUDIENCE/*`, the
+bundle removed in the same connection; for a clone here it is a plain
+forced fetch. Then it fast-forwards the base branch: `--ff-only` when it
+is checked out, its tree clean and no bale session open there; the ref
+moved after an ancestry check when another branch is checked out. A base
+with commits of its own is said and left (a refresh never merges), and a
+dirty tree stops only that step, said. It says what moved, one line per
+branch (`origin/main: 59385bf..3f1a9c2, 14 commits`; `forced` for a
+rewritten one; `new` for a new one), or `nothing moved`; it never moves
+the workbench branch, never deletes a ref, pushes nothing and asks
+nothing (`--yes` is taken). It leaves one ref in the clone,
+`refs/office-refresh/AUDIENCE`, naming a small blob that says when and
+from where, and `office projects` lists it under each project with an
+audience (`refreshed: 2026-10-29T13:40:00Z from origin URL, by way of
+HOSTNAME`), read from the clone itself, through its shell for a hosted
+one (the listing's one connection per such project); no file of the
+office's records a refresh. `office start` and `office deliver` offer it
+when the clone's view of the base is behind (Sending a session out: the
+details; Delivering to the audience: the details).
 
 A project may declare what
 rides beside every session on it (`--ride PATH`, repeatable: a directory

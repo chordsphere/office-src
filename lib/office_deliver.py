@@ -123,6 +123,16 @@ class DeliverError(ob.StartError):
     """office deliver cannot go on, said as lines a person can act on."""
 
 
+class NeedsRefresh(DeliverError):
+    """The clone's view of the audience's base is behind (0.39.0): on a
+    terminal bin/office asks once whether to refresh it, and plans again
+    with the answer (--refresh or --no-refresh)."""
+
+    def __init__(self, lines, project):
+        super().__init__(lines)
+        self.project = project
+
+
 class NeedsAuthor(DeliverError):
     """The project declares no author: a fact only the occupant knows,
     asked once on a terminal (bin/office) and kept; refused piped."""
@@ -655,8 +665,94 @@ def unread_line(label, unread):
             "Commit or Review) stay in the office and are not read")
 
 
+# The far side of the clean merge (0.39.0), in the clone where the work
+# lives: the base merged into the checked-out workbench branch as a real
+# merge commit, with the message the office writes, as the declared author
+# (the environment in front of the command); on a conflict the files are
+# named, the merge is aborted, and the abort is checked (no MERGE_HEAD, no
+# tracked change left), so nothing is left half-done.
+_MERGE_SCRIPT = (
+    'm="$1"; t="$2"; '
+    'if err=$(git merge -q --no-ff --no-edit -m "$m" "$t" 2>&1 >/dev/null); then '
+    'echo "merged=$(git rev-parse HEAD)"; echo "brought=$(git rev-list --count HEAD^1..HEAD^2)"; exit 0; fi; '
+    # A merge that never started (an untracked file in its way, say) left
+    # nothing to abort: its words, and exit 8.
+    'if ! git rev-parse -q --verify MERGE_HEAD >/dev/null; then printf "%s\\n" "$err" | tail -n 2 >&2; exit 8; fi; '
+    'git diff --name-only --diff-filter=U | sed "s/^/conflict=/"; '
+    'git merge --abort || exit 5; '
+    'if git rev-parse -q --verify MERGE_HEAD >/dev/null; then exit 6; fi; '
+    '[ -z "$(git status --porcelain=v1 -uno)" ] || exit 7; exit 4'
+)
+MERGE_MESSAGE = "Bring {audience}/{base} into the workbench (office deliver)"
+
+
+def merge_base_in(place, view, name, audience, base, base_sha, author, rd=None):
+    """Bring the audience's base into the workbench in the clone, when the
+    workbench is behind it and the merge is clean (0.39.0); view is the
+    clone's (orf.clone_view), read with the base. Returns
+    (merged, told): merged is {sha, brought, base} when a merge commit was
+    made, else None; told says why not, when there is something to say.
+    A conflict raises DeliverError, with nothing left half-done there."""
+    import office_refresh as orf
+    track = f"refs/remotes/{audience}/{base}"
+    if view["level"] or view["empty"]:
+        # Level with the base already, or nothing of its own on it: no merge.
+        return None, []
+    wb = view["branch"]
+    behind = f"the workbench ({wb}) is behind {audience}/{base} ({base_sha[:12]})"
+    if view["dirty"]:
+        return None, [f"{behind}, and the clone has uncommitted changes ({len(view['dirty'])} path(s): "
+                      f"{', '.join(view['dirty'][:6])}), so {audience}/{base} was not merged into it; the squash runs "
+                      "from where they parted, as before"]
+    try:
+        sessions = orf.open_sessions(place, rd)
+    except ob.BaleError as exc:
+        return None, [f"{behind}, and the sessions open in the clone could not be read ({exc}), so "
+                      f"{audience}/{base} was not merged under them; the squash runs from where they parted, as before"]
+    if sessions:
+        return None, [f"{behind}, and {len(sessions)} session(s) are open in the clone ({', '.join(sessions)}), so "
+                      f"{audience}/{base} was not merged under them; the squash runs from where they parted, as before"]
+    _, identity = identity_of(author)
+    message = MERGE_MESSAGE.format(audience=audience, base=base)
+    argv = ["env", *[f"{k}={v}" for k, v in identity.items()], "sh", "-c", _MERGE_SCRIPT, "office-merge", message, track]
+    try:
+        run = ohost.run_in(place, argv, timeout=ohost.TRANSFER_TIMEOUT)
+    except ohost.HostError as exc:
+        raise DeliverError([f"{name}: {exc}"])
+    facts = [l.split("=", 1) for l in run.stdout.splitlines() if "=" in l]
+    if run.returncode == 0:
+        got = dict(facts)
+        log(f"brought {audience}/{base} into the workbench ({wb}) in the clone at {place}: merge commit "
+            f"{got.get('merged', '')[:12]}, as {author}")
+        return {"sha": got.get("merged", ""), "brought": int(got.get("brought") or 0), "base": base_sha}, []
+    conflicts = [v for k, v in facts if k == "conflict"]
+    if run.returncode == 8:
+        return None, [f"{behind}, and git merge {audience}/{base} could not start in the clone "
+                      f"({ohost._last_words(run.stderr)}), so nothing changed there; the squash runs from where they "
+                      "parted, as before"]
+    if run.returncode == 4:
+        raise DeliverError([f"the landed work does not go onto {audience}'s {base} as it is now: bringing "
+                            f"{audience}/{base} into the workbench ({wb}) conflicts in "
+                            f"{', '.join(conflicts[:12]) or 'files git did not name'}; the merge was aborted there, "
+                            "and nothing is left half-done in the clone",
+                            "the office does not resolve a conflict in this release (a merge session, a bale session "
+                            "with both sides in context, is the next release's); until then, by hand in the clone: git "
+                            f"merge {audience}/{base} on {wb}, resolve and commit, then deliver again"])
+    state = {5: "git merge --abort failed", 6: "MERGE_HEAD is still there after git merge --abort",
+             7: "tracked changes are left after git merge --abort"}.get(run.returncode, f"exit {run.returncode}")
+    raise DeliverError([f"bringing {audience}/{base} into the workbench in the clone at {place} conflicted "
+                        f"({', '.join(conflicts[:12]) or 'files not named'}), and {state}: "
+                        f"{ohost._last_words(run.stderr)}; look at the clone (git status there) before anything else, "
+                        "and deliver again once it is clean"])
+
+
+def merged_text(audience, base, merged):
+    """The folder's History text for a clean merge (0.39.0)."""
+    return f"{audience}/{base} {merged['base'][:7]} into the workbench, {merged['sha'][:7]}"
+
+
 def plan(consumption, office_root, folder, branch=None, project_name=None, others_ok=False, interactive=False,
-         author_given=None, adopt=False):
+         author_given=None, adopt=False, refresh=None, day=None):
     """Everything a delivery needs before the one question, written as a
     dict for run(): the project and its audience, author and base; the
     sessions covered and whose folders they belong to; the words; the
@@ -667,6 +763,7 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
     import shlex
     import tempfile
     import office_letterhead as olh
+    import office_refresh as orf
     office_root = pathlib.Path(office_root).resolve()
     rel, md = find_folder(office_root, folder)
     parsed = oh.parse_folder(md.read_text(encoding="utf-8"))
@@ -707,9 +804,13 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
         words = oh.parse_delivery(delivery_md.read_text(encoding="utf-8"))
     except oh.HelperError as exc:
         raise DeliverError([f"{rel}/delivery.md: {exc}"])
-    # 3. The clone, where it is: the reach, its remotes, identity and guard.
+    # 3. The clone, where it is: the reach, its remotes, identity and guard;
+    # and since 0.39.0 its view of the audience (its remote-tracking
+    # branches, and where the checked-out branch stands against the base),
+    # in the same connection.
     try:
-        facts = ohost.git_facts(place)
+        runs = ohost.run_many(place, [ohost.git_facts_argv(place), *orf.view_argvs(audience, entry.get("base"))])
+        facts = ohost.read_git_facts(place, runs[0])
     except ohost.HostError as exc:
         raise DeliverError([f"{name}: {exc}"])
     url = facts["remotes"].get(audience)
@@ -813,6 +914,73 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
         if on_branch is None:
             on_branch = fetch_branch(branch)
         continuing = on_branch
+        # 4b. The clone's view of the audience (0.39.0): its AUDIENCE/BASE
+        # against the base as fetched here. Behind, it is said in one line,
+        # and refreshed when the occupant says so (--refresh, or yes on a
+        # terminal: bin/office asks and plans again); piped with neither
+        # flag, it is said and the plan goes on without. Ahead or level:
+        # nothing is said.
+        base_sha = g(repo, "rev-parse", REF_BASE).stdout.strip()
+        try:
+            # A clone on this machine is the repo the base was just fetched
+            # into, from its own remote by name, and git moved its
+            # AUDIENCE/BASE with that fetch: its view is read again here. A
+            # hosted clone's view is the one read with its facts.
+            view = (orf.read_view(place, audience, runs[1:]) if place.hosted
+                    else orf.clone_view(place, audience, base))
+        except orf.RefreshError as exc:
+            raise DeliverError(exc.lines)
+        view_told, base_merge = [], None
+        behind = orf.behind_words(repo, audience, base, view["remote"].get(base), base_sha)
+        if behind:
+            if refresh is None and interactive:
+                raise NeedsRefresh([behind], name)
+            if refresh:
+                try:
+                    view_told, _ = orf.refresh(office_root, name, entry=entry)
+                    view = orf.clone_view(place, audience, base)
+                except (orf.RefreshError, ohost.HostError) as exc:
+                    raise DeliverError(getattr(exc, "lines", None) or [str(exc)])
+                view_told.insert(0, f"{behind}: refreshed (office projects refresh {name})")
+                if not place.hosted:
+                    # A base checked out and fast-forwarded is the workbench.
+                    facts["head"] = g(repo, "rev-parse", "HEAD").stdout.strip()
+            else:
+                view_told.append(f"{behind}; not refreshed" + (" (--no-refresh)" if refresh is False else
+                                 f" (piped: office deliver {folder} --refresh, or office projects refresh {name})"))
+        # 4c. The clean merge (0.39.0): a delivery made from the base
+        # (not one continuing on a branch) squashes from where the workbench
+        # and the base parted; when the workbench is behind the base, the
+        # base is brought into it first, in the clone where the work lives,
+        # as a real merge commit, when that merge is clean and the tree is
+        # clean, so the range read below carries the folder's own work and
+        # the squash runs from the base's tip. A conflict refuses here, the
+        # merge aborted and checked; base_holds, twice_lines and the squash
+        # are as they were.
+        if not continuing and view["remote"].get(base) == base_sha and view["branch"]:
+            base_merge, told_ = merge_base_in(place, view, name, audience, base, base_sha, author)
+            view_told += told_
+            if base_merge:
+                if not place.hosted:
+                    facts["head"] = base_merge["sha"]
+                text = merged_text(audience, base, base_merge)
+                import time
+                on = day or time.strftime("%Y-%m-%d")
+                try:
+                    _, wrote = oh.folder_event(md, on, "merged", text)
+                    if wrote:
+                        ob.git(office_root, "add", "--", f"{rel}/folder.md")
+                        ob.git(office_root, "commit", "-q", "-m", f"office deliver: {audience}/{base} into the "
+                               f"workbench for {folder}", "--", f"{rel}/folder.md")
+                        base_merge["history"] = f"{rel}/folder.md: History: {on} merged: {text}"
+                except (OSError, oh.HelperError, ob.LandError) as exc:
+                    base_merge["history"] = f"{rel}/folder.md: the merge could not be recorded ({exc}); it is in the clone"
+                base_merge["line"] = (f"brought {audience}/{base} into the workbench: merge commit {base_merge['sha'][:7]} "
+                                  f"({base_merge['brought']} commit{'' if base_merge['brought'] == 1 else 's'} of the "
+                                  "audience's)")
+        elif not continuing and view["remote"].get(base) != base_sha and behind:
+            view_told.append(f"the workbench is not brought level with {audience}/{base} while the clone's view of it "
+                             "is behind: the squash runs from where they parted, as before")
         # 5. The landed work: the clone's HEAD here, or carried as a bundle.
         applied = []
         if place.hosted:
@@ -1026,6 +1194,9 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             "stat": shown_stat, "hits": olh.render(hits), "check_told": told, "guard": guard_lines,
             "delivery_md": str(delivery_md), "office_root": str(office_root), "start": start_sha,
             "author_told": author_told, "commits_shown": [],
+            # Additive (0.39.0): the clone's view of the audience, said and
+            # refreshed, and the clean merge of the base into the workbench.
+            "view_told": view_told, "merged": base_merge,
             "commits_line": commits_line(len(words["commits"])) or "",
         }
         if hits:
@@ -1422,6 +1593,11 @@ def main(argv=None):
     p.add_argument("--author", help="the project's author, declared and kept, as office projects set --author does")
     p.add_argument("--interactive", action="store_true",
                    help="bin/office asks about other folders' sessions: keep the worktree and report them")
+    p.add_argument("--refresh", dest="refresh", action="store_true", default=None,
+                   help="refresh the clone's view of the audience when it is behind (0.39.0)")
+    p.add_argument("--no-refresh", dest="refresh", action="store_false",
+                   help="do not refresh it; say it is behind and go on")
+    p.add_argument("--day", help="the office's date, for the History line of a clean merge")
     p = sub.add_parser("run", help="commit, push and record, from a plan")
     p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--day", required=True)
     p = sub.add_parser("abandon", help="remove what a plan made")
@@ -1492,7 +1668,15 @@ def main(argv=None):
         if a.cmd == "plan":
             try:
                 out = plan(ob.Consumption(), a.office, a.folder, a.branch, a.project, a.others_too, a.interactive,
-                           a.author, a.adopt)
+                           a.author, a.adopt, a.refresh, a.day)
+            except NeedsRefresh as exc:
+                if not a.interactive:
+                    raise
+                # On a terminal bin/office says the line, asks once, and plans
+                # again with --refresh or --no-refresh.
+                pathlib.Path(a.plan).write_text(json.dumps({"need_refresh": exc.project, "behind": exc.lines[0]}),
+                                                encoding="utf-8")
+                return 5
             except NeedsAuthor as exc:
                 if not a.interactive:
                     raise
