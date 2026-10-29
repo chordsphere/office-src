@@ -1,0 +1,200 @@
+{
+  "record_version": 1,
+  "session_id": "2026-10-29-sort-facts-003",
+  "created_at": "2026-10-29T01:41:41+00:00",
+  "attempts": [
+    {
+      "at": "2026-10-29T01:41:41+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "lib/office_sort.py",
+        "templates/sort-brief.md",
+        "tests/test_sort.py"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-10-29-sort-facts-003.log",
+      "bundle": {
+        "stem": "2026-10-29-sort-facts",
+        "brief_sha256": "9d6e09b8e885f58164b7502d6b7e138e135bf0a41f1f86b425b95e0af7f341b0",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "be3dbfcb9c0666358b092900ab259e634a48922e8e44e677952631e239889101"
+      },
+      "provenance": {
+        "work_class": "code",
+        "packer": "chordsphere",
+        "packed_at": "2026-10-29T01:41:41+00:00"
+      }
+    },
+    {
+      "at": "2026-10-29T02:21:16+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-10-29-sort-facts-003.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "tests/run.sh --fast with this session's test_sort classes": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "tests/run.sh test_sort (the touched module whole, --slow)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "tests/run.sh --fast with this session's test_sort classes": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "tests/run.sh test_sort (the touched module whole, --slow)": {
+            "claim": "pass",
+            "verdict": "skip",
+            "agreement": "n/a"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "python syntax (lib/office_sort.py, tests/test_sort.py)",
+          "assert: a fact is filed bare (A8's doubled line, each half, an ask's name)",
+          "assert: a date or an id inside the fact's own sentence stays",
+          "assert: a doubled line filed before keys bare, stays, and a refiling adds nothing",
+          "assert: the sort brief says write facts bare, outside the pinned Sort format",
+          "assert: FACT_LINE_RE, the filed form, is unchanged",
+          "assert: VERSION, README.md, RELEASES.md, the doctrine, bin/office and the front sheet are untouched",
+          "tests/run.sh --fast with this session's test_sort classes",
+          "tests/run.sh test_sort (the touched module whole, --slow)"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "lib/office_sort.py",
+        "templates/sort-brief.md",
+        "tests/test_sort.py"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [
+        "lib/office_sort.py",
+        "templates/sort-brief.md",
+        "tests/test_sort.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.56",
+            "contract_docs": {
+              "AGENT.md": "31dcdded2a8fd175f7778c2bd1be09688e89e76b8fd4cd62b7646aacfa2782c4",
+              "TARBALL.md": "3037b905ee561af44f27cc83ec45d832feb7d429a98d4e07b4482a518cda6e94",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "a8e5714e51049768e52bb5bc0ede9338db1175e7095d9b2bdd0d314ab3e01078"
+            },
+            "packer": "chordsphere",
+            "work_class": "code",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-10-29T01:41:41+00:00",
+            "base_files": {
+              "lib/office_sort.py": "9e44c7e8b8c7849e530fb7d8d0a3e0f1cf223f9af8443fa7df33660c9b03e0e6",
+              "templates/sort-brief.md": "3ab87190bb653b3e2b55d160dc347602c6a8a50de462f36b0e21ebdae016e342",
+              "tests/test_sort.py": "feab3a04c21257f0008e564b65aa50ebbc285d6f5f456494963824f2079b0f28"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "an ask's name, in the brief's 'a trailing (SID) where SID reads as a session id or as an ask's name', is the filing session's own slug (sid[11:-4]); any slug-shaped word would strip real fact endings"
+          ],
+          "judgment_calls": [
+            "the strip lives in bare_fact, called by fact_line, so no caller can file a dressed line; fact_key reads filed lines back bare so old doubled lines key as their bare fact",
+            "a fact the same filing gives twice is filed once (said as 'N given twice, filed once'), extending the 0.31.0 refiling rule to one filing",
+            "a fact that is only a date and an id is not filed and is said, rather than filed as written or raising",
+            "no word added to templates/handbook-chapter.md or templates/handbook-README.md: the filed form they describe is unchanged",
+            "the wrapped-fact truncation in parse_handbook is proposed, not fixed: outside the goal, and it would change the keys of earlier filings"
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [],
+          "compaction_occurred": {
+            "occurred": false
+          },
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md (META through 11.2)",
+            "README.md",
+            "TARBALL.md (INDEX, 1, 2, 5, 7, 6, 8, 9, 10)",
+            "lib/office_sort.py",
+            "templates/sort-brief.md",
+            "tests/test_sort.py",
+            "doctrine/OFFICE.md (section 4 Handbook bullet, the landing paragraph, section 5 Handbook and Calendar)",
+            "templates/walkthrough.md",
+            "templates/delivery.md",
+            "RELEASES.md (0.37.0)",
+            "claude/responses/2026-10-28-m10-land-flags-005/notes.md",
+            "share/letterhead.toml",
+            "tools/craft_response.py",
+            "tools/response_lint.py"
+          ]
+        }
+      },
+      "log": ".bale/logs/2026-10-29-sort-facts-003.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-10-29T02:21:16+00:00",
+  "outcome": "applied"
+}
