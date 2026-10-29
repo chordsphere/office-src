@@ -162,13 +162,23 @@ class TestLandFixtures(unittest.TestCase):
 
     def test_the_office_passes_bale_no_answer(self):
         """apply and retry run with nothing that answers a question bale
-        asks: no --no-interact, no admission, no acceptance."""
+        asks: no --no-interact, no admission. The two accepts bale refuses
+        without asking are declared (0.37.0) and passed only when given:
+        the call with none given is the tarball alone."""
+        help_text = "\n".join(fixture("help-apply")["stdout"] + fixture("help-retry")["stdout"])
         for surface in ("apply", "retry"):
             spec = self.data["surfaces"][surface]
             self.assertEqual(spec["argv"], [surface, "{tarball}"])
             self.assertTrue(spec["interactive"])
-            for group in ("optional", "repeated", "switches"):
-                self.assertNotIn(group, spec, surface)
+            self.assertNotIn("optional", spec, surface)
+            self.assertEqual(spec["switches"], [["--accept-checkpoint-change", "{accept_checkpoint_change}"]])
+            self.assertEqual(spec["repeated"], [["--accept-base-drift", "{accept_base_drift}"]])
+            self.assertEqual(spec["flags_before"], "{tarball}")
+            self.assertEqual(ob.Consumption().argv(surface, tarball="t.tar.gz"), [surface, "t.tar.gz"])
+            for flag in ("--accept-checkpoint-change", "--accept-base-drift"):
+                self.assertIn(flag, help_text, surface)
+                self.assertIn(flag, spec["contract"] + " --accept-checkpoint-change --accept-base-drift")
+            self.assertIn(f"bale help {surface}", spec["contract"])
         self.assertEqual(self.data["surfaces"]["open"]["argv"], ["open", "{bundle}"])
         self.assertEqual(self.data["surfaces"]["relay"]["argv"], ["relay", "{sid}"])
 
@@ -471,6 +481,191 @@ class TestLandShortOfApplied(LandCase):
         self.assertEqual(self.fake.land_state()["attempts"][sid][-1]["outcome"], "scope-drift-refused")
         (_, _, tty), = self.fake.calls_of("apply")
         self.assertFalse(tty)
+
+
+class TestLandPassesBalesAccepts(LandCase):
+    """office land passes bale's two per-invocation accepts through
+    (0.37.0): --accept-checkpoint-change and --accept-base-drift PATH, as
+    typed, before the tarball, each said in its own line before bale runs,
+    never added on its own; after a refusal for either cause the next line
+    is the office line that accepts it."""
+
+    def moved_base(self):
+        """A session on alpha whose src/a.py moved after the pack, and its
+        response, which changes that file."""
+        sid = self.start("fix-login", "--on", "alpha", "--goal", "g")
+        (self.proj / "src/a.py").write_text("moved\n")
+        self.e.git(self.proj, "commit", "-qam", "moved after the pack")
+        response_tarball(self.downloads, sid, {"src/a.py": "fixed\n"})
+        return sid
+
+    def test_a_moved_base_names_the_office_line_and_that_line_lands_it(self):
+        sid = self.moved_base()
+        proc = self.run_office("land", check=1)
+        self.assertIn("[BASE-DRIFT-REFUSED]", proc.stdout)
+        self.assertIn(f"Refused: bale refused {sid} in alpha: a file it changes moved since the pack", proc.stdout)
+        self.assertIn(f"Next: office land {sid} --accept-base-drift 'src/a.py'\n", proc.stdout)
+        # Nothing was passed unasked, and nothing said.
+        (_, argv, _), = self.fake.calls_of("apply")
+        self.assertEqual(argv, ["apply", f"response-{sid}.tar.gz"])
+        self.assertNotIn("passing --accept", proc.stderr)
+        self.assertEqual((self.proj / "src/a.py").read_text(), "moved\n")
+        # The line it named, typed: passed before the tarball, said first.
+        proc = self.run_office("land", sid, "--accept-base-drift", "src/a.py", check=0)
+        said = (f"passing --accept-base-drift 'src/a.py' to bale apply, as you typed it: the response's bytes land "
+                "over src/a.py as it is now")
+        self.assertIn(said, proc.stderr)
+        self.assertLess(proc.stderr.index(f"landing {sid}"), proc.stderr.index(said))
+        self.assertEqual(self.fake.calls_of("apply")[-1][1],
+                         ["apply", "--accept-base-drift", "src/a.py", f"response-{sid}.tar.gz"])
+        self.assertIn(f"Landed: {sid} is applied in alpha", proc.stdout)
+        self.assertEqual((self.proj / "src/a.py").read_text(), "fixed\n")
+        # Every other line of land is as it was: the after-land actions ran.
+        self.assertTrue((self.proj / "AFTER-LAND-RAN").is_file())
+
+    def test_the_checkpoint_switch_reaches_the_retry_as_typed_and_nothing_else_changes(self):
+        sid = self.start("fix-login", "--on", "alpha", "--goal", "g")
+        response_tarball(self.downloads, sid, {"src/a.py": "broken\n"}, validation="fail")
+        self.assertIn(f"Held: bale held {sid}", self.run_office("land", check=1).stdout)
+        # After bale amend-checkpoint the same response is retried, with the
+        # accept the occupant types; both accepts together, as typed.
+        same = self.downloads / f"response-{sid}.tar.gz"
+        fixed = response_tarball(self.downloads, sid, {"src/a.py": "fixed\n"}, name=f"response-{sid} (1).tar.gz")
+        proc = self.run_office("land", sid, "--response", str(fixed), "--accept-checkpoint-change",
+                               "--accept-base-drift", "docs/it's here.md", check=0)
+        (_, argv, _), = self.fake.calls_of("retry")
+        self.assertEqual(argv, ["retry", "--accept-base-drift", "docs/it's here.md", "--accept-checkpoint-change",
+                                str(fixed)])
+        self.assertIn("passing --accept-checkpoint-change to bale retry, as you typed it: bale runs the session's "
+                      "checkpoint as it is committed now", proc.stderr)
+        self.assertIn("passing --accept-base-drift 'docs/it'\\''s here.md' to bale retry", proc.stderr)
+        self.assertIn(f"Landed: {sid}", proc.stdout)
+        self.assertTrue(same.is_file())
+
+    def test_after_amend_checkpoint_a_refused_retry_names_the_office_line(self):
+        """bale refuses a changed checkpoint before staging, on stderr, and
+        records no attempt: the retry's Next line offers the office line on
+        bale's words, and that line, typed, lands the same response."""
+        sid = self.start("fix-login", "--on", "alpha", "--goal", "g")
+        response_tarball(self.downloads, sid, {"src/a.py": "broken\n"}, validation="fail")
+        self.run_office("land", check=1)
+        fixed = response_tarball(self.downloads, sid, {"src/a.py": "fixed\n"}, name=f"response-{sid} (1).tar.gz")
+        self.e.env["FAKE_BALE_CHECKPOINT_CHANGED"] = sid
+        proc = self.run_office("land", sid, "--response", str(fixed), check=1)
+        self.assertIn("blind checkpoint changed since pack", proc.stderr)
+        self.assertIn(f"Not landed: bale refused before it recorded an attempt for {sid}", proc.stdout)
+        self.assertIn(f"Next: office land {sid} --accept-checkpoint-change, if bale's words above say the "
+                      "session's checkpoint changed since the pack", proc.stdout)
+        self.assertTrue(self.fake.is_open(self.proj, sid))
+        proc = self.run_office("land", sid, "--response", str(fixed), "--accept-checkpoint-change", check=0)
+        self.assertEqual(self.fake.calls_of("retry")[-1][1], ["retry", "--accept-checkpoint-change", str(fixed)])
+        self.assertIn(f"Landed: {sid}", proc.stdout)
+        self.assertTrue((self.proj / "AFTER-LAND-RAN").is_file())
+
+    def test_a_sitting_lands_nothing_so_an_accept_is_refused_and_nothing_ends(self):
+        sid = self.start("fix-login", "--in-office", "--read-only", "--goal", "g")
+        proc = self.run_office("land", sid, "--accept-checkpoint-change", check=1)
+        self.assertIn(f"{sid} is a read-only sitting: it lands nothing, so bale has nothing for "
+                      "--accept-checkpoint-change to accept; nothing was ended", proc.stderr)
+        self.assertEqual(self.fake.calls_of("unlock"), [])
+        self.assertIn("needs a path", self.run_office("land", sid, "--accept-base-drift", check=1).stderr)
+
+    def test_no_setting_turns_one_on(self):
+        """The accepts reach bale from the command line alone: bin/office
+        reads them in cmd_land's own loop and nowhere else, and the plan
+        carries only what land-plan was given."""
+        text = (REPO / "bin" / "office").read_text()
+        body = text.split("\ncmd_land() {", 1)[1].split("\n}\n", 1)[0]
+        usage = text.split("\nusage_land() {", 1)[1].split("\n}\n", 1)[0]
+        rest = text.replace(body, "").replace(usage, "")
+        self.assertNotIn("accept-checkpoint-change", rest)
+        self.assertNotIn("accept-base-drift", rest)
+        self.assertNotIn("accept", (REPO / "share" / "profile-shape.toml").read_text().lower())
+        for name in ("machine", "manifest"):
+            self.assertNotIn("accept_", "".join(p.read_text() for p in (REPO / "templates").glob("*")), name)
+
+    def test_the_units(self):
+        drift = fixture("apply-drift")["stdout"]
+        self.assertEqual(ob.accepts_bale_names(drift), (False, ["notes/job/folder.md"]))
+        self.assertEqual(ob.accepts_bale_names(["bale retry 'r.tar.gz' --accept-checkpoint-change",
+                                                "      bale apply r --accept-base-drift 'a b' --accept-base-drift=c",
+                                                "  - or land the bytes with --accept-base-drift x",
+                                                "bale apply 'unclosed --accept-base-drift"]),
+                         (True, ["a b", "c"]))
+        plan = {"sid": "2026-10-28-x-001", "label": "alpha", "verb": "apply"}
+        self.assertEqual(ob.accept_said(plan), [])
+        words, nxt = ob.outcome_words(plan, "base-drift-refused")
+        self.assertEqual(nxt, "office land 2026-10-28-x-001 --accept-base-drift PATH, once for each path bale "
+                              "names above")
+        # What this landing passed is said again (bale carries nothing
+        # forward), with what bale's own line names.
+        plan.update(accept_checkpoint_change=True, accept_base_drift=["a"])
+        _, nxt = ob.outcome_words(plan, "base-drift-refused", (False, ["a", "b"]))
+        self.assertEqual(nxt, "office land 2026-10-28-x-001 --accept-checkpoint-change --accept-base-drift 'a' "
+                              "--accept-base-drift 'b'")
+        self.assertEqual(len(ob.accept_said(plan)), 2)
+        # A retry refused before any attempt offers the checkpoint's line,
+        # on bale's words; an apply, or a retry that passed it, does not.
+        retry = {"sid": "2026-10-28-x-001", "label": "alpha", "verb": "retry"}
+        self.assertTrue(ob.outcome_words(retry, "refused")[1].startswith(
+            "office land 2026-10-28-x-001 --accept-checkpoint-change, if bale's words above say"))
+        self.assertIsNone(ob.outcome_words(dict(retry, verb="apply"), "refused")[1])
+        self.assertIsNone(ob.outcome_words(dict(retry, accept_checkpoint_change=True), "refused")[1])
+        # Where bale's own line reached the capture (through a host's
+        # terminal), the refusal is named outright.
+        words, nxt = ob.outcome_words(dict(retry), "refused", (True, []))
+        self.assertIn("its checkpoint changed since the pack", words)
+        self.assertEqual(nxt, "office land 2026-10-28-x-001 --accept-checkpoint-change")
+        # Scope drift and a missing check stay bale's questions: no line.
+        for outcome in ("scope-drift-refused", "required-check-refused"):
+            self.assertIsNone(ob.outcome_words(plan, outcome, (True, ["a"]))[1], outcome)
+        self.assertEqual(ob.accept_flags(True, ["p", "q"]),
+                         ["--accept-checkpoint-change", "--accept-base-drift", "p", "--accept-base-drift", "q"])
+
+
+class TestTheLandFlagsRecord(unittest.TestCase):
+    """0.37.0's record: the release, its words in the README, the usage and
+    the doctrine; the releases in order with none skipped; and 0.33.0's
+    entry as that release's tag holds it, byte for byte."""
+
+    # sha256 of the tag's RELEASES.md from its "## 0.33.0" line up to, not
+    # including, its "## 0.32.0" line (git show
+    # applied/2026-10-28-m10-sitting-fixes-001:RELEASES.md), read by the
+    # probe of session 2026-10-28-m10-land-flags-005.
+    TAGGED_0330 = "5bd5083c4167fae162e195e11c42cfd4ed68dc7f6a945840c4bc1d9f2d5e5ec7"
+
+    def test_the_release_and_where_it_is_said(self):
+        releases = (REPO / "RELEASES.md").read_text()
+        entry = releases.split("## 0.37.0\n", 1)[1].split("\n## ", 1)[0]
+        for words in ("--accept-checkpoint-change", "--accept-base-drift", "0.33.0", "restored"):
+            self.assertIn(words, entry)
+        readme = " ".join((REPO / "README.md").read_text().split())
+        details = readme.split("### Bringing a session back: the details", 1)[1].split(" ### ", 1)[0]
+        for words in ("`--accept-checkpoint-change`", "`--accept-base-drift PATH`", "exactly as you typed them",
+                      "land never adds one on its own", "the office line that accepts it"):
+            self.assertIn(words, details)
+        usage = subprocess.run([str(REPO / "bin" / "office"), "land", "--help"], capture_output=True, text=True,
+                               env=dict(os.environ, OFFICE_ROOT="/nonexistent")).stdout
+        for words in ("[--accept-checkpoint-change] [--accept-base-drift PATH]", "never adds one on\nits own"):
+            self.assertIn(words, usage)
+        doctrine = " ".join((REPO / "doctrine/OFFICE.md").read_text().split())
+        landing = doctrine.split("## 4. How a session is packed, continued", 1)[1].split("## 5.", 1)[0]
+        self.assertIn("Of bale's own flags it passes only the two accepts bale refuses without asking", landing)
+
+    def test_the_releases_run_in_order_and_skip_none(self):
+        versions = [tuple(int(x) for x in m) for m in
+                    re.findall(r"^## (\d+)\.(\d+)\.(\d+)$", (REPO / "RELEASES.md").read_text(), re.M)]
+        self.assertEqual(versions, sorted(versions, reverse=True))
+        self.assertEqual(len(versions), len(set(versions)))
+        minors = sorted({v[1] for v in versions if v[0] == 0})
+        self.assertEqual(minors, list(range(minors[0], minors[-1] + 1)), "a minor release is missing")
+
+    def test_the_033_entry_is_the_tags_bytes(self):
+        data = (REPO / "RELEASES.md").read_bytes()
+        start = data.index(b"\n## 0.33.0\n") + 1
+        end = data.index(b"\n## 0.32.0\n", start) + 1
+        self.assertEqual(hashlib.sha256(data[start:end]).hexdigest(), self.TAGGED_0330)
+        self.assertLess(data.index(b"\n## 0.34.0\n"), start)
 
 
 class TestLandWhichSession(LandCase):

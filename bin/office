@@ -5914,6 +5914,7 @@ usage_land() {
   cat <<'USAGE'
 usage: office land [SID | FOLDER | RESPONSE] [--sid SID] [--folder FOLDER] [--response FILE]
                    [--ratified [--except TEXT] | --not-now] [--close | --leave-open] [--arising FILE]
+                   [--accept-checkpoint-change] [--accept-base-drift PATH]...
 Brings a session back. It finds the response for a session the office has
 out, runs bale apply in the repo the session belongs to (a project, or the
 office itself; bale retry when bale held the session), and says how it
@@ -5940,6 +5941,15 @@ terminal, the clipboard once you have copied the block; one line says what
 it filed. A block that does not read stops land with the sitting open.
 An after-land action runs only through office
 land: a session applied by hand with bale apply runs none.
+bale refuses two things without asking: a checkpoint that changed between
+the pack and the landing (after bale amend-checkpoint, say), and a file
+whose base moved since the pack. Each is accepted only on the landing you
+type it on: --accept-checkpoint-change and --accept-base-drift PATH (once
+per path) are passed to bale apply or bale retry exactly as you typed
+them, each said in its own line before bale runs. land never adds one on
+its own and no setting turns one on, as bale has none. After bale refuses
+a moved base, land's Next line is the office line that accepts it; after
+a refused retry, it is the checkpoint's, for when bale's words say so.
 After an applied landing, when the folder records that session alone, the
 job is finished: on a terminal land closes the folder, done, in the same
 breath, and names the line that reopens it; piped, it leaves the folder
@@ -5994,14 +6004,20 @@ newest is passed to bale by its path, and land says so.
   --not-now        changes nothing (land asks nothing about ratification)
   --arising FILE   a meeting's prep: the sitting's arising block (- for stdin,
                    none when nothing arose)
+  --accept-checkpoint-change
+                   pass bale's --accept-checkpoint-change: run the checkpoint
+                   as it is committed now, not as the pack stamped it
+  --accept-base-drift PATH
+                   pass bale's --accept-base-drift PATH (repeatable): land the
+                   response's bytes over PATH as it moved since the pack
   --close          close a finished folder with the landing, without asking
   --leave-open     leave it open, without asking (office close closes it later)
 Under the hood: bale apply TARBALL (bale retry for a held session) in the
-session's repo, then bale stats --sid SID --json for how it ended, and
-after an applied landing office watches check; for a sitting, bale unlock
-SID --json in its repo. On a host each runs through the project's shell
-(ssh -tt and a container's -it for the step you answer), and one land
-reaches the host once.
+session's repo, the accepts you typed before TARBALL, then bale stats
+--sid SID --json for how it ended, and after an applied landing office
+watches check; for a sitting, bale unlock SID --json in its repo. On a
+host each runs through the project's shell (ssh -tt and a container's -it
+for the step you answer), and one land reaches the host once.
 Examples:
   office land                                  (the session out; asked when there are several)
   office land 2026-10-05-fix-login-001
@@ -6010,6 +6026,8 @@ Examples:
   office land 2026-10-25-weekly-review-prep-001 --arising ~/Downloads/arising-2026-10-25-weekly-review-prep-001.md
   office land 2026-10-05-fix-login-001 --response "$HOME/Downloads/response-2026-10-05-fix-login-001 (1).tar.gz"
   office land fix-login --ratified --close
+  office land 2026-10-05-fix-login-001 --accept-checkpoint-change   (after bale amend-checkpoint)
+  office land 2026-10-05-fix-login-001 --accept-base-drift src/login.py
 USAGE
 }
 
@@ -6215,10 +6233,15 @@ for spec in specs:
 cmd_land() {
   local want="" sid="" folder="" response="" ratify="" except="" has_except=0 root tmp plan capture
   local out n line words verb repo label day tz md name space rc=0 ans relays i
-  local host="" dl_args=() d default help_more
+  local host="" dl_args=() d default help_more accept_args=()
   LAND_CLOSE=""; LAND_ARISING=""
   while [ $# -gt 0 ]; do
     case "$1" in
+      # bale's two per-invocation accepts (0.37.0): handed to land-plan as
+      # typed, and to bale apply or retry from the plan; never added here.
+      --accept-checkpoint-change) accept_args+=(--accept-checkpoint-change); shift ;;
+      --accept-base-drift) [ $# -ge 2 ] && [ -n "$2" ] || die "--accept-base-drift needs a path: the file bale names as moved since the pack"
+                           accept_args+=("--accept-base-drift=$2"); shift 2 ;;
       --arising) [ $# -ge 2 ] || die "--arising needs the meeting's arising block: a file, - for stdin, or none"
                  LAND_ARISING="$2"; shift 2 ;;
       --close) [ "$LAND_CLOSE" != leave ] || die "--close and --leave-open contradict each other"; LAND_CLOSE=close; shift ;;
@@ -6310,7 +6333,7 @@ cmd_land() {
     dl_args=(--no-downloads)
   fi
   reader land-plan "$root" ${sid:+--sid "$sid"} ${folder:+--folder "$folder"} ${response:+--response "$response"} \
-    --cwd "$PWD" --plan "$plan" "${dl_args[@]}" || exit 1
+    --cwd "$PWD" --plan "$plan" "${dl_args[@]}" ${accept_args[@]+"${accept_args[@]}"} || exit 1
   # The plan's fields, read once (0.29.0; it was one interpreter start per
   # field, fourteen in a landing), and again after each time the plan is
   # written anew.
@@ -6323,7 +6346,8 @@ cmd_land() {
     downloads_setting "the response for $sid is found on this machine by name and carried to $host"
     dl_args=()
     while IFS= read -r d; do [ -n "$d" ] && dl_args+=(--downloads "$d"); done <<< "$DOWNLOADS"
-    reader land-plan "$root" --sid "$sid" ${response:+--response "$response"} --cwd "$PWD" --plan "$plan" "${dl_args[@]}" || exit 1
+    reader land-plan "$root" --sid "$sid" ${response:+--response "$response"} --cwd "$PWD" --plan "$plan" "${dl_args[@]}" \
+      ${accept_args[@]+"${accept_args[@]}"} || exit 1
     plan_read "$plan"
   fi
   if [ -n "$needs_response" ]; then
@@ -6357,7 +6381,8 @@ cmd_land() {
     pick response "bale held $sid; the corrected response, by its key (--response FILE)" \
       "The response the worker sent after the HOLD, usually the newest: a browser saves a second download of one name as 'response-$sid (1).tar.gz'. $help_more" \
       "" 1 "${cvals[@]}"
-    reader land-plan "$root" --sid "$sid" --response "$response" --cwd "$PWD" --plan "$plan" "${dl_args[@]}" || exit 1
+    reader land-plan "$root" --sid "$sid" --response "$response" --cwd "$PWD" --plan "$plan" "${dl_args[@]}" \
+      ${accept_args[@]+"${accept_args[@]}"} || exit 1
     plan_read "$plan"
   fi
   [ -z "$problems" ] || while IFS= read -r line; do [ -n "$line" ] && warn "$line"; done <<< "$problems"

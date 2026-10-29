@@ -33,6 +33,10 @@
 #            development record's fixtures for that version.
 # argv       the call, {placeholders} filled when it runs
 # optional   flags added, in this order, when their value is given
+# flags_before
+#            the word of argv the flags go before, as bale's usage line
+#            places them (apply and retry: the tarball last); without it
+#            they follow the whole argv
 # contract   where bale keeps the surface's key contract
 # outcome    the value of the line's outcome key on success
 # keys       every key the office reads: a.b is b inside a; a[].b is b
@@ -384,11 +388,25 @@ keys = [
 #               office takes the blocks from between these, verbatim
 # outcomes      the attempt outcomes the office words; any other is
 #               shown as bale records it
+#
+# bale's two accepts (0.37.0, session 2026-10-28-m10-land-flags-005):
+# --accept-checkpoint-change and --accept-base-drift PATH, the two things
+# apply and retry refuse without asking (a blind checkpoint that changed
+# between pack and apply; a path whose base moved since the pack), passed
+# only when the occupant types them on office land, each said in its own
+# line before bale runs, through the project's shell on a host exactly as
+# typed. They are bale's deliberate per-invocation rungs, with no config
+# key by design, and the office keeps that: no setting turns one on and
+# land never adds one on its own. After a refusal for either cause, land's
+# next line is the office line that passes the same accept.
 [surfaces.apply]
 argv = ["apply", "{tarball}"]
 format = "text"
 interactive = true
-contract = "bale apply --help (v0.4.45)"
+switches = [["--accept-checkpoint-change", "{accept_checkpoint_change}"]]
+repeated = [["--accept-base-drift", "{accept_base_drift}"]]
+flags_before = "{tarball}"
+contract = "bale apply --help (v0.4.45); the two accepts from bale help apply, read on 0.4.56 (--accept-checkpoint-change since v0.3.28, --accept-base-drift PATH repeatable)"
 relay = ["=== RELAY BEGIN {sid} to ", "=== RELAY END {sid} to "]
 outcomes = ["applied", "held", "base-drift-refused", "scope-drift-refused", "required-check-refused",
             "reverted", "bailout"]
@@ -399,7 +417,10 @@ outcomes = ["applied", "held", "base-drift-refused", "scope-drift-refused", "req
 argv = ["retry", "{tarball}"]
 format = "text"
 interactive = true
-contract = "bale retry --help (v0.4.45)"
+switches = [["--accept-checkpoint-change", "{accept_checkpoint_change}"]]
+repeated = [["--accept-base-drift", "{accept_base_drift}"]]
+flags_before = "{tarball}"
+contract = "bale retry --help (v0.4.45); the two accepts from bale help retry, read on 0.4.56 (the same semantics as apply's; after bale amend-checkpoint the retry of the same response takes --accept-checkpoint-change)"
 
 # A clarification's paste block for the planner, re-emitted from the
 # thread's latest round. With no file it records nothing; the block is

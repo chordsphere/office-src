@@ -105,7 +105,10 @@ class Consumption:
     def argv(self, name, **values):
         """The argv for a surface, from its declaration: the fixed argv
         with {placeholders} filled, then each declared optional flag whose
-        value was given, in the declared order."""
+        value was given, in the declared order. A surface that declares
+        flags_before (0.37.0: apply and retry, whose tarball comes last in
+        bale's usage line) has its flags placed before that word of its
+        argv instead of after the whole of it."""
         s = self.surface(name)
         if not s.get("calls", True):
             raise BaleError("undeclared", f"the office never calls bale for {name!r}; it only reads its report")
@@ -119,19 +122,26 @@ class Consumption:
             return str(values[m.group(1)])
 
         out = [fill(w) for w in s["argv"]]
+        flags = []
         for flag, word in s.get("optional", []):
             key = word.strip("{}")
             if values.get(key) is not None:
-                out += [flag, str(values[key])]
+                flags += [flag, str(values[key])]
         # A list value: the flag once per element, in order.
         for flag, word in s.get("repeated", []):
             for v in values.get(word.strip("{}")) or []:
-                out += [flag, str(v)]
+                flags += [flag, str(v)]
         # A true value: the bare flag.
         for flag, word in s.get("switches", []):
             if values.get(word.strip("{}")):
-                out.append(flag)
-        return out
+                flags.append(flag)
+        before = s.get("flags_before")
+        if before is None:
+            return out + flags
+        if before not in s["argv"]:
+            raise BaleError("undeclared", f"bale {name}'s flags_before {before!r} is not a word of its argv")
+        at = s["argv"].index(before)
+        return out[:at] + flags + out[at:]
 
     def subject_sid(self, subject):
         """(kind, sid) when a commit subject has one of the shapes bale
@@ -4390,12 +4400,21 @@ def printed_line(place, command):
     return " ".join(shlex.quote(w) for w in words) + " " + inner
 
 
-def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None, downloads=None):
+def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None, downloads=None,
+              accept_checkpoint_change=False, accept_base_drift=None):
     """The one session to land and how: a dict (sid, label, project,
     repo or place, where, folders, verb apply or retry, tarball,
     needs_response, response_default, needs_downloads, took, attempts_before,
-    record, after_land, problems). Raises LandError with lines when there
-    is none, or more than one.
+    record, after_land, problems, accept_checkpoint_change,
+    accept_base_drift). Raises LandError with lines when there is none, or
+    more than one.
+
+    accept_checkpoint_change and accept_base_drift (a list of paths, as
+    typed) are bale's two per-invocation accepts (0.37.0), passed to the
+    apply or retry this landing runs when the occupant typed them on
+    office land, and only then; the plan carries them so land_run hands
+    them on and the next line can restate them. A read-only sitting lands
+    nothing, so there they are refused, before anything ends.
 
     downloads is machine.toml's list, or None when it is not set. A
     session on a hosted project (0.16.0) needs its response on this
@@ -4458,7 +4477,13 @@ def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None, d
                 or LandError(["no session is out: none that a folder records is open in this office or in a "
                               "project it scopes (office start sends one out)"] + problems)
     landable = [x for x in found if not x["read_only"]]
+    accepts = accept_flags(accept_checkpoint_change, accept_base_drift)
     if not landable:
+        if accepts:
+            ended = found[0]["sid"] if len(found) == 1 else "the sitting"
+            raise LandError([f"{ended} is a read-only sitting: it lands nothing, so bale has nothing for "
+                             f"{' '.join(accepts)} to accept; nothing was ended (office land {ended}, without "
+                             "it, ends it when the sitting is over)"])
         return sitting_plan(found, None if bare else tarball, problems, response if bare else None, office_root)
     if len(landable) > 1:
         raise LandError(["more than one session is out; name one: office land SID"]
@@ -4473,7 +4498,9 @@ def land_plan(rd, office_root, sid=None, folder=None, response=None, cwd=None, d
     plan.update(verb="retry" if held else "apply", held=held, tarball=None, needs_response=False,
                 response_default=None, needs_downloads=False, took=[],
                 attempts_before=len(response_attempts(view)) if view else 0,
-                office_session=x["label"] == OFFICE_LABEL, problems=problems, record=None, where=str(place))
+                office_session=x["label"] == OFFICE_LABEL, problems=problems, record=None, where=str(place),
+                accept_checkpoint_change=bool(accept_checkpoint_change),
+                accept_base_drift=list(accept_base_drift or []))
     name = f"response-{x['sid']}.tar.gz"
     if x["host"]:
         plan.pop("repo", None)
@@ -4841,9 +4868,88 @@ def exchange_block(lines, sid, spec):
     return lines[a:b + 1]
 
 
-def outcome_words(plan, outcome):
+# --- bale's two accepts, passed through office land (0.37.0) ------------------------------
+#
+# bale apply and bale retry refuse two things without a prompt: a blind
+# checkpoint that changed between pack and apply, and a changes[] path whose
+# base moved since the pack. Each is accepted per invocation only, by a flag
+# bale deliberately gives no config key (bale help apply, bale help retry;
+# PLANNER.md section 5, step 5 of the bad-oracle correction). office land
+# passes either through when the occupant types it, says so before bale
+# runs, and never adds one on its own; no setting turns one on. The
+# admissions bale asks for itself (an out-of-forecast path, a missing
+# required check) stay bale's questions on the occupant's terminal.
+
+ACCEPT_CHECKPOINT_CHANGE = "--accept-checkpoint-change"
+ACCEPT_BASE_DRIFT = "--accept-base-drift"
+
+
+def accept_flags(checkpoint_change=False, base_drift=None):
+    """The accepts as argv words, in bale's usage order: the switch, then
+    --accept-base-drift PATH once per path, each path as typed."""
+    words = [ACCEPT_CHECKPOINT_CHANGE] if checkpoint_change else []
+    for path in base_drift or []:
+        words += [ACCEPT_BASE_DRIFT, path]
+    return words
+
+
+def accept_said(plan):
+    """One line per accept the landing passes to bale, for land to say
+    before bale runs; none when the occupant typed none."""
+    verb = plan.get("verb", "apply")
+    lines = []
+    if plan.get("accept_checkpoint_change"):
+        lines.append(f"passing {ACCEPT_CHECKPOINT_CHANGE} to bale {verb}, as you typed it: bale runs the session's "
+                     "checkpoint as it is committed now, not as it was stamped at the pack, and records that it did")
+    for path in plan.get("accept_base_drift") or []:
+        lines.append(f"passing {ACCEPT_BASE_DRIFT} {shell_quote(path)} to bale {verb}, as you typed it: the "
+                     f"response's bytes land over {path} as it is now, superseding what changed there since the pack")
+    return lines
+
+
+def accepts_bale_names(lines):
+    """(checkpoint change, [paths]) that bale's own re-run line names: a
+    line of bale's output that runs bale apply or bale retry with either
+    accept, read as a shell would read it. ((False, []) when bale printed
+    none.)"""
+    import shlex
+    checkpoint, paths = False, []
+    for line in lines:
+        text = line.strip()
+        if not text.startswith(("bale apply ", "bale retry ")) or "--accept-" not in text:
+            continue
+        try:
+            words = shlex.split(text)
+        except ValueError:
+            debug(f"bale's line does not read as a command, so its accepts are not taken from it: {text}")
+            continue
+        for i, word in enumerate(words):
+            if word == ACCEPT_CHECKPOINT_CHANGE:
+                checkpoint = True
+            elif word == ACCEPT_BASE_DRIFT and i + 1 < len(words) and words[i + 1] not in paths:
+                paths.append(words[i + 1])
+            elif word.startswith(ACCEPT_BASE_DRIFT + "=") and word.split("=", 1)[1] not in paths:
+                paths.append(word.split("=", 1)[1])
+    return checkpoint, paths
+
+
+def accept_line(plan, named=(False, [])):
+    """The office line that lands the session again with the accepts:
+    those this landing passed (bale carries none forward from a refused
+    attempt, so each is said again) and those bale's own line names."""
+    checkpoint = bool(plan.get("accept_checkpoint_change")) or named[0]
+    paths = list(plan.get("accept_base_drift") or [])
+    paths += [p for p in named[1] if p not in paths]
+    return " ".join(["office", "land", plan["sid"]] + [shell_quote(w) if not w.startswith("--") else w
+                                                       for w in accept_flags(checkpoint, paths)])
+
+
+def outcome_words(plan, outcome, named=(False, [])):
     """(words, next line or None) for where a landing ended, in the
-    office's words; bale's own lines above say the rest."""
+    office's words; bale's own lines above say the rest. named is what
+    bale's own re-run line accepts (accepts_bale_names): after a refusal
+    for a changed checkpoint or a moved base, the next line is the office
+    line that passes the same accept (0.37.0)."""
     sid, where = plan["sid"], plan["label"]
     nothing = "nothing landed, and the session stays open"
     if outcome == "applied":
@@ -4851,12 +4957,22 @@ def outcome_words(plan, outcome):
     if outcome == "held":
         return (f"Held: bale held {sid} in {where}; {nothing}. Carry bale's blocks above, the worker's first.",
                 f"office land {sid} --response FILE, with the corrected response (bale retry runs it)")
-    if outcome in ("base-drift-refused", "scope-drift-refused", "required-check-refused"):
-        what = {"base-drift-refused": "a file it changes moved since the pack",
-                "scope-drift-refused": "it changes paths outside the session's forecast",
+    if outcome == "base-drift-refused":
+        line = accept_line(plan, named)
+        if ACCEPT_BASE_DRIFT not in line:
+            line = f"office land {sid} {ACCEPT_BASE_DRIFT} PATH, once for each path bale names above"
+        return (f"Refused: bale refused {sid} in {where}: a file it changes moved since the pack; {nothing}. bale "
+                "printed its own line that admits it above; the office line below passes the same accept to bale "
+                "when you type it, and the office never runs either for you.", line)
+    if outcome in ("scope-drift-refused", "required-check-refused"):
+        what = {"scope-drift-refused": "it changes paths outside the session's forecast",
                 "required-check-refused": "its validation leaves out a check the project requires"}[outcome]
         return (f"Refused: bale refused {sid} in {where}: {what}; {nothing}. bale printed the line that admits it "
                 "above; the office never runs it for you.", None)
+    if named[0] and outcome not in ("clarification", "reverted", "bailout"):
+        return (f"Refused: bale refused {sid} in {where}: its checkpoint changed since the pack; {nothing}. bale "
+                "printed its own line that accepts it above; the office line below passes the same accept to bale "
+                "when you type it, and the office never runs either for you.", accept_line(plan, named))
     if outcome == "clarification":
         if plan.get("place"):
             # The answer is a file here; bale relay reads it on stdin there.
@@ -4872,7 +4988,16 @@ def outcome_words(plan, outcome):
     if outcome == "bailout":
         return f"Bailed: the worker handed {sid} off; nothing landed. bale printed the handoff step above.", None
     if outcome == "refused":
-        return f"Not landed: bale refused before it recorded an attempt for {sid}; its words are above.", None
+        words = f"Not landed: bale refused before it recorded an attempt for {sid}; its words are above."
+        if plan.get("verb") == "retry" and not plan.get("accept_checkpoint_change"):
+            # bale's provenance gate refuses a changed checkpoint before
+            # staging, on stderr, which a landing here does not keep, and
+            # records no attempt: the office cannot tell this refusal from
+            # another, so the line is offered on bale's words (0.37.0). A
+            # retry is where it comes, after bale amend-checkpoint.
+            return words, (accept_line(plan, (True, [])) + ", if bale's words above say the session's checkpoint "
+                           "changed since the pack (after bale amend-checkpoint, say)")
+        return words, None
     return f"bale recorded {outcome} for {sid} in {where}; nothing is ratified and nothing runs after it.", None
 
 
@@ -4917,7 +5042,7 @@ def land_outcome(rd, office_root, plan, code, capture, day):
             block = None
             log(f"bale relay could not re-emit the questions' block: {exc}")
         blocks = [("planner", block)] if block else []
-    words, nxt = outcome_words(plan, outcome)
+    words, nxt = outcome_words(plan, outcome, accepts_bale_names(printed))
     applied = outcome == "applied"
     told = put_record_back(office_root, plan, applied, day)
     return {"outcome": outcome, "applied": applied, "words": words, "next": nxt, "told": told,
@@ -4934,9 +5059,13 @@ def land_run(rd, plan, capture):
     bale, whatever bale said. Returns bale's exit code, or LAND_RUN_FAILED
     when bale could not be run."""
     where = plan_place(plan)
+    # bale's two accepts, only as the occupant typed them (0.37.0): the
+    # surface's switches and repeated flags, placed before the tarball.
+    accepts = {"accept_checkpoint_change": bool(plan.get("accept_checkpoint_change")),
+               "accept_base_drift": list(plan.get("accept_base_drift") or [])}
     if not rd.hosted(where):
         try:
-            return rd.interact(plan["verb"], where, capture, tarball=plan["tarball"])
+            return rd.interact(plan["verb"], where, capture, tarball=plan["tarball"], **accepts)
         except BaleError as exc:
             log(f"error: {exc}")
             return LAND_RUN_FAILED
@@ -4945,7 +5074,7 @@ def land_run(rd, plan, capture):
             remote = scratch.send(plan["tarball"])
             log(f"carried {pathlib.Path(plan['tarball']).name} to {where.host} ({remote}, checked by sha256; "
                 "removed when bale is done)")
-            return rd.interact(plan["verb"], where, capture, cleanup=scratch, tarball=remote)
+            return rd.interact(plan["verb"], where, capture, cleanup=scratch, tarball=remote, **accepts)
     except (BaleError, ohost.HostError) as exc:
         log(f"error: {exc}")
         log(f"error: nothing was applied; the response is still at {plan['tarball']}")
@@ -5170,6 +5299,13 @@ def land_whole(rd, a):
     if said:
         log(said)
 
+    # bale's accepts this landing passes, each in its own line, before bale
+    # runs (0.37.0); none unless the occupant typed one.
+    try:
+        for msg in accept_said(read_plan()):
+            log(msg)
+    except (OSError, ValueError) as exc:
+        log(f"error: {exc}")
     try:
         code = land_run(rd, read_plan(), a.capture)
     except StartError as exc:
@@ -5221,7 +5357,9 @@ def land_main(a):
             return 0
         if a.cmd == "land-plan":
             downloads = None if a.no_downloads else a.downloads
-            plan = land_plan(rd, a.office, a.sid, a.folder, a.response, a.cwd, downloads)
+            plan = land_plan(rd, a.office, a.sid, a.folder, a.response, a.cwd, downloads,
+                             accept_checkpoint_change=a.accept_checkpoint_change,
+                             accept_base_drift=a.accept_base_drift)
             pathlib.Path(a.plan).write_text(json.dumps(plan), encoding="utf-8")
             return 0
         plan = json.loads(pathlib.Path(a.plan).read_text(encoding="utf-8"))
@@ -5354,6 +5492,10 @@ def build_parser(only=None):
     p.add_argument("--downloads", action="append", default=[],
                    help="a directory machine.toml's downloads lists (repeatable)")
     p.add_argument("--no-downloads", action="store_true", help="machine.toml sets no downloads")
+    p.add_argument("--accept-checkpoint-change", action="store_true",
+                   help="pass bale's --accept-checkpoint-change to the apply or retry (0.37.0; as typed on office land)")
+    p.add_argument("--accept-base-drift", action="append", default=[], metavar="PATH",
+                   help="pass bale's --accept-base-drift PATH to the apply or retry (repeatable; as typed)")
     p = add("land-end", help="end a read-only sitting: bale unlock, then the folder's History; one JSON line")
     p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--day", required=True)
     p = add("land", help="the landing (0.30.0, once land-prepare, land-run and land-outcome): the office's "

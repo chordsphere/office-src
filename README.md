@@ -955,6 +955,8 @@ outside every office:
     office land fix-login                # the session out for a folder
     office land response-2026-10-05-fix-login-001.tar.gz
     office land fix-login --close        # piped: close the finished folder with the landing
+    office land SID --accept-checkpoint-change    # after bale amend-checkpoint: the same response, retried
+    office land SID --accept-base-drift src/a.py  # land its bytes over a file that moved since the pack
 
 `office land` finds the session a response answers (the one the office
 has out, asked for when there are several; a session id, a folder or a
@@ -967,6 +969,29 @@ response is found by bale, by name, in its search directories. When the
 browser saves the second as `response-SID (1).tar.gz`, which a corrected
 response after a HOLD usually is), land passes bale the newest by its
 path and says which; bale's own search would take the plain name first.
+
+Two things bale refuses without asking (0.37.0): a blind checkpoint that
+changed between the pack and the landing (`bale amend-checkpoint`
+committed a planner's amendment, say), and a file the response changes
+whose base moved since the pack. bale accepts each on one invocation
+only, deliberately with no setting, and so does the office:
+`--accept-checkpoint-change` and `--accept-base-drift PATH` (once per
+path) are passed to that landing's `bale apply` or `bale retry`, before
+the tarball, exactly as you typed them (through the project's shell for a
+project on a host), each said in its own line before bale runs. land
+never adds one on its own, and nothing turns one on for you. When bale
+refuses a moved base, land's Next line is the office line that accepts
+it, `office land SID --accept-base-drift PATH` with the paths bale
+names, and any accept you typed this time said again, since bale carries
+none forward. A changed checkpoint bale refuses before it stages
+anything, on its error stream, with no attempt recorded, so the office
+cannot tell it from another refusal: a retry refused that way names
+`office land SID --accept-checkpoint-change` as its Next line, for when
+bale's words above it say the checkpoint changed. The
+admissions bale asks for itself (a path outside the forecast, a missing
+required check) stay bale's questions on your terminal. The rest of the
+landing is as it would be: what is filed, what runs after and how it
+ends do not change with an accept.
 
 After an applied landing, before the after-land actions, land files what
 the session's notes.md says (0.20.0), when it found the response on this
@@ -1540,7 +1565,7 @@ matches the floor plan.
 |---|---|
 | bin/office | the command (bash); `pylib` starts each Python helper as a module, with -B, -P and (0.28.0) -S; since 0.29.0 the reads a command makes side by side go out as one call (`batch_call`, `batch_run`), the stamps and skew are read once per command (`skew_read`) and a helper's JSON answer is read back once (`json_read`); since 0.30.0 a landing's record, bale apply and its outcome are one `office_bale land` call |
 | lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library); since 0.28.0 the LazyPattern and OneSubcommand every module's start leans on; since 0.29.0 `batch`, several subcommands of any lib/ module in one process, and `skew-report`; since 0.30.0 `bytecode-check`, office status's line on the install's bytecode cache; since 0.33.0 the doctrine stamp a sitting's Sessions line carries (`sitting_words`, `session_doctrine`) |
-| lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after (one `land` call since 0.30.0: the office's record out, bale apply or retry, the outcome) |
+| lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after (one `land` call since 0.30.0: the office's record out, bale apply or retry, the outcome); since 0.37.0 bale's two accepts, passed as typed, said, and named after a refusal (`accept_flags`, `accept_said`, `accepts_bale_names`, `accept_line`) |
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
 | lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives) |
 | lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so; since 0.36.0 what bale's own commits changed taken out before the squash, own_commits and take_out_own), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review; since 0.35.0 a folder's delivery.md read as the letterhead reads it at deliver and at land's review alike, the words that leave and nothing of the office's (delivery_words) |

@@ -4,6 +4,82 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.37.0
+
+Additive: no migration, nothing to do in any office. A small session
+sent ahead of the six that remain of the planning sitting of 2026-10-27:
+`office land` passes bale's two per-invocation accepts through, and this
+file has its 0.33.0 entry back. What you see changes only when you type
+one of the two flags, or when bale refuses for one of their two causes;
+every other line of a landing is as it was.
+
+bale's two accepts, through office land. bale apply and bale retry
+refuse two things without asking: a blind checkpoint that changed
+between the pack and the landing, and a file the response changes whose
+base moved since the pack. Each is accepted on one invocation only, by a
+flag bale deliberately gives no setting. office land took none of bale's
+flags, so after `bale amend-checkpoint` the retry of the same response
+had to be run by hand with bale, outside land, and nothing land does
+after a landing (the filing, the after-land actions, the closing) ran
+for it (found 2026-10-28). Now `office land SID
+--accept-checkpoint-change` and `office land SID --accept-base-drift
+PATH` (once per path, as bale's is) hand the flags to that landing's
+apply or retry, before the tarball, exactly as typed, through the
+project's shell for a project on a host. Each is said in its own line
+before bale runs (`passing --accept-checkpoint-change to bale retry, as
+you typed it: ...`). land never adds one on its own and no setting turns
+one on, as bale has none. When bale refuses a moved base, land's Next
+line is the office line that accepts it: the paths bale's own re-run
+line names, and any accept typed this time said again, since bale
+carries none forward. bale refuses a changed checkpoint before it stages
+anything, on its error stream, which a landing here does not keep, and
+records no attempt, so the office cannot tell that refusal from another:
+a retry refused that way names `office land SID
+--accept-checkpoint-change` as its Next line, offered on bale's words
+above it (where bale's own line does reach the office, through a host's
+terminal, the refusal is named outright). A read-only sitting lands
+nothing, so an accept on one is refused with nothing ended. The
+admissions bale asks for itself (a path outside the forecast, a missing
+required check) stay bale's questions on your terminal, as before.
+share/bale-consumption.toml declares the two flags on `[surfaces.apply]`
+and `[surfaces.retry]`, a switch and a repeated flag placed before the
+tarball by a new key, `flags_before`, and its contract lines name the
+help they come from; lib/office_bale.py `accept_flags`, `accept_said`,
+`accepts_bale_names` and `accept_line`, with `land_plan`, `land_run` and
+`outcome_words` carrying them; bin/office `cmd_land` reads the two flags
+and `usage_land` says them, as do README.md's land details and the
+doctrine's section 4, continued, where it describes the landing.
+
+The 0.33.0 entry, restored. On the tree 0.34.0 was followed directly by
+0.32.0, so tests/test_answer_review.py TestTheRecord errored on every
+whole run and the history skipped a release. Read against the tag, only
+one line was gone: the entry's heading. Its body was still there, at the
+end of 0.34.0's entry, read as part of it. git log shows where: 0.34.0's
+own work commit (87ce51a, the first commit after 0.33.0's landing to
+touch RELEASES.md, whose parent still held the heading) wrote 0.34.0's
+entry above the old one with the old heading left out, a blank line
+doubled where it had been, and every landing since built on that. bale's
+base-drift gate could not see it, since the base had not moved under
+that session. The heading is back, and from it to 0.32.0's the entry is
+that release's own text, byte for byte, as the tree's history holds it
+(`git show applied/2026-10-28-m10-sitting-fixes-001:RELEASES.md`),
+checked by sha256, not written again; a test now pins that sha256.
+
+Tests: tests/test_land.py TestLandPassesBalesAccepts (a moved base names
+the office line and that line lands it; the checkpoint switch reaches
+the retry as typed; a retry refused after `bale amend-checkpoint` names
+the office line and that line lands it; a sitting refuses an accept; no
+setting turns one on; the units) and TestTheLandFlagsRecord (this
+release's record, the releases in order with none skipped, and the
+0.33.0 entry's bytes); tests/test_return_trip.py TestTheAcceptsOnAHost
+(both accepts through a host's shell, as typed); and
+tests/test_land.py's declaration test, which now holds the two accepts
+as the only flags apply and retry declare. 0.36.0's version pin in
+tests/test_bale_own_commits.py now reads 0.36.0 or later, as the pins
+before it do. Ten new tests; the suite holds 1053, 1043 at 0.36.0. The
+whole suite, run in the worker's sandbox, passed all 1053; the detached
+run after the landing is yours to record.
+
 ## 0.36.0
 
 Additive: no migration, nothing to do in any office. Delivering a work
@@ -216,6 +292,7 @@ since its two phrases are in the new one. The eight touched modules, run
 whole in the worker's sandbox, passed their 308 tests; the whole suite's
 detached run after the landing is yours to record.
 
+## 0.33.0
 
 Additive: no migration, nothing to do in any office. This release is the
 second of eight the planning sitting of 2026-10-27 drew from the M10

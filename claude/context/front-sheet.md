@@ -234,6 +234,33 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.37.0 (session 2026-10-28-m10-land-flags-005): `office land` passes
+  bale's two per-invocation accepts through, and RELEASES.md has its
+  0.33.0 entry back. After `bale amend-checkpoint` the retry of the same
+  response had to be run by hand with bale, outside land, with nothing
+  of land's filing or after-land actions (found 2026-10-28).
+  - `office land SID --accept-checkpoint-change` and `--accept-base-drift
+    PATH` (repeatable) reach that landing's apply or retry before the
+    tarball, as typed (through the project's shell on a host), each said
+    in its own line before bale runs; never added on its own, no setting
+    (share/bale-consumption.toml `switches`, `repeated` and the new
+    `flags_before` on apply and retry; lib/office_bale.py `accept_flags`,
+    `accept_said`, `accepts_bale_names`, `accept_line`).
+  - After bale refuses a moved base, the Next line is the office line
+    that accepts it, with the paths bale's own re-run line names and any
+    accept typed this time said again. bale refuses a changed checkpoint
+    on stderr before staging and records no attempt (bale_apply.py's
+    `fail(format_checkpoint_stamp_refusal(...))`, read in this session's
+    probe), so a refused retry offers `--accept-checkpoint-change` on
+    bale's words; through a host's terminal, where bale's line is
+    captured, it is named outright. A sitting refuses an accept.
+  - RELEASES.md's 0.33.0 entry is the tag's bytes again
+    (applied/2026-10-28-m10-sitting-fixes-001): only its heading line
+    was lost, in 0.34.0's work commit (87ce51a), its body left at the end
+    of 0.34.0's entry; the heading is back, and the entry is pinned by sha256 in
+    tests/test_land.py TestTheLandFlagsRecord, which also holds the
+    releases in order with none skipped.
+  - Additive: no migration.
 - 0.36.0 (session 2026-10-28-office-deliver-squashes-the-content-of-004):
   no bale commit leaves a delivery in content any more than in name.
   Delivering a work office's folder 6, bale's `bale: ignore .bale/`
