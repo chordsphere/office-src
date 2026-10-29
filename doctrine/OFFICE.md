@@ -583,7 +583,12 @@ session a response answers (the one out, a named one, or the one a
 response file names), runs `bale apply` in the repo it belongs to (`bale
 retry` for a session bale held), with the occupant's own terminal as
 bale's input, so every question bale asks (an admission, the merge, a
-hook) reaches the occupant as bale asks it; the office answers none. It
+hook) reaches the occupant as bale asks it; the office answers none. Of
+bale's own flags it passes only the two accepts bale refuses without
+asking, a checkpoint that changed since the pack and a base that moved
+(0.37.0), and only on the landing the occupant types them on, each said
+before bale runs; like bale it has no setting for either, never adds one,
+and after either refusal names the office line that accepts it. It
 reads how the landing ended from bale's records, not from bale's words,
 and hands the occupant whatever bale printed to carry (the relay), whole.
 Only after bale has applied the session does it run the project's

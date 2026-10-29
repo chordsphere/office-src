@@ -295,7 +295,10 @@ class TestDeliverTakesBalesOwnOutOnAHost(AudienceCase):
 
 class TestTheRecord(unittest.TestCase):
     def test_the_version_the_release_the_readme_the_doctrine_and_the_front_sheet_say_it(self):
-        self.assertEqual((REPO / "VERSION").read_text().strip(), "0.36.0")
+        # 0.36.0 or later (0.37.0 moved past it), as the record pins of the
+        # releases before it read.
+        version = tuple(int(x) for x in (REPO / "VERSION").read_text().strip().split("."))
+        self.assertGreaterEqual(version, (0, 36, 0))
         releases = (REPO / "RELEASES.md").read_text()
         entry = releases.split("## 0.36.0", 1)[1].split("\n## ", 1)[0]
         for word in ("bale: ignore .bale/", "Additive", "take_out_own", "test_bale_own_commits.py", "marks"):

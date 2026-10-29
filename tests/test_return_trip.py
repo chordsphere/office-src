@@ -211,6 +211,36 @@ class TestLandOnAHost(ReturnTripCase):
 
 # --- 2. where downloads land ---------------------------------------------------------------------
 
+class TestTheAcceptsOnAHost(ReturnTripCase):
+    """bale's two accepts (0.37.0) reach bale on a host through the
+    project's shell exactly as typed, before the carried tarball, and a
+    moved base there names the office line that accepts it."""
+
+    def test_a_moved_base_there_is_accepted_by_the_line_land_names(self):
+        self.set_downloads()
+        sid = self.start(self.name, "--on", "far", "--goal", "g", "--write", "src")
+        (self.proj / "src/a.py").write_text("moved\n")
+        self.e.git(self.proj, "commit", "-qam", "moved after the pack")
+        response_tarball(self.downloads, sid, {"src/a.py": "fixed\n"})
+        proc = self.run_office("land", sid, check=1)
+        self.assertIn(f"Next: office land {sid} --accept-base-drift 'src/a.py'\n", proc.stdout)
+        self.assertEqual(self.applied_calls()[0][1][:1], ["apply"])
+        self.assertEqual(len(self.applied_calls()[0][1]), 2)
+        odd = "docs/it's $NOPE `x`.md"
+        proc = self.run_office("land", sid, "--accept-base-drift", "src/a.py", "--accept-base-drift", odd,
+                               "--accept-checkpoint-change", check=0)
+        argv = self.applied_calls()[-1][1]
+        self.assertEqual(argv[:6], ["apply", "--accept-base-drift", "src/a.py", "--accept-base-drift", odd,
+                                    "--accept-checkpoint-change"])
+        self.assertEqual(pathlib.Path(argv[6]).name, f"response-{sid}.tar.gz")
+        self.assertTrue(argv[6].startswith(str(self.ssh.host_tmp(HOST))), argv)
+        self.assertIn("passing --accept-checkpoint-change to bale apply, as you typed it", proc.stderr)
+        self.assertIn("passing --accept-base-drift 'src/a.py' to bale apply", proc.stderr)
+        self.assertIn(f"Landed: {sid} is applied in far", proc.stdout)
+        self.assertEqual((self.proj / "src/a.py").read_text(), "fixed\n")
+        self.assertEqual(self.ssh.left_on(HOST), [])
+
+
 class TestTheDownloadsKey(unittest.TestCase):
     def setUp(self):
         self.e = Env(self)

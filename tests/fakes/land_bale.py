@@ -169,11 +169,29 @@ def main(cfg, argv):
     if argv[0] in ("apply", "retry"):
         import hashlib, re, shutil, subprocess, tarfile, tempfile
         verb = argv[0]
-        if len(argv) != 2:
-            print("fake bale: built for bale " + verb + " TARBALL only", file=sys.stderr); sys.exit(97)
-        tb = resolve(argv[1], "tarball")
+        # bale's two accepts (0.37.0), before the tarball as office land
+        # places them: a moved base admitted per path, the checkpoint
+        # switch recorded (this fake keeps no checkpoint to refuse).
+        rest, accept_change, accept_drift = argv[1:], False, []
+        while rest and rest[0].startswith("--"):
+            if rest[0] == "--accept-checkpoint-change":
+                accept_change, rest = True, rest[1:]
+            elif rest[0] == "--accept-base-drift" and len(rest) > 1:
+                accept_drift.append(rest[1]); rest = rest[2:]
+            else:
+                print("fake bale: built for bale " + verb + " [the two accepts] TARBALL only", file=sys.stderr)
+                sys.exit(97)
+        # A checkpoint that changed since the pack (0.37.0): bale's
+        # provenance gate refuses before staging, on stderr, recording no
+        # attempt, unless the accept is given. Not a capture: bale's own
+        # words are format_checkpoint_stamp_refusal's, read in the probe of
+        # session 2026-10-28-m10-land-flags-005; this line stands in.
+        changed = os.environ.get("FAKE_BALE_CHECKPOINT_CHANGED")
+        if len(rest) != 1:
+            print("fake bale: built for bale " + verb + " [the two accepts] TARBALL only", file=sys.stderr); sys.exit(97)
+        tb = resolve(rest[0], "tarball")
         if tb is None:
-            missing(argv[1], "tarball")
+            missing(rest[0], "tarball")
         with tarfile.open(tb) as t:
             names = t.getnames()
             mname = next(n for n in names if re.fullmatch(r"response-\d{3}/manifest\.json", n))
@@ -185,6 +203,10 @@ def main(cfg, argv):
         if sid not in repo["sessions"]:
             print("[bale] error: " + tb.name + " answers " + sid + ", which is not open here", file=sys.stderr); sys.exit(1)
         held = sid in L["held"]
+        if changed == sid and not accept_change:
+            print("[bale] error: [REJECT] blind checkpoint changed since pack for " + sid
+                  + " (fake); re-run with --accept-checkpoint-change", file=sys.stderr)
+            sys.exit(1)
         if verb == "apply" and held:
             print("[bale] error: " + sid + " is held; bale retry <tarball> runs a corrected response", file=sys.stderr); sys.exit(1)
         if verb == "retry" and not held:
@@ -214,11 +236,16 @@ def main(cfg, argv):
                 attempt(sid, verb, "scope-drift-refused", paths, None)
                 sys.exit(1)
         base = L["base"].get(sid, {})
-        moved = [p for p in paths if p in base and head_sha(p) != base[p]]
+        moved = [p for p in paths if p in base and head_sha(p) != base[p] and p not in accept_drift]
         if moved:
             cap = fx("apply-drift")
             say(swap(cap["stdout"], "2026-10-03-probe-drift-001", sid, cap["cwd"], cwd,
-                     [("notes/job/folder.md", ", ".join(moved))]))
+                     # bale's re-run line: one flag per moved path, and the
+                     # verb and tarball this call had.
+                     [("--accept-base-drift 'notes/job/folder.md'",
+                       " ".join("--accept-base-drift '" + p + "'" for p in moved)),
+                      ("bale apply 'response-" + sid + ".tar.gz'", "bale " + verb + " '" + tb.name + "'"),
+                      ("notes/job/folder.md", ", ".join(moved))]))
             attempt(sid, verb, "base-drift-refused", paths, None)
             sys.exit(1)
         v = subprocess.run(["bash", str(pathlib.Path(tmp) / top / "validation.sh")], cwd=str(pathlib.Path(tmp) / top),
