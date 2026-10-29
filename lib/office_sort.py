@@ -23,7 +23,9 @@ and office land files them after an applied landing, in this order:
   lines and optionally a `#### Front sheet`; each fact is appended to the
   chapter's Facts as `- DATE: fact (SID)`, and a front sheet replaces the
   chapter's whole. A Sort's `facts:` lines go to its project's chapter the
-  same way. The handbook arrives with the first landing that files a fact.
+  same way. The fact is filed bare (0.38.0): a leading `DATE:` and a
+  trailing `(SID)` the session wrote itself are dropped first, since land
+  adds both. The handbook arrives with the first landing that files a fact.
 
 A sorted drop still in the in-tray is a desk move: office moves applies it
 (bin/office), minting a folder through office open's own code for
@@ -75,6 +77,11 @@ HANDBOOK_FRONT = "README.md"
 HANDBOOK_FRONT_TEMPLATE = "handbook-README.md"
 CHAPTER_TEMPLATE = "handbook-chapter.md"
 FACT_LINE_RE = oh.LazyPattern(r"^- (\d{4}-\d{2}-\d{2}): (.+) \((\S+)\)$")
+# What a session may write around a fact that office land adds itself
+# (0.38.0, the gaps of 2026-10-28, A8): a leading `YYYY-MM-DD:` and a
+# trailing `(SID)`, either one or more times. bare_fact drops them.
+FACT_LEADING_DATE_RE = oh.LazyPattern(r"^(?:\d{4}-\d{2}-\d{2}:(?: |$))+")
+FACT_TRAILING_TAG_RE = oh.LazyPattern(r" ?\(([^()\s]+)\)$")
 # The line office land writes above a session's Questions and answers in a
 # folder (0.31.0: read back, so a response filed twice adds nothing twice).
 QA_FROM_RE = oh.LazyPattern(r"^- from (\S+):$")
@@ -442,8 +449,43 @@ def append_facts(path, entries):
     pathlib.Path(path).write_text("\n".join(new) + "\n", encoding="ascii")
 
 
+def bare_fact(fact, sid=None):
+    """The fact alone, as office land files it (0.38.0, the gaps of
+    2026-10-28, A8): its whitespace folded to single spaces, then a
+    leading `YYYY-MM-DD:` and a trailing `(TAG)` dropped, each as many
+    times as the session wrote them, since land adds the day and the
+    session itself. TAG is a session id (YYYY-MM-DD-slug-NNN) or, given
+    sid, that session's ask by name, its slug (`(fix-login)` for
+    2026-10-14-fix-login-001). A date or an id inside the fact's own
+    sentence stays, and so does a trailing parenthesis that is neither.
+    The empty string when nothing is left."""
+    text = " ".join(str(fact).split())
+    ask = sid[11:-4] if sid and oh.SID_RE.match(sid) else None
+    while True:
+        before = text
+        text = FACT_LEADING_DATE_RE.sub("", text).strip()
+        m = FACT_TRAILING_TAG_RE.search(text)
+        if m and (oh.SID_RE.match(m.group(1)) or (ask is not None and m.group(1) == ask)):
+            text = text[:m.start()].strip()
+        if text == before:
+            return text
+
+
 def fact_line(day, fact, sid):
-    return f"- {day}: {oh.one_line(fact, 'the fact')} ({sid})"
+    """A Facts line, `- DAY: fact (SID)`, the fact made bare first, so a
+    line office land writes carries one day and one session, whatever the
+    session wrote. A fact that is nothing but a date and an id has no
+    line: HelperError, which file_handbook never lets happen."""
+    return f"- {day}: {oh.one_line(bare_fact(fact, sid), 'the fact')} ({sid})"
+
+
+def fact_key(line):
+    """(bare fact, sid) of a Facts line, or None when the line is not one.
+    The fact is read back bare, so a doubled line filed before 0.38.0
+    (`- DAY: DAY: fact (SID) (SID)`) keys as the same fact filed bare now,
+    and the same response filed again adds it nowhere twice."""
+    m = FACT_LINE_RE.match(line)
+    return (bare_fact(m.group(2), m.group(3)), m.group(3)) if m else None
 
 
 def set_front_sheet(path, front):
@@ -460,15 +502,16 @@ def set_front_sheet(path, front):
 
 def filed_facts(path):
     """{(fact, sid)} of the Facts lines a chapter holds, in the form
-    office land writes; the day each was filed is not part of the key, so
-    a response filed again on a later day finds its facts there."""
+    office land writes, each fact read back bare (fact_key); the day each
+    was filed is not part of the key, so a response filed again on a
+    later day finds its facts there."""
     lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
     start, end = oh.section_bounds(lines, "Facts")
     out = set()
     for line in lines[start + 1:end] if start is not None else []:
-        m = FACT_LINE_RE.match(line)
-        if m:
-            out.add((m.group(2), m.group(3)))
+        key = fact_key(line)
+        if key:
+            out.add(key)
     return out
 
 
@@ -482,25 +525,48 @@ def front_sheet_body(path):
 
 def file_handbook(root, project, facts, front, sid, day):
     """One project's facts and front sheet into its chapter. Returns
-    (changed, words). Filed twice (0.31.0), a fact the chapter already
-    holds from the same session is said and left, and a front sheet the
-    chapter already reads is not written again: the facts grow at their
-    end and nothing filed is rewritten."""
+    (changed, words). Each fact is filed bare (0.38.0, bare_fact), and
+    keyed bare: filed twice (0.31.0), a fact the chapter already holds
+    from the same session is said and left, as is a fact the same filing
+    gives twice (a Handbook line and a Sort's facts: line, say), and a
+    front sheet the chapter already reads is not written again: the facts
+    grow at their end and nothing filed is rewritten."""
     rel, changed, words = ensure_chapter(root, project)
     path = pathlib.Path(root) / rel
     wrote = bool(changed)
     if facts:
         have = filed_facts(path)
-        entries = [fact_line(day, f, sid) for f in facts]
-        new = [e for e in entries if (FACT_LINE_RE.match(e).group(2), sid) not in have]
-        already = len(entries) - len(new)
+        new, seen, already, twice, dressed, empty = [], set(have), 0, 0, 0, 0
+        for fact in facts:
+            bare = bare_fact(fact, sid)
+            if not bare:
+                empty += 1
+                continue
+            if bare != " ".join(str(fact).split()):
+                dressed += 1
+            entry = fact_line(day, bare, sid)
+            key = fact_key(entry)
+            if key in have:
+                already += 1
+            elif key in seen:
+                twice += 1
+            else:
+                seen.add(key)
+                new.append(entry)
         if new:
             append_facts(path, new)
             wrote = True
             words.append(f"{rel}: {len(new)} fact(s) from {sid}"
-                         + (f"; {already} already there, left as they are" if already else ""))
-        else:
+                         + (f"; {already} already there, left as they are" if already else "")
+                         + (f"; {twice} given twice, filed once" if twice else ""))
+        elif already:
             words.append(f"{rel}: all {already} fact(s) from {sid} already there, left as they are")
+        if dressed:
+            words.append(f"{rel}: {dressed} fact(s) from {sid} came with a date or a session id of their own, "
+                         "dropped before filing, since office land adds both (write facts bare)")
+        if empty:
+            words.append(f"{rel}: {empty} fact(s) from {sid} held nothing but a date and a session id, so "
+                         "nothing of them is filed")
     if front:
         if front_sheet_body(path) == oh.ascii_escape("\n".join(trimmed(front)))[0].split("\n"):
             words.append(f"{rel}: the front sheet already reads as {sid}'s, left as it is")
