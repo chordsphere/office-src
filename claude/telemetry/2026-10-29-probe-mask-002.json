@@ -1,0 +1,194 @@
+{
+  "record_version": 1,
+  "session_id": "2026-10-29-probe-mask-002",
+  "created_at": "2026-10-29T01:41:40+00:00",
+  "attempts": [
+    {
+      "at": "2026-10-29T01:41:40+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "lib/office_probe.py",
+        "tests/test_probe.py"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-10-29-probe-mask-002.log",
+      "bundle": {
+        "stem": "2026-10-29-probe-mask",
+        "brief_sha256": "ecf33367a1fa1b1151e3a65d36289bbbc9479d11617ece7d391ae3291c9a064a",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "c0cf8608df22cb3d77a53c263bc4efd5f181dae15744d1db726929a987e08eb4"
+      },
+      "provenance": {
+        "work_class": "code",
+        "packer": "chordsphere",
+        "packed_at": "2026-10-29T01:41:39+00:00"
+      }
+    },
+    {
+      "at": "2026-10-29T02:20:31+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-10-29-probe-mask-002.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "tests/run.sh --fast test_probe.TestTheMask test_probe.TestTheMaskIsSaid test_probe.TestTheMaskedRun test_probe.TestTheMaskOnATerminal": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "tests/run.sh test_probe test_three_gaps (--slow)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "tests/run.sh --fast test_probe.TestTheMask test_probe.TestTheMaskIsSaid test_probe.TestTheMaskedRun test_probe.TestTheMaskOnATerminal": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "tests/run.sh test_probe test_three_gaps (--slow)": {
+            "claim": "pass",
+            "verdict": "skip",
+            "agreement": "n/a"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "python syntax (lib/office_probe.py, tests/test_probe.py)",
+          "session: bin/office, lib/office_host.py and the release text are untouched",
+          "session: the incident's remote URL is masked, its user kept, the count unchanged",
+          "session: the shipped text keeps office-src's text rules",
+          "tests/run.sh --fast test_probe.TestTheMask test_probe.TestTheMaskIsSaid test_probe.TestTheMaskedRun test_probe.TestTheMaskOnATerminal",
+          "tests/run.sh test_probe test_three_gaps (--slow)"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "lib/office_probe.py",
+        "tests/test_probe.py"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [
+        "lib/office_probe.py",
+        "tests/test_probe.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.56",
+            "contract_docs": {
+              "AGENT.md": "31dcdded2a8fd175f7778c2bd1be09688e89e76b8fd4cd62b7646aacfa2782c4",
+              "TARBALL.md": "3037b905ee561af44f27cc83ec45d832feb7d429a98d4e07b4482a518cda6e94",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "a8e5714e51049768e52bb5bc0ede9338db1175e7095d9b2bdd0d314ab3e01078"
+            },
+            "packer": "chordsphere",
+            "work_class": "code",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-10-29T01:41:39+00:00",
+            "base_files": {
+              "lib/office_probe.py": "2ee21e4959c30afd5d3419b7f932041c0902838b99aaf4787397a731f3fba27f",
+              "tests/test_probe.py": "787485d9066289896284f7e8ed203a553cb989abb3aa127a6b34698fe13cb5e0"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "the secret part of a URL credential may run to the last @ of the authority rather than the first, since that is where the host starts",
+            "the masked count covers all of the block's stdout, which is what the screen showed, not only the lines between the sentinels"
+          ],
+          "judgment_calls": [
+            "bare GitHub token shapes (ghp_, gho_, ghu_, ghs_, ghr_, github_pat_) join the URL form, prefix kept, from 30 characters",
+            "the result JSON gains a masked key with the two counts; bin/office ignores it",
+            "a partial line is held off the screen until its line end arrives or the block ends",
+            "the kept text is masked in run with the same function as the screen, and a difference in the two counts is logged"
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [],
+          "compaction_occurred": {
+            "occurred": false
+          },
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md",
+            "README.md, the request's brief",
+            "TARBALL.md 1, 2, 5, 7, 4.3, 10",
+            "BALE_HELP.md bale help clipboard",
+            "lib/office_probe.py",
+            "lib/office_host.py run_probe",
+            "bin/office cmd_probe and usage_probe",
+            "tests/test_probe.py",
+            "tests/test_three_gaps.py spanning probe classes",
+            "doctrine/OFFICE.md probe and clipboard paragraphs",
+            "templates/walkthrough.md",
+            "templates/delivery.md",
+            "share/letterhead.toml",
+            "RELEASES.md 0.37.0",
+            "README.md, the project's, its probe sections"
+          ]
+        }
+      },
+      "log": ".bale/logs/2026-10-29-probe-mask-002.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-10-29T02:20:31+00:00",
+  "outcome": "applied"
+}
