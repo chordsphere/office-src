@@ -63,11 +63,12 @@ the projects in the office's scope, declares what rides with each and what
 runs after its sessions land, and renders what bale records about them.
 `office probe` runs a worker's probe block where a folder's project lives,
 on its host when it has one, after showing the block's header and asking
-once, and hands the output back with the block on the clipboard; a
-read-only sitting's probe of a project (`--project NAME`) runs there too,
-under the sitting's id; and a block that spans the office and a project's
-host (0.34.0) runs in the office root with `office-on PROJECT COMMAND` on
-its PATH, each call running its command where that project lives.
+once, and hands the output back masked (a credential in a URL, a GitHub
+token), the block on the clipboard; a read-only sitting's probe of a
+project (`--project NAME`) runs there too, under the sitting's id; and a
+block that spans the office and a project's host (0.34.0) runs in the
+office root with `office-on PROJECT COMMAND` on its PATH, each call
+running its command where that project lives.
 
 `office start` sends a session out, and it is the one door for new work:
 `office start new` takes the job in the occupant's words, names the
@@ -138,8 +139,7 @@ Three boundaries hold that line, each with a guard.
    never lands in a project. Every project session an office packs carries
    that rule as a constraint: "Office context informs this session but
    never lands in this project." Deliberation, candid notes and private
-   versions stay in the office even when a session read them to do the
-   work.
+   versions stay in the office even when a session read them for the work.
 3. Where each repo is pushed. Guard: the profile's site section. An
    office repo is never pushed where a project's audience can read it.
 
@@ -157,8 +157,7 @@ Three boundaries hold that line, each with a guard.
 4. What every session needs is hung. Hanging is a property of an item,
    not a place (section 6).
 5. A space earns its place through use. A space unused after a few weeks
-   of real work is removed; new spaces arrive when real work asks for
-   them.
+   of real work is removed; new spaces arrive when work asks for them.
 6. Nearly every job produces two deliverables: the thing, which lives in
    a project, and the message about the thing, which leaves through the
    letterhead with a copy in the folder. The folder holds the message as
@@ -244,15 +243,16 @@ A session is packed where it lands.
   writes for the audience holds no em dash, en dash or ellipsis unless
   the letterhead lifts one.
 - A session writes what the office keeps for it at the end of its
-  notes.md, and `office land` files it, so a project session never
-  writes the office: each light block it sent and the occupant's answer
-  under `## Questions and answers`, one `- DATE question? answer` line
-  each; each fact the occupant gave it, or that it learned about a
-  project's shape, under `## Handbook`, `### PROJECT`, as `- ` lines,
-  with a `#### Front sheet` paragraph when what the occupant should know
-  changed. It reads the handbook chapter it carries before it asks
-  anything, so nothing is asked twice. A Sort's `tell:` lands on its
-  folder's Next.
+  notes.md, and `office land` files it, so a project session never writes
+  the office: each light block it sent and the occupant's answer under
+  `## Questions and answers`, one `- DATE question? answer` line each;
+  each fact the occupant gave it, or that it learned about a project's
+  shape, under `## Handbook`, `### PROJECT`, as `- ` lines, each bare (no
+  date in front, no session id behind: `office land` adds both) and filed
+  whole when it wraps as a list item does, with a `#### Front sheet`
+  paragraph when what the occupant should know changed. It reads the
+  handbook chapter it carries before it asks anything, so nothing is asked
+  twice. A Sort's `tell:` lands on its folder's Next.
 - Every session that works a folder writes `## Structure` at the end of
   its notes.md (principle 6): the folder's title, size and goal as it
   judged them, three lines, each key on its own line, in this order and
@@ -720,8 +720,13 @@ already is said and left as it is, and a subsection naming a page that is
 nowhere is said and skipped. The Questions and answers: each line as it
 is, in the folder's Questions and answers section, after a line naming
 the session. The Handbook: each fact as `- DATE: fact (SID)` at the end
-of its project's chapter, with a Sort's `facts:` lines, and a Front sheet
-in place of the chapter's, whole. The Structure: over the provisional
+of its project's chapter, with a Sort's `facts:` lines, the fact bare
+first (0.38.0: a leading date and a trailing session id the session
+wrote are dropped and said, a fact filed already from that session is
+left as it is, and one given twice in a filing is filed once) and whole,
+a wrapped fact's indented continuation lines joined to it with one
+space (0.38.0); and a Front sheet in place of the chapter's, whole.
+The Structure: over the provisional
 fields of the folder that records the session, when that folder is on the
 desk (a folder in the filing cabinet moves whole, and a session no folder
 records has none), as the bullet in section 4 pins it. Then, when a
@@ -770,7 +775,12 @@ all bale did there, and anything else refuses by name), squashes the
 result onto the audience's base in a temporary worktree, names the
 applied sessions it covers and whose folders they belong to (sessions of
 other folders ride in the same delivery, said, and the occupant may stop
-there), runs the letterhead check on the diff and the words (a bale path
+there), runs the letterhead check on the lines the squash adds and the
+words (0.38.0: never a file it touches whole, since a line already on
+the audience is not the delivery's, and what such lines hold is told
+under the verdict, one line per file, never refused; the words, and
+only they, held to the cleanup list too, so a fix made only to keep the
+letterhead is never named in them; a bale path
 named in a line that leaves is one of bale's marks, 0.36.0, the backstop
 for a bale line that reaches the squash some other way; the repository's
 pull-request template read from the audience's base, its lines exempt
@@ -786,7 +796,8 @@ makes the commits, authored and committed as the project's declared
 author, and shows each one whole as it will be pushed (its subject and
 body, author and committer, its date, the files it touches and the
 letterhead's verdict on it) with the diff's stat, the sessions and the
-branch; several commits are dated a second apart, oldest first, so they
+branch, the rule that chose it said beside its name; several commits
+are dated a second apart, oldest first, so they
 read in their order, and the question says in one line how many leave,
 since one commit per delivery is the usual shape (0.32.0); asks
 once; checks every commit's author and committer against the declared
@@ -797,9 +808,21 @@ it (`--author` is the twin, and sets the field); piped, deliver refuses
 and names the flag; the clone's own identity is never used. The folder's
 History gains a dated `delivered` line, and the review's URL is printed
 where the git host's shape is known. A second delivery for the same
-folder adds to the same branch. A branch the audience already has that
-the folder's records do not cover was made outside the office, a pull
-request opened by hand or another folder's (0.34.0): deliver says so and,
+folder adds to the same branch. The branch is chosen by one rule
+(0.38.0), and `branch_why` says which part chose it: `--branch NAME`;
+else delivery.md's `- branch: NAME` line; else the branch the clone has
+checked out, when the audience has it and it is not the base; else the
+folder's slug, a project's `branch_prefix` going before the words' short
+name and the slug. A branch another folder of the office delivered to is
+the office's: the delivery continues on it with no question, from that
+folder's last delivery there. Work another folder delivered
+does not leave twice: a delivery whose range carries a session another
+folder delivered is refused by name, with that folder's branch as the
+remedy, unless the audience's base holds that delivery already (a
+review merged as a squash leaves nothing on the base to see, so that
+case refuses too). A branch the audience already has that no folder's
+records cover was made outside the office, a pull request opened by
+hand (0.34.0): deliver says so and,
 on a terminal, asks once whether to add this delivery to it (`--adopt` is
 the twin; piped, it refuses and names it), which is how a review's answer
 lands on the review's own branch. Adopted, the delivery's range is what
@@ -924,7 +947,11 @@ Calendar. Series, one-offs, and a record of what actually happened: the
 meetings, as a view over the work (0.26.0). Because it is hung, a session
 can compare what should have happened with what was recorded and raise
 one question about a gap. Times are local time in the floor plan's
-timezone; bale's clock is UTC. It arrives with the first meeting `office
+timezone; bale's clock is UTC. The office keeps one clock for every date
+it writes, a handbook fact's day among them: its own day, in the floor
+plan's timezone, while a session id carries bale's UTC date, so the two
+differ for a few hours of every day, by design. It arrives with the
+first meeting `office
 meeting` records, as the in-tray arrives with the first drop: its two
 pages from the install's templates (calendar-plan.md, calendar-record.md),
 the floor plan's entry as the catalog declares it and bale.toml's
@@ -971,9 +998,14 @@ in two parts (values illustrative):
 
 The front sheet is for the occupant, in plain language, and a session's
 `#### Front sheet` replaces it whole. The facts are for sessions: one
-line each, dated and naming the session that gave it, appended at the end
-by `office land` from a session's Handbook section or a Sort's `facts:`,
-and never rewritten by hand. Every session that lands a change to a
+line each in the chapter, dated and naming the session that gave it,
+appended at the end by `office land` from a session's Handbook section
+or a Sort's `facts:`, and never rewritten by hand. A session writes each
+fact bare, since land adds the day and the session; a fact may wrap onto
+indented lines as a list item does, and is filed whole, on one line
+(0.38.0; before, only a wrapped fact's first line was filed, and those
+cut-off lines stay where they are, the handbook being append-only).
+Every session that lands a change to a
 system updates that chapter's front sheet, through its notes.md. The
 handbook arrives with the first fact `office land` files, as the in-tray
 arrives with the first drop: its front page from the install's template,
@@ -1010,7 +1042,14 @@ of its own, in this form, kept to the byte but for case and spacing
   ```
 
 and every check that reads a lift says so; a lift that names anything
-else stops the check, said. A repository's own pull-request template is
+else stops the check, said. Words that leave (commit messages, a
+delivery's words) are held to one list more than files are (0.38.0): a
+fix made only to keep the letterhead, a dash or an ellipsis taken out,
+is shipped clean and never mentioned, so words that name the cleanup are
+refused (`names a cleanup`), from the `[cleanup]` list of the install's
+share/letterhead.toml; files are never read for it, since a project's
+own text may name the characters, and office-src's does. A
+repository's own pull-request template is
 not the occupant's writing: when words fill it, each line that is a line
 of one of the repository's templates as the repository holds it (the
 audience's base, for a delivery; HEAD, for the check by hand) is not held
@@ -1292,9 +1331,9 @@ Kinds:
 | land | script: bring a session back: bale's apply in its repo, how it ended, the folder's walkthrough and delivery pages filed from the response, then its Sort on each drop's page, its questions and answers in the folder, its facts in the handbook and its Structure over the folder's provisional fields, and office moves when a drop was sorted, on a project with an audience the letterhead's review of what landed (what deliver would refuse, said, nothing refused), the project's after-land actions, the folder closed when its one session landed and the founding folder when the founding has, the watches that fired, what became of each action, and last the relay to carry on the clipboard; it asks nothing about ratification; or end a read-only sitting the office sent out, and for a meeting's prep record the meeting held and file what arose as drops (--arising FILE) | yes | occupant |
 | withdraw | script: close a session the office sent out and that was never worked (no response in the downloads, no apply begun), named by its folder and asked once (--yes the twin): bale's unlock with reason abandoned where it is open, and a withdrawn line in its folder's History; a folder that recorded it alone is said with the line that closes it | yes | occupant |
 | relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes | plumbing |
-| probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), for the folder's session open there or, with --project, a read-only sitting of its open in the office, under the sitting's id, stdin closed, once its purpose header has been shown and the occupant said yes; a block that calls office-on PROJECT spans the office and the projects it names, run in the office root with the helper on its PATH, each call's command run where that project lives; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes | plumbing |
-| deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, checked by the letterhead, each commit shown whole and asked once, authored and committed as the declared author (asked once and kept when none is declared, --author the twin), recorded in the folder; a branch the audience has that the folder never delivered to (made outside the office) adopted when the occupant says so (asked once, --adopt the twin), so a review's answer lands on the review's own branch | yes | occupant |
-| letterhead check | script, read-only: name every line in a tree, a range or a file that holds what the letterhead refuses (in an office with a letterhead, the dashes and the ellipsis by default, a lift said; a pull-request template's lines exempt from the phrasing rule and the three characters) | yes | plumbing |
+| probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), for the folder's session open there or, with --project, a read-only sitting of its open in the office, under the sitting's id, stdin closed, once its purpose header has been shown and the occupant said yes; a block that calls office-on PROJECT spans the office and the projects it names, run in the office root with the helper on its PATH, each call's command run where that project lives; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, masked (a credential in a URL, a GitHub token; 0.38.0), the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder | yes | plumbing |
+| deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, the lines it adds and the words checked by the letterhead (0.38.0: a line a file already had told, never refused), each commit shown whole and asked once with the rule that chose the branch, authored and committed as the declared author (asked once and kept when none is declared, --author the twin), recorded in the folder; a branch another folder of the office delivered to continued, and a session another folder delivered refused (0.38.0); a branch the audience has that no folder delivered to (made outside the office) adopted when the occupant says so (asked once, --adopt the twin), so a review's answer lands on the review's own branch | yes | occupant |
+| letterhead check | script, read-only: name every line in a tree, a range or a file that holds what the letterhead refuses (in an office with a letterhead, the dashes and the ellipsis by default, a lift said; a pull-request template's lines exempt from the phrasing rule and the three characters; words and commit messages, never files, held to the cleanup list too, 0.38.0); with --added, only the lines a range or the index adds, a line a file already had told (0.38.0) | yes | plumbing |
 | tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes | occupant |
 | moves | script: apply the in-tray's sorted drops (a folder minted through open's code for folder: new, or folder N; the page moved in whole with its brief, its History line, its goal and its tell), then the desk moves a sitting or a sort wrote, through open's, close's and the gate flags' own code, ticking each and writing a minted number onto its blueprint's decomposition line; stops at the first line it cannot apply | yes | plumbing |
 | blueprint open, blueprint ratify | script: draft a blueprint from the template; write its charter's ratified line | yes | plumbing |
@@ -1590,7 +1629,12 @@ flag and key the office reads or runs and the bale version they were
 written against; `office status` reports a bale outside that range. What it
 renders: on the walk-in, the sessions in flight and the folder each
 belongs to; in `office sessions FOLDER`, each session with its outcome,
-dates, claims beside verdicts and exchange rounds; in `office projects`,
+dates, claims beside verdicts and exchange rounds, each session searched
+for in the project the folder's lane names first, then the projects
+whose records name it, then the rest, and a project that cannot be read
+said in one line rather than stopping the verb, which stops only when a
+session was not found while some project could not be read (0.38.0); in
+`office projects`,
 the trust ledger per work class (the evidence a trust grant would be made
 on; the office holds no grant), the last applied session that landed a
 path, and the version trail; in `office watches check` and the digest,

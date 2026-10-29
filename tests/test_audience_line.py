@@ -1017,7 +1017,9 @@ class TestABranchAnotherFolderDeliveredTo(BranchCase):
         self.assertEqual(branch, "health-route")
         self.assertRegex(why, rf"^delivery\.md's branch line names health-route; {re.escape(self.folder)} delivered to "
                               r"it on \d{4}-\d{2}-\d{2}, so this delivery continues on it$")
-        self.assertIn("branch:   health-route (adding to the branch on the audience), from main", proc.stdout)
+        # Since 0.38.0 the branch line names the folder and its day.
+        self.assertRegex(proc.stdout, rf"branch:   health-route \(adding to the branch {re.escape(self.folder)} delivered "
+                                      r"to on \d{4}-\d{2}-\d{2}\), from main")
         self.assertIn(f"since {self.folder}'s last delivery on health-route", proc.stdout)
         self.assertIn(f"covering {SID2};", proc.stdout)
         self.assertIn(f"(added to the branch {self.folder} delivered to)", proc.stdout)
@@ -1083,6 +1085,55 @@ class TestWorkAnotherFolderDelivered(BranchCase):
         self.assertNotIn("src/health.py", proc.stdout.split("changes:")[1].split("words")[0])
         self.assertEqual(git(self.audience, "ls-tree", "-r", "--name-only", "docs-job", env=self.e.env).split(),
                          ["README.md", "docs.md", "src/a.py", "src/health.py"])
+
+
+class TestTheBranchLineSaysWhichRule(BranchCase):
+    """0.38.0: the question's branch line prints what the plan knows, the
+    rule that chose the branch (branch_why) after its base, and, on a
+    branch another folder of the office delivered to, that folder and the
+    day (joined), said once. An adoption keeps its fixed sentence."""
+
+    def branch_line(self, proc):
+        lines = [l for l in proc.stdout.splitlines() if l.startswith("  branch:   ")]
+        self.assertEqual(len(lines), 1, proc.stdout)
+        return lines[0]
+
+    def test_the_rule_that_chose_is_on_the_line(self):
+        self.set_prefix("feature/")
+        self.write_words(WORDS.replace("- to: Pat Reviewer", "- to: Pat Reviewer\n- branch: results-view"))
+        proc = self.run_office("deliver", self.name)  # piped with no --yes: shown, then nothing leaves
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        self.assertEqual(self.branch_line(proc), "  branch:   feature/results-view, from main (delivery.md's branch line "
+                                                 "names results-view, behind proj's branch prefix feature/)")
+        self.assertIn("nothing left", proc.stderr)
+        proc = self.run_office("deliver", self.name, "--branch", "api-health")
+        self.assertEqual(self.branch_line(proc), "  branch:   api-health, from main (--branch names it)")
+
+    def test_a_branch_another_folder_delivered_to_names_the_folder_and_its_day_once(self):
+        self.run_office("deliver", self.name, "--yes", check=0)
+        other, other_name = self.second_folder(DOCS_WORDS.replace("- to: Pat Reviewer",
+                                                                  "- to: Pat Reviewer\n- branch: health-route"))
+        proc = self.run_office("deliver", other_name)
+        _, why = self.chosen(proc)
+        day = re.search(r" delivered to it on (\d{4}-\d{2}-\d{2}),", why).group(1)
+        self.assertEqual(self.branch_line(proc), f"  branch:   health-route (adding to the branch {self.folder} delivered "
+                                                 f"to on {day}), from main (delivery.md's branch line names health-route)")
+        # The plan's log line still says it whole; the screen says it once.
+        self.assertIn("so this delivery continues on it", why)
+        self.assertNotIn("continues on it", self.branch_line(proc))
+
+    def test_an_adoption_keeps_its_sentence_and_its_own_branch_says_continuing(self):
+        git(self.audience, "branch", "-q", "picklists", "main", env=self.e.env)
+        proc = self.run_office("deliver", self.name, "--yes", "--branch", "picklists", "--adopt")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.branch_line(proc), "  branch:   picklists (adding to the branch on the audience, which was "
+                                                 "made outside the office: this folder records no delivery on it), from "
+                                                 "main (--branch names it)")
+        self.land_session(SID2, {"docs.md": "d\n"}, "d")
+        self.run_office("sessions", self.name, SID2, check=0)
+        proc = self.run_office("deliver", self.name, "--branch", "picklists")
+        self.assertEqual(self.branch_line(proc), "  branch:   picklists (adding to the branch on the audience), from main "
+                                                 "(--branch names it)")
 
 
 class TestThePages(LandCase):

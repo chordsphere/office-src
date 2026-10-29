@@ -126,10 +126,12 @@ class TestOneUnreadableProjectIsALine(BrokenCase):
         at = lines.index(f"- {MISS_SID}: never ran")
         self.assertEqual(lines[at + 1], f"    not found in the projects that could be read; {BROKEN} could not")
         self.assertIn(f"found in bale's records: 2; not found: {MISS_SID}", "\n".join(lines))
-        # Through the verb: the reader's exit 3 is bin/office's stop, as it was.
+        # Through the verb: the reader's exit 3 is bin/office's stop, and
+        # since 0.38.0 its line says it is a session not found.
         proc = self.sessions("read-side")
         self.assertEqual(proc.returncode, 1, proc.stderr)
-        self.assertIn("some of this office's projects could not be read; the lines above say why", proc.stderr)
+        self.assertIn("a session was not found and some of this office's projects could not be read; the lines "
+                      "above say which", proc.stderr)
         for want in FOUND_LINES:
             self.assertIn(want, proc.stdout)
         self.assertEqual(proc.stdout.count(f"{BROKEN}: not read:"), 1)

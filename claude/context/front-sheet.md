@@ -47,19 +47,23 @@ one motion (the one door; `office open` is plumbing now), `office relay` to carr
 back to the session's repo, `office probe` to run a worker's probe block
 where a folder's project lives (on its host, in its container), after
 showing its header and asking once, with the output back on your
-terminal and the block on your clipboard, `office deliver` to carry a folder's landed
-work to its project's audience as curated commits on a branch named from
-the folder (the words from the folder's delivery.md, the letterhead
-check run first, one question before anything leaves, the delivery
+terminal and the block on your clipboard, a credential in a URL or a
+GitHub token masked in both, `office deliver` to carry a folder's landed
+work to its project's audience as curated commits on a branch chosen by
+one rule and named with the rule that chose it (the words from the
+folder's delivery.md, the letterhead check run first on the lines the
+delivery adds and on the words, one question before anything leaves,
+a branch another folder delivered to continued, the delivery
 recorded in the folder), `office letterhead check` for what the
-letterhead refuses in any tree, `office open`, `desk`, `close` and `reopen` for folders (numbered,
+letterhead refuses in any tree (`--added` for the lines a range adds), `office open`, `desk`, `close` and `reopen` for folders (numbered,
 with statuses, gates and a History, and a desk that orders itself),
 `office week` for the calendar, `office meeting` to say a meeting once
 in your words (when, and what it concerns; its prep, a sitting briefed
 from what landed since the last one, offered by key when it is near, and
 what arises filed as drops when `office land` ends it), and `office
 sessions` to record which
-sessions worked on a job and see how each one went. `office projects` names the
+sessions worked on a job and see how each one went (a project it cannot
+read is one line, never a stop). `office projects` names the
 projects an office scopes, declares what rides beside each one's
 sessions and what runs after they land, and shows what bale records
 about them: the trust ledger, who last landed a file, the version trail.
@@ -234,6 +238,41 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.38.0 (session 2026-10-29-wave-one-release-005): wave 1 of the plan
+  begun on 2026-10-27, released. Four sessions landed beside each other
+  on 0.37.0, each in its own lib/ modules with no release of its own;
+  RELEASES.md carries their four paragraphs as they wrote them, then this
+  session's own changes.
+  - office deliver reads only the lines a delivery adds (a refused
+    character a file already had is told, never refused), refuses words
+    that name a cleanup made to keep the letterhead, chooses the branch
+    by one rule (`--branch`; delivery.md's `- branch:` line; the clone's
+    branch when the audience has it; the folder's slug; a project's
+    `branch_prefix` before the last two, read from the floor plan, no
+    verb sets it yet), continues on a branch another folder delivered
+    to, and refuses work another folder delivered from leaving twice
+    (lib/office_deliver.py, office_letterhead.py, office_helper.py,
+    share/letterhead.toml `[cleanup]`). The question's branch line now
+    says which rule chose the branch and, on another folder's branch,
+    that folder and its day (bin/office deliver_show).
+  - office probe masks a credential in a URL and a GitHub token in what
+    it hands back, the screen and the clipboard, and says how many
+    (lib/office_probe.py `mask_text`, `MaskedScreen`); stderr, a
+    fallback's files and the block's own bale clipboard copy are not.
+  - office land files a handbook fact bare (a date and a session id the
+    session wrote dropped and said) and, since this session, whole when
+    it wraps onto indented lines (lib/office_sort.py `bare_fact`,
+    `list_items`); the drop brief says to write facts bare, as the sort
+    brief does.
+  - office sessions searches the lane's project first and reads past a
+    project it cannot read, one line for it; it stops only for a
+    session not found while a project was unread, and says so
+    (lib/office_bale.py; bin/office cmd_sessions' line).
+  - `office letterhead check --added` reads the lines a range or the
+    index adds, as deliver does (not with `--on PROJECT` yet).
+  - tests/test_land.py TestTheReleasesMatchTheFrontSheet holds this list
+    to RELEASES.md's headings, and TestTheWaveOneRecord holds the four
+    paragraphs to their archived notes.
 - 0.37.0 (session 2026-10-28-m10-land-flags-005): `office land` passes
   bale's two per-invocation accepts through, and RELEASES.md has its
   0.33.0 entry back. After `bale amend-checkpoint` the retry of the same
@@ -1000,6 +1039,33 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
   templates, profile shape, init, survey, status, upgrade, install.
 
 ## Known problems
+
+- A review merged as a squash leaves neither the workbench commit nor the
+  delivery commit on the audience's base, so office deliver cannot see
+  that the base holds that delivery, and a later delivery carrying the
+  same session is refused as work leaving twice (0.38.0; the remedy it
+  names, `--branch THAT-BRANCH`, fails too once that branch is gone). A
+  continued delivery squashes from where the workbench and the branch
+  parted, so a second delivery that edits a line the first delivered can
+  conflict with nothing moved. Both wait on the refresh of a hosted
+  clone, the next session of the plan.
+- `branch_prefix` is read from the floor plan and set by no verb yet:
+  written there by hand (`branch_prefix = "feature/"` under the
+  project) until `office projects set` takes it.
+- office probe's mask is a seatbelt: a token of a shape other than
+  GitHub's, printed bare, is not caught, and stderr, a fallback's
+  probe-output/ files and the block's own `bale clipboard` copy are not
+  masked. A probe should still never print a remote URL.
+- Facts filed before 0.38.0 from a fact that wrapped are in their
+  chapters cut off at their first line: office-src's own chapter should
+  hold seventeen (five from 0.37.0's session, six each from wave 1's
+  probe and sessions sessions; the notes of 0.38.0's session name each by
+  its first words). They stay; a refiling adds the whole fact beside the
+  cut-off one. Mend a chapter by hand once, if wanted.
+- `office letterhead check --added` does not travel with `--on PROJECT`
+  yet: it is refused by name; run it in the project's clone.
+- A project that cannot be read is spelled one way in office sessions
+  and others in the other renderings; one spelling is a later session's.
 
 - The install's bytecode cache is for the python3 install.sh ran with.
   After a Python upgrade (Ubuntu's next release, say) every helper call

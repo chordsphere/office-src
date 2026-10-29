@@ -721,6 +721,67 @@ class TestTheReleasesMatchTheFrontSheet(unittest.TestCase):
         self.assertEqual(releases_differ("## 0.3.0\n\n" + releases, sheet), (["0.3.0"], []))
 
 
+class TestTheWaveOneRecord(unittest.TestCase):
+    """0.38.0's record: the release carries wave 1's four release
+    paragraphs as their sessions' archived notes.md hold them, byte for
+    byte and in the plan's order, between this session's own opening and
+    closing paragraphs; and the docs say what the release changed."""
+
+    WAVE = ("2026-10-29-deliver-adds-001", "2026-10-29-probe-mask-002", "2026-10-29-sort-facts-003",
+            "2026-10-29-sessions-read-004")
+
+    def archived_paragraph(self, sid):
+        """The `### Release paragraph` section of a session's archived
+        notes.md, the blank lines around it dropped, with one newline."""
+        text = (REPO / ("cla" + "ude") / "responses" / sid / "notes.md").read_text(encoding="utf-8")
+        body = text.split("\n### Release paragraph\n", 1)[1]
+        body = re.split(r"^#{1,3} ", body, maxsplit=1, flags=re.M)[0]
+        return body.strip("\n") + "\n"
+
+    def entry(self):
+        releases = (REPO / "RELEASES.md").read_text(encoding="utf-8")
+        return releases.split("\n## 0.38.0\n", 1)[1].split("\n## ", 1)[0]
+
+    def test_the_four_paragraphs_are_the_archived_bytes_in_order(self):
+        entry = self.entry()
+        at = []
+        for sid in self.WAVE:
+            paragraph = self.archived_paragraph(sid)
+            self.assertEqual(entry.count("\n" + paragraph + "\n"), 1, sid)
+            at.append(entry.index("\n" + paragraph + "\n"))
+        self.assertEqual(at, sorted(at))
+        # One paragraph of this session's before them, one after, nothing
+        # between them but the blank line that parts paragraphs.
+        joined = "\n".join(self.archived_paragraph(sid) for sid in self.WAVE)
+        before, after = entry.split("\n" + joined + "\n", 1)
+        self.assertTrue(before.strip().startswith("Additive: no migration, nothing to do in any office."))
+        self.assertEqual(len([p for p in before.split("\n\n") if p.strip()]), 1)
+        self.assertEqual(len([p for p in after.split("\n\n") if p.strip()]), 1)
+        for words in ("What this session changed.", "--added", "list_items", "cut off", "append-only",
+                      "the merged tree held"):
+            self.assertIn(words, " ".join(after.split()))
+
+    def test_where_the_release_is_said(self):
+        readme = " ".join((REPO / "README.md").read_text().split())
+        for words in ("`[office] the delivery branch is BRANCH: WHY` says which rule chose it",
+                      "`--added` (0.38.0) reads the lines a diff adds, not the files it touches whole",
+                      "masked (0.38.0)", "A project that cannot be read is one line after the sessions",
+                      "The audience line has a fifth key, `branch_prefix`", "no verb sets it yet"):
+            self.assertIn(words, readme)
+        doctrine = " ".join((REPO / "doctrine/OFFICE.md").read_text().split())
+        for words in ("hands the output back masked (a credential in a URL, a GitHub token)",
+                      "The office keeps one clock for every date it writes", "refused (`names a cleanup`)",
+                      "`branch_why` says which part chose it", "searched for in the project the folder's lane names first"):
+            self.assertIn(words, doctrine)
+        env = dict(os.environ, OFFICE_ROOT="/nonexistent")
+        usage = " ".join(subprocess.run([str(REPO / "bin" / "office"), "deliver", "--help"], capture_output=True, text=True,
+                                        env=env).stdout.split())
+        self.assertIn("the question's branch line says which rule chose it", usage)
+        usage = " ".join(subprocess.run([str(REPO / "bin" / "office"), "probe", "--help"], capture_output=True, text=True,
+                                        env=env).stdout.split())
+        self.assertIn("its stdout masked (since 0.38.0)", usage)
+
+
 class TestLandWhichSession(LandCase):
     def test_nothing_out_says_so(self):
         proc = self.run_office("land", check=1)

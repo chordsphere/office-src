@@ -717,6 +717,56 @@ class TestTheLinesADeliveryAdds(unittest.TestCase):
         self.assertIn("6 line(s) the file already had hold the em dash", proc.stderr)
 
 
+class TestTheHandCheckTakesAdded(unittest.TestCase):
+    """0.38.0: `office letterhead check --added` passes the module's
+    --added through, so the hand check reads a range or the index as
+    office deliver reads a delivery; refused beside --all by the module,
+    and with --on PROJECT by name, since the check that travels there
+    does not carry it yet. The usage says it, and the cleanup list."""
+
+    def setUp(self):
+        self.e = Env(self)
+        self.root = self.e.init()
+        (self.root / "letterhead").mkdir()
+        self.repo = repo_with(self.e.tmp / "r", {"src/view.vue": OLD_DASHES}, self.e.env)
+        self.start = git(self.repo, "rev-parse", "HEAD", env=self.e.env).strip()
+
+    def check(self, *args):
+        return self.e.run("letterhead", "check", *args, str(self.repo), cwd=self.root)
+
+    def test_the_index_and_a_range_are_read_as_deliver_reads_them(self):
+        (self.repo / "src/view.vue").write_text(OLD_DASHES + "plain\n")
+        git(self.repo, "add", "-A", env=self.e.env)
+        proc = self.check()
+        self.assertEqual(proc.returncode, 1, proc.stderr)  # the dirty file, whole, as before
+        self.assertEqual(proc.stdout.count("character: the em dash"), 6)
+        proc = self.check("--added")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("the lines the index adds against HEAD to the 1 file(s) it changed", proc.stderr)
+        self.assertIn("src/view.vue: 6 line(s) the file already had hold the em dash (U+2014); not this delivery's, "
+                      "not refused", proc.stderr)
+        (self.repo / "src/view.vue").write_text(OLD_DASHES + f"plain {EN}\n")
+        git(self.repo, "commit", "-qam", "Add a line", env=self.e.env)
+        proc = self.check("--added", "--range", f"{self.start}..HEAD")
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        self.assertEqual(proc.stdout.splitlines(), [f"src/view.vue:8: character: the en dash (U+2013) in: plain {EN}"])
+
+    def test_it_is_refused_beside_all_and_with_on(self):
+        proc = self.check("--added", "--all")
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertIn("--added reads the lines a diff adds, and --all the whole tree", proc.stderr)
+        proc = self.e.run("letterhead", "check", "--on", "proj", "--added", cwd=self.root)
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        self.assertIn("--added reads a tree on this machine, not --on PROJECT yet", proc.stderr)
+
+    def test_the_usage_says_added_and_the_cleanup_list(self):
+        usage = " ".join(self.e.run("letterhead", "check", "--help", cwd=self.root, check=0).stdout.split())
+        for words in ("[--all | --added]", "--added (since 0.38.0) reads the lines a diff adds",
+                      "a line a file already had is told, one line per file, never a hit", "[cleanup] list",
+                      "office letterhead check --added --range origin/main..HEAD"):
+            self.assertIn(words, usage)
+
+
 class TestDeliverReadsTheLinesItAdds(AudienceCase):
     """office deliver on a file the audience's main already holds with
     refused characters: the line the session changed is the delivery's,
