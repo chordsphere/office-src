@@ -455,7 +455,7 @@ def check(rd, root, tz_name, catalog=None, filings=None):
     observed_by_entry = set()
 
     def aggregate(label, p, since=None):
-        cwd = ob.readable(p)
+        cwd = ob.rendered(p)
         return rd.aggregate(cwd, since=since)
 
     for entry in sorted(entries, key=lambda e: e["number"]):

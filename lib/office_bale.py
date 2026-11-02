@@ -724,6 +724,24 @@ def readable(project):
     return project["resolved"]
 
 
+def rendered(project):
+    """readable() for a rendering (0.41.0): a project marked paused (office
+    projects set NAME --paused) is read for nothing, and raises BaleError
+    of kind paused whose words are the one line the rendering says in the
+    place its "cannot read" line would go. The verbs that carry work
+    already out (land, deliver, probe) read with readable(), and so still
+    reach it."""
+    if project.get("paused") and not project.get("problem"):
+        raise BaleError("paused", oh.paused_line(project["name"]))
+    return readable(project)
+
+
+def unread_line(label, exc):
+    """A project a rendering could not read, in one line: the paused line
+    for a paused one, else `LABEL: cannot read: WHY`."""
+    return str(exc) if getattr(exc, "kind", None) == "paused" else f"{label}: cannot read: {exc}"
+
+
 def hosted_project(project):
     """Whether a [projects] entry declares a host."""
     return bool(project and project.get("host"))
@@ -811,7 +829,7 @@ def in_flight(rd, office_root, now=None):
         lines.append(no_projects_line(projects))
     for label, p in sources:
         try:
-            cwd = readable(p)
+            cwd = rendered(p)
             opened = rd.open_sessions(cwd)
             rd.prefetch(cwd, [("dossier", {"sid": sid}) for sid, _ in opened])
             for sid, read_only in opened:
@@ -843,6 +861,9 @@ def in_flight(rd, office_root, now=None):
                 age = describe_age(parse_stamp(v["created"]), now)
                 lines.append(f"{label}: {sid} {state}, opened {age} ago -> {target}{ends}")
         except BaleError as exc:
+            if exc.kind == "paused":
+                lines.append(unread_line(label, exc))
+                continue
             bad += 1
             lines.append(f"{label}: cannot read: {exc}")
     if open_count == 0 and bad == 0 and projects:
@@ -1131,7 +1152,7 @@ def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
     the walk-in, In flight and the first ready folders."""
     lines = ["In flight:"]
     lines += [f"  {l}" for l in flight_lines]
-    lines += [f"  {folder_line(f)}  [open, no session in flight]" for f in groups["open"]]
+    lines += [f"  {folder_line(f)}  [{open_words(f, groups)}]" for f in groups["open"]]
     parked = sum(len(v) for v in groups["parked"].values())
     errors = sum(1 for h in groups["parked"] if h.startswith("ERROR")) + len(groups["ready_errors"])
     on_desk = (len(groups["flying"]) + len(groups["open"]) + len(groups["ready"]) + parked + len(groups["candidates"])
@@ -1192,6 +1213,21 @@ def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
     if groups["unreadable"]:
         lines += ["", "Cannot be read:"] + [f"  {f['name']}  ({f['problem']})" for f in groups["unreadable"]]
     return lines
+
+
+def open_words(f, groups):
+    """What an open folder's desk line says in its brackets (0.41.0): its
+    merge job waiting for a session, or its work landed and not delivered,
+    or that no session is in flight for it."""
+    m = (groups.get("merge_by_rel") or {}).get(f["rel"])
+    if m is not None and not m["landed"]:
+        job = m["job"]
+        return (f"merge job waiting: {job['audience']}/{job['branch']} conflicts with the workbench in "
+                f"{len(job['files'])} file(s); office start {folder_key(f)} --merge")
+    u = (groups.get("undelivered_by_rel") or {}).get(f["rel"])
+    if u is not None:
+        return f"landed {u['sid']} on {u['day']}, not delivered; office deliver {folder_key(f)}"
+    return "open, no session in flight"
 
 
 def in_tray_lines(groups):
@@ -1259,6 +1295,18 @@ def render_desk(rd, office_root, today, since=None, walk_in=False, now=None, gro
     if blueprint is not None:
         return blueprint_desk(table, folders, flying, since or today, blueprint, flight), bad
     groups = classify_desk(folders, flying, since or today, table)
+    # What landed and is not delivered, and the merge jobs waiting (0.41.0):
+    # read once here, for the desk's lines, the Next line and the home screen.
+    try:
+        undelivered, merges, unread = waiting_on_delivery(office_root, folders)
+    except (OSError, oh.HelperError) as exc:
+        debug(f"what is landed and not delivered could not be read for the desk: {exc}")
+        undelivered, merges, unread = [], [], []
+    for line in unread:
+        debug(f"what is landed and not delivered on it could not be read: {line}")
+    groups["undelivered"], groups["merges"] = undelivered, merges
+    groups["undelivered_by_rel"] = {u["folder"]["rel"]: u for u in undelivered}
+    groups["merge_by_rel"] = {m["folder"]["rel"]: m for m in merges}
     # The in-tray's unsorted drops, oldest first (0.19.0): the desk lists
     # them, the walk-in counts them, and the Next line may name one.
     try:
@@ -1412,7 +1460,7 @@ SLIPS_PILING = 5
 SLIPS_SLUG = "triage-the-suggestion-box"
 
 
-def sessions_to_land(rd, office_root):
+def sessions_to_land(rd, office_root, rendering=True):
     """(sessions, problems): the open sessions office land can bring back,
     held ones first, then oldest first. A session counts when a folder
     records it, or when it is open in the office's own registry (a
@@ -1421,7 +1469,7 @@ def sessions_to_land(rd, office_root):
     Each is open_anywhere's dict plus held, created and door (founding or
     renovation when a door's folder records it, else None)."""
     import office_door as odoor
-    every, problems = open_anywhere(rd, office_root)
+    every, problems = open_anywhere(rd, office_root, rendering=rendering)
     try:
         doors = odoor.door_folders(office_root)
     except (OSError, oh.HelperError) as exc:
@@ -1517,6 +1565,27 @@ def drop_move(drops, groups, projects):
 SORT_PILE = 3
 
 
+def delivery_move(groups):
+    """(command, why) for the Next line's delivery row (0.41.0), or None: a
+    merge job waiting for its session first (office start N --merge), then
+    the folder whose work landed newest and is not delivered (office
+    deliver N)."""
+    waiting = [m for m in groups.get("merges") or [] if not m["landed"]]
+    if waiting:
+        f = waiting[0]["folder"]
+        more = f"; {len(waiting) - 1} more wait" if len(waiting) > 1 else ""
+        return (f"office start {folder_key(f)} --merge",
+                f"{oh.cite(f)}'s merge job waits; start --merge sends the session that resolves it{more}")
+    undelivered = groups.get("undelivered") or []
+    if undelivered:
+        u = undelivered[0]
+        more = f"; {len(undelivered) - 1} more wait" if len(undelivered) > 1 else ""
+        return (f"office deliver {folder_key(u['folder'])}",
+                f"{oh.cite(u['folder'])}'s work landed on {u['project']} and is not delivered yet; deliver carries "
+                f"it to {u['audience']}{more}")
+    return None
+
+
 def sort_move(drops, groups, projects):
     """(command, why) for office start --sort, or None (the rule 3c
     above): an unsorted drop with no project, or one that does not
@@ -1605,6 +1674,11 @@ def next_move(skew, founded, out, groups, projects, slips, behind=None, cache=No
                 (f"{count} desk move(s) a sitting decided are pending ({sources})" if count else
                  "drafting-table/moves.md holds lines that do not read")
                 + "; until they run, the desk is not in the order the sitting decided" + unread)
+    # A merge job waiting for its session, then a folder whose work landed
+    # and is not delivered (0.41.0): after the moves, before a drop.
+    move = delivery_move(groups)
+    if move is not None:
+        return move
     move = drop_move(groups.get("drops") or [], groups, projects) \
         or sort_move(groups.get("drops") or [], groups, projects)
     if move is not None:
@@ -1625,8 +1699,9 @@ def next_move(skew, founded, out, groups, projects, slips, behind=None, cache=No
         return (start_command(f, names),
                 f"{oh.cite(f)} is ready and first on the desk; start asks for the goal and sends a session out"
                 + (f"; {more} more ready after it" if more else ""))
-    if groups.get("open"):
-        f = groups["open"][0]
+    opened = [f for f in groups.get("open") or [] if f["rel"] not in (groups.get("undelivered_by_rel") or {})]
+    if opened:
+        f = opened[0]
         return (start_command(f, names),
                 f"{oh.cite(f)} is open and no session is out for it; office close {f['name']} instead when its "
                 "job is done")
@@ -1695,7 +1770,7 @@ def project_records(rd, project, statuses, unread, batch=()):
         return None
     if name not in statuses:
         try:
-            cwd = readable(project)
+            cwd = rendered(project)
             sids = rd.known_sids(cwd)
             if rd.hosted(cwd):
                 rd.prefetch(cwd, [("dossier", {"sid": sid}) for sid in batch if sid in sids])
@@ -1839,7 +1914,7 @@ def render_folder_sessions(rd, office_root, folder_md):
     # Each project that could not be read, once, in the floor plan's order.
     for p in projects:
         if p["name"] in unread:
-            out.append(f"{p['name']}: not read: {unread[p['name']]}")
+            out.append(oh.paused_line(p["name"]) if p.get("paused") else f"{p['name']}: not read: {unread[p['name']]}")
     out.append(f"recorded in this folder: {len(recorded)} session id(s); found in bale's records: {found}"
                + (f"; not found: {', '.join(missing)}" if missing else ""))
     out.append("bale version per session: not on bale's dossier (a slip for bale-src)")
@@ -1870,7 +1945,7 @@ def render_ledger(rd, office_root, name=None):
     lines, bad = [], 0
     for p in select(projects, name):
         try:
-            cwd = readable(p)
+            cwd = rendered(p)
             # Through a host's shell: two connections, the aggregate and
             # the status, then every class's aggregate and every dossier.
             rd.prefetch(cwd, [("stats", {}), ("status", {})])
@@ -1919,6 +1994,9 @@ def render_ledger(rd, office_root, name=None):
             if unrecorded:
                 lines.append(f"  in the outbox with no record: {', '.join(unrecorded)}")
         except BaleError as exc:
+            if exc.kind == "paused":
+                lines.append(unread_line(p["name"], exc))
+                continue
             bad += 1
             lines.append(f"{p['name']}: cannot read: {exc}")
     return lines, bad
@@ -1941,7 +2019,7 @@ def render_landed(rd, office_root, path, name=None):
     lines, bad = [], 0
     for p in select(projects, name):
         try:
-            cwd = readable(p)
+            cwd = rendered(p)
             views, _ = all_views(rd, cwd)
             hits = []
             for v in views:
@@ -1957,6 +2035,9 @@ def render_landed(rd, office_root, path, name=None):
             lines.append(f"{p['name']}: {path} last landed by {v['sid']} (applied {day(at)}, "
                          f"{v['work_class']}{under}); {len(hits)} applied session(s) landed it in all")
         except BaleError as exc:
+            if exc.kind == "paused":
+                lines.append(unread_line(p["name"], exc))
+                continue
             bad += 1
             lines.append(f"{p['name']}: cannot read: {exc}")
     return lines, bad
@@ -1972,7 +2053,7 @@ def render_versions(rd, office_root, name=None):
     lines, bad = [], 0
     for p in select(projects, name):
         try:
-            cwd = readable(p)
+            cwd = rendered(p)
             rd.prefetch(cwd, [("stats", {}), ("status", {})])
             views, _ = all_views(rd, cwd)
             lines.append(f"{p['name']}: version trail")
@@ -2001,6 +2082,9 @@ def render_versions(rd, office_root, name=None):
             lines.append(f"  bale now: {installed}; bale version per session: not on bale's dossier "
                          "(a slip for bale-src)")
         except BaleError as exc:
+            if exc.kind == "paused":
+                lines.append(unread_line(p["name"], exc))
+                continue
             bad += 1
             lines.append(f"{p['name']}: cannot read: {exc}")
     return lines, bad
@@ -2015,6 +2099,230 @@ def applied_sids(cwd):
     if out is None:
         raise BaleError("refused", f"git cannot list the applied/ tags in {cwd}")
     return {t[len("applied/"):] for t in out.split() if t.startswith("applied/")}
+
+
+# --- landed and not delivered, and a merge job waiting (0.41.0) ---------------------------
+#
+# A folder on a project with an audience stays on the desk after office land
+# and closes at delivery (the plan's ruling of 2026-10-29), so the desk, the
+# walk-in, the home screen, the Next line and bare office deliver know it as
+# landed, not delivered, and offer `office deliver N` by key; a folder whose
+# merge job (office deliver's merge/merge.md) names no session is offered
+# `office start N --merge`. Both are read from the office's own pages and
+# the project's applied/SID tags, with git alone, through the shell for a
+# hosted project: never a fetch of the audience and never a bale call.
+
+
+def applied_tag_times(cwd):
+    """{sid: when bale tagged it applied} for a repo's applied/SID tags, as
+    UTC datetimes, read with git alone (the tag's creator date: the tagger's
+    for an annotated tag, else its commit's), here or through a host's
+    shell. Raises BaleError when git cannot list them."""
+    out = git_lines(cwd, "for-each-ref", "--format=%(refname:short)%09%(creatordate:unix)", "refs/tags/applied/")
+    if out is None:
+        raise BaleError("refused", f"git cannot list the applied/ tags in {cwd}")
+    got = {}
+    for line in out.splitlines():
+        name, _, stamp = line.partition("\t")
+        if not name.startswith("applied/"):
+            continue
+        try:
+            got[name[len("applied/"):]] = dt.datetime.fromtimestamp(int(stamp), dt.timezone.utc)
+        except (ValueError, OverflowError):
+            got[name[len("applied/"):]] = None
+    return got
+
+
+def delivered_by_project(folders):
+    """{project: the sids any folder's `delivered` History lines name for it},
+    the desk's and the filing cabinet's, as office deliver's records read
+    them (office_helper.delivered_records' reading): a session another
+    folder delivered (--others-too) is delivered for every folder that
+    records it."""
+    out = {}
+    for f in folders:
+        if f.get("problem"):
+            continue
+        for _, verb, text in f.get("history") or []:
+            if verb != "delivered":
+                continue
+            m = oh.DELIVERED_RE.match(text)
+            if not m:
+                continue
+            sids = {x.strip() for x in m.group("sessions").split(",") if x.strip() and x.strip() != "none"}
+            out.setdefault(m.group("project"), set()).update(sids)
+    return out
+
+
+def office_zone(office_root):
+    """The office's timezone (the floor plan's [office] timezone), or None
+    (UTC) when it is unset or does not resolve here."""
+    try:
+        name = (oh.read_toml(pathlib.Path(office_root) / "floor-plan" / "manifest.toml").get("office") or {}) \
+            .get("timezone")
+        if not name:
+            return None
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(name)
+    except Exception as exc:  # an unreadable floor plan or an unknown zone: said, and UTC stands
+        debug(f"the office's timezone could not be read for a landing's day: {exc}")
+        return None
+
+
+def folder_merge_job(folder):
+    """The folder's merge job (office deliver's merge/merge.md) or None;
+    a page that does not read is said under OFFICE_DEBUG and is None."""
+    import office_deliver as odl
+    try:
+        return odl.read_merge_job(pathlib.Path(folder["path"]).parent)
+    except (odl.DeliverError, OSError) as exc:
+        debug(f"{folder['rel']}: its merge job does not read ({'; '.join(getattr(exc, 'lines', [str(exc)]))})")
+        return None
+
+
+def waiting_on_delivery(office_root, folders=None, projects=None):
+    """(undelivered, merges, unread) for the folders on the desk, read once.
+
+    undelivered, newest landing first: a folder whose lane names a project
+    with an audience (not paused) and that records at least one session
+    applied there (bale's applied/SID tag) that no folder's `delivered`
+    line names, and whose merge job, if it holds one, is not waiting for a
+    session; each a dict: folder, project, audience, sids (the sessions to
+    deliver, oldest first), sid (the newest of them), at (its tag's time)
+    and day (the office's date of it).
+
+    merges: a folder whose merge job names no session yet, or names one
+    that is applied (then the folder is landed, not delivered, too, and
+    deliver makes the merge); each a dict: folder, job, landed (the
+    session's id when it is applied there, else None).
+
+    unread: one line per project whose tags could not be read (or that is
+    paused) while a folder waited on it. Nothing is read when no folder on
+    the desk could be one."""
+    root = pathlib.Path(office_root)
+    folders = oh.read_folders(root) if folders is None else folders
+    projects = office_projects(root) if projects is None else projects
+    by_name = {p["name"]: p for p in projects or []}
+    candidates = []
+    for f in folders:
+        if f.get("problem") or f["space"] != "desk" or not f.get("sids"):
+            continue
+        lane = oh.lane_project((f["fields"].get("lane") or [""])[0])
+        p = by_name.get(lane)
+        if p is None or not p.get("audience") or p["problem"] or p["declaration_problems"]:
+            continue
+        candidates.append((f, p))
+    if not candidates:
+        return [], [], []
+    delivered = delivered_by_project(folders)
+    tags, unread = {}, []
+    for _, p in candidates:
+        if p["name"] in tags:
+            continue
+        try:
+            tags[p["name"]] = applied_tag_times(rendered(p))
+        except BaleError as exc:
+            tags[p["name"]] = None
+            unread.append(unread_line(p["name"], exc))
+    zone_ = office_zone(root)
+    undelivered, merges = [], []
+    for f, p in candidates:
+        applied = tags.get(p["name"])
+        if applied is None:
+            continue
+        job = folder_merge_job(f)
+        if job is not None:
+            landed = job.get("session") if job.get("session") in applied else None
+            if job.get("session") and not landed:
+                continue  # its session is out: in flight, and said there
+            merges.append({"folder": f, "job": job, "landed": landed})
+            if not landed:
+                continue  # deliver would only name the merge session
+        pending = [s for s in f["sids"] if s in applied and s not in delivered.get(p["name"], set())]
+        if not pending:
+            continue
+        newest = max(pending, key=lambda s: (applied[s] or dt.datetime.min.replace(tzinfo=dt.timezone.utc), s))
+        at = applied[newest]
+        day_ = (at.astimezone(zone_) if zone_ is not None else at).strftime("%Y-%m-%d") if at else "a day git does not say"
+        undelivered.append({"folder": f, "project": p["name"], "audience": p["audience"], "sids": pending,
+                            "sid": newest, "at": at, "day": day_})
+    undelivered.sort(key=lambda u: (u["at"] or dt.datetime.min.replace(tzinfo=dt.timezone.utc), u["folder"]["name"]),
+                     reverse=True)
+    merges.sort(key=lambda m: (m["job"].get("day") or "", m["folder"]["name"]), reverse=True)
+    return undelivered, merges, unread
+
+
+def probe_folders(rd, office_root):
+    """[(name, sid, words)] for bare office probe (0.41.0): each folder on
+    the desk that records a session open where probes run (a read-only
+    sitting open in the office, a session open in the office, or a session
+    open on a project), one row per folder, its first such session; the
+    folders whose session is a sitting first, then in the desk's order.
+    words say what the session is: `a sitting`, `in the office` or `on
+    PROJECT`. A repo that cannot be read is passed over (open_anywhere's
+    problems, said under OFFICE_DEBUG)."""
+    every, problems = open_anywhere(rd, office_root)
+    for line in problems:
+        debug(f"bare office probe could not read every repo: {line}")
+    rows = {}
+    for x in every:
+        for rel in x["folders"]:
+            if not rel.startswith("desk/"):
+                continue
+            sitting = x["read_only"] and x["label"] == OFFICE_LABEL
+            words = ("a sitting" if sitting else "in the office" if x["label"] == OFFICE_LABEL
+                     else f"on {x['label']}")
+            row = (not sitting, rel.split("/", 1)[1], x["sid"], words)
+            if rel not in rows or row < rows[rel]:
+                rows[rel] = row
+    return [(name, sid, words) for _, name, sid, words in sorted(rows.values())]
+
+
+def merge_job_words(m):
+    """A waiting merge job in the home screen's words (after `for folder N,
+    TITLE`): AUDIENCE/BRANCH, the files, the day deliver wrote it."""
+    job = m["job"]
+    k = len(job["files"])
+    return (f"{job['audience']}/{job['branch']} conflicts with the workbench in {k} file(s) (office deliver wrote "
+            f"the job on {job.get('day') or 'a day it did not say'})")
+
+
+def folder_title(f):
+    return f.get("title") or f["name"]
+
+
+def deliver_item_words(u):
+    """The home screen's words for a landed-not-delivered folder."""
+    f = u["folder"]
+    return (f"Deliver {oh.cite(f)}, {folder_title(f)} ({u['project']}): {u['sid']} landed {u['day']}, not yet "
+            "delivered")
+
+
+def merge_item_words(m):
+    f = m["folder"]
+    return f"Send the merge session for {oh.cite(f)}, {folder_title(f)}: {merge_job_words(m)}"
+
+
+def folder_key(f):
+    """How a verb's line names a folder: its number, else its name."""
+    return str(f["number"]) if f.get("number") else f["name"]
+
+
+def waiting_lines(office_root):
+    """office status's lines under the folders line (0.41.0): one per folder
+    on the desk whose merge job waits for its session, or whose merge
+    session landed without the merge made; nothing when there is none."""
+    _, merges, _ = waiting_on_delivery(office_root)
+    lines = []
+    for m in merges:
+        f, job = m["folder"], m["job"]
+        n = folder_key(f)
+        if m["landed"]:
+            lines.append(f"{oh.cite(f)}: merge session {m['landed']} landed; office deliver {n} makes the merge commit")
+        else:
+            lines.append(f"{oh.cite(f)}: merge job waiting, {job['audience']}/{job['branch']} into the workbench, "
+                         f"{len(job['files'])} file(s); office start {n} --merge sends the session")
+    return lines
 
 
 def provisional_landed(office_root):
@@ -2055,7 +2363,7 @@ def provisional_landed(office_root):
         if hosted_project(p) and all(all(s in applied for s in f["sids"]) for f, _ in candidates):
             break
         try:
-            applied |= applied_sids(readable(p))
+            applied |= applied_sids(rendered(p))
         except BaleError as exc:
             unread.append(f"{label} ({exc})")
     lines = []
@@ -2093,8 +2401,12 @@ def status_lines(rd, office_root):
     if not projects:
         lines.append(f"projects:   none; {no_projects_line(projects)}")
         return lines, 0
-    problems, hosted = [], []
+    problems, hosted, paused = [], [], []
     for p in projects:
+        if p.get("paused") and not p["problem"]:
+            # Read for nothing (0.41.0): no directory check, no host reached.
+            paused.append(f"  {oh.paused_line(p['name'])}")
+            continue
         if p["problem"]:
             ok, text = False, p["problem"]
         elif hosted_project(p):
@@ -2106,8 +2418,9 @@ def status_lines(rd, office_root):
             problems.append(f"  {p['name']}: {text}")
     lines.append(f"projects:   {len(projects)} in scope"
                  + (f"; {len(problems)} cannot be read" if problems else "; each is a repo bale runs in"
-                    + (f", {len(hosted)} through a host's shell" if hosted else "")))
-    lines += problems
+                    + (f", {len(hosted)} through a host's shell" if hosted else ""))
+                 + (f"; {len(paused)} paused" if paused else ""))
+    lines += problems + paused
     # A project on a host: one reach check, and that host's bale against
     # the read side's floor, with the remedy when it is behind. Never a
     # network call the survey makes (doctrine section 13): this is
@@ -3686,6 +3999,10 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         problems += entry["declaration_problems"]
         if problems:
             raise StartError([f"{project}: {p}" for p in problems])
+        if entry.get("paused") and where == "project":
+            # 0.41.0: nothing is sent to a paused project (bin/office says
+            # so before anything is written; this is the backstop).
+            raise StartError([oh.paused_line(project)])
     rides, left = ride_choice(entry, project, leave_out)
     rd.bale()
     # The project's handbook chapter rides with every session whose lane
@@ -4293,23 +4610,26 @@ class LandError(StartError):
     """office land cannot go on, said as lines a person can act on."""
 
 
-def repos(office_root):
+def repos(office_root, rendering=False):
     """([(label, project entry or None, directory)], problem lines): the
     office's own registry, when bale keeps one there, and every project
-    it scopes that can be read."""
+    it scopes that can be read. rendering (0.41.0) passes over a paused
+    project, its line the paused line: the walk-in's Next line and the
+    home screen read nothing of it, while a verb (land, withdraw) still
+    finds a session out there."""
     out, bad = [], []
     own = office_registry(office_root)
     if own is not None:
         out.append((OFFICE_LABEL, None, own))
     for p in office_projects(office_root) or []:
         try:
-            out.append((p["name"], p, readable(p)))
+            out.append((p["name"], p, rendered(p) if rendering else readable(p)))
         except BaleError as exc:
-            bad.append(f"{p['name']}: cannot read: {exc}")
+            bad.append(unread_line(p["name"], exc))
     return out, bad
 
 
-def open_anywhere(rd, office_root, sid=None, unreachable=None):
+def open_anywhere(rd, office_root, sid=None, unreachable=None, rendering=False):
     """(sessions, problems): every session open in a repo the office
     reads, each a dict: sid, label, project, repo, read_only, folders
     (the folders whose Sessions section names it, space/name). For a
@@ -4317,7 +4637,7 @@ def open_anywhere(rd, office_root, sid=None, unreachable=None):
     in one connection (since 0.16.0); a host that does not answer is a
     problem line and, given the list unreachable, (label, line) in it."""
     naming = folders_naming(office_root)
-    found, problems = repos(office_root)
+    found, problems = repos(office_root, rendering)
     out = []
     for label, p, cwd in found:
         try:
@@ -4328,7 +4648,10 @@ def open_anywhere(rd, office_root, sid=None, unreachable=None):
                             "place": cwd, "host": p["host"] if p else None,
                             "read_only": ro, "folders": naming.get(sid_here, []),
                             "after_land": list(p["after_land"]) if p and not p["declaration_problems"] else [],
-                            "after_land_problem": "; ".join(p["declaration_problems"]) if p else ""})
+                            "after_land_problem": "; ".join(p["declaration_problems"]) if p else "",
+                            # 0.41.0: land closes an audience project's
+                            # folder at delivery, and ends on deliver's line.
+                            "audience": (p.get("audience") or None) if p else None})
         except BaleError as exc:
             problems.append(f"{label}: cannot read: {exc}")
             if exc.kind == "unreachable" and unreachable is not None:
@@ -5522,6 +5845,17 @@ def build_parser(only=None):
     p = add("provisional-lines", help="office status's structure lines: each folder still provisional though "
                                       "every session it records landed applied; nothing when none is")
     p.add_argument("office")
+    # 0.41.0: what is landed and not delivered, a merge job waiting, and the
+    # folders a bare probe can mean.
+    p = add("waiting-lines", help="office status's lines under the folders line: each folder whose merge job "
+                                  "waits, or whose merge session landed without its merge; nothing when none")
+    p.add_argument("office")
+    p = add("awaiting-delivery", help="bare office deliver's offer: each folder on the desk whose work landed and "
+                                      "is not delivered, newest landing first, NAME<tab>WORDS")
+    p.add_argument("office")
+    p = add("probe-folders", help="bare office probe's folders: each folder on the desk that records a session "
+                                  "open where probes run, sittings first, NAME<tab>SID<tab>WORDS")
+    p.add_argument("office")
     p = add("desk"); p.add_argument("office"); p.add_argument("--today", required=True)
     p.add_argument("--since", help="the day of the previous walk-in (default: today)")
     p.add_argument("--walk-in", action="store_true", help="In flight and the first ready folders only")
@@ -5797,6 +6131,23 @@ def main(argv=None):
         for r in riders:
             print(f"{r['number']}\t{r['title']}\t{r['rides']}\t{', '.join(r['touched'])}")
         return 0
+    if a.cmd in ("waiting-lines", "awaiting-delivery"):
+        # git alone, no bale: no Reader is made (0.41.0).
+        try:
+            if a.cmd == "waiting-lines":
+                lines = waiting_lines(a.office)
+            else:
+                undelivered, _, unread = waiting_on_delivery(a.office)
+                for line in unread:
+                    debug(line)
+                lines = [f"{u['folder']['name']}\t{oh.cite(u['folder'])}, {folder_title(u['folder'])} "
+                         f"({u['project']}): {u['sid']} landed {u['day']}" for u in undelivered]
+        except (oh.HelperError, OSError) as exc:
+            log(f"error: {exc}")
+            return 1
+        for line in lines:
+            print(line)
+        return 0
     if a.cmd == "provisional-lines":
         # git alone, no bale: no Reader is made.
         try:
@@ -5869,6 +6220,10 @@ def main(argv=None):
         return 0
     try:
         rd = Reader()
+        if a.cmd == "probe-folders":
+            for name, sid, words in probe_folders(rd, a.office):
+                print(f"{name}\t{sid}\t{words}")
+            return 0
         if a.cmd == "sort-out":
             # The standalone sorts open in this office: one id per line.
             for sid in sorts_out(rd, a.office):

@@ -122,10 +122,10 @@ def versions(rd, root, here):
         if label == ob.OFFICE_LABEL:
             continue
         try:
-            cwd = ob.readable(p)
+            cwd = ob.rendered(p)
             out.append(f"- {label}: {release(rd, cwd)}; {epoch(rd, cwd)}")
         except ob.BaleError as exc:
-            out.append(f"- {label}: cannot read: {exc}")
+            out.append(f"- {ob.unread_line(label, exc)}")
     out.append("- the bale version each session ran under: not on bale's dossier (a slip for bale-src)")
     return out
 
@@ -173,9 +173,11 @@ def sessions_since(rd, root, label, p, start):
     window's start, and what is open now, from the dossiers."""
     import office_bale as ob
     try:
-        cwd = ob.readable(p)
+        cwd = ob.rendered(p)
         open_now = rd.open_sessions(cwd)
     except ob.BaleError as exc:
+        if exc.kind == "paused":
+            return f"- {ob.unread_line(label, exc)}", False
         return f"- {label}: cannot read: {exc}", True
     sids = {sid for sid, _ in open_now}
     if start is not None:

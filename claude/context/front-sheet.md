@@ -238,6 +238,20 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.41.0 (session 2026-11-02-home-screen-offers-001): the next step
+  offered by key; a folder with an audience closes at delivery.
+  - office land leaves a folder on a project with an audience on the
+    desk and ends with `Next: office deliver N`; office deliver closes it
+    once its work is delivered (`--close`, `--leave-open`).
+  - the desk, the walk-in's Next line, the home screen and bare `office
+    deliver` offer folders landed and not delivered, and a merge job
+    waiting for its session; bare `office probe` takes the one folder
+    with a session open.
+  - the planner's relay block carries the office's tail after bale's END
+    marker: the folder, its state, the deliver line, land's review.
+  - `office withdraw --bundle STEM` renames a bundle out of the offer;
+    `office projects set NAME --paused` marks a project the renderings
+    read nothing of.
 - 0.40.0 (session 2026-10-29-m10-deliver-merges-007): no delivery ends at
   a terminal; the merge session, a squash-merged review seen by content,
   a continued delivery squashed from its range.

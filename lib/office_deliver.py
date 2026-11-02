@@ -1862,6 +1862,9 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             # the base holds, by history or by content, one line per record:
             # they ride in nothing here.
             "held_told": held_told,
+            # Additive (0.41.0): those sessions by id, for the folder's close
+            # at delivery (a session the base holds is delivered).
+            "held_sessions": sorted(held),
             "commits_line": commits_line(len(words["commits"])) or "",
         }
         if hits:
@@ -2121,6 +2124,22 @@ def run(office_root, plan_, day):
     return words, told, nxt
 
 
+def still_to_deliver(office_root, plan_):
+    """The folder's applied sessions (plan's folder_sessions: its Sessions
+    lines whose session is applied in the project) that are still to
+    deliver after this delivery (0.41.0): every session no folder's
+    `delivered` line names for the project (this delivery's line included,
+    and another folder's, as delivered_by_project reads them, so a session
+    another folder delivered with --others-too is delivered here too) and
+    the base does not hold (plan's held_sessions). [] means the folder's
+    work is delivered, and office deliver closes it."""
+    import office_bale as ob_
+    done = ob_.delivered_by_project(oh.read_folders(office_root)).get(plan_["project"], set())
+    done |= set(plan_.get("sessions") or []) | set(plan_.get("others") or {})
+    held = set(plan_.get("held_sessions") or [])
+    return [s for s in plan_.get("folder_sessions") or [] if s not in done and s not in held]
+
+
 # --- office letterhead check --on PROJECT: the check in a project's repo, here or there ------
 
 # The letterhead check on this machine runs office_letterhead as a module,
@@ -2288,6 +2307,7 @@ def main(argv=None):
     p = sub.add_parser("land-review", help="office land's letterhead review of a landed session")
     p.add_argument("office"); p.add_argument("--project", required=True); p.add_argument("--sid", required=True)
     p.add_argument("--folder")
+    p.add_argument("--out", help="also write the review's lines to this file, one per line (0.41.0)")
     p = sub.add_parser("review-url", help="the review's URL for a remote's URL, a branch and a base, or nothing")
     p.add_argument("url"); p.add_argument("branch"); p.add_argument("base")
     # The merge session (0.40.0).
@@ -2360,8 +2380,13 @@ def main(argv=None):
             log(line)
             return 0
         if a.cmd == "land-review":
-            for line in land_review(a.office, a.project, a.sid, a.folder):
+            lines = land_review(a.office, a.project, a.sid, a.folder)
+            for line in lines:
                 log(line)
+            if a.out:
+                # 0.41.0: the same lines, for the office's tail on the
+                # planner's relay block (bin/office carry_relays).
+                pathlib.Path(a.out).write_text("".join(l + "\n" for l in lines), encoding="utf-8")
             return 0
         if a.cmd == "plan":
             try:
@@ -2401,7 +2426,14 @@ def main(argv=None):
             log("nothing was pushed, and nothing the delivery made is left")
             return 0
         words, told, nxt = run(a.office, plan_, a.day)
-        print(json.dumps({"words": words, "told": told, "next": nxt}))
+        try:
+            pending = still_to_deliver(a.office, plan_)
+        except (OSError, oh.HelperError) as exc:
+            # Never fails the delivery: the folder stays where it is.
+            log(f"whether {plan_['folder']}'s work is all delivered could not be read ({exc}); it stays where it is")
+            pending = None
+        print(json.dumps({"words": words, "told": told, "next": nxt, "folder": plan_["folder"],
+                          "pending": pending}))
         return 0
     except ob.StartError as exc:
         for line in exc.lines:

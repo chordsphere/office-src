@@ -39,6 +39,10 @@ The command line:
     office_home.py bundles OFFICE [--dir DIR]... [--now ISO]
         the planner bundles in the downloads that no session opened, newest
         first, for office start's offer: PATH<tab>STEM<tab>AGE<tab>WORDS
+    office_home.py withdraw-bundle OFFICE --stem STEM [--dir DIR]... [--check]
+        office withdraw --bundle STEM (0.41.0): every copy of the stem in
+        the downloads renamed NAME.bale-bundle.declined, one line each;
+        --check prints the stem and the copies, or refuses
     office_home.py copies --name NAME [--dir DIR]... [--now ISO]
         every browser copy of one name in the downloads, newest first:
         PATH<tab>AGE (office land's choice after a HOLD)
@@ -229,9 +233,11 @@ def project_rows(rd, office_root, names, now, tz):
         rows.append(("", "this office scopes no project yet"))
     for p in projects or []:
         try:
-            words, _ = place_row(rd, ob.readable(p), names, now, tz)
+            words, _ = place_row(rd, ob.rendered(p), names, now, tz)
         except ob.BaleError as exc:
-            words = f"cannot be read: {exc}"
+            # A paused project (0.41.0) is read for nothing: its row says so.
+            words = (f"paused (office projects set {p['name']} --unpaused)" if exc.kind == "paused"
+                     else f"cannot be read: {exc}")
         rows.append((p["name"], words))
     own = ob.office_registry(office_root)
     if own is not None:
@@ -254,9 +260,13 @@ def bundle_stem(name):
 
 
 def downloaded_bundles(directories, now, days=RECENT_DAYS):
-    """[{stem, path, at}] for the planner bundles in the downloads saved in
-    the last `days` days, one per stem (its newest copy), newest first."""
-    newest = {}
+    """[{stem, path, at, copies}] for the planner bundles in the downloads
+    saved in the last `days` days, one per stem (its newest copy), newest
+    first; copies (0.41.0) counts every copy of the stem the downloads hold,
+    whatever its age, so the offer can say when there are two. A bundle
+    withdrawn from the offer (office withdraw --bundle) is named
+    NAME.bale-bundle.declined, and is no bundle here."""
+    newest, copies = {}, {}
     for d in directories or []:
         d = pathlib.Path(os.path.expanduser(str(d)))
         try:
@@ -268,12 +278,86 @@ def downloaded_bundles(directories, now, days=RECENT_DAYS):
             if not f.name.endswith(BUNDLE_EXT) or not f.is_file():
                 continue
             at = file_time(f)
+            stem = bundle_stem(f.name)
+            copies[stem] = copies.get(stem, 0) + 1
             if days is not None and (now - at).total_seconds() > days * 86400:
                 continue
-            stem = bundle_stem(f.name)
             if stem not in newest or at > newest[stem]["at"]:
                 newest[stem] = {"stem": stem, "path": f.resolve(), "at": at}
+    for b in newest.values():
+        b["copies"] = copies.get(b["stem"], 1)
     return sorted(newest.values(), key=lambda b: (-b["at"].timestamp(), b["stem"]))
+
+
+def saved_words(b, now):
+    """How a bundle's offer says when it was saved: `saved AGE`, and when
+    the downloads hold more than one copy of its stem (0.41.0), how many,
+    the newest offered."""
+    words = f"saved {age_words(b['at'], now)}"
+    if b.get("copies", 1) > 1:
+        words += f"; {b['copies']} copies, the newest offered"
+    return words
+
+
+def bundle_copies(directories, stem):
+    """Every copy of a bundle's stem in the downloads (STEM.bale-bundle and
+    a browser's `STEM (N).bale-bundle`), each a Path, sorted by name; a
+    withdrawn copy (.declined) is not one."""
+    stem = bundle_stem(stem.removesuffix(BUNDLE_EXT))
+    out = []
+    for d in directories or []:
+        d = pathlib.Path(os.path.expanduser(str(d)))
+        try:
+            entries = list(d.iterdir())
+        except OSError as exc:
+            debug(f"the downloads directory {d} cannot be read: {exc}")
+            continue
+        out += [f for f in entries if f.is_file() and f.name.endswith(BUNDLE_EXT) and bundle_stem(f.name) == stem]
+    return sorted(out, key=lambda f: (str(f.parent), f.name))
+
+
+def downloaded_stems(directories):
+    """The stems the downloads hold a bundle of, any age, sorted."""
+    return sorted({b["stem"] for b in downloaded_bundles(directories, dt.datetime.now(dt.timezone.utc), days=None)})
+
+
+DECLINED_EXT = ".declined"
+
+
+def withdraw_bundle_check(rd, office_root, directories, stem):
+    """(stem, the copies) for office withdraw --bundle STEM (0.41.0): STEM as
+    the home screen names it, with or without .bale-bundle. Refuses (a
+    HelperError) a stem no file in the downloads carries, naming the stems
+    they hold, and a bundle a session opened (bale's records say), naming
+    the session."""
+    stem = bundle_stem(stem.strip().removesuffix(BUNDLE_EXT))
+    found = bundle_copies(directories, stem)
+    if not found:
+        held = downloaded_stems(directories)
+        raise oh.HelperError(f"no bundle named {stem} is in your downloads (they hold: {', '.join(held) or 'none'}); "
+                             "nothing was renamed")
+    newest = max(found, key=lambda f: f.stat().st_mtime)
+    b = opened_from(rd, office_root, [{"stem": stem, "path": newest.resolve(), "at": file_time(newest)}])[0]
+    if b["opened"]:
+        raise oh.HelperError(f"{stem} was opened by {b['opened']}, so it is not in the offer; the session is office "
+                             f"land's, or office withdraw {b['opened']}'s if it was never worked")
+    return stem, found
+
+
+def withdraw_bundle(found):
+    """Rename each copy NAME.bale-bundle to NAME.bale-bundle.declined, the
+    only thing the office ever writes in the downloads, and nothing is
+    deleted there. Returns the line said for each."""
+    lines = []
+    for f in found:
+        target = f.with_name(f.name + DECLINED_EXT)
+        if target.exists():
+            raise oh.HelperError(f"{target} is there already, so {f} was not renamed (rename or move one of them "
+                                 "by hand)")
+        f.rename(target)
+        lines.append(f"{f} is now {target.name}: the home screen and office start no longer offer it (rename it "
+                     "back to offer it again)")
+    return lines
 
 
 def bundle_reading(path):
@@ -301,7 +385,7 @@ def every_place(office_root):
     scopes that can be read; a project that cannot is said under
     OFFICE_DEBUG and skipped."""
     import office_bale as ob
-    found, bad = ob.repos(office_root)
+    found, bad = ob.repos(office_root, rendering=True)
     for line in bad:
         debug(f"no bundle is looked for there: {line}")
     return [(label, cwd) for label, _, cwd in found]
@@ -422,7 +506,14 @@ def home_items(skew, founded, out, groups, projects, slips, behind, bundles, nam
     items += [item(f"Send the prep for {om.occurrence_words(m)}: it briefs you on what landed since the last one",
                    ["start", "--prep", m["key"]]) for m in meetings if m["state"] == "due"]
     items += response_items(out, names, directories, now)
-    items += [item(f"Start the planner's bundle {b['stem']} (saved {age_words(b['at'], now)})",
+    # A merge job waiting for its session, then the folders whose work landed
+    # and is not delivered, newest landing first (0.41.0): read once, by
+    # render_desk, into the desk's groups.
+    items += [item(ob.merge_item_words(m), ["start", ob.folder_key(m["folder"]), "--merge"])
+              for m in groups.get("merges") or [] if not m["landed"]]
+    items += [item(ob.deliver_item_words(u), ["deliver", ob.folder_key(u["folder"])])
+              for u in groups.get("undelivered") or []]
+    items += [item(f"Start the planner's bundle {b['stem']} ({saved_words(b, now)})",
                    ["start", "--bundle", str(b["path"])]) for b in bundles]
     items += drop_items(groups, projects)
     sort = ob.sort_move(groups.get("drops") or [], groups, projects)
@@ -477,8 +568,9 @@ FIXED_KEYS = (
     ("m", "a meeting, in your words", "office", ["meeting"]),
     ("s", "send a session out", "office", ["start"]),
     ("l", "bring one back", "office", ["land"]),
-    # Shown only while a session is out that was never worked (0.24.0).
-    ("w", "withdraw a session never worked", "office", ["withdraw"]),
+    # Shown only while a session is out that was never worked (0.24.0), or a
+    # bundle no session opened waits in the offer (0.41.0).
+    ("w", "withdraw a session never worked, or a bundle", "office", ["withdraw"]),
     ("n", "note a line", "note", []),
     ("d", "drop a message", "office", ["drop"]),
     ("k", "the whole desk", "office", ["desk"]),
@@ -574,7 +666,7 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
         debug(f"the install's bytecode cache could not be checked: {exc}")
         cache = None
     projects = ob.office_projects(office_root)
-    every, _ = ob.open_anywhere(rd, office_root)
+    every, _ = ob.open_anywhere(rd, office_root, rendering=True)
     sittings = [x for x in every if x["read_only"] and x["folders"]]
     doctrines = ob.Doctrines(office_root)
     for s in sittings:
@@ -594,7 +686,7 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
     except ob.BaleError as exc:
         debug(f"which sessions could be withdrawn could not be read: {exc}")
         offered = []
-    lines, menu = render_page(rows, items, len(out), desk_words(groups), len(offered))
+    lines, menu = render_page(rows, items, len(out), desk_words(groups), len(offered) + len(bundles))
     if directories is None:
         lines.insert(lines.index("Waiting on you:") + 1,
                      "  (this machine's downloads are not set, so no response or bundle there is offered)")
@@ -652,6 +744,11 @@ def main(argv=None):
     p.add_argument("--now", help="an ISO timestamp to measure ages from (default: now)")
     p = sub.add_parser("bundles", help="the bundles in the downloads no session opened: PATH, STEM, AGE, WORDS")
     p.add_argument("office"); p.add_argument("--dir", action="append", default=[]); p.add_argument("--now")
+    p = sub.add_parser("withdraw-bundle", help="office withdraw --bundle STEM: rename every copy of the stem in the "
+                                               "downloads to NAME.bale-bundle.declined (--check: the stem and the "
+                                               "copies, or the refusal)")
+    p.add_argument("office"); p.add_argument("--stem", required=True); p.add_argument("--dir", action="append", default=[])
+    p.add_argument("--check", action="store_true"); p.add_argument("--now")
     p = sub.add_parser("copies", help="every browser copy of a name in the downloads, newest first: PATH, AGE")
     p.add_argument("--name", required=True); p.add_argument("--dir", action="append", default=[])
     p.add_argument("--now")
@@ -684,7 +781,20 @@ def main(argv=None):
         if a.cmd == "bundles":
             for b in waiting_bundles(rd, a.office, a.dir, now):
                 words = " ".join((b["goal"] or "").split())
-                print(f"{b['path']}\t{b['stem']}\t{age_words(b['at'], now)}\t{oh.ascii_escape(words)[0]}")
+                age = age_words(b["at"], now) + (f"; {b['copies']} copies, the newest offered" if b["copies"] > 1 else "")
+                print(f"{b['path']}\t{b['stem']}\t{age}\t{oh.ascii_escape(words)[0]}")
+            return 0
+        if a.cmd == "withdraw-bundle":
+            # office withdraw --bundle STEM (0.41.0): --check names the copies
+            # and refuses what cannot be withdrawn; without it, the rename.
+            stem, found = withdraw_bundle_check(rd, a.office, a.dir, a.stem)
+            if a.check:
+                print(stem)
+                for f in found:
+                    print(f)
+                return 0
+            for line in withdraw_bundle(found):
+                print(line)
             return 0
         dt.date.fromisoformat(a.today)
         if a.since:

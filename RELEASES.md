@@ -4,6 +4,129 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.41.0
+
+Additive: no migration, nothing to do in any office. The fourth serial
+session of the plan begun on 2026-10-27: the next step is offered by key,
+so the occupant never types a number he has to look up (the gaps of
+2026-10-28, A1, A7's paused mark, A9, A10 and A14, and 0.40.0's proposal
+of the waiting merge session). What you see changes for a project with an
+audience, for a bundle you will not send, and for a project you pause;
+everything else is as it was.
+
+A folder with an audience closes at delivery. `office land` closed a
+folder whose one session landed, so a folder on a project with an
+audience left the desk before its work was delivered, and its number had
+to be guessed for `office deliver N`. Now land leaves it on the desk and
+says so in one line (`NAME recorded SID alone, and it landed applied;
+PROJECT has an audience, so the folder stays on the desk until office
+deliver N carries the work (office close NAME closes it now)`); `--close`
+still closes it, and says so. After a successful push, `office deliver`
+closes it, done, in land's words (`the folder NAME: closed, done (its
+work is delivered; office reopen NAME brings it back)`), once every
+applied session the folder records is named by a `delivered` History
+line, this delivery's or another folder's, or is held by the base; a
+session still to deliver is named and the folder stays. On a terminal it
+closes without asking, as land does; piped it stays unless `--close`;
+`--leave-open` keeps it. A project with no audience, and an office
+session, close at land as before.
+
+Land ends with the deliver line. After an applied landing on a project
+with an audience, land's last line, after the relay's clipboard line, is
+`Next: office deliver N  (the work landed on PROJECT and is not delivered
+yet; deliver carries it to AUDIENCE)`, or, for a merge session, that
+deliver makes the merge commit and carries the folder's own work.
+
+What is landed and not delivered is offered. The desk's line for such a
+folder says `landed SID on DAY, not delivered; office deliver N`; the
+home screen offers `Deliver folder N, TITLE (PROJECT): SID landed DAY,
+not yet delivered` by key, newest landing first, after the responses and
+before the bundles; the walk-in's Next line names `office deliver N`
+after the desk moves and before a drop, and never `office start` for such
+a folder; and bare `office deliver` on a terminal offers them first under
+`Landed and not yet delivered:` (a plain return lists every folder). All
+of it is read from the office's own pages and the project's `applied/SID`
+tags with git alone: no fetch, no bale call.
+
+Bare probe takes the one open session's folder. `office probe` with no
+folder, when exactly one folder on the desk records a session open where
+probes run (a read-only sitting, or a session in the office or on a
+project), takes that folder and says so; with several, those folders
+alone are offered by key, sittings first.
+
+The office's tail on the planner's relay block. Land's letterhead review
+was printed on the terminal and went nowhere else, and the planner asked
+for the folder's number and state. Now every block bale printed for the
+planner, after an applied landing, carries the office's lines after
+bale's END marker (bale's block is byte for byte as bale printed it):
+`--- OFFICE land SID ---`, `folder: N, TITLE (desk/NAME, open; closes at
+delivery)` (or `desk/NAME, open`, `filing-cabinet/NAME, closed, done`, or
+`folder: none`), `next: office deliver N` when land printed it, the
+review's lines for a project with an audience, and `--- OFFICE END ---`,
+in the clipboard copy and in the whole printing after an unconfirmed one.
+
+A bundle withdrawn from the offer. `office withdraw --bundle STEM`
+renames every copy of the stem in the downloads (a browser's `(1)` copies
+too) to `NAME.bale-bundle.declined`, said for each, after one question
+(default yes; `--yes` piped). The office deletes nothing in the
+downloads. A stem no file carries is refused naming the stems there; a
+bundle a session opened is refused naming the session. Bare `office
+withdraw` offers the sessions never worked and then the bundles no
+session opened; the home screen's `w` key shows while either waits
+(`withdraw a session never worked, or a bundle`). When the downloads hold
+two copies of a stem, the home screen's item and `office start`'s offer
+say so: `(saved AGE; 2 copies, the newest offered)`.
+
+A project marked paused. `office projects set NAME --paused` writes
+`paused = true` in its entry (`--unpaused` removes it), committed, and
+asks nothing else. Every rendering that reads a project's repo (the
+walk-in, the home screen, `office desk`, `office status`, `office
+sessions`, `office projects` and its renderings, the digest and the
+watches) reads nothing of it and says `NAME: paused (office projects set
+NAME --unpaused)` where its "cannot read" line would go; `office start`
+refuses to send a session to it. A session already out still lands, and
+deliver and probe still run.
+
+The waiting merge session, offered by key. A folder whose merge job
+names no session is offered `office start N --merge`: on the home screen
+(`Send the merge session for folder N, TITLE: AUDIENCE/BRANCH conflicts
+with the workbench in K file(s) (office deliver wrote the job on DAY)`),
+on the Next line ahead of a landed folder, on the desk's line, and in
+`office status` under the folders line. A job whose session landed
+without its merge is a landed folder, and status says `office deliver N`
+makes the merge commit.
+
+What changed and where: bin/office (land's audience close in
+`offer_close`, `folder_cite_key`, `land_where_now`, `land_tail` and the
+tail in `carry_relays`, land's Next line, the review's lines kept with
+`--out`; deliver's bare offer, `--close` and `--leave-open`,
+`deliver_close`; bare probe's folders; `withdraw --bundle` and
+`withdraw_bundle`, the combined offer; `projects set --paused` and
+`--unpaused`; start's refusal of a paused project; status's merge lines;
+the usage texts); lib/office_bale.py (`waiting_on_delivery`,
+`applied_tag_times`, `delivered_by_project`, `delivery_move` on the Next
+line, `open_words` on the desk, `waiting_lines`, `probe_folders`,
+`rendered` and `unread_line` for a paused project, `repos` and
+`open_anywhere` with `rendering`, the plan's `audience`; the
+`waiting-lines`, `awaiting-delivery` and `probe-folders` subcommands);
+lib/office_home.py (the items, `saved_words`, `bundle_copies`,
+`withdraw_bundle_check`, `withdraw_bundle`, the `withdraw-bundle`
+subcommand, the `w` key's words, the paused row); lib/office_deliver.py
+(`still_to_deliver`, the plan's `held_sessions`, land-review's `--out`);
+lib/office_helper.py (`paused` in `read_projects`, `set_declarations` and
+project-declare, `paused_line`, the listing); lib/office_digest.py and
+lib/office_watches.py (a paused project read for nothing); README.md; and
+the doctrine (its core's land sentence rewrapped in its lines, and past
+the banner).
+
+Tests: tests/test_home_screen_offers.py (new), one class per item:
+TestAFolderWithAnAudienceClosesAtDelivery and TestDeliverClosesTheFolder;
+TestLandEndsWithTheDeliverLine; TestTheOffersAsUnits, TestTheOffers,
+TestBareDeliverOnATerminal, TestBareProbe and TestBareProbeOnATerminal;
+TestTheRelayTailOnATerminal; TestABundleWithdrawn and
+TestABundleWithdrawnOnATerminal; TestAProjectMarkedPaused;
+TestTheWaitingMergeSession.
+
 ## 0.40.0
 
 Additive: no migration, nothing to do in any office. The third serial
