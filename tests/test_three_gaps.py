@@ -188,7 +188,11 @@ class TestAnAdoptedBranchOnATerminal(AudienceCase):
         self.assertIn("Delivered: picklists is on origin", seen)
         self.assertIn("adopted: it was made outside the office", seen)
         self.assertEqual(self.audience_subjects("picklists")[0], "Add the health route")
-        self.assertIn("; adopted", self.folder_md())
+        # On a terminal the folder closes at delivery once its work is
+        # delivered (0.41.0): its record is in the filing cabinet.
+        self.assertIn(f"the folder {self.name}: closed, done (its work is delivered", " ".join(seen.split()))
+        filed = self.root / "filing-cabinet" / self.name / "folder.md"
+        self.assertIn("; adopted", filed.read_text())
 
 
 # --- 2. a planner's bundle names the branch its session builds on --------------------------------

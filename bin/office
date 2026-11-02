@@ -1385,7 +1385,7 @@ cmd_status() {
   # then each line's read in the order the lines are printed. None writes,
   # and none depends on another's answer, so they go out together; what
   # each would have printed to stderr still goes there as it runs.
-  local name bytecode doctrine survey tz_named drift defects folders structure filed drafting tray handbook bale letterhead
+  local name bytecode doctrine survey tz_named drift defects folders waiting structure filed drafting tray handbook bale letterhead
   local skewr calls=()
   batch_call calls skew-report "$root/$MANIFEST_REL" "$(install_version)" "$MIGRATIONS"
   batch_call calls get "$root/$MANIFEST_REL" office.name --default "(unnamed)"
@@ -1397,6 +1397,7 @@ cmd_status() {
   batch_call calls include-group-check "$root/$MANIFEST_REL" "$root/$BALE_TOML_REL" "$root"
   batch_call calls -q catalog-check "$VERBS" "$CATALOG"
   batch_call calls -q folder-check "$root"
+  batch_call calls -q bale:waiting-lines "$root"
   batch_call calls -q bale:provisional-lines "$root"
   batch_call calls -q filed-check "$root"
   batch_call calls -q drafting:table-check "$root"
@@ -1404,7 +1405,7 @@ cmd_status() {
   batch_call calls -q sort:handbook-check "$root"
   batch_call calls bale:status-lines "$root"
   batch_call calls deliver:status-lines "$root"
-  batch_run skewr name bytecode doctrine profile survey tz_named drift defects folders structure filed drafting tray handbook bale letterhead -- "${calls[@]}"
+  batch_run skewr name bytecode doctrine profile survey tz_named drift defects folders waiting structure filed drafting tray handbook bale letterhead -- "${calls[@]}"
   if [ "$skewr_rc" != 0 ]; then
     [ -n "$skewr" ] || die "cannot read the version stamp in $root/$MANIFEST_REL"
     die "cannot plan migrations from $MIGRATIONS"
@@ -1470,6 +1471,11 @@ cmd_status() {
   # last state-changing line, and the numbers are minted once each.
   [ -z "$folders" ] || printf '%s\n' "$folders"
   case $folders_rc in 0|3) ;; *) printf 'folders:    could not be checked\n' ;; esac
+  # A folder whose merge job waits for its session, or whose merge session
+  # landed without its merge (0.41.0): one line each under the folders
+  # line, nothing when there is none.
+  [ -z "$waiting" ] || printf '%s\n' "$waiting"
+  case $waiting_rc in 0) ;; *) printf 'merge jobs: could not be checked\n' ;; esac
   # A folder still provisional though every session it records landed
   # applied (0.31.0): its Structure never came back, or was off its shape
   # and not filed. One line each, nothing when there is none; never a
@@ -4554,6 +4560,11 @@ start_check_place() {
     || die "--on $2: no such project in this office (it scopes: $(printf '%s' "$3" | paste -sd, - | sed 's/,/, /g'); office projects add adds one)"
   local on_host out
   project_facts "$root" "$2"
+  # A paused project (0.41.0) is sent nothing: refused before anything is
+  # written, in the one line the renderings say for it.
+  if printf '%s\n' "$PROJECT_FACTS" | grep -qx "paused"$'\t'"yes"; then
+    die "$2: paused (office projects set $2 --unpaused); nothing was written: no folder, no survey, no out tray, no session"
+  fi
   on_host="$(project_host "$root" "$2")"
   if [ -n "$on_host" ] && [ "${START_CHECKED_HOST:-}" != "$2" ]; then
     log "$2 is on $on_host: asking it to answer, and checking its bale and its repo, before anything is written"
@@ -6230,6 +6241,52 @@ run_after_land_hosted() {
   return 0
 }
 
+# folder_cite_key FOLDER_MD NAME: how a verb's line names a folder: its
+# number (office deliver 27), else its directory name. Read with sed, no
+# helper (0.41.0: land's lines name it with no helper start of their own).
+folder_cite_key() {
+  local n
+  n="$(sed -n 's/^- number: *\([0-9][0-9]*\) *$/\1/p' "$1" 2>/dev/null | head -n 1)"
+  printf '%s' "${n:-$2}"
+}
+
+# land_where_now ROOT FOLDER: where a folder land named (space/name) is
+# now, after the closings: desk/NAME or filing-cabinet/NAME, or nothing.
+land_where_now() {
+  local name="${2#*/}"
+  if [ -d "$1/desk/$name" ]; then printf 'desk/%s' "$name"
+  elif [ -d "$1/filing-cabinet/$name" ]; then printf 'filing-cabinet/%s' "$name"; fi
+}
+
+# land_tail ROOT FOLDER PROJECT AUDIENCE REVIEW_FILE NEXT: the office's own
+# lines after bale's END marker on each block for the planner (0.41.0; the
+# gaps of 2026-10-28, A9 and A14), so the planner never asks for the
+# folder's number or state, and sees the letterhead's review of the
+# landing: the folder, its place and state, the deliver line land printed
+# (NEXT), and the review's lines as land_review returned them. bale's block
+# stays byte-identical between its markers; the tail rides after them.
+land_tail() {
+  local root="$1" folder="$2" project="$3" audience="$4" review="$5" nxt="$6" where n title state line
+  printf -- '--- OFFICE land %s ---\n' "$LAND_SID"
+  where="$( [ -n "$folder" ] && land_where_now "$root" "$folder")"
+  if [ -z "$where" ]; then
+    printf 'folder: none\n'
+  else
+    n="$(sed -n 's/^- number: *\([0-9][0-9]*\) *$/\1/p' "$root/$where/folder.md" 2>/dev/null | head -n 1)"
+    title="$(head -n 1 "$root/$where/folder.md" 2>/dev/null | sed -n 's/^# //p')"
+    case "$where" in
+      filing-cabinet/*) state="$where, closed, done" ;;
+      *) if [ -n "$audience" ]; then state="$where, open; closes at delivery"; else state="$where, open"; fi ;;
+    esac
+    printf 'folder: %s%s (%s)\n' "${n:+$n, }" "${title:-${where#*/}}" "$state"
+  fi
+  [ -z "$nxt" ] || printf 'next: %s\n' "$nxt"
+  if [ -n "$project" ] && [ -n "$audience" ] && [ -s "$review" ]; then
+    while IFS= read -r line; do printf '%s\n' "$line"; done < "$review"
+  fi
+  printf -- '--- OFFICE END ---\n'
+}
+
 # offer_close ROOT FOLDER SID FOUNDING WHY_RC WHY: after an applied landing, a folder whose
 # only recorded session is the one that landed is finished (0.23.0: landed
 # applied; the planner's ratification comes in the next brief): on a
@@ -6240,10 +6297,23 @@ run_after_land_hosted() {
 # FOUNDING is the founding folder and WHY_RC and WHY what helper
 # finished-folder answered, read by land_close_folders (0.29.0).
 offer_close() {
-  local root="$1" folder="$2" sid="$3" founding="$4" why_rc="$5" why="$6" name ans
+  local root="$1" folder="$2" sid="$3" founding="$4" why_rc="$5" why="$6" name ans n
   [ "${folder%%/*}" = desk ] || return 0
   name="${folder#desk/}"
   [ "$founding" != "$folder" ] || return 0
+  n="$(folder_cite_key "$root/$folder/folder.md" "$name")"
+  if [ "$why_rc" = 0 ] && [ -n "${LAND_AUDIENCE:-}" ] && [ "${LAND_CLOSE:-}" != close ]; then
+    # A folder on a project with an audience closes at delivery, not at
+    # land (0.41.0; the plan's ruling of 2026-10-29): office deliver closes
+    # it once its work is delivered. --close still closes it now.
+    if [ "${LAND_CLOSE:-}" = leave ]; then
+      log "--leave-open: $name stays open (office close $name closes it)"
+    else
+      log "$name recorded $sid alone, and it landed applied; $LAND_PROJECT has an audience, so the folder stays on the desk until office deliver $n carries the work (office close $name closes it now)"
+    fi
+    AFTER_LAND_REPORT+=("the folder $name: stays on the desk until office deliver $n carries its work to $LAND_AUDIENCE")
+    return 0
+  fi
   if [ "$why_rc" != 0 ]; then
     if [ "${LAND_CLOSE:-}" = close ]; then
       log "--close: $name stays open, since ${why:-it is not finished}; office close $name closes it when it is done"
@@ -6253,7 +6323,8 @@ offer_close() {
     return 0
   fi
   case "${LAND_CLOSE:-}" in
-    close) ;;
+    close) [ -z "${LAND_AUDIENCE:-}" ] \
+             || log "--close: $name is closed with the landing, as you said, though $LAND_PROJECT has an audience (office deliver $n still carries its work from the filing cabinet)" ;;
     leave) log "--leave-open: $name stays open (office close $name closes it)"; return 0 ;;
     *)
       if ! can_ask; then
@@ -6285,12 +6356,13 @@ plan_field() {
 # needs_response, response_default, problems, took, verb, repo (where),
 # label, folders_all (folders, one per line), tarball, project,
 # response_here, after_land_problem and after_land_list (after_land, one
-# per line). A field the plan lacks reads as nothing, as plan_field read it.
+# per line), and audience (0.41.0: the project's, when it declares one). A
+# field the plan lacks reads as nothing, as plan_field read it.
 plan_read() {
   json_read "$1" sid=sid? host=place.host? needs_downloads=needs_downloads? needs_response=needs_response? \
     response_default=response_default? problems=problems? took=took? verb=verb? repo=where? label=label? \
     folders_all=folders? tarball=tarball? project=project? response_here=response_here? \
-    after_land_problem=after_land_problem? after_land_list=after_land?
+    after_land_problem=after_land_problem? after_land_list=after_land? audience=audience?
 }
 
 # json_read SOURCE VAR=KEY...: several fields of one JSON document in one
@@ -6458,9 +6530,10 @@ cmd_land() {
   # field, fourteen in a landing), and again after each time the plan is
   # written anew.
   local needs_downloads needs_response response_default problems took folders_all tarball project response_here \
-        after_land_problem after_land_list
+        after_land_problem after_land_list audience
   local sid_rc host_rc needs_downloads_rc needs_response_rc response_default_rc problems_rc took_rc verb_rc repo_rc \
-        label_rc folders_all_rc tarball_rc project_rc response_here_rc after_land_problem_rc after_land_list_rc
+        label_rc folders_all_rc tarball_rc project_rc response_here_rc after_land_problem_rc after_land_list_rc \
+        audience_rc
   plan_read "$plan"
   if [ -n "$needs_downloads" ]; then
     downloads_setting "the response for $sid is found on this machine by name and carried to $host"
@@ -6586,6 +6659,11 @@ cmd_land() {
   # after-land actions.
   local folders
   folders="${folders_all%%$'\n'*}"
+  # A project with an audience (0.41.0): its folder closes at delivery, and
+  # land ends with deliver's line; offer_close and carry_relays read these.
+  LAND_SID="$sid"; LAND_PROJECT="$project"; LAND_AUDIENCE=""
+  [ -z "$project" ] || LAND_AUDIENCE="$audience"
+  LAND_TAIL=""
   # A merge session (office start N --merge, 0.40.0): its resolution made the
   # merge commit in the workbench before anything else reads it, and the
   # folder's two pages left as the work's (a merge changes nothing the
@@ -6600,8 +6678,11 @@ cmd_land() {
   # On a project with an audience, the letterhead's review of what landed
   # (0.25.0): what office deliver would refuse, said now so a fix can
   # ride the next session; it refuses nothing here.
+  # Its lines are kept too (--out), for the office's tail on the planner's
+  # relay block (0.41.0).
   if [ -n "$project" ]; then
-    deliver_py land-review "$root" --project "$project" --sid "$sid" ${folders:+--folder "$folders"} || true
+    deliver_py land-review "$root" --project "$project" --sid "$sid" ${folders:+--folder "$folders"} \
+      --out "$tmp/review" || true
   fi
 
   # The project's after-land actions, in order. What became of each is
@@ -6659,7 +6740,23 @@ cmd_land() {
   fi
   land_watches "$root" "$tz" "$day"
   after_land_summary "$repo"
+  # On a project with an audience, land ends with deliver's line (0.41.0):
+  # the folder's number filled in, after the relay's clipboard line.
+  local deliver_next="" deliver_why="" where_now
+  if [ -n "$LAND_AUDIENCE" ] && [ -n "$folders" ]; then
+    where_now="$(land_where_now "$root" "$folders")"
+    if [ -n "$where_now" ]; then
+      deliver_next="office deliver $(folder_cite_key "$root/$where_now/folder.md" "${where_now#*/}")"
+      if [ "$LAND_MERGE" = merge ]; then
+        deliver_why="the merge session landed; deliver makes the merge commit in the workbench and carries the folder's own work"
+      else
+        deliver_why="the work landed on $project and is not delivered yet; deliver carries it to $LAND_AUDIENCE"
+      fi
+    fi
+  fi
+  LAND_TAIL="$(land_tail "$root" "$folders" "$project" "$LAND_AUDIENCE" "$tmp/review" "$deliver_next")"
   carry_relays "$landed" 1
+  [ -z "$deliver_next" ] || printf 'Next: %s  (%s)\n' "$deliver_next" "$deliver_why"
   return "$rc"
 }
 
@@ -6743,6 +6840,12 @@ carry_relays() {
     json_read - block=relays.$i.lines to=relays.$i.to <<< "$out"
     if [ "$outcome" = clarification ]; then
       printf '\nFor the planner, whole:\n\n%s\n' "$block"
+    fi
+    # The office's tail (0.41.0) after bale's END marker, on an applied
+    # landing's blocks for the planner only: in the clipboard copy and in the
+    # whole printing below. bale's block itself is left byte for byte.
+    if [ "$at_end" = 1 ] && [ "$to" = planner ] && [ -n "${LAND_TAIL:-}" ]; then
+      block="$block"$'\n'"$LAND_TAIL"
     fi
     if [ "$i" -gt 0 ] && [ -t 1 ] && can_ask; then
       ask ans "Return puts the block for the $to on the clipboard" "" 0 \
@@ -6916,7 +7019,7 @@ after_land_summary() {
 
 usage_withdraw() {
   cat <<'USAGE'
-usage: office withdraw [FOLDER] [--yes]
+usage: office withdraw [FOLDER | --bundle STEM] [--yes]
 Withdraws a session the office sent out that will never be worked: one
 with no response in your downloads and that bale has not started to apply.
 It names the session by its folder and asks once, yes or no, since closing
@@ -6929,8 +7032,19 @@ folder that recorded this session and no other is said, with the line that
 closes it; nothing is closed for you. A session with a response waiting is
 office land's, one bale held is bale's, and a read-only sitting is ended
 by office land, as before; none of them is offered.
+--bundle STEM (0.41.0) takes a planner's bundle out of the offer: every
+copy of that stem in this machine's downloads (a browser's `STEM (1)`
+copies too) is renamed NAME.bale-bundle.declined, so the home screen and
+office start no longer offer it; rename it back to offer it again. The
+office deletes nothing in the downloads. It asks once, default yes. A
+bundle a session opened (bale's records say) is not in the offer, and is
+refused. With nothing named on a terminal, the sessions never worked are
+offered by key and, after them, the bundles no session opened.
   FOLDER   the folder that records the session: its name, a unique part
            of it, or folder N (a session id is taken too, for a script)
+  --bundle STEM
+           the bundle's stem, as the home screen names it, with or
+           without .bale-bundle
   --yes    the answer to the one question; piped input is never asked, so
            a script withdraws with it
 Under the hood: bale unlock SID --reason abandoned --json where the session
@@ -6939,15 +7053,43 @@ Examples:
   office withdraw                     (names the session, or offers them by key)
   office withdraw fix-login           (the session that folder records)
   office withdraw "folder 14" --yes
+  office withdraw --bundle 2026-10-27-picklists-review --yes
 USAGE
+}
+
+# withdraw_bundle ROOT STEM YES: office withdraw --bundle STEM (0.41.0): the
+# copies of the stem in the downloads renamed NAME.bale-bundle.declined, after
+# one question (default yes; --yes answers it, piped it is needed). A stem no
+# file carries, or a bundle a session opened, is refused by the helper.
+withdraw_bundle() {
+  local root="$1" stem="$2" yes="$3" d dargs=() out ans
+  downloads_known || downloads_setting "office withdraw --bundle renames a bundle in your downloads"
+  [ -n "$DOWNLOADS" ] || die "this machine's downloads are not set (downloads in $MACHINE_FILE), so no bundle there can be withdrawn"
+  while IFS= read -r d; do [ -n "$d" ] && dargs+=(--dir "$d"); done <<< "$DOWNLOADS"
+  out="$(homex withdraw-bundle "$root" --stem "$stem" --check "${dargs[@]}")" || exit 1
+  stem="${out%%$'\n'*}"
+  printf 'The bundle %s, in your downloads as:\n' "$stem" >&2
+  printf '%s\n' "$out" | tail -n +2 | sed 's/^/  /' >&2
+  if [ "$yes" = 0 ]; then
+    can_ask || die "piped input is never asked: office withdraw --bundle $stem --yes withdraws it; nothing was renamed"
+    ask ans "Withdraw the bundle $stem from the offer? (--yes)" "y" 0 \
+      "y renames each copy above from NAME.bale-bundle to NAME.bale-bundle.declined, so the home screen and office start no longer offer it; nothing is deleted, and renaming it back offers it again. n leaves it as it is."
+    case "$ans" in
+      y|Y|yes|Yes|YES) ;;
+      *) log "nothing was renamed: $stem stays in the offer"; return 0 ;;
+    esac
+  fi
+  homex withdraw-bundle "$root" --stem "$stem" "${dargs[@]}" || exit 1
 }
 
 cmd_withdraw() {
   local want="" yes=0 root out line rows=() kept=() row sid label folders created vals=() chosen="" tz day d ans
-  local dargs=() name words number title k why match=""
+  local dargs=() name words number title k why match="" bundle="" brows=() brow bpath bstem bage bwords
   while [ $# -gt 0 ]; do
     case "$1" in
       --yes) yes=1; shift ;;
+      --bundle) [ $# -ge 2 ] && [ -n "$2" ] || die "--bundle needs the bundle's stem, as the home screen names it"
+                bundle="$2"; shift 2 ;;
       -h|--help) usage_withdraw; return 0 ;;
       -*) usage_withdraw >&2; die "office withdraw does not know $1; the flags above are what it takes" ;;
       *) [ -z "$want" ] || die "office withdraw takes one folder"; want="$1"; shift ;;
@@ -6955,6 +7097,11 @@ cmd_withdraw() {
   done
   root="$(resolve_office)" || exit 1
   require_current "$root"
+  if [ -n "$bundle" ]; then
+    [ -z "$want" ] || die "office withdraw takes a folder or --bundle STEM, not both"
+    withdraw_bundle "$root" "$bundle" "$yes"
+    return $?
+  fi
   command -v bale >/dev/null 2>&1 || die "bale is not on PATH; office withdraw runs bale's unlock"
   # A session whose response is in the downloads is land's, so the
   # downloads are read: asked once on a terminal, said when unset piped.
@@ -6997,6 +7144,27 @@ cmd_withdraw() {
       die "no session the office has out is $([ -n "$name" ] && printf 'recorded in desk/%s' "$name" || printf '%s' "$want") (office withdraw with nothing named lists the ones it can withdraw); nothing was closed"
     fi
     chosen="$match"
+  elif can_ask && [ -n "$DOWNLOADS" ] && mapfile -t brows < <(homex bundles "$root" "${dargs[@]}" 2>/dev/null) \
+       && [ "${#brows[@]}" -gt 0 ] && [ -n "${brows[0]}" ]; then
+    # The bundles no session opened wait in the offer too (0.41.0): with
+    # any, the sessions never worked and then the bundles are offered by key.
+    for row in "${rows[@]}"; do
+      IFS=$'\t' read -r sid label folders created <<< "$row"
+      vals+=("$row" "$(withdraw_name "$root" "$sid" "$folders") ($([ "$label" = "this office" ] && printf 'the office' || printf '%s' "$label"))")
+    done
+    for brow in "${brows[@]}"; do
+      [ -n "$brow" ] || continue
+      IFS=$'\t' read -r bpath bstem bage bwords <<< "$brow"
+      vals+=("bundle"$'\t'"$bstem" "the bundle $bstem, saved $bage")
+    done
+    printf 'Sessions out that were never worked, and bundles no session opened:\n' >&2
+    pick chosen "Which one to withdraw, by its key (office withdraw FOLDER, or --bundle STEM)" \
+      "A session was sent out and has no response in your downloads, and bale has not started to apply it: withdrawing closes it in bale (bale unlock, reason abandoned), which cannot be undone. A bundle is a planner's bundle in your downloads that no session opened: withdrawing renames it NAME.bale-bundle.declined, so it is offered no more, and renaming it back offers it again." \
+      "" 0 "${vals[@]}"
+    if [ "${chosen%%$'\t'*}" = bundle ]; then
+      withdraw_bundle "$root" "${chosen#*$'\t'}" "$yes"
+      return $?
+    fi
   elif [ "${#rows[@]}" -eq 0 ]; then
     for k in "${kept[@]}"; do IFS=$'\t' read -r sid why <<< "$k"; log "$(withdraw_name "$root" "$sid") is not offered: $why"; done
     die "no session the office has out can be withdrawn: each is out with a response waiting or an apply begun, or none is out (office desk shows what is in flight); nothing was closed"
@@ -7085,6 +7253,11 @@ usage: office projects                       list the projects this office scope
        office projects set NAME --prepare    prepare its clone again (the exclude lines,
                                              bale.toml, bale's sandbox setting where its
                                              sandbox cannot run)
+       office projects set NAME --paused     mark it paused: the office reads nothing of it
+                                             and sends nothing to it (its line says paused
+                                             where a project that cannot be read says why);
+                                             a session already out on it still lands
+       office projects set NAME --unpaused   take the mark off
        office projects refresh [NAME] [--yes]
                                              bring the clone's view of its audience level:
                                              the audience's branches fetched here, carried
@@ -7636,11 +7809,14 @@ letterhead_arrives() {
 }
 
 cmd_projects_set() {
-  local name="" root facts rides=() afters=() set_r=0 set_a=0 args=() current keep line
+  local name="" root facts rides=() afters=() set_r=0 set_a=0 args=() current keep line out
   local host="" shell="" connect="" set_h=0 hargs=() cur_host
   local audience="" author="" base="" set_aud=0 clear_aud=() gitfacts="" url="" cur_aud path k validates="" prepare=0
+  local paused="" others_given=0
   while [ $# -gt 0 ]; do
     case "$1" in
+      --paused|--unpaused) [ -z "$paused" ] || [ "$paused" = "$1" ] || die "--paused and --unpaused contradict each other"
+                           paused="$1"; shift; continue ;;
       --prepare) prepare=1; shift ;;
       --validates-on) [ $# -ge 2 ] || die "--validates-on needs an ssh target"; validates="$2"; set_aud=1; shift 2 ;;
       --no-validates-on) clear_aud+=(--no-validates-on); set_aud=1; shift ;;
@@ -7661,9 +7837,22 @@ cmd_projects_set() {
       --no-after-land) set_a=2; shift ;;
       -h|--help) usage_projects; return 0 ;;
       -*) usage_projects >&2; die "office projects set does not know $1; it takes a project's name, --prepare, --host, --shell, --connect, --on-this-machine, --audience, --author, --base, --validates-on, --no-audience, --no-author, --no-base, --no-validates-on, --ride, --no-rides, --after-land and --no-after-land" ;;
-      *) [ -z "$name" ] || die "office projects set takes one project"; name="$1"; shift ;;
+      *) [ -z "$name" ] || die "office projects set takes one project"; name="$1"; shift; continue ;;
     esac
+    others_given=1
   done
+  # --paused or --unpaused (0.41.0), given alone: the key set or cleared,
+  # committed as set commits, said in one line; nothing else is asked.
+  if [ -n "$paused" ]; then
+    [ "$others_given" = 0 ] || die "$paused goes alone: office projects set NAME $paused sets the mark and nothing else; set the rest in a run of its own"
+    [ -n "$name" ] || die "name the project: office projects set NAME $paused"
+    root="$(resolve_office)" || exit 1
+    require_current "$root"
+    out="$(helper project-declare "$root/$MANIFEST_REL" "$name" "$paused")" || exit 1
+    commit_paths "$root" "office projects: set $name $paused" "$MANIFEST_REL" || true
+    printf '%s\n' "$out"
+    return 0
+  fi
   [ "$set_r" != 2 ] || [ "${#rides[@]}" -eq 0 ] || die "--ride and --no-rides contradict each other"
   [ "$set_a" != 2 ] || [ "${#afters[@]}" -eq 0 ] || die "--after-land and --no-after-land contradict each other"
   [ "$set_h" != 2 ] || { [ -z "$host" ] && [ -z "$shell" ] && [ -z "$connect" ]; } || die "--on-this-machine contradicts --host, --shell and --connect"
@@ -7944,7 +8133,7 @@ deliver_py() { pylib "$DELIVER" "$@"; }
 usage_deliver() {
   cat <<'USAGE'
 usage: office deliver [FOLDER] [--on PROJECT] [--branch NAME] [--adopt] [--author "Name <email>"] [--others-too]
-                      [--refresh | --no-refresh] [--yes]
+                      [--refresh | --no-refresh] [--close | --leave-open] [--yes]
 Carries a folder's landed work to its project's audience as curated
 commits: a branch named by the branch rule below, made from the
 audience's base branch, holding the landed tree changes as one
@@ -8045,6 +8234,16 @@ continued delivery whose squash conflicts because the branch moved on the
 audience takes the same path, with the branch's tip in the base's place.
 When land could not make the merge (a session open in the clone, a host
 that did not answer), deliver makes it before it plans.
+The folder closes at delivery (0.41.0): office land leaves a folder on a
+project with an audience on the desk, and after the push deliver closes
+it, done, once every applied session it records is delivered (by this
+folder or another) or held by the base; a session still to deliver is
+named, and the folder stays. On a terminal it closes without asking
+(office reopen brings it back; --leave-open keeps it on the desk); piped,
+it stays and deliver says so, unless --close. A folder already in the
+filing cabinet is left there. With no FOLDER on a terminal, the folders
+whose work landed and is not delivered are offered first, by key, newest
+landing first; a plain return lists every folder.
 The delivery is built on this machine, where the audience answers with
 your credentials: for a project on a host, the landed commits come here
 as a git bundle through the project's shell, into a temporary repo
@@ -8064,6 +8263,9 @@ any push to the audience from the clone that deliver did not make.
   --others-too     deliver other folders' sessions riding in the landed work
   --refresh        refresh the clone's view of the audience when it is behind
   --no-refresh     do not; say it is behind and go on
+  --close          close the folder after the push when its work is delivered,
+                   piped too
+  --leave-open     keep the folder on the desk after the push
   --yes            do not ask before pushing
 Under the hood: git fetch of the audience's base and branch, a thin git
 bundle of the clone's HEAD carried back for a hosted project, git revert
@@ -8161,9 +8363,11 @@ for l in plan.get("check_told") or []:
 
 cmd_deliver() {
   local want="" project="" branch="" others=0 yes=0 adopt=0 root name space tmp plan out line ans rc=0 url author="" who
-  local refresh=""
+  local refresh="" closing=""
   while [ $# -gt 0 ]; do
     case "$1" in
+      --close) [ "$closing" != leave ] || die "--close and --leave-open contradict each other"; closing=close; shift ;;
+      --leave-open) [ "$closing" != close ] || die "--close and --leave-open contradict each other"; closing=leave; shift ;;
       --on) [ $# -ge 2 ] || die "--on needs the project's name"; project="$2"; shift 2 ;;
       --author) [ $# -ge 2 ] || die "--author needs Name <email>"; author="$2"; shift 2 ;;
       --branch) [ $# -ge 2 ] || die "--branch needs a name"; branch="$2"; shift 2 ;;
@@ -8182,7 +8386,18 @@ cmd_deliver() {
   require_tools git
   if [ -z "$want" ]; then
     can_ask || { usage_deliver >&2; die "name the folder: office deliver FOLDER; piped input is never asked"; }
-    ask_folder want "$root" desk "deliver"
+    # The folders whose work landed and is not delivered, by key, newest
+    # landing first (0.41.0); a plain return lists every folder, as before.
+    local lrows=() lrow lvals=()
+    mapfile -t lrows < <(reader awaiting-delivery "$root" 2>/dev/null)
+    for lrow in "${lrows[@]}"; do [ -n "$lrow" ] && lvals+=("${lrow%%$'\t'*}" "${lrow#*$'\t'}"); done
+    if [ "${#lvals[@]}" -gt 0 ]; then
+      printf 'Landed and not yet delivered:\n' >&2
+      pick want "Which folder to deliver, by its key (office deliver FOLDER); return lists every folder" \
+        "Each of these folders records a session that landed on a project with an audience and that no delivery has carried yet; the newest landing is first. A plain return lists every folder on the desk instead. A folder's name, a part of it, or folder N is taken too." \
+        --skip 1 "${lvals[@]}"
+    fi
+    [ -n "$want" ] || ask_folder want "$root" desk "deliver"
   fi
   space=desk
   if ! name="$( (find_folder "$root" desk "$want") 2>/dev/null)"; then
@@ -8265,15 +8480,53 @@ cmd_deliver() {
     case "$ans" in y|Y|yes) ;; *) deliver_py abandon "$root" --plan "$plan"; log "stopped before anything left"; return 0 ;; esac
   fi
   out="$(deliver_py run "$root" --plan "$plan" --day "$(office_date "$(office_tz "$root")")")" || exit 1
-  # What the delivery said, read once (0.29.0; it was four reads).
-  local words told next words_rc told_rc next_rc
-  json_read - words=words told=told next=next <<< "$out"
+  # What the delivery said, read once (0.29.0; it was four reads), and
+  # since 0.41.0 the folder's sessions still to deliver.
+  local words told next pending pending_known words_rc told_rc next_rc pending_rc pending_known_rc
+  json_read - words=words told=told next=next pending=pending? pending_known=pending# <<< "$out"
   printf '\n%s\n' "$words"
   [ -z "$told" ] || while IFS= read -r line; do log "$line"; done <<< "$told"
+  deliver_close "$root" "$space" "$name" "$closing" "$pending" "$pending_known"
   printf '\nNext:\n'
   [ -z "$next" ] || printf '%s\n' "$next" | sed 's/^/  /'
   url="$(printf '%s\n' "$next" | sed -n 's/^open the review: //p' | head -n 1)"
   [ -z "$url" ] || to_clipboard "$url" "the review's URL" || true
+  return 0
+}
+
+# deliver_close ROOT SPACE NAME CLOSING PENDING KNOWN: after a push, the
+# folder closes at delivery (0.41.0; the plan's ruling of 2026-10-29) when
+# every applied session it records is delivered or held by the base
+# (PENDING, the ones still to deliver, is empty and KNOWN says it was read):
+# on a terminal without asking, as land closes a finished folder (closing
+# can be undone); piped only with --close; never with --leave-open. A folder
+# already in the filing cabinet is left there; a session still to deliver
+# is named, and the folder stays. Never fails the delivery.
+deliver_close() {
+  local root="$1" space="$2" name="$3" closing="$4" pending="$5" known="$6" n
+  [ "$space" = desk ] || return 0
+  if [ -z "$known" ]; then
+    debug "whether $name's work is all delivered was not read, so it stays on the desk"
+    return 0
+  fi
+  n="$(folder_cite_key "$root/desk/$name/folder.md" "$name")"
+  if [ -n "$pending" ]; then
+    log "the folder $name stays on the desk: $(printf '%s' "$pending" | paste -sd, - | sed 's/,/, /g') landed and $( [ "$(printf '%s\n' "$pending" | grep -c .)" -gt 1 ] && printf 'are' || printf 'is') not delivered yet (office deliver $n carries it)"
+    return 0
+  fi
+  case "$closing" in
+    leave) log "--leave-open: $name stays open (office close $name closes it)"; return 0 ;;
+    close) ;;
+    *) if ! can_ask; then
+         log "$name's work is delivered; piped, the folder stays open: office deliver --close closes it with the delivery, office close $name closes it now"
+         return 0
+       fi ;;
+  esac
+  if ( OFFICE_ROOT="$root" MOVE_TEXT="office deliver: its work is delivered" cmd_close "$name" ); then
+    log "the folder $name: closed, done (its work is delivered; office reopen $name brings it back)"
+  else
+    warn "$name could not be closed (the lines above say why); office close $name closes it"
+  fi
   return 0
 }
 
@@ -8525,7 +8778,11 @@ carried to the session's out tray, ~/out-tray/SID/probe-output/, and
 removed where it ran. The folder's History gains `- DATE probe: SID, N
 lines`.
   FOLDER         the job whose session asked for the probe: its name, a
-                 unique part of it, or folder N; asked on a terminal
+                 unique part of it, or folder N. Left out (0.41.0): the one
+                 folder on the desk that records a session open where
+                 probes run, said; with several, those folders by key on
+                 a terminal, sittings first; with none, asked from every
+                 folder on a terminal
   FILE           the block as the worker returned it (a chat's code fence
                  around it is fine); - reads it from stdin, which then
                  cannot answer the question, so --yes goes with it
@@ -8602,10 +8859,32 @@ cmd_probe() {
     [[ "$sid" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*-[0-9]{3}$ ]] || die "--sid $sid: not a session id (YYYY-MM-DD-slug-NNN)"
   fi
 
-  # Which job.
+  # Which job. With no folder named (0.41.0): the one folder on the desk
+  # that records a session open where probes run is the one, said; with
+  # several, those folders alone are offered by key, sittings first; with
+  # none, every folder, as before.
   if [ -z "$want" ]; then
-    can_ask || { usage_probe >&2; die "name the folder: office probe FOLDER; piped input is never asked"; }
-    ask_folder want "$root" desk probe
+    local frows=() frow fvals=() fname fsid fwords
+    mapfile -t frows < <(reader probe-folders "$root" 2>/dev/null)
+    for frow in "${frows[@]}"; do
+      [ -n "$frow" ] || continue
+      IFS=$'\t' read -r fname fsid fwords <<< "$frow"
+      fvals+=("$fname" "desk/$fname: $fsid ($fwords)")
+    done
+    if [ "${#fvals[@]}" -eq 2 ]; then
+      want="${fvals[0]}"
+      IFS=$'\t' read -r fname fsid fwords <<< "${frows[0]}"
+      log "desk/$fname records the one session open, $fsid ($fwords), so the probe is its (office probe FOLDER names another)"
+    elif [ "${#fvals[@]}" -gt 2 ]; then
+      can_ask || die "$((${#fvals[@]} / 2)) folders on the desk record a session open where probes run ($(for ((i = 0; i < ${#fvals[@]}; i += 2)); do printf '%s ' "${fvals[$i]}"; done | sed 's/ $//; s/ /, /g')); name one: office probe FOLDER; piped input is never asked"
+      printf 'Folders that record a session open where probes run:\n' >&2
+      pick want "Which folder's session asked for this probe, by its key (office probe FOLDER)" \
+        "Each of these folders records a session that is open now: a read-only sitting in the office, or a session in the office or on a project. The probe is the session's whose worker returned the block; a sitting's are first." \
+        "" 1 "${fvals[@]}"
+    else
+      can_ask || { usage_probe >&2; die "name the folder: office probe FOLDER; piped input is never asked"; }
+      ask_folder want "$root" desk probe
+    fi
   fi
   name="$(find_folder "$root" desk "$want")" || exit 1
   md="$root/desk/$name/folder.md"

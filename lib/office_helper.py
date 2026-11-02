@@ -808,7 +808,10 @@ def read_projects(manifest):
         item = {"name": name, "path": None, "resolved": None, "problem": None,
                 "rides": [], "after_land": [], "declaration_problems": [],
                 "host": None, "shell": None, "connect": None,
-                "audience": None, "author": None, "base": None, "validates_on": None, "branch_prefix": None}
+                "audience": None, "author": None, "base": None, "validates_on": None, "branch_prefix": None,
+                # 0.41.0: a project marked paused (office projects set NAME
+                # --paused); the renderings read nothing of it.
+                "paused": False}
         if not PROJECT_NAME_RE.match(name):
             item["problem"] = "the name must be letters, digits, dash or underscore"
         elif not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
@@ -861,6 +864,13 @@ def read_projects(manifest):
                     item[key] = AUDIENCE_CHECKS[key](value)
                 except HelperError as exc:
                     item["declaration_problems"].append(str(exc))
+            # paused (0.41.0): true, or absent; a value that is not a
+            # boolean is a declaration problem and reads as not paused.
+            value = entry.get(PAUSED_KEY)
+            if value is True:
+                item["paused"] = True
+            elif value not in (None, False):
+                item["declaration_problems"].append(f"{PAUSED_KEY} is true or false, not {value!r}")
         out.append(item)
     return out
 
@@ -908,6 +918,26 @@ HOST_KEYS = ("host", "shell", "connect")
 #             name, the clone's own branch or a name that holds a slash.
 #             Unset, none. Read and checked here; no verb sets it yet.
 AUDIENCE_KEYS = ("audience", "author", "base", "validates_on", "branch_prefix")
+# A project marked paused (the gaps of 2026-10-28, A7; 0.41.0): `paused =
+# true` on its entry, written by office projects set NAME --paused and
+# removed by --unpaused. Every rendering that reads a project's repo reads
+# nothing of a paused one and says paused_line in the place its "cannot
+# read" line would go; office start refuses to send a session to it. The
+# verbs that carry work already out (land, deliver, probe) still run.
+PAUSED_KEY = "paused"
+
+
+def paused_line(name):
+    """The one line a rendering says for a paused project."""
+    return f"{name}: paused (office projects set {name} --unpaused)"
+
+
+def paused_set_line(name, paused):
+    """What office projects set says when it sets or clears the mark."""
+    if paused:
+        return (f"{name} is paused: the office reads nothing of it and sends nothing to it until office projects "
+                f"set {name} --unpaused")
+    return f"{name} is not paused: the office reads it and sends sessions to it again"
 REMOTE_NAME_RE = LazyPattern(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 AUTHOR_RE = LazyPattern(r"^(?P<name>[^<>]+?)\s*<(?P<email>[^<>@\s]+@[^<>@\s]+)>$")
 # A branch name as git takes one: no space, no control character, none
@@ -1038,16 +1068,18 @@ def check_host_keys(host, shell=None, connect=None):
         raise HelperError(str(exc))
 
 
-def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys=None, audience_keys=None):
+def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys=None, audience_keys=None,
+                     paused=None):
     """Write a project's declarations, keeping every other byte of the
     floor plan. A list replaces the key's value; [] removes the key;
     None leaves it as it is. host_keys is a dict of the three host keys
     to write (each a string, or None to remove it), or None to leave
     them; audience_keys the same for the audience line's three (any
     subset of them, each a string checked here, or None to remove it).
-    Returns the project's entry as it reads back. Refuses a project the
-    table does not list, a key written over several lines (not the shape
-    this writes), and a value that does not check."""
+    paused (0.41.0) True writes `paused = true`, False removes the key,
+    None leaves it. Returns the project's entry as it reads back. Refuses
+    a project the table does not list, a key written over several lines
+    (not the shape this writes), and a value that does not check."""
     if not PROJECT_NAME_RE.match(name):
         raise HelperError(f"a project name must be letters, digits, dash or underscore: {name!r}")
     want = {}
@@ -1067,6 +1099,8 @@ def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys
         if key not in AUDIENCE_KEYS:
             raise HelperError(f"{key!r} is not one of the audience line's keys ({', '.join(AUDIENCE_KEYS)})")
         want[key] = AUDIENCE_CHECKS[key](value) if value is not None else None
+    if paused is not None:
+        want[PAUSED_KEY] = True if paused else None
     path = pathlib.Path(manifest_path)
     text = path.read_text(encoding="ascii")
     lines = text.splitlines()
@@ -1082,10 +1116,12 @@ def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys
         at = [i for i, l in enumerate(body) if re.match(rf"^\s*{key}\s*=", l)]
         string_key = key in HOST_KEYS or key in AUDIENCE_KEYS
         for i in at:
-            if not body[i].rstrip().endswith('"' if string_key else "]"):
+            if key != PAUSED_KEY and not body[i].rstrip().endswith('"' if string_key else "]"):
                 raise HelperError(f"[projects.{name}] writes {key} over several lines, which office projects "
                                   "does not rewrite; put it on one line first")
-        if string_key:
+        if key == PAUSED_KEY:
+            new_line = f"{key} = true" if value else ""
+        elif string_key:
             new_line = f"{key} = {toml_basic_string(value)}" if value is not None else ""
         else:
             new_line = f"{key} = [" + ", ".join(toml_basic_string(v) for v in value) + "]"
@@ -1107,7 +1143,7 @@ def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys
     if entry["problem"]:
         raise HelperError(f"{path}: {name} does not read back as written ({entry['problem']}); the floor plan needs a look")
     for key, value in want.items():
-        if entry[key] != value:
+        if entry[key] != (bool(value) if key == PAUSED_KEY else value):
             raise HelperError(f"{path}: {key} did not read back as written; the floor plan needs a look")
     return entry
 
@@ -3364,6 +3400,14 @@ def cmd_projects(a):
     width = max(len(p["name"]) for p in projects)
     bad = 0
     for p in projects:
+        if p.get("paused") and not p["problem"]:
+            # A paused project (0.41.0): its repo is not read, and the line
+            # its "cannot be read" line would be says so.
+            print(f"{p['name']:<{width}}  {p['path'] or '(no path)'}  (paused: office projects set {p['name']} "
+                  "--unpaused)")
+            for line in describe_declarations(p):
+                print(f"{'':<{width}}  {line}")
+            continue
         if p["problem"]:
             ok, text = False, p["problem"]
         elif p["host"]:
@@ -3415,6 +3459,9 @@ def cmd_project_declare(a):
         keep = current if current and current.get("host") == host and not current.get("problem") else {}
         host_keys = check_host_keys(host, a.shell if a.shell is not None else keep.get("shell"),
                                     a.connect if a.connect is not None else keep.get("connect"))
+    if a.paused and a.unpaused:
+        raise HelperError("--paused and --unpaused contradict each other")
+    paused = True if a.paused else (False if a.unpaused else None)
     audience_keys = {}
     for key in AUDIENCE_KEYS:
         given, cleared = getattr(a, key), getattr(a, f"no_{key}")
@@ -3425,7 +3472,11 @@ def cmd_project_declare(a):
             audience_keys[key] = None
         elif given is not None:
             audience_keys[key] = given
-    entry = set_declarations(a.manifest, a.name, rides, after, host_keys, audience_keys or None)
+    entry = set_declarations(a.manifest, a.name, rides, after, host_keys, audience_keys or None, paused)
+    if paused is not None and rides is None and after is None and host_keys is None and not audience_keys:
+        # --paused or --unpaused alone (0.41.0): the one line, and nothing else.
+        print(paused_set_line(a.name, paused))
+        return
     lines = describe_declarations(entry)
     print(f"{a.name}: " + ("; ".join(lines) if lines else "nothing rides with it and nothing runs after it lands"))
 
@@ -3494,6 +3545,8 @@ def cmd_project_facts(a):
     for key in HOST_KEYS + AUDIENCE_KEYS:
         if entry.get(key):
             print(f"{key}\t{entry[key]}")
+    if entry.get("paused"):
+        print(f"{PAUSED_KEY}\tyes")
     for r in entry["rides"]:
         print(f"rides\t{r}\t{expand_project_path(r)}")
     for c in entry["after_land"]:
@@ -4136,6 +4189,8 @@ def build_parser(only=None):
     for key in AUDIENCE_KEYS:
         flag = key.replace("_", "-")
         p.add_argument(f"--{flag}", dest=key); p.add_argument(f"--no-{flag}", dest=f"no_{key}", action="store_true")
+    p.add_argument("--paused", action="store_true", help="mark the project paused (0.41.0)")
+    p.add_argument("--unpaused", action="store_true", help="take the paused mark off")
     p.set_defaults(fn=cmd_project_declare)
     p = add("check-audience-key", help="one of the audience line's keys as it would be stored, or why not")
     p.add_argument("key", choices=AUDIENCE_KEYS); p.add_argument("value"); p.set_defaults(fn=cmd_check_audience_key)

@@ -318,7 +318,8 @@ trigger = ["manual"]
 kind = "script"
 built = true
 surface = "occupant"
-writes = ["the repo the session is open in, through bale's unlock", "desk/{folder}/folder.md"]
+writes = ["the repo the session is open in, through bale's unlock", "desk/{folder}/folder.md",
+          "a bundle's copies in the downloads, renamed NAME.bale-bundle.declined (--bundle, 0.41.0)"]
 lands = []
 attended = true
 trigger = ["manual"]
@@ -348,7 +349,8 @@ writes = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md", "a del
           "the push guard in the clone's .git/hooks", "floor-plan/manifest.toml",
           "the clone's remote-tracking refs and base branch, when the occupant says to refresh them (0.39.0)",
           "a merge commit of the audience's base on the clone's workbench branch, when that merge is clean (0.39.0)",
-          "desk/{folder}/merge", "a merge session's resolution as a merge commit on the clone's workbench branch (0.40.0)"]
+          "desk/{folder}/merge", "a merge session's resolution as a merge commit on the clone's workbench branch (0.40.0)",
+          "filing-cabinet/{folder}, when its work is delivered (0.41.0)"]
 lands = []
 attended = true
 trigger = ["manual"]

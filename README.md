@@ -95,17 +95,26 @@ On a terminal it is your home screen. Under the office's name, the date
 and time and its state, each project the office scopes has one line:
 what is in flight on it, or what last landed and when (or that nothing
 has), and the desk in one line. Then what waits on you, each with a key:
-the next move first, then
-a response in your downloads for a session that is out (a file to offer:
-whether it has arrived is still bale's to say, and `office land` asks
-it), a planner's bundle in your downloads that no session has opened
-(bale's records say which were), each unsorted drop and the sort, desk
-moves a sitting decided, an office out of step with the install, and a
-read-only sitting, which only you can say is over (its item says when it
-is out under an older doctrine than the install's). Keys for a new job
-(`o`), sending a session out (`s`), bringing one back (`l`), a note
-(`n`), a drop (`d`), the whole desk (`k`) and help (`h`) are always
-there, and `q` leaves. A key runs the verb's own code with its arguments
+the next move first, then a response in your downloads for a session
+that is out (a file to offer: whether it has arrived is still bale's to
+say, and `office land` asks it), a folder whose merge job waits for its
+session (`Send the merge session for folder N, ...`, `office start N
+--merge`) and each folder whose work landed on a project with an
+audience and is not delivered yet, newest landing first (`Deliver folder
+N, TITLE (PROJECT): SID landed DAY, not yet delivered`, `office deliver
+N`; 0.41.0), a planner's bundle in your downloads that no session has
+opened (bale's records say which were; when the downloads hold two
+copies of its stem the item says so, the newest offered), each unsorted
+drop and the sort, desk moves a sitting decided, an office out of step
+with the install, and a read-only sitting, which only you can say is
+over (its item says when it is out under an older doctrine than the
+install's). Keys for a new job (`o`), sending a session out (`s`),
+bringing one back (`l`), a note (`n`), a drop (`d`), the whole desk
+(`k`) and help (`h`) are always there, and `q` leaves; `w` withdraws a
+session never worked, or a bundle no session opened, while one waits. A
+project marked paused (`office projects set NAME --paused`, 0.41.0) has
+the line `NAME: paused (office projects set NAME --unpaused)` and is
+read for nothing. A key runs the verb's own code with its arguments
 filled in and asks only what that verb must; when it ends, a key brings
 the home screen back, worked out again. Sessions are named by their
 folders (`folder 3, Fix the login`), never by their ids. The first time,
@@ -142,11 +151,13 @@ walk-in and never written down. In the order they win:
 | scopes the install's source, which has moved past the install | `(cd SOURCE && ./install.sh)` (start and land run the install, so until it is level they run the old office) |
 | has a session out | `office land SID` (when its response is in your downloads, land finds it) |
 | has desk moves a sitting decided, or sorted drops waiting in the in-tray, not yet run | `office moves` (until they run, the desk is not in the order the sitting decided) |
+| has a folder whose merge job waits for its session (0.41.0) | `office start N --merge` (start --merge sends the session that resolves it) |
+| has a folder whose work landed on a project with an audience and is not delivered (0.41.0) | `office deliver N` for the newest landing (deliver carries it to the audience; the others are counted) |
 | has an unsorted drop in the in-tray | `office start --drop in-tray/PAGE` for the oldest whose project is one of the office's and has no session in flight on its lane; for the oldest whose project is none of them, the same with `--lane LANE` to fill (an office with no projects skips this) |
 | has an unsorted drop whose project is none of the office's and a session has gone out since it was dropped, or three or more unsorted drops and nothing ready | `office start --sort`, the standalone sort |
 | is unfounded | `office start FOLDER` for its founding folder (it goes out with the answers the folder keeps), or `office found` when no founding folder is on the desk |
 | has a ready folder | `office start FOLDER` (`--on PROJECT` when its lane names one) |
-| has an open folder no session is out for | `office start FOLDER` (or `office close` it when it is done) |
+| has an open folder no session is out for, and no landed work waiting to be delivered | `office start FOLDER` (or `office close` it when it is done) |
 | watches no projects | `office projects add` |
 | has five or more slips | `office open triage-the-suggestion-box ...` |
 | has only parked folders and candidates | `office desk` |
@@ -358,7 +369,17 @@ each folder it minted), runs the project's after-land actions, closes a
 folder whose one session has landed (saying so, with the line that
 reopens it), closes the founding folder when the founding has landed,
 names any watch that fired, and, last, puts the relay to carry on the
-clipboard, read back to check. It asks nothing about ratification: the
+clipboard, read back to check. A folder on a project with an audience is
+not closed at land (0.41.0): it stays on the desk until `office deliver
+N` carries its work, which closes it (`--close` closes it at land all the
+same), and land's last line is `Next: office deliver N`, the folder's
+number filled in. The block for the planner carries the office's own
+lines after bale's END marker, bale's block untouched between its
+markers: `--- OFFICE land SID ---`, the folder's number, title, place and
+state (`folder: N, TITLE (desk/NAME, open; closes at delivery)`), the
+deliver line, the letterhead's review of the landing for a project with
+an audience, and `--- OFFICE END ---`, so the planner never asks for
+them. It asks nothing about ratification: the
 planner ratifies in the next brief it writes, and `office start` files
 it. `office relay` carries a planner's answer to a clarification back
 to the session's repo, through the project's shell for a hosted one. The
@@ -373,9 +394,21 @@ bale's reason `abandoned` where the session is open, and writes a line in
 the folder's History; a folder opened for that session alone is said with
 the line that closes it.
 
+    office withdraw --bundle 2026-10-27-picklists-review   # a planner's bundle you will not send, out of the offer
+
+`office withdraw --bundle STEM` (0.41.0) takes a planner's bundle out of
+the home screen's and `office start`'s offer: every copy of the stem in
+your downloads, a browser's `(1)` copies too, is renamed
+`NAME.bale-bundle.declined` (rename it back to offer it again). The
+office deletes nothing in your downloads. It asks once, default yes
+(`--yes`); a bundle a session opened is not in the offer and is refused.
+Bare `office withdraw` offers the sessions never worked and, after them,
+the bundles no session opened, by key.
+
 ### Run a worker's probe
 
     office probe 13                      # the block on the clipboard: run where folder 13's project lives
+    office probe                         # the one folder whose session is open: no number to look up
 
 When a worker returns a probe block (a fact it needs from your machine,
 or from the host and container a project lives in), `office probe` runs
@@ -391,7 +424,11 @@ planner sitting's probe of a project's repo works the same way:
 sitting's id (0.33.0). A block that spans the office and a project's host
 calls `office-on PROJECT COMMAND` on its own lines (0.34.0): it runs in
 the office root with that helper on its PATH, and each call runs its
-command where the project lives. The details are below.
+command where the project lives. With no folder named (0.41.0), when
+exactly one folder on the desk records a session open where probes run
+(a read-only sitting, or a session in the office or on a project), the
+probe is that folder's, and it says so; with several, those folders
+alone are offered by key, sittings first. The details are below.
 
 ### Deliver it to the audience
 
@@ -421,7 +458,13 @@ writes the merge's materials into the folder and its last line is
 `office start N --merge`, the merge session, whose resolution `office
 land` makes a merge commit; a review the audience merged as a squash is
 seen by its content; and a second delivery onto a branch carries what is
-new since the first. `office letterhead check` is the guard it runs
+new since the first. A folder closes at delivery (0.41.0): once every
+applied session it records is delivered (by it or another folder) or
+held by the base, deliver closes it, done, on a terminal (`--leave-open`
+keeps it; piped, `--close` closes it), and a session still to deliver is
+named. Bare `office deliver` offers the folders whose work landed and is
+not delivered first, by key, newest landing first; a plain return lists
+every folder. `office letterhead check` is the guard it runs
 first, on its own for any tree. The details are below.
 
 ### Build an office
@@ -1086,7 +1129,26 @@ actions, so it is the last copy made (bale copies the same block, earlier,
 and its copy loses every non-ASCII character on WSL). The office reads the
 clipboard back and says the block is there only when it is; a copy it
 cannot make, cannot confirm, or that reads back otherwise is said in a
-line, and the block is printed again, whole.
+line, and the block is printed again, whole. Since 0.41.0 each block for
+the planner after an applied landing carries the office's tail after
+bale's END marker, in the copy and in that whole printing (bale's block
+stays byte for byte between its markers; a clarification's block, a
+held landing's and the worker's get none):
+
+    --- OFFICE land SID ---
+    folder: N, TITLE (desk/NAME, open; closes at delivery)
+    next: office deliver N
+    letterhead: SID's landing is clean for delivery: ...
+    --- OFFICE END ---
+
+The `folder:` line's parenthesis is `desk/NAME, open; closes at
+delivery` on a project with an audience, `desk/NAME, open` when land left
+it open for another reason, `filing-cabinet/NAME, closed, done` when land
+closed it, and the line is `folder: none` when no folder records the
+session. `next:` is there only when land printed deliver's Next line; the
+letterhead's lines only for a project with an audience, exactly as land
+printed them after the landing; an office session's tail is the folder
+line alone between the markers.
 
 After an applied landing it runs the project's after-land actions in
 its repo, in order (`office projects set NAME --after-land ./install.sh`
@@ -1105,7 +1167,15 @@ profile is now complete, it closes the founding folder, done. When the
 folder records that session alone and it landed applied, the job is
 finished, and on a terminal land closes the folder, done, naming the line
 that reopens it (`--close` and `--leave-open` answer it without asking;
-piped with neither, the folder stays open and land says so). The actions run only
+piped with neither, the folder stays open and land says so). On a project
+with an audience (0.41.0) land leaves it open instead, saying `NAME
+recorded SID alone, and it landed applied; PROJECT has an audience, so
+the folder stays on the desk until office deliver N carries the work
+(office close NAME closes it now)`; `--close` still closes it, and says
+so, and `office deliver` closes it once its work is delivered. Then land's
+last line, after the relay's clipboard line, is `Next: office deliver N
+(...)`, or, for a merge session's landing, the same line saying deliver
+makes the merge commit and carries the folder's own work. The actions run only
 through `office land`: a session applied by hand with `bale apply` runs
 none, so office-src's own `./install.sh` does not run, and `office
 status`'s `source:` line then says the install is behind its working
@@ -1150,6 +1220,18 @@ connections, plus one per after-land action.
     office probe FOLDER                  # the block from the clipboard (paste_command, asked once)
     office probe FOLDER probe.sh         # from a file
     office probe FOLDER - --yes < probe.sh
+    office probe                         # the folder whose one session is open, said (0.41.0)
+
+With no FOLDER (0.41.0), the folder is found rather than looked up: when
+exactly one folder on the desk records a session open where probes run (a
+read-only sitting open in the office, a session open in the office, or a
+session open on a project), it is that folder, and the office says so:
+`desk/NAME records the one session open, SID (a sitting), so the probe is
+its (office probe FOLDER names another)`, the parenthesis `on PROJECT` or
+`in the office` for the others. With several, those folders alone are
+offered by key, sittings first (piped, they are named and the probe
+refuses); with none, every folder on the desk, as before. `--project` and
+`--sid` are as they were.
 
 A probe is a worker's tool call whose courier is you (TARBALL.md 4.6);
 `office probe` carries it. The block comes from a file, from stdin (`-`),
@@ -1266,6 +1348,34 @@ coworker reviews. `office deliver FOLDER` is the crossing:
     office deliver 14 --yes                      # without asking
     office deliver health-route --branch api-health --others-too
     office deliver 6 --branch picklists --adopt  # onto a pull request's branch made outside the office
+    office deliver                               # the folders landed and not delivered, by key (0.41.0)
+    office deliver 14 --yes --close              # piped: close the folder once its work is delivered
+
+A folder closes at delivery (0.41.0; the plan's ruling of 2026-10-29):
+`office land` leaves a folder on a project with an audience on the desk,
+and after a successful push deliver closes it, done, when every applied
+session it records (its Sessions lines whose session is applied in the
+project) is named by a `delivered` History line, this delivery's or
+another folder's (a session another folder delivered with `--others-too`
+counts), or rides in nothing because the base holds it. It says so in
+land's words, `the folder NAME: closed, done (its work is delivered;
+office reopen NAME brings it back)`. On a terminal it closes without
+asking, as land closes a finished folder; piped it stays and deliver
+says so, unless `--close`; `--leave-open` keeps it on the desk; a folder
+already in the filing cabinet is left there. A session still to deliver
+is named, and the folder stays. Until then the desk's line for it says
+`landed SID on DAY, not delivered; office deliver N`, the home screen
+offers it by key, newest landing first, the walk-in's Next line names it
+after the desk moves, and bare `office deliver` offers it under `Landed
+and not yet delivered:` before every folder. Whether a folder's work is
+delivered is read from the office's own pages and the project's
+`applied/SID` tags, with git alone: never a fetch of the audience, never
+a bale call. A folder whose merge job waits for its session is offered
+the same way, by `office start N --merge`, and `office status` says it
+under the folders line: `folder N: merge job waiting, AUDIENCE/BRANCH
+into the workbench, K file(s); office start N --merge sends the session`
+(or, once that session landed without its merge made, `merge session SID
+landed; office deliver N makes the merge commit`).
 
 The project is the folder's lane's (`--on PROJECT` when the lane names
 none), and it must declare an `audience`: the name of the remote in its
@@ -1651,6 +1761,24 @@ delivery's names none, since a session id is one of bale's marks and
     office projects --ledger                 # trust ledger per project and work class
     office projects --landed bin/office      # the last applied session that landed a path
     office projects office-src --versions    # the version trail of one project
+    office projects set distributions-app --paused   # read nothing of it, send nothing to it (0.41.0)
+
+A project can be marked paused (0.41.0; the gaps of 2026-10-28, A7):
+`office projects set NAME --paused` writes `paused = true` in its
+[projects] entry, committed as set commits, and says `NAME is paused: the
+office reads nothing of it and sends nothing to it until office projects
+set NAME --unpaused`; `--unpaused` removes the key. Given alone, either
+asks nothing else. Every rendering that reads a project's repo (the
+walk-in and its In flight, the home screen's project line, `office desk`,
+`office status`, `office sessions`, `office projects` and its renderings,
+the digest and the watches) reads nothing of a paused project, no bale
+call and no git, and says one line where its "cannot read" line would go:
+`NAME: paused (office projects set NAME --unpaused)`; `office projects`
+lists it with `(paused: office projects set NAME --unpaused)` in place of
+the check of its path. `office start` refuses to send a session to it,
+by its folder's lane or `--on`, with that line, before anything is
+written. Every other verb is as it was: a session already out on it
+still lands, and deliver and probe still run there.
 
 The floor plan's [projects] table names each project and the path of its
 repo; `office projects add` writes it, and checks the path is the top of
