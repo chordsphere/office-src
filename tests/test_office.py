@@ -159,6 +159,11 @@ class Env:
             # A test that wants a tool recorded names a directory of its own.
             "OFFICE_SURVEY_PATH": "",
             "OFFICE_CONTAINER_MARKER": "",
+            # Where the office looks for gh (0.42.0: lib/office_review.py,
+            # gh_program): nowhere, so no test runs the machine's own gh and
+            # every surface says gh is not there. A test that wants gh puts
+            # the suite's fake in a directory of its own and names it.
+            "OFFICE_GH_PATH": "",
             # bale's sandbox probe (0.39.0: lib/office_host.py, prepare): the
             # sandbox runs, so prepare writes nothing into bale.toml for it,
             # whatever the running machine allows. A test that wants a host

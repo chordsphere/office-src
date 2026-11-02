@@ -125,7 +125,7 @@ SOURCE_ALLOWED = (
     ("office", r'command -[v] "\$t" >/dev/null 2>&1 \|\| die "\$t is required',
      "require_tools itself: each name its callers give it is checked as a lookup of its own"),
     ("office", r'command -[v] "\$name" 2>/dev/null',
-     "survey_which, the survey's door (0.27.0): its Tools facts (bale, git, python3, R, quarto, node) and which "
+     "survey_which, the survey's door (0.27.0): its Tools facts (bale, git, python3, R, quarto, node, gh) and which "
      "bale and office the PATH runs, looked up on the PATH only when OFFICE_SURVEY_PATH is unset; every Env and "
      "every job sets it to \"\", so no test reaches this line"),
     ("office_helper", r"shutil\.wh[i]ch\(name, path=dirs\)",
@@ -309,6 +309,8 @@ class TestNoTestReadsTheMachine(unittest.TestCase):
         # No tool for the survey to find, and no container marker (0.27.0).
         self.assertEqual((env["OFFICE_SURVEY_PATH"], env["OFFICE_CONTAINER_MARKER"]), ("", ""))
         self.assertEqual(runner.SURVEY_VARS, {"OFFICE_SURVEY_PATH": "", "OFFICE_CONTAINER_MARKER": ""})
+        # No gh (0.42.0): the office looks for it nowhere in a job.
+        self.assertEqual((env["OFFICE_GH_PATH"], runner.GH_VARS), ("", {"OFFICE_GH_PATH": ""}))
         # This very test runs in such a job when the runner runs it: its
         # TMPDIR (and HOME beside it) is the runner's scratch, not the one
         # the runner was started with. Under bare unittest discover there

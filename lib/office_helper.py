@@ -1437,10 +1437,16 @@ STATUSES = DESK_STATUSES + CABINET_STATUSES
 # base into the workbench before a delivery because that merge is clean,
 # `- DATE merged: origin/main 3f1a9c2 into the workbench, 8c2e1f0` (0.39.0:
 # the base's tip, then the merge commit); it changes no status.
+# `review` is the line office deliver writes when it opens the review of a
+# delivery through gh, on the occupant's yes (0.42.0), `- DATE review:
+# health-route on origin of proj: #12 https://HOST/OWNER/REPO/pull/12` (the
+# branch, the audience and project as the delivered line names them, the
+# pull request's number and URL; lib/office_review.py reads it); it changes
+# no status.
 HISTORY_VERBS = ("candidate", "queued", "opened", "ratified", "gated", "cleared", "grown",
                  "re-scoped", "corrected", "ruled", "carried", "consumed", "done",
                  "absorbed", "split", "retired", "reopened", "note", "ended", "delivered", "probe",
-                 "dropped", "withdrawn", "merged")
+                 "dropped", "withdrawn", "merged", "review")
 # The state-changing verbs and the status each leaves the folder in:
 # candidate -> queued -> open -> done; any desk status -> absorbed,
 # split or retired; done -> reopened -> open.

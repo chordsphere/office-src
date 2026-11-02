@@ -42,7 +42,7 @@ from test_audience_line import DOCS_WORDS, SID, SID2, git  # noqa: E402
 from test_host_refresh import RefreshCase  # noqa: E402
 from test_project_on_host import HOST  # noqa: E402
 from test_start import FakePackBale  # noqa: E402
-from test_land import LandCase, response_tarball  # noqa: E402
+from test_land import FakeLandBale, LandCase, response_tarball  # noqa: E402
 from test_audience_line import NOTES  # noqa: E402
 
 import office_deliver as odl  # noqa: E402
@@ -537,6 +537,63 @@ class TestTheClosingLetterheadLine(MergeCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("    letterhead on the lines it adds and the words: clean\n", proc.stdout)
         self.assertNotIn("letterhead on the diff", proc.stdout)
+
+
+# --- 0.42.0: the merge session's whole loop, through the office's commands ----------------------------
+
+class TestTheWholeLoopThroughTheOffice(MergeCase):
+    """0.40.0's third proposal: every step through the office's own command,
+    as the occupant types it, never a helper called in-process: deliver
+    refuses on a conflicting base and writes the job, office start N --merge
+    sends the session, the response lands through office land (which makes
+    the merge commit), and deliver again carries the folder's own work. The
+    fake bale here packs, lands and answers status as one (tests/test_land.py
+    FakeLandBale), so the session office start sends is the one land finds."""
+
+    def setUp(self):
+        super().setUp()
+        (self.e.desktop / "bale").unlink()
+        self.fake = FakeLandBale(self.e.tmp)
+        self.downloads = self.e.tmp / "Downloads"
+        self.downloads.mkdir()
+        self.e.env["PATH"] = self.fake.path(self.e.env["PATH"])
+        self.e.env["FAKE_BALE_SEARCH"] = str(self.downloads)
+
+    def test_deliver_refuses_start_sends_land_merges_deliver_carries(self):
+        tip = self.conflict_on_the_audience()
+        # 1. deliver refuses, the job written, the session named.
+        proc = self.run_office("deliver", self.name, "--yes", "--refresh")
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertIn(f"office start {self.name} --merge sends the merge session", " ".join(proc.stderr.split()))
+        self.assertNotIn("refs/heads/health-route", self.audience_refs())
+        # 2. office start N --merge sends it, and the job names it.
+        proc = self.run_office("start", self.name, "--merge", "--no-refresh")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        sid = re.search(r"^Packed (\S+) for ", proc.stdout, re.M).group(1)
+        self.assertEqual(self.job()["session"], sid)
+        # Asked again while it is out, deliver names the landing.
+        proc = self.run_office("deliver", self.name, "--yes")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn(f"office land {sid} brings it back", " ".join(proc.stderr.split()))
+        # 3. The response, landed through office land: the merge commit made.
+        response_tarball(self.downloads, sid, {"src/a.py": "x = 5\ny = 3\n"})
+        proc = self.run_office("land", sid, "--response", str(self.downloads / f"response-{sid}.tar.gz"))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(f"made the merge session {sid}'s resolution a merge commit", proc.stderr)
+        self.assertEqual(self.clone_ref("HEAD^2"), tip)
+        self.assertEqual(git(self.clone, "log", "-1", "--format=%s", env=self.e.env).strip(),
+                         f"Bring origin/main into the workbench, resolved by {sid} (office land)")
+        self.assertFalse(self.merge_dir().exists())
+        self.assertIn(f"resolved by {sid}", self.folder_md())
+        self.office_clean()
+        # 4. deliver again: from the audience's tip, the folder's own work.
+        proc = self.run_office("deliver", self.name, "--yes")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.audience_ref("health-route^"), tip)
+        self.assertEqual(git(self.audience, "show", "health-route:src/a.py", env=self.e.env), "x = 5\ny = 3\n")
+        self.assertEqual(sorted(git(self.audience, "diff", "--name-only", "health-route^", "health-route",
+                                    env=self.e.env).split()), ["src/a.py", "src/health.py"])
+        self.assertIn(f"covering {sid}, {SID};", proc.stdout)
 
 
 if __name__ == "__main__":

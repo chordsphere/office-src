@@ -160,6 +160,10 @@ DESKTOP_VARS = {"OFFICE_PROC_VERSION": "", "OFFICE_DESKTOP_PATH": ""}
 # so no survey runs a program of the machine's for its version, and no
 # container marker. An Env sets the same.
 SURVEY_VARS = {"OFFICE_SURVEY_PATH": "", "OFFICE_CONTAINER_MARKER": ""}
+# Where the office looks for gh (0.42.0; lib/office_review.py gh_program
+# reads it): nowhere, so no job runs the machine's own gh. An Env sets the
+# same, and a test that wants gh names the directory of its fake.
+GH_VARS = {"OFFICE_GH_PATH": ""}
 # The variable that names the run's bytecode cache to every job, and so
 # to every command a test runs (tests/test_office.py Env passes it on).
 PYCACHE_VAR = "PYTHONPYCACHEPREFIX"
@@ -313,7 +317,7 @@ def isolated_env(base, root, pycache=None):
     config, data, state and cache directories; no Windows users' homes to
     scan for downloads (OFFICE_WINDOWS_USERS empty), a machine that is not
     WSL with no desktop program on it (DESKTOP_VARS), a survey that looks
-    for no tool and no container marker (SURVEY_VARS), and no XDG variable
+    for no tool and no container marker (SURVEY_VARS), no gh (GH_VARS), and no XDG variable
     of the caller's (XDG_DOWNLOAD_DIR among them); none of the caller's
     OFFICE_ settings but the job count. PATH and the locale stay: the suite
     needs the programs DECLARED_TOOLS names, and reads nothing else
@@ -334,7 +338,7 @@ def isolated_env(base, root, pycache=None):
     if pycache is not None:
         env[PYCACHE_VAR] = str(pycache)
     env.update({k: str(v) for k, v in dirs.items()})
-    env.update({"HOME": str(home), "TMPDIR": str(tmp), "OFFICE_WINDOWS_USERS": "", **DESKTOP_VARS, **SURVEY_VARS,
+    env.update({"HOME": str(home), "TMPDIR": str(tmp), "OFFICE_WINDOWS_USERS": "", **DESKTOP_VARS, **SURVEY_VARS, **GH_VARS,
                 "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": str(gitconfig),
                 "PYTHONDONTWRITEBYTECODE": "1", "OFFICE_TESTS_UNDER_RUNNER": "1"})
     return env

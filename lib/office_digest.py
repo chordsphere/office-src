@@ -333,6 +333,20 @@ def since_section(rd, root, here, win):
     return out, bad
 
 
+def reviews_section(root):
+    """The reviews on the branches the office delivered, one line per
+    project (0.42.0), read through gh as the walk-in reads them, so a
+    sitting opens knowing which review waits on whom. None when no project
+    has a branch the office delivered: the section is left out."""
+    import office_review as orev
+    got = orev.office_reviews(root)
+    if not got:
+        return None
+    out = ["## Reviews", ""]
+    out += [f"- {l.strip()}" for l in orev.review_lines(got)[1:]]
+    return out
+
+
 def watch_sections(result):
     import office_watches as ow
     out = ["## Watches", ""]
@@ -489,6 +503,9 @@ def render(rd, root, now, tz_name):
 
     out += section(versions, rd, root, here) + [""]
     out += section(since_section, rd, root, here, win) + [""]
+    reviews = section(reviews_section, root)
+    if reviews:
+        out += reviews + [""]
     try:
         result = ow.check(rd, root, tz_name, filings=win["filings"])
         bad = bad or bool(result["bad"])
