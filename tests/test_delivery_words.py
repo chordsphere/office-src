@@ -200,7 +200,7 @@ class TestDeliverReadsTheWordsThatLeave(AudienceCase):
         proc = self.run_office("deliver", self.name, "--yes")
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("Delivered: health-route is on origin for proj", proc.stdout)
-        self.assertIn("letterhead on the diff and the words: clean", proc.stdout)
+        self.assertIn("letterhead on the lines it adds and the words: clean", proc.stdout)
         self.assertIn(f"{self.folder}/delivery.md: the to: line and the Commit and Review sections are read, the "
                       "words that leave; its 2 other line(s)", proc.stdout)
         self.assertEqual(sorted(set(self.audience_refs()) - set(before)), ["refs/heads/health-route"])

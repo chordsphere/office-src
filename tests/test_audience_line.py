@@ -728,10 +728,29 @@ Look.
         (cow / "src" / "a.py").write_text("x = 99\n")
         git(cow, "commit", "-qam", "Change a", env=self.e.env)
         git(cow, "push", "-q", "origin", "main", env=self.e.env)
+        # A session open in the clone keeps deliver from bringing main into
+        # the workbench (0.39.0), so the squash from where they parted is
+        # what conflicts here, whatever bale this machine has: without the
+        # fake, a bale on the PATH that reads the clone's empty registry
+        # lets the merge run, and its conflict is the merge session's path
+        # (tests/test_deliver_merges.py TestTheMergeSession).
+        from test_host_refresh import status_line
+        fake = self.e.desktop / "bale"
+        fake.write_text("#!/bin/sh\n"
+                        'if [ "$1 $2" = "status --json" ]; then cat <<\'JSON\'\n'
+                        f"{status_line(['2026-10-29-next-one-001'])}\nJSON\nexit 0; fi\n"
+                        'if [ "$1" = "--version" ]; then echo "bale 0.4.56"; exit 0; fi\n'
+                        'echo "fake bale: $*" >&2; exit 97\n')
+        fake.chmod(0o755)
         proc = self.run_office("deliver", self.name, "--yes")
         self.assertEqual(proc.returncode, 1)
         self.assertIn("the landed work does not go onto origin's main as it is now: conflicts in src/a.py", proc.stderr)
-        self.assertIn("bring main into the workbench branch first", proc.stderr)
+        self.assertIn("1 session(s) are open in the clone (2026-10-29-next-one-001), so origin/main was not merged "
+                      "under them", " ".join(proc.stderr.split()))
+        self.assertFalse((self.root / self.folder / "merge").exists())
+        # 0.40.0: the remedy is an office line, never a terminal in the clone.
+        self.assertIn(f"office deliver {self.name} brings origin/main into the workbench first once nothing stops "
+                      "that merge", " ".join(proc.stderr.split()))
         self.assertNotIn("refs/heads/health-route", self.audience_refs())
         self.assertEqual(git(self.clone, "worktree", "list", env=self.e.env).count("\n"), 1)
         self.assertEqual(git(self.clone, "status", "--porcelain", env=self.e.env), "")

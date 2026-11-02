@@ -302,7 +302,8 @@ surface = "occupant"
 writes = ["the repo the session belongs to, through bale's apply (or, for a read-only sitting, bale's unlock)", "desk/{folder}/folder.md",
           "desk/{folder}/walkthrough.md", "desk/{folder}/delivery.md",
           "filing-cabinet/{folder}", "in-tray", "desk", "handbook", "floor-plan/manifest.toml", "bale.toml", "calendar/record.md",
-          "drafting-table/moves.md", "what office moves writes", "what the project's after-land actions write"]
+          "drafting-table/moves.md", "what office moves writes", "what the project's after-land actions write",
+          "desk/{folder}/merge", "a merge session's resolution as a merge commit on the clone's workbench branch (0.40.0)"]
 lands = []
 attended = true
 trigger = ["manual"]
@@ -334,7 +335,11 @@ trigger = ["manual"]
 # as --author), is kept in the floor plan. Since 0.39.0 it may refresh the
 # clone's view of the audience (when the occupant says so) and bring the
 # base into the workbench in the clone as a merge commit when that merge
-# is clean, with a dated merged line in the folder's History.
+# is clean, with a dated merged line in the folder's History. Since 0.40.0
+# a merge that conflicts writes the merge's materials into the folder
+# (merge/), for the merge session office start --merge sends, and a merge
+# session's resolution that office land could not make a merge commit is
+# made one here.
 [verbs.deliver]
 kind = "script"
 built = true
@@ -342,7 +347,8 @@ surface = "occupant"
 writes = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md", "a delivery branch on the project's audience",
           "the push guard in the clone's .git/hooks", "floor-plan/manifest.toml",
           "the clone's remote-tracking refs and base branch, when the occupant says to refresh them (0.39.0)",
-          "a merge commit of the audience's base on the clone's workbench branch, when that merge is clean (0.39.0)"]
+          "a merge commit of the audience's base on the clone's workbench branch, when that merge is clean (0.39.0)",
+          "desk/{folder}/merge", "a merge session's resolution as a merge commit on the clone's workbench branch (0.40.0)"]
 lands = []
 attended = true
 trigger = ["manual"]
@@ -587,6 +593,26 @@ ships = ["desk/{folder}", "handbook/{systems}", "templates/walkthrough.md and te
          "letterhead, when the project has an audience"]
 writes = ["{project}", "desk/{folder}"]
 lands = ["desk/{folder}/walkthrough.md", "desk/{folder}/delivery.md"]
+attended = true
+trigger = ["manual"]
+
+# The merge session (0.40.0), packed by office start N --merge on the
+# folder's project when office deliver could not bring the audience into
+# the workbench because the merge conflicts: its goal, forecast (the
+# conflicting files) and brief (templates/merge-brief.md) are the folder's
+# merge job's, and the job's materials (merge/: each file's three versions
+# and the audience's log) ride in the folder. Its response ships each
+# conflicting file as it should read after the merge and nothing else; it
+# writes no Walkthrough, Delivery or Structure, and office land makes its
+# resolution a merge commit in the workbench. Nothing of the office's is
+# guaranteed to exist after it.
+[verbs.merge]
+kind = "project-session"
+built = true
+ships = ["desk/{folder}", "desk/{folder}/merge, the merge's materials", "templates/merge-brief.md, as the brief",
+         "letterhead, when the project has an audience"]
+writes = ["{project}"]
+lands = []
 attended = true
 trigger = ["manual"]
 

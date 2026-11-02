@@ -313,9 +313,10 @@ class TestTheCleanMerge(RefreshCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn("bringing origin/main into the workbench (main) conflicts in src/a.py; the merge was aborted there, "
                       "and nothing is left half-done in the clone", proc.stderr)
-        self.assertIn("the office does not resolve a conflict in this release (a merge session, a bale session with "
-                      "both sides in context, is the next release's); until then, by hand in the clone: git merge "
-                      "origin/main on main, resolve and commit, then deliver again", proc.stderr)
+        # 0.40.0: the merge session is the remedy, never the clone by hand
+        # (tests/test_deliver_merges.py TestTheMergeSession).
+        self.assertIn(f"office start {self.name} --merge sends the merge session", proc.stderr)
+        self.assertNotIn("by hand", proc.stderr)
         self.assertEqual(self.clone_ref("HEAD"), before)
         self.assertEqual(self.clone_ref("MERGE_HEAD"), "")
         self.assertEqual(git(self.clone, "status", "--porcelain", "-uno", env=self.e.env), "")

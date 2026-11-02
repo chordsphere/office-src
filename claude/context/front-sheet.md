@@ -238,6 +238,23 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.40.0 (session 2026-10-29-m10-deliver-merges-007): no delivery ends at
+  a terminal; the merge session, a squash-merged review seen by content,
+  a continued delivery squashed from its range.
+  - deliver writes a conflicting merge's materials into the folder
+    (merge/: three versions per file, the audience's log, merge.md) and
+    names `office start N --merge`, which packs the merge session from
+    templates/merge-brief.md; office land (or the next deliver) makes the
+    landed resolution a merge commit, parents the landed tip and the
+    side brought in, tree git's merge plus the session's files.
+  - `base_holds`: history first, then content (the delivery commit
+    squashed onto the base stages nothing); sessions the base holds leave
+    the others list and the delivered line, said in one line.
+  - a delivery onto a branch cherry-picks its range's net change onto the
+    branch's tip; a branch that moved on the audience sends a merge
+    session for its tip.
+  - `office letterhead check --added --on PROJECT` works; deliver's
+    closing line reads `letterhead on the lines it adds and the words`.
 - 0.39.0 (session 2026-10-29-m10-host-refresh-006): a hosted clone's view
   of its audience refreshed through this machine, offered where a stale
   base hurts; deliver brings the base into the workbench when that merge

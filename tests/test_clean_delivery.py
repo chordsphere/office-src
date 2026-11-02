@@ -720,9 +720,9 @@ class TestTheLinesADeliveryAdds(unittest.TestCase):
 class TestTheHandCheckTakesAdded(unittest.TestCase):
     """0.38.0: `office letterhead check --added` passes the module's
     --added through, so the hand check reads a range or the index as
-    office deliver reads a delivery; refused beside --all by the module,
-    and with --on PROJECT by name, since the check that travels there
-    does not carry it yet. The usage says it, and the cleanup list."""
+    office deliver reads a delivery; refused beside --all by the module
+    (and, until 0.40.0, with --on PROJECT by name). The usage says it, and
+    the cleanup list."""
 
     def setUp(self):
         self.e = Env(self)
@@ -751,13 +751,14 @@ class TestTheHandCheckTakesAdded(unittest.TestCase):
         self.assertEqual(proc.returncode, 1, proc.stderr)
         self.assertEqual(proc.stdout.splitlines(), [f"src/view.vue:8: character: the en dash (U+2013) in: plain {EN}"])
 
-    def test_it_is_refused_beside_all_and_with_on(self):
+    def test_it_is_refused_beside_all(self):
         proc = self.check("--added", "--all")
         self.assertEqual(proc.returncode, 2, proc.stderr)
         self.assertIn("--added reads the lines a diff adds, and --all the whole tree", proc.stderr)
+        # Since 0.40.0 it travels with --on PROJECT (tests/test_deliver_merges.py
+        # TestTheCheckTakesAddedOnAProject): bin/office no longer refuses the pair.
         proc = self.e.run("letterhead", "check", "--on", "proj", "--added", cwd=self.root)
-        self.assertEqual(proc.returncode, 1, proc.stderr)
-        self.assertIn("--added reads a tree on this machine, not --on PROJECT yet", proc.stderr)
+        self.assertNotIn("not --on PROJECT yet", proc.stderr)
 
     def test_the_usage_says_added_and_the_cleanup_list(self):
         usage = " ".join(self.e.run("letterhead", "check", "--help", cwd=self.root, check=0).stdout.split())
@@ -790,7 +791,7 @@ class TestDeliverReadsTheLinesItAdds(AudienceCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("src/view.vue: 6 line(s) the file already had hold the em dash (U+2014); not this delivery's, "
                       "not refused", proc.stdout)
-        self.assertIn("letterhead on the diff and the words: clean", proc.stdout)
+        self.assertIn("letterhead on the lines it adds and the words: clean", proc.stdout)
         self.assertIn("refs/heads/health-route", self.audience_refs())
         # A line the next session adds with a dash is the delivery's own.
         self.land_session(SID3, {"src/view.vue": f"again {EM}\n" + OLD_DASHES.replace("the line a session changes",

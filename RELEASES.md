@@ -4,6 +4,144 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.40.0
+
+Additive: no migration, nothing to do in any office. The third serial
+session of the plan begun on 2026-10-27, and its last word on delivering:
+no delivery ends at a terminal. When bringing the audience into the
+workbench conflicts, deliver sends a merge session on the folder, and
+the session's landed resolution becomes a merge commit; a review the
+audience merged as a squash is seen by its content; a continued delivery
+is squashed from its range; a session the base already holds leaves the
+others list; `office letterhead check --added` works with `--on PROJECT`;
+and the question's closing letterhead line says what the check reads.
+What you see changes for a project with an audience; everything else is
+as it was.
+
+The merge session. 0.39.0 aborted a conflicting merge of the base and
+sent you into the clone to merge by hand (the gaps of 2026-10-28, A5's
+last clause: the office sends a merge session, never the occupant to a
+terminal). Now the abort is followed by the merge's materials, written
+into the folder under `merge/`: each conflicting file at its path in
+three versions, `parted/` (where the two sides parted), `workbench/` and
+`audience/`, `log.txt` (the audience's commits since they parted) and
+`merge.md`, the job's page, committed in the office, so they ride with
+the folder and move with it when it closes. Deliver's last line is the
+one that sends the session, `office start N --merge`. That start packs a
+bale session on the folder's project whose goal, forecast (the
+conflicting files) and brief (the install's new templates/merge-brief.md)
+are the job's, and names the session on the job's page. The brief says
+what the session is: the two sides, the files, the commit it brings in,
+that its response ships each conflicting file as it should read after the
+merge and nothing else, and what every session owes (no Walkthrough,
+Delivery or Structure: the folder's pages are the work's; a `## Merge`
+section saying what each file kept from each side). When it lands,
+`office land` makes the resolution real before anything reads the
+workbench: a merge commit in the clone, as the declared author (`Bring
+origin/main into the workbench, resolved by SID (office land)`), its
+first parent the landed tip and its second the base's tip the job names,
+its tree git's own merge of everything that did not conflict with the
+session's version of each file the job names (a file the session left
+out keeps the workbench's version; a file it deleted is removed). The
+office adds nothing of its own: a path still unmerged that the job does
+not name, an uncommitted change or a merge in progress aborts the merge
+and checks the abort (no MERGE_HEAD, no tracked change left), or never
+begins it, and is said with the line that makes it later; a session open
+in the clone is never merged under. The next `office deliver N` makes the
+merge itself when land could not. The folder's History gains `- DATE
+merged: origin/main 3f1a9c2 into the workbench, 7c1e2d3, resolved by
+SID`, the materials leave the folder, and the next delivery squashes the
+folder's own work from the base's tip. Asked again while the session is
+out, deliver names `office land SID` instead of sending another. land
+leaves a merge session's folder pages as they are, and says so.
+
+The job lives in the folder, not in a marker line: the brief's design
+offered a `--- MERGES AUDIENCE/BASE SHA ---` line read beside LANDS, or
+deliver finding the landed job; this release keeps the job's whole state
+on its page (`- session: SID` names the session sent), land makes the
+merge commit when the session it lands is the one the page names, and
+deliver makes it when land could not, so neither needs the brief.
+
+A review merged as a squash, seen by content. A squash leaves neither
+the delivery commit nor the workbench commit on the base, so 0.39.0's
+`base_holds` refused the next delivery that carried the same sessions,
+even with the work on main (deliver-adds' proposal). The history test
+stays first; when it fails, the content test squashes the record's
+delivery commit onto the base as fetched, in a temporary worktree, and
+reads a squash that stages nothing as held. The delivery commit is read
+where the delivery is built, or fetched by its branch when it is not
+there (`refs/office/audience/held`, removed with the office's other
+refs). A base holding a later version of the same lines is not held, and
+the refusal stands with its remedy, which is right: the work left twice
+would conflict. The refusal says which test failed (`main as fetched does
+not hold folder 6's delivery 3f1a9c2 by history or by content (its change
+conflicts with the base's)`). No flag says it by hand.
+
+A continued delivery, squashed from its range. A delivery onto a branch
+squashed the workbench from where it and the branch parted, so a second
+delivery that edited a line the first delivered conflicted with nothing
+moved on the audience. Now the range's net change (since the last
+delivery there, to the workbench's tip less bale's own commits, bale's
+paths out of both ends) is one temporary commit, cherry-picked onto the
+branch's tip with git's three-way fallback: only what is new leaves. A
+delivery from the base keeps 0.39.0's merge. When the branch moved on the
+audience (a reviewer's commit) and the squash conflicts, the merge
+session is sent the same way with the branch's tip in the base's place;
+its files are what the squash and a merge of the branch's tip into the
+workbench conflict in, so the merge land makes conflicts nowhere else.
+Once the branch's tip is in the workbench, the next delivery is read from
+where the two meet, and the sessions the branch already carries are not
+named again.
+
+A session the base holds leaves the others list. After the content (or
+history) test lets another folder's record through, the sessions it
+covers ride in nothing here: they are left out of `--others-too`'s
+question and of the `delivered` line, and one line says so (`folder 6's
+session SID is on origin/main already (by content: folder 6's delivery
+3f1a9c2) and rides in nothing here`).
+
+The letterhead check. `office letterhead check --added --on PROJECT`
+works, here and on a host: the `check` subcommand of lib/office_deliver.py
+takes `--added` and passes it to `check_in_project` (wave-one-release's
+proposal), and bin/office's refusal is gone. deliver's closing line reads
+`letterhead on the lines it adds and the words: clean`, since 0.38.0's
+check reads the lines the squash adds, never the diff whole.
+
+What changed and where: lib/office_deliver.py (the merge session's
+section: `read_merge_job`, `merge_page_text`, `carry_materials` and its
+script, `merge_job_lines`, `make_resolved_merge` and its script,
+`resolve_landed_job`, `merge_start`, `merge_sent`, `land_merge`,
+`MergeConflict`; `held_by_content`, `base_holds` returning how and why,
+`folder_label`, `twice_lines` naming the failed test; `range_commit` and
+`unmerged`; plan's step 4c, 6 and 7; the `merge-start`, `merge-sent` and
+`land-merge` subcommands, `--added` on `check`; `held_told` in the plan);
+templates/merge-brief.md (new); bin/office (start's `--merge`, land's
+merge step before its pages, deliver's held lines, the closing letterhead
+line, the letterhead check's `--added` with `--on`, the usage texts);
+share/verbs.toml (`merge`, a project-session kind; deliver's and land's
+writes); README.md; and the doctrine past its core banner (section 4
+continued, section 5's History verbs, the verbs table).
+
+Tests: tests/test_deliver_merges.py (new), one class per item:
+TestTheMergeSession and TestTheMergeSessionOnAHost (the materials, the
+job's page and the line that sends the session; the line that lands a
+session already out; land's merge commit, its parents, its tree and its
+History line, and the delivery after it; deliver making it when land did
+not; a conflict the session did not resolve aborted and checked; a
+session open in the clone; the materials and the merge through the
+shell), TestTheMergeSessionGoesOut (start --merge's pack, forecast, brief
+and context, and its refusals) and TestOfficeLandMakesTheMerge (land's
+step on a real landing, the pages left); TestASquashMergedReviewIsSeenByContent
+(a squash-merged review let through, the units, a later version refused
+with the test named); TestAContinuedDeliveryIsSquashedFromItsRange (a
+delivered line edited again; a branch that moved sending a merge session
+for its tip, and the delivery after it); TestAHeldSessionLeavesTheOthersList;
+TestTheCheckTakesAddedOnAProject and TestTheCheckTakesAddedOnAHost;
+TestTheClosingLetterheadLine. tests/test_host_refresh.py's conflict test
+names the merge session; tests/test_clean_delivery.py no longer expects
+the `--on` refusal; the old closing line's words moved in
+tests/test_clean_delivery.py and tests/test_delivery_words.py.
+
 ## 0.39.0
 
 Additive: no migration, nothing to do in any office. The second serial
