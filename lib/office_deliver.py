@@ -65,6 +65,12 @@ as curated commits:
   and deliver prints what the occupant does next: the review's URL when
   the git host's compare-URL shape is known, the branch's name otherwise,
   and whom the words name as reviewer.
+- No delivery ends at a terminal (0.40.0): when bringing the audience into
+  the workbench conflicts, the merge's materials are written into the
+  folder and the merge session named (office start N --merge), and its
+  landed resolution is made a merge commit (land_merge, or the next plan);
+  a delivery onto a branch takes its range's net change (range_commit); a
+  review merged as a squash is seen by content (held_by_content).
 
 Two steps, so bin/office can ask once in between: plan() does everything
 up to the question (fetch, carry, squash, check, commit) and writes a
@@ -110,7 +116,10 @@ REF_BASE = "refs/office/audience/base"
 REF_BRANCH = "refs/office/audience/branch"
 REF_WORKBENCH = "refs/office/workbench"
 REF_DELIVERY = "refs/office/delivery"
-OFFICE_REFS = (REF_BASE, REF_BRANCH, REF_WORKBENCH, REF_DELIVERY)
+# 0.40.0: another folder's delivery commit, fetched by its branch for the
+# content test when the repo the delivery is built in does not hold it.
+REF_HELD = "refs/office/audience/held"
+OFFICE_REFS = (REF_BASE, REF_BRANCH, REF_WORKBENCH, REF_DELIVERY, REF_HELD)
 # What never travels to an audience: the names bale makes in a working
 # copy, taken out of the delivery's index whatever the clone tracks.
 NEVER_DELIVERED = tuple(x.rstrip("/") for x in ohost.EXCLUDE_LINES)
@@ -534,6 +543,37 @@ def take_out_own(worktree, own, author):
     return g(worktree, "rev-parse", "HEAD").stdout.strip(), taken
 
 
+def unmerged(worktree):
+    """The paths git left unmerged in a worktree, in its order."""
+    return [p for p in g(worktree, "diff", "--name-only", "--diff-filter=U", check=False).stdout.splitlines() if p]
+
+
+def range_commit(worktree, since, squashed, author):
+    """(parent, top): two temporary commits that never leave (0.40.0), whose
+    one difference is a range's net change: the parent's tree is since's,
+    the top's the cleaned tip's (squashed), bale's paths taken out of both
+    (NEVER_DELIVERED), each tree written through an index of its own so the
+    worktree's is never touched. Cherry-picked onto a branch's tip, the top
+    carries what the range changed and nothing the branch already has."""
+    import tempfile
+    _, identity = identity_of(author)
+    trees = []
+    with tempfile.TemporaryDirectory(prefix="office-deliver-index-") as tmp:
+        for n, rev in enumerate((since, squashed)):
+            index = {"GIT_INDEX_FILE": str(pathlib.Path(tmp) / f"index-{n}")}
+            g(worktree, "read-tree", rev, env=index)
+            # -f: this index matches neither the worktree's HEAD nor its disk.
+            g(worktree, "rm", "-r", "-q", "-f", "--cached", "--ignore-unmatch", "--", *NEVER_DELIVERED, env=index)
+            trees.append(g(worktree, "write-tree", env=index).stdout.strip())
+    parent = g(worktree, "commit-tree", trees[0], "-m", "office deliver: where the range starts",
+               env=identity).stdout.strip()
+    top = g(worktree, "commit-tree", trees[1], "-p", parent, "-m", "office deliver: the range, squashed",
+            env=identity).stdout.strip()
+    debug(f"the range {since[:12]}..{squashed[:12] if len(squashed) == 40 else squashed} as one temporary commit "
+          f"{top[:12]} on {parent[:12]}")
+    return parent, top
+
+
 def own_lines(taken):
     """What the plan says of each commit of bale's own it took out, one
     line each: its sha, subject and files, and how when the plain revert
@@ -628,29 +668,89 @@ def is_ancestor(repo, sha, of):
     return commit_known(repo, sha) and g(repo, "merge-base", "--is-ancestor", sha, of, check=False).returncode == 0
 
 
-def base_holds(repo, rec):
-    """Whether the audience's base, as fetched, already holds a delivery a
-    record names: its workbench commit or its delivery commit is on it. A
-    review merged as a squash leaves neither there, and is not seen."""
-    return any(is_ancestor(repo, rec[k], REF_BASE) for k in ("workbench", "delivery"))
+def held_by_content(repo, rec, where):
+    """(held, why not) for the content test (0.40.0): the delivery commit's
+    change squashed onto the audience's base as fetched, in a temporary
+    worktree, stages nothing: a review merged as a squash put that change on
+    the base. A squash that conflicts or stages anything is not held (a base
+    holding a later version of the same lines is not held, rightly: the work
+    left twice would conflict). The delivery commit is read where the
+    delivery is built, or fetched by its branch from the audience when it is
+    not there; when it is nowhere the office can read, the test cannot run,
+    and why is said."""
+    import shutil
+    import tempfile
+    sha = rec["delivery"]
+    if not commit_known(repo, sha):
+        g(repo, "fetch", "-q", where, f"+refs/heads/{rec['branch']}:{REF_HELD}", check=False,
+          timeout=ohost.TRANSFER_TIMEOUT)
+        if not commit_known(repo, sha):
+            return False, (f"its delivery commit {sha[:7]} is not where the delivery is built and {rec['branch']} on the "
+                           "audience does not hold it, so its content could not be read")
+    tmp = tempfile.mkdtemp(prefix="office-deliver-held-")
+    wt = pathlib.Path(tmp) / "held"
+    try:
+        g(repo, "worktree", "add", "-q", "--detach", str(wt), REF_BASE)
+        squashed = g(wt, "merge", "--squash", "--no-commit", sha, check=False, timeout=ohost.TRANSFER_TIMEOUT)
+        if squashed.returncode != 0:
+            return False, "its change conflicts with the base's"
+        if g(wt, "diff", "--cached", "--quiet", check=False).returncode != 0:
+            return False, None
+        return True, None
+    finally:
+        g(repo, "worktree", "remove", "--force", str(wt), check=False)
+        shutil.rmtree(tmp, ignore_errors=True)
+        g(repo, "worktree", "prune", check=False)
 
 
-def twice_lines(folder, base, branch, continuing, since_why, twice, gone):
+def base_holds(repo, rec, where=None):
+    """(how, why not): whether the audience's base, as fetched, already
+    holds a delivery a record names. By history first, the fast path: its
+    workbench commit or its delivery commit is on the base (a review merged
+    as a merge commit or a fast-forward). Else by content (0.40.0, a review
+    merged as a squash): held_by_content. how is "by history", "by content"
+    or None; why says what kept the content test from running, if it could
+    not."""
+    if any(is_ancestor(repo, rec[k], REF_BASE) for k in ("workbench", "delivery")):
+        return "by history", None
+    if where is None:
+        return None, None
+    held, why = held_by_content(repo, rec, where)
+    return ("by content", None) if held else (None, why)
+
+
+def folder_label(office_root, rel):
+    """A folder as the occupant cites it: folder N when it has a number,
+    else space/name."""
+    try:
+        fields = oh.parse_folder((pathlib.Path(office_root) / rel / "folder.md").read_text(encoding="utf-8"))["fields"]
+        number, _ = oh.folder_number(fields)
+    except (OSError, UnicodeDecodeError, oh.HelperError):
+        number = None
+    return f"folder {number}" if number else rel
+
+
+def twice_lines(folder, base, branch, continuing, since_why, twice, gone, labels=None):
     """The refusal of a squash that would carry work another folder
     already delivered (the gaps of 2026-10-28, A4): the sessions by name,
-    the folder and branch that delivered them, and the remedy, continuing
-    on that branch (or why it cannot be, when the audience no longer has
-    it)."""
+    the folder and branch that delivered them, which test the base failed
+    (0.40.0: by history or by content, and why the content could not be
+    read when it could not), and the remedy, continuing on that branch (or
+    why it cannot be, when the audience no longer has it)."""
+    labels = labels or {}
     onto = f"this delivery onto {branch}" if continuing else f"a new branch from {base}"
     named = "; ".join(f"{', '.join(carried)} ({where} delivered {'it' if len(carried) == 1 else 'them'} to "
-                      f"{rec['branch']} on {day})" for where, day, rec, carried in twice)
+                      f"{rec['branch']} on {day})" for where, day, rec, carried, _ in twice)
     lines = [f"the landed work since {since_why} carries work another folder of this office already delivered, which "
              f"is on the audience under its own review, so {onto} would deliver it twice: {named}"]
-    for b in dict.fromkeys(rec["branch"] for _, _, rec, _ in twice):
+    for where, _, rec, _, why in twice:
+        lines.append(f"{base} as fetched does not hold {labels.get(where, where)}'s delivery {rec['delivery'][:7]} by "
+                     "history or by content" + (f" ({why})" if why else ""))
+    for b in dict.fromkeys(t[2]["branch"] for t in twice):
         if b in gone:
-            lines.append(f"{b} is no longer on the audience (merged and deleted, it may be), and {base} as fetched "
-                         "does not hold that delivery's commits (a review merged as a squash leaves none the office "
-                         "can find), so the office cannot tell the work is there; nothing was pushed")
+            lines.append(f"{b} is no longer on the audience (merged and deleted, it may be), and {base} does not hold "
+                         "its work as it was delivered (a review merged with changes to the same lines is not held), "
+                         "so the office cannot tell the work is there; nothing was pushed")
         else:
             lines.append(f"office deliver {folder} --branch {b} continues on that branch instead, so this delivery is "
                          "added to the review already open there; nothing was pushed")
@@ -731,13 +831,12 @@ def merge_base_in(place, view, name, audience, base, base_sha, author, rd=None):
                       f"({ohost._last_words(run.stderr)}), so nothing changed there; the squash runs from where they "
                       "parted, as before"]
     if run.returncode == 4:
-        raise DeliverError([f"the landed work does not go onto {audience}'s {base} as it is now: bringing "
-                            f"{audience}/{base} into the workbench ({wb}) conflicts in "
-                            f"{', '.join(conflicts[:12]) or 'files git did not name'}; the merge was aborted there, "
-                            "and nothing is left half-done in the clone",
-                            "the office does not resolve a conflict in this release (a merge session, a bale session "
-                            "with both sides in context, is the next release's); until then, by hand in the clone: git "
-                            f"merge {audience}/{base} on {wb}, resolve and commit, then deliver again"])
+        # 0.40.0: the plan writes the merge's materials and names the merge
+        # session (merge_job_lines); the occupant is never sent to the clone.
+        raise MergeConflict([f"the landed work does not go onto {audience}'s {base} as it is now: bringing "
+                             f"{audience}/{base} into the workbench ({wb}) conflicts in "
+                             f"{', '.join(conflicts[:12]) or 'files git did not name'}; the merge was aborted there, "
+                             "and nothing is left half-done in the clone"], conflicts)
     state = {5: "git merge --abort failed", 6: "MERGE_HEAD is still there after git merge --abort",
              7: "tracked changes are left after git merge --abort"}.get(run.returncode, f"exit {run.returncode}")
     raise DeliverError([f"bringing {audience}/{base} into the workbench in the clone at {place} conflicted "
@@ -746,9 +845,468 @@ def merge_base_in(place, view, name, audience, base, base_sha, author, rd=None):
                         "and deliver again once it is clean"])
 
 
-def merged_text(audience, base, merged):
-    """The folder's History text for a clean merge (0.39.0)."""
-    return f"{audience}/{base} {merged['base'][:7]} into the workbench, {merged['sha'][:7]}"
+def merged_text(audience, base, merged, sid=None):
+    """The folder's History text for a clean merge (0.39.0), and for a merge
+    session's resolution made a merge commit (0.40.0: sid names it)."""
+    return (f"{audience}/{base} {merged['base'][:7]} into the workbench, {merged['sha'][:7]}"
+            + (f", resolved by {sid}" if sid else ""))
+
+
+# --- the merge session (0.40.0) ----------------------------------------------------------------
+#
+# When bringing a side of the audience into the workbench conflicts (the base,
+# at deliver's step 4c; or the delivery branch's tip, when a continued
+# delivery's squash conflicts at step 7), the office does not resolve it and
+# does not send the occupant to a terminal. It leaves the clone clean, writes
+# the merge's materials into the folder, under merge/ (each conflicting file
+# in its three versions, parted/, workbench/ and audience/, at its path, and
+# log.txt, the audience's commits since the two sides parted), with a page,
+# merge/merge.md, that names the job; and its Next line is `office start N
+# --merge`, which sends a bale session on the folder with both sides in
+# context (templates/merge-brief.md). When that session lands, office land
+# makes the merge real: a merge commit in the workbench whose first parent is
+# the landed session's tip and whose second is the side it brings in, its
+# tree git's own merge of what did not conflict and, for each file the job
+# names, the session's landed version (the office takes the session's
+# resolution and adds nothing of its own). office deliver makes it instead
+# when land could not (a session open in the clone, a host that did not
+# answer). The page is the job's whole state: it is there until the merge
+# commit is made, and `- session: SID` names the session sent for it.
+
+MERGE_DIR = "merge"
+MERGE_PAGE = "merge.md"
+MERGE_SIDES = ("parted", "workbench", "audience")
+MERGE_FIELD_RE = oh.LazyPattern(r"^- (project|audience|kind|branch|tip|workbench|parted|day|file|session): (.+?)\s*$")
+MERGE_KINDS = ("base", "branch")
+RESOLVED_MESSAGE = "Bring {audience}/{branch} into the workbench, resolved by {sid} (office {verb})"
+
+
+class MergeConflict(DeliverError):
+    """Bringing a side of the audience into the workbench conflicts: the
+    files, for the merge session's materials (lines say it as before)."""
+
+    def __init__(self, lines, conflicts):
+        super().__init__(lines)
+        self.conflicts = conflicts
+
+
+def merge_page_path(folder_dir):
+    return pathlib.Path(folder_dir) / MERGE_DIR / MERGE_PAGE
+
+
+def read_merge_job(folder_dir):
+    """The merge job a folder holds (merge/merge.md), as a dict: project,
+    audience, kind (base or branch), branch, tip, workbench, parted, day,
+    files (a list) and session (or None); None when the folder holds none.
+    A page that does not read as a job raises DeliverError naming it."""
+    path = merge_page_path(folder_dir)
+    if not path.is_file():
+        return None
+    job = {"files": [], "session": None}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = MERGE_FIELD_RE.match(line)
+        if not m:
+            continue
+        if m.group(1) == "file":
+            job["files"].append(m.group(2))
+        else:
+            job[m.group(1)] = m.group(2)
+    missing = [k for k in ("project", "audience", "kind", "branch", "tip", "workbench") if not job.get(k)]
+    if missing or job["kind"] not in MERGE_KINDS or not job["files"]:
+        raise DeliverError([f"{path} does not read as a merge job (" + (f"no {', '.join(missing)} line" if missing
+                            else "no file line" if not job["files"] else f"kind {job['kind']}") + "); office deliver "
+                            "writes it again when the merge conflicts"])
+    return job
+
+
+def merge_page_text(job):
+    """merge/merge.md: what the job is, in words, then its field lines (read
+    back by read_merge_job)."""
+    side = f"{job['audience']}/{job['branch']}"
+    lines = [f"# Merge: {side} into the workbench", "",
+             f"office deliver wrote this page on {job['day']} when bringing {side} into the workbench conflicted in "
+             f"{len(job['files'])} file(s). Beside it are each file's three versions, at its path: parted/ (where the "
+             "two sides parted), workbench/ (the workbench's) and audience/ (the audience's), and log.txt, the "
+             "audience's commits since they parted. `office start N --merge` sends the merge session that resolves "
+             "them, and `office land` makes its resolution a merge commit in the workbench; the office never "
+             "resolves a conflict itself.", ""]
+    for key in ("project", "audience", "kind", "branch", "tip", "workbench", "parted", "day"):
+        if job.get(key):
+            lines.append(f"- {key}: {job[key]}")
+    lines += [f"- file: {f}" for f in job["files"]]
+    if job.get("session"):
+        lines.append(f"- session: {job['session']}")
+    return "\n".join(lines) + "\n"
+
+
+# The materials, made where the commits are (the clone, through its shell for
+# a clone on a host, or the repo the delivery is built in) and carried here as
+# one tar stream on stdout: each file at each of the three commits (a side
+# that does not have the file has no copy of it), and the audience's log
+# since the parting point. "-" for the parted commit is the merge base of the
+# other two; the commits it read are said on stderr.
+_MATERIALS_SCRIPT = (
+    'w=$(git rev-parse --verify -q "$2^{commit}") || exit 4; a=$(git rev-parse --verify -q "$3^{commit}") || exit 4; '
+    'p="$1"; [ "$p" != - ] || p=$(git merge-base "$w" "$a") || exit 5; l="$4"; [ "$l" != - ] || l="$p"; shift 4; '
+    'echo "workbench=$w" >&2; echo "parted=$p" >&2; '
+    'd=$(mktemp -d "${TMPDIR:-/tmp}/' + ohost.SCRATCH_PREFIX + 'merge-XXXXXXXX") || exit 1; '
+    'for s in "parted $p" "workbench $w" "audience $a"; do n=${s%% *}; c=${s#* }; '
+    'for f; do if git cat-file -e "$c:$f" 2>/dev/null; then '
+    'mkdir -p "$d/$n/$(dirname -- "$f")" && git cat-file blob "$c:$f" > "$d/$n/$f" || { rm -rf "$d"; exit 2; }; '
+    'fi; done; done; '
+    'git log --format="%h %ad %an: %s" --date=short "$l..$a" > "$d/log.txt" || { rm -rf "$d"; exit 3; }; '
+    'tar -cf - -C "$d" .; rc=$?; rm -rf "$d"; exit $rc'
+)
+
+
+def carry_materials(where, commits, files, dest):
+    """The merge's materials into dest (made anew): commits is (parted or
+    "-", workbench, audience, log from or "-"), read in where, a Place (a
+    clone, here or on its host) or a repo on this machine. Returns the
+    parted and workbench commits as the script resolved them. A tar member
+    outside the three sides and log.txt refuses, and nothing is written."""
+    import shlex
+    import shutil
+    import subprocess
+    import tarfile
+    import tempfile
+    place = where if isinstance(where, ohost.Place) else ohost.Place(str(where))
+    args = [*commits, *files]
+    with tempfile.TemporaryDirectory(prefix="office-deliver-merge-") as tmp:
+        tar = pathlib.Path(tmp) / "materials.tar"
+        with open(tar, "wb") as fh:
+            if place.hosted:
+                command = (f"cd {ohost.shell_path(place.path)} && sh -c {shlex.quote(_MATERIALS_SCRIPT)} office-merge "
+                           + " ".join(shlex.quote(a) for a in args))
+                rc, _, err = ohost._raw(place, command, stdout=fh)
+            else:
+                debug(f"the merge's materials, read in {place.path}: {ohost.shown_argv(args)}")
+                try:
+                    proc = subprocess.run(["sh", "-c", _MATERIALS_SCRIPT, "office-merge", *args], cwd=place.path,
+                                          stdin=subprocess.DEVNULL, stdout=fh, stderr=subprocess.PIPE,
+                                          timeout=ohost.TRANSFER_TIMEOUT)
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    raise DeliverError([f"the merge's materials could not be read in {place}: {exc}"])
+                rc, err = proc.returncode, proc.stderr.decode("utf-8", "replace")
+        if rc != 0:
+            raise DeliverError([f"the merge's materials could not be read in {place} (exit {rc}): "
+                                f"{ohost._last_words(err)}"])
+        said = dict(l.split("=", 1) for l in err.splitlines() if l.startswith(("workbench=", "parted=")))
+        out = pathlib.Path(tmp) / "out"
+        out.mkdir()
+        try:
+            with tarfile.open(tar) as t:
+                for m in t.getmembers():
+                    parts = [p for p in pathlib.PurePosixPath(m.name).parts if p != "."]
+                    if not parts:
+                        continue
+                    if m.name.startswith("/") or ".." in parts or not (m.isdir() or m.isfile()) \
+                            or not (parts[0] in MERGE_SIDES or parts == ["log.txt"]):
+                        raise DeliverError([f"the merge's materials from {place} hold {m.name!r}, outside the three "
+                                            "sides and log.txt; nothing was written"])
+                if hasattr(tarfile, "data_filter"):
+                    t.extractall(out, filter="data")
+                else:
+                    t.extractall(out)
+        except (tarfile.TarError, OSError) as exc:
+            raise DeliverError([f"the merge's materials from {place} did not arrive as a readable archive: {exc}"])
+        dest = pathlib.Path(dest)
+        if dest.exists():
+            shutil.rmtree(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(out), str(dest))
+    return said.get("parted", ""), said.get("workbench", "")
+
+
+def commit_folder_paths(office_root, message, *rels):
+    """git add -A and commit the paths alone in the office (a removed path
+    is committed as removed; a path neither on disk nor tracked is no
+    path to commit)."""
+    root = pathlib.Path(office_root)
+    rels = [r for r in rels if (root / r).exists() or ob.git(root, "ls-files", "--", r).stdout.strip()]
+    if not rels:
+        return
+    ob.git(office_root, "add", "-A", "--", *rels)
+    if ob.git(office_root, "diff", "--cached", "--quiet", "--", *rels, check=False).returncode != 0:
+        ob.git(office_root, "commit", "-q", "-m", message, "--", *rels)
+
+
+def merge_job_lines(office_root, rel, folder, project, where, kind, audience, side, tip, workbench, conflicts,
+                    day=None, parted="-", log_from="-"):
+    """What deliver says when bringing a side of the audience into the
+    workbench conflicts (0.40.0): the job written into the folder with its
+    materials, and the one office line that sends the merge session; or,
+    when the same job already has a session out, the line that lands it.
+    The clone was left clean before this is called. Returns the lines."""
+    import time
+    folder_dir = pathlib.Path(office_root) / rel
+    side_name = f"{audience}/{side}"
+    if not rel.startswith("desk/"):
+        # Filed paper only grows: the materials are written on the desk.
+        return [f"{rel} is in the filing cabinet, where the merge's materials are not written: office reopen {folder} "
+                f"brings it back to the desk, and office deliver {folder} then writes them and names the merge "
+                "session; nothing was pushed"]
+    try:
+        old = read_merge_job(folder_dir)
+    except DeliverError:
+        old = None
+    if old and old.get("session") and old["kind"] == kind and old["branch"] == side and old["tip"] == tip \
+            and old["workbench"] == workbench and sorted(old["files"]) == sorted(conflicts):
+        return [f"the merge session {old['session']} was sent for this conflict ({rel}/{MERGE_DIR}/ holds its "
+                f"materials) and has not landed: office land {old['session']} brings it back and makes its "
+                f"resolution the merge commit, then office deliver {folder} delivers; nothing was pushed"]
+    try:
+        parted, workbench_read = carry_materials(where, (parted, workbench, tip, log_from), conflicts,
+                                                 folder_dir / MERGE_DIR)
+        job = {"project": project, "audience": audience, "kind": kind, "branch": side, "tip": tip,
+               "workbench": workbench_read or workbench, "parted": parted, "day": day or time.strftime("%Y-%m-%d"),
+               "files": list(conflicts), "session": None}
+        merge_page_path(folder_dir).write_text(merge_page_text(job), encoding="utf-8")
+        commit_folder_paths(office_root, f"office deliver: the merge's materials for {folder}", f"{rel}/{MERGE_DIR}")
+    except (DeliverError, ohost.HostError, ob.LandError, OSError) as exc:
+        why = "; ".join(exc.lines) if isinstance(exc, DeliverError) else str(exc)
+        return [f"the merge's materials could not be written into {rel}/{MERGE_DIR}/ ({why}): office deliver "
+                f"{folder} tries again; nothing was pushed"]
+    log(f"wrote the merge's materials into {rel}/{MERGE_DIR}/: {len(conflicts)} file(s) in three versions "
+        f"(parted, workbench, {audience}) and {audience}'s log since they parted, committed in the office")
+    return [f"the merge's materials are in {rel}/{MERGE_DIR}/ (each file as the two sides parted, the workbench's "
+            f"and {side_name}'s, and {audience}'s log since they parted)",
+            f"office start {folder} --merge sends the merge session that resolves them, a bale session on {project} "
+            "with both sides in context; office land makes its resolution a merge commit in the workbench, and "
+            f"office deliver {folder} then delivers the folder's own work; nothing was pushed"]
+
+
+# The merge commit for a landed merge session's resolution, in the clone
+# where the work lives, as the declared author (the environment in front):
+# the side's tip merged into the checked-out branch with --no-commit, each
+# file the job names taken as the checked-out branch holds it (the session's
+# landed version; a file it does not hold is removed), and committed only
+# when nothing else is unmerged. Anything else is aborted and the abort
+# checked (no MERGE_HEAD, no tracked change left), so nothing is left
+# half-done. Exit 13: the session has not landed in this clone (no applied/
+# tag); 9: the tip is not in the clone; 0 with held=: the tip is in the
+# workbench already.
+_RESOLVED_SCRIPT = (
+    'm="$1"; t="$2"; s="$3"; shift 3; '
+    'ab() { git merge --abort || exit 5; if git rev-parse -q --verify MERGE_HEAD >/dev/null; then exit 6; fi; '
+    '[ -z "$(git status --porcelain=v1 -uno)" ] || exit 7; exit "$1"; }; '
+    'git rev-parse -q --verify "refs/tags/applied/$s^{commit}" >/dev/null || exit 13; '
+    'git cat-file -e "$t^{commit}" 2>/dev/null || exit 9; '
+    'if git merge-base --is-ancestor "$t" HEAD; then echo "held=$(git rev-parse HEAD)"; exit 0; fi; '
+    'git merge-base --is-ancestor "refs/tags/applied/$s" HEAD || exit 10; '
+    'if git rev-parse -q --verify MERGE_HEAD >/dev/null; then exit 12; fi; '
+    '[ -z "$(git status --porcelain=v1 -uno)" ] || exit 11; '
+    'err=$(git merge -q --no-ff --no-commit "$t" 2>&1 >/dev/null); '
+    'if ! git rev-parse -q --verify MERGE_HEAD >/dev/null; then printf "%s\\n" "$err" | tail -n 2 >&2; exit 8; fi; '
+    'for p; do if git cat-file -e "HEAD:$p" 2>/dev/null; then git checkout -q HEAD -- "$p" || ab 14; '
+    'else git rm -q -f --ignore-unmatch -- "$p" >/dev/null || ab 14; fi; done; '
+    'left=$(git diff --name-only --diff-filter=U); '
+    'if [ -n "$left" ]; then printf "%s\\n" "$left" | sed "s/^/conflict=/"; ab 4; fi; '
+    'git commit -q -m "$m" >/dev/null 2>&1 || ab 15; '
+    'echo "merged=$(git rev-parse HEAD)"; echo "brought=$(git rev-list --count HEAD^1..HEAD^2)"'
+)
+
+
+def make_resolved_merge(place, job, author, verb):
+    """The landed merge session's resolution made a merge commit in the
+    clone (_RESOLVED_SCRIPT). Returns (merged, lines): merged is {sha,
+    brought, base (the tip brought in), held} when the workbench now holds
+    the tip (held: it did already, no commit was made), None when the
+    session has not landed there (said in no line); lines say what
+    happened or why not, each ending in an office line."""
+    sid = job["session"]
+    side = f"{job['audience']}/{job['branch']}"
+    _, identity = identity_of(author)
+    message = RESOLVED_MESSAGE.format(audience=job["audience"], branch=job["branch"], sid=sid, verb=verb)
+    argv = ["env", *[f"{k}={v}" for k, v in identity.items()], "sh", "-c", _RESOLVED_SCRIPT, "office-merge",
+            message, job["tip"], sid, *job["files"]]
+    run = ohost.run_in(place, argv, timeout=ohost.TRANSFER_TIMEOUT)
+    facts = [l.split("=", 1) for l in run.stdout.splitlines() if "=" in l]
+    got = dict(facts)
+    if run.returncode == 13:
+        debug(f"the merge session {sid} has not landed in {place}: no applied/{sid} there")
+        return None, []
+    if run.returncode == 0 and got.get("held"):
+        return {"sha": got["held"], "brought": 0, "base": job["tip"], "held": True}, [
+            f"the workbench already holds {side} {job['tip'][:7]}, so no merge commit was made for {sid}"]
+    if run.returncode == 0:
+        log(f"made the merge session {sid}'s resolution a merge commit in the clone at {place}: "
+            f"{got.get('merged', '')[:12]}, bringing {side} {job['tip'][:12]}, as {author}")
+        return {"sha": got.get("merged", ""), "brought": int(got.get("brought") or 0), "base": job["tip"],
+                "held": False}, []
+    conflicts = [v for k, v in facts if k == "conflict"]
+    why = {
+        9: f"{side}'s tip {job['tip'][:12]} is not in the clone (office projects refresh {job['project']} brings "
+           "the audience's branches there)",
+        10: f"applied/{sid} is not on the clone's checked-out branch",
+        11: "the clone has uncommitted changes",
+        12: "a merge is in progress in the clone (MERGE_HEAD is there)",
+        8: f"git merge could not start ({ohost._last_words(run.stderr)})",
+        4: f"it conflicts outside the files the session resolved, in {', '.join(conflicts[:12])}; the merge was "
+           "aborted there, and nothing is left half-done",
+        14: "a resolved file could not be taken from the landed session; the merge was aborted there",
+        15: "git commit refused the merge; it was aborted there",
+    }.get(run.returncode)
+    if why is None:
+        state = {5: "git merge --abort failed", 6: "MERGE_HEAD is still there after git merge --abort",
+                 7: "tracked changes are left after git merge --abort"}.get(run.returncode, f"exit {run.returncode}")
+        raise DeliverError([f"the merge session {sid}'s resolution could not be made a merge commit in the clone at "
+                            f"{place}, and {state}: {ohost._last_words(run.stderr)}; look at the clone (git status "
+                            "there) before anything else"])
+    return None, [f"the merge session {sid}'s resolution was not made a merge commit in the clone at {place}: {why}"]
+
+
+def resolve_landed_job(office_root, rel, folder, place, author, day, verb, sid=None, rd=None):
+    """A folder's merge job whose session has landed, made a merge commit
+    (office land, right after the landing; office deliver, before it plans,
+    when land could not). sid given: only the job that session was sent
+    for. Never under a session open in the clone. Returns (merged or None,
+    lines to say); the merged History line is written and the job's
+    materials removed from the folder, committed together."""
+    import shutil
+    import office_refresh as orf
+    folder_dir = pathlib.Path(office_root) / rel
+    try:
+        job = read_merge_job(folder_dir)
+    except DeliverError as exc:
+        # A page that does not read holds no job to make: said, and the next
+        # conflict writes it again (merge_job_lines).
+        for line in exc.lines:
+            log(f"warning: {line}")
+        return None, []
+    if job is None or not job.get("session") or (sid and job["session"] != sid):
+        return None, []
+    try:
+        sessions = orf.open_sessions(place, rd)
+    except ob.BaleError as exc:
+        return None, [f"the merge session {job['session']}'s resolution was not made a merge commit: the sessions "
+                      f"open in the clone could not be read ({exc}); office deliver {folder} makes it"]
+    if job["session"] in sessions:
+        # Sent and still out: nothing has landed to make a merge of.
+        debug(f"the merge session {job['session']} is still open in the clone")
+        return None, []
+    if sessions:
+        return None, [f"the merge session {job['session']}'s resolution was not made a merge commit: "
+                      f"{len(sessions)} session(s) are open in the clone ({', '.join(sessions)}), and a merge is never "
+                      f"made under them; office deliver {folder} makes it once they have landed"]
+    try:
+        merged, lines = make_resolved_merge(place, job, author, verb)
+    except ohost.HostError as exc:
+        return None, [f"the merge session {job['session']}'s resolution was not made a merge commit: {exc}; "
+                      f"office deliver {folder} makes it"]
+    if merged is None:
+        return None, [l + f"; office deliver {folder} makes it once that is put right" for l in lines]
+    told = list(lines)
+    if not merged["held"]:
+        text = merged_text(job["audience"], job["branch"], merged, job["session"])
+        try:
+            _, wrote = oh.folder_event(folder_dir / "folder.md", day, "merged", text)
+            if wrote:
+                told.append(f"{rel}/folder.md: History: {day} merged: {text}")
+        except (OSError, oh.HelperError) as exc:
+            told.append(f"{rel}/folder.md: the merge could not be recorded ({exc}); it is in the clone")
+        merged["line"] = (f"made the merge session {job['session']}'s resolution a merge commit: {merged['sha'][:7]}, "
+                          f"bringing {job['audience']}/{job['branch']} {job['tip'][:7]} into the workbench")
+        told.insert(0, merged["line"])
+    shutil.rmtree(folder_dir / MERGE_DIR, ignore_errors=True)
+    try:
+        commit_folder_paths(office_root, f"office {verb}: {job['audience']}/{job['branch']} into the workbench for "
+                            f"{folder}, resolved by {job['session']}", f"{rel}/folder.md", f"{rel}/{MERGE_DIR}")
+    except (ob.LandError, OSError) as exc:
+        told.append(f"{rel}: the merge's record could not be committed ({exc}); git status in the office shows it")
+    return merged, told
+
+
+def merge_start(office_root, folder, brief_out):
+    """What office start N --merge sends (0.40.0): the folder's merge job's
+    project, the goal, the forecast (each file the job names that the
+    workbench holds, else its directory, else the whole repo) and the
+    brief, written to brief_out from the install's templates/merge-brief.md.
+    Returns a dict: project, goal, writes, said (lines)."""
+    rel, md = find_folder(office_root, folder)
+    if not rel.startswith("desk/"):
+        raise DeliverError([f"{rel} is in the filing cabinet: office reopen {folder} brings it back to the desk, and "
+                            f"office start {folder} --merge sends the merge session then"])
+    job = read_merge_job(md.parent)
+    if job is None:
+        raise DeliverError([f"{rel} holds no merge waiting for a session ({rel}/{MERGE_DIR}/{MERGE_PAGE} is not "
+                            f"there): office deliver {folder} writes one when bringing the audience into the workbench "
+                            "conflicts"])
+    parsed = oh.parse_folder(md.read_text(encoding="utf-8"))
+    number = (parsed["fields"].get("number") or [""])[0]
+    title = parsed["title"] or folder
+    side = f"{job['audience']}/{job['branch']}"
+    here = md.parent / MERGE_DIR
+    writes = []
+    for f in job["files"]:
+        if (here / "workbench" / f).is_file():
+            writes.append(f)
+        else:
+            parent = str(pathlib.PurePosixPath(f).parent)
+            if parent in (".", ""):
+                writes = []
+                break
+            writes.append(parent)
+    else:
+        writes = list(dict.fromkeys(writes))
+    if job.get("session"):
+        said = [f"{rel}'s merge job named {job['session']} as its session; this one takes its place, and office land "
+                "makes the merge commit for this one"]
+    else:
+        said = []
+    files = job["files"]
+    goal = (f"Resolve the conflicts of bringing {side} {job['tip'][:7]} into the workbench of "
+            + (f"folder {number}" if number else rel) + f", in {', '.join(files[:3])}"
+            + (f" and {len(files) - 3} more" if len(files) > 3 else ""))
+    template = (TEMPLATES / "merge-brief.md").read_text(encoding="utf-8")
+    values = {"title": title, "folder": f"folder {number}" if number else rel, "rel": rel, "project": job["project"],
+              "side": side, "tip": job["tip"][:12], "workbench": job["workbench"][:12],
+              "parted": (job.get("parted") or "")[:12] or "their merge base",
+              "where": ("the audience's base branch" if job["kind"] == "base"
+                        else "the branch this folder's work is delivered on, which moved on the audience since "
+                             "the last delivery"),
+              "files": "\n".join(f"- {f}" for f in files), "materials": f"{rel}/{MERGE_DIR}/"}
+    pathlib.Path(brief_out).write_text(oh.render_template(template, values), encoding="utf-8")
+    return {"project": job["project"], "goal": goal, "writes": writes, "said": said, "rel": rel}
+
+
+def merge_sent(office_root, rel, sid):
+    """The session office start --merge sent, named on the job's page and
+    committed alone. Returns the line to say."""
+    folder_dir = pathlib.Path(office_root) / rel
+    job = read_merge_job(folder_dir)
+    if job is None:
+        raise DeliverError([f"{rel} holds no merge job, so {sid} was not named on one"])
+    job["session"] = sid
+    merge_page_path(folder_dir).write_text(merge_page_text(job), encoding="utf-8")
+    commit_folder_paths(office_root, f"office start: {sid} sent for the merge in {rel.split('/')[-1]}",
+                        f"{rel}/{MERGE_DIR}/{MERGE_PAGE}")
+    return f"{rel}/{MERGE_DIR}/{MERGE_PAGE} names {sid} as the merge session; office land {sid} makes its resolution " \
+           "a merge commit in the workbench"
+
+
+def land_merge(office_root, project, sid, folder_rel, day):
+    """office land's step after an applied landing (0.40.0): when the
+    folder's merge job names this session, its resolution made the merge
+    commit. Returns (is a merge session, lines)."""
+    root = pathlib.Path(office_root)
+    try:
+        job = read_merge_job(root / folder_rel)
+    except DeliverError as exc:
+        return False, [f"warning: {l}" for l in exc.lines]
+    if job is None or job.get("session") != sid:
+        return False, []
+    entry = next((p for p in ob.office_projects(root) or [] if p["name"] == project), None)
+    if entry is None or entry["problem"] or not entry.get("author"):
+        why = "no such project" if entry is None else entry["problem"] or f"{project} declares no author"
+        return True, [f"the merge session {sid}'s resolution was not made a merge commit: {why}; office deliver "
+                      f"{folder_rel.split('/')[-1]} makes it once that is put right"]
+    try:
+        _, lines = resolve_landed_job(root, folder_rel, folder_rel.split("/")[-1], ohost.place_of(entry),
+                                      entry["author"], day, "land", sid=sid)
+    except DeliverError as exc:
+        return True, [f"error: {l}" for l in exc.lines]
+    return True, lines
 
 
 def plan(consumption, office_root, folder, branch=None, project_name=None, others_ok=False, interactive=False,
@@ -762,6 +1320,7 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
     removed what it made."""
     import shlex
     import tempfile
+    import time
     import office_letterhead as olh
     import office_refresh as orf
     office_root = pathlib.Path(office_root).resolve()
@@ -957,15 +1516,37 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
         # the squash runs from the base's tip. A conflict refuses here, the
         # merge aborted and checked; base_holds, twice_lines and the squash
         # are as they were.
+        # 0.40.0: a merge session that landed, whose resolution office land
+        # could not make a merge commit (a session open in the clone, a host
+        # that did not answer), is made one here first, so what follows reads
+        # the workbench with the side it brings in.
+        on = day or time.strftime("%Y-%m-%d")
+        resolved, told_ = resolve_landed_job(office_root, rel, folder, place, author, on, "deliver")
+        view_told += told_
+        if resolved and not resolved["held"]:
+            view = orf.clone_view(place, audience, base)
+            if not place.hosted:
+                facts["head"] = resolved["sha"]
+        elif told_ and resolved is None:
+            # The job's session landed and its merge could not be made: the
+            # delivery waits for it, since what it would squash is not the
+            # folder's own work alone.
+            raise DeliverError(told_)
         if not continuing and view["remote"].get(base) == base_sha and view["branch"]:
-            base_merge, told_ = merge_base_in(place, view, name, audience, base, base_sha, author)
+            try:
+                base_merge, told_ = merge_base_in(place, view, name, audience, base, base_sha, author)
+            except MergeConflict as exc:
+                if not exc.conflicts:
+                    raise DeliverError(exc.lines + [f"git named no file, so no merge session can be sent for it: "
+                                                    f"office deliver {folder} tries again"])
+                raise DeliverError(exc.lines + merge_job_lines(
+                    office_root, rel, folder, name, place, "base", audience, base, base_sha,
+                    view["heads"].get(view["branch"]) or "HEAD", exc.conflicts, day=on))
             view_told += told_
             if base_merge:
                 if not place.hosted:
                     facts["head"] = base_merge["sha"]
                 text = merged_text(audience, base, base_merge)
-                import time
-                on = day or time.strftime("%Y-%m-%d")
                 try:
                     _, wrote = oh.folder_event(md, on, "merged", text)
                     if wrote:
@@ -1081,6 +1662,21 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             mb = g(repo, "merge-base", REF_BASE, workbench, check=False)
             since = mb.stdout.strip() if mb.returncode == 0 and mb.stdout.strip() else None
             since_why = f"where the workbench branch and {audience}/{base} parted" if since else "the whole history"
+        # 0.40.0: a merge session that brought the branch's tip into the
+        # workbench (a continued delivery's conflict) made the workbench and
+        # the branch meet there: the delivery is read from that meeting point,
+        # a commit of the branch's own (never one the base holds), so the
+        # resolution leaves with what is new and nothing the branch has
+        # already. The sessions the branch already carries are not named
+        # again.
+        already_here = set()
+        if continuing and since is not None:
+            mb = g(repo, "merge-base", REF_BRANCH, workbench, check=False).stdout.strip()
+            if mb and mb != since and not is_ancestor(repo, mb, since) and not is_ancestor(repo, mb, REF_BASE):
+                since, since_why = mb, (f"where the workbench and {audience}/{branch} meet ({mb[:12]}, the branch's "
+                                        "tip a merge session brought into the workbench)")
+                already_here = {s for _, rec in records if rec["branch"] == branch for s in rec["sessions"]} \
+                    | {s for _, _, rec in joined for s in rec["sessions"]}
         range_spec = f"{since}..{workbench}" if since else workbench
         if since == workbench:
             raise DeliverError([f"nothing new to deliver: the workbench is at {workbench[:12]}, which is {since_why}"])
@@ -1092,13 +1688,8 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
         if not folder_sids:
             raise DeliverError([f"{rel} records no session that is applied in {name} ({', '.join(parsed['sids']) or 'it records none'}; "
                                 f"applied there: {', '.join(applied) or 'none'}); office sessions {folder} shows them"])
-        covered = [s for s in found if s in applied]
+        covered = [s for s in found if s in applied and s not in already_here]
         mine = [s for s in covered if s in parsed["sids"]]
-        others = {}
-        for s in covered:
-            if s in parsed["sids"]:
-                continue
-            others[s] = [f for f in naming.get(s, []) if f != rel] or ["no folder"]
         if not mine and not records:
             raise DeliverError([f"the landed work since {since_why} ({commits} commit(s)) carries none of {rel}'s applied "
                                 f"sessions ({', '.join(folder_sids)}); its sessions are not on the workbench branch's "
@@ -1106,20 +1697,42 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
         # Work another folder already delivered (its record's sessions name
         # a session the range carries) is on the audience under its own
         # review: a squash that carries it again delivers it twice, refused
-        # by name unless the base already holds it. A record on the branch
-        # this delivery continues on is that branch's own history.
-        twice = []
+        # by name unless the base already holds it, by history or (0.40.0)
+        # by content. A record on the branch this delivery continues on is
+        # that branch's own history.
+        twice, held, held_told = [], set(), []
         for where_, day_, rec in elsewhere:
             if continuing and rec["branch"] == branch:
                 continue
             carried = [s for s in covered if s in rec["sessions"]]
-            if carried and not base_holds(repo, rec):
-                twice.append((where_, day_, rec, carried))
+            if not carried:
+                continue
+            how, why = base_holds(repo, rec, where)
+            if how:
+                # 0.40.0: the base holds that delivery, so the squash adds
+                # nothing of those sessions: they ride in nothing here, are
+                # not asked for with --others-too and are not named as
+                # delivered again.
+                held.update(carried)
+                who = folder_label(office_root, where_)
+                held_told.append(f"{who}'s session{'s' if len(carried) > 1 else ''} {', '.join(carried)} "
+                                 f"{'are' if len(carried) > 1 else 'is'} on {audience}/{base} already ({how}: "
+                                 f"{who}'s delivery {rec['delivery'][:7]}) and ride{'' if len(carried) > 1 else 's'} "
+                                 "in nothing here")
+            else:
+                twice.append((where_, day_, rec, carried, why))
         if twice:
-            gone = [b for b in dict.fromkeys(rec["branch"] for _, _, rec, _ in twice)
+            gone = [b for b in dict.fromkeys(t[2]["branch"] for t in twice)
                     if g(repo, "ls-remote", "--exit-code", "--heads", where, f"refs/heads/{b}", check=False,
                          timeout=ohost.TRANSFER_TIMEOUT).returncode == 2]
-            raise DeliverError(twice_lines(folder, base, branch, continuing, since_why, twice, gone))
+            raise DeliverError(twice_lines(folder, base, branch, continuing, since_why, twice, gone,
+                                           labels={t[0]: folder_label(office_root, t[0]) for t in twice}))
+        mine = [s for s in mine if s not in held]
+        others = {}
+        for s in covered:
+            if s in parsed["sids"] or s in held:
+                continue
+            others[s] = [f for f in naming.get(s, []) if f != rel] or ["no folder"]
         # 7. The worktree at the audience's tip, the landed work squashed
         # on, less what bale's own commits in the range changed (0.36.0):
         # those are undone on the workbench's tip first, in temporary
@@ -1139,14 +1752,62 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             g(worktree, "checkout", "-q", "--detach", REF_WORKBENCH)
             squashed, taken = take_out_own(worktree, own, author)
             g(worktree, "checkout", "-q", "--detach", start_sha)
-        merged = g(worktree, "merge", "--squash", "--no-commit", squashed, check=False, timeout=ohost.TRANSFER_TIMEOUT)
-        if merged.returncode != 0:
-            conflicts = g(worktree, "diff", "--name-only", "--diff-filter=U", check=False).stdout.split()
-            raise DeliverError([f"the landed work does not go onto {audience}'s {branch if continuing else base} as it "
-                                f"is now: " + (f"conflicts in {', '.join(conflicts[:12])}" if conflicts
-                                               else ohost._last_words(merged.stderr)),
-                                f"bring {base} into the workbench branch first (merge or rebase there, then land), "
-                                "and deliver again"])
+        if continuing and since:
+            # 0.40.0: a delivery onto a branch takes the range's net change
+            # alone (since..the cleaned tip, bale's paths out of both ends),
+            # as one temporary commit cherry-picked onto the branch's tip with
+            # git's three-way fallback, so only what is new since the last
+            # delivery there leaves; squashing from where the workbench and
+            # the branch parted made a second delivery that edits a line the
+            # first delivered conflict with nothing moved on the audience.
+            # A conflict sends a merge session for the branch's tip.
+            _, top = range_commit(worktree, since, squashed, author)
+            merged = g(worktree, "cherry-pick", "--no-commit", top, check=False, timeout=ohost.TRANSFER_TIMEOUT,
+                       env=identity_of(author)[1])
+            if merged.returncode != 0:
+                conflicts = unmerged(worktree)
+                g(worktree, "cherry-pick", "--abort", check=False)
+                if not conflicts:
+                    raise DeliverError([f"the landed work since {since_why} could not be applied onto {audience}'s "
+                                        f"{branch}: {ohost._last_words(merged.stderr)}; nothing was pushed",
+                                        f"office deliver {folder} tries again"])
+                # What bringing the branch's tip into the workbench conflicts
+                # in, beside what the squash did: the files the merge session
+                # resolves, so the merge office land makes is the one that
+                # conflicts nowhere else.
+                g(worktree, "reset", "-q", "--hard", start_sha, check=False)
+                trial = g(worktree, "merge", "-q", "--no-ff", "--no-commit", workbench, check=False,
+                          timeout=ohost.TRANSFER_TIMEOUT, env=identity_of(author)[1])
+                if trial.returncode != 0:
+                    conflicts = sorted(set(conflicts) | set(unmerged(worktree)))
+                g(worktree, "merge", "--abort", check=False)
+                conflicts = [c for c in conflicts if not any(c == n or c.startswith(n + "/") for n in NEVER_DELIVERED)]
+                lines = [f"the landed work since {since_why} does not go onto {audience}'s {branch} as it is now: "
+                         f"{branch} moved on the audience since, and the squash conflicts in "
+                         f"{', '.join(conflicts[:12]) or 'files git did not name'}; nothing is left half-done"]
+                if not conflicts:
+                    raise DeliverError(lines + [f"office deliver {folder} tries again"])
+                raise DeliverError(lines + merge_job_lines(
+                    office_root, rel, folder, name, repo, "branch", audience, branch, start_sha, workbench,
+                    conflicts, day=on, log_from=g(repo, "rev-parse", REF_BASE).stdout.strip()))
+            g(worktree, "cherry-pick", "--quit", check=False)
+        else:
+            merged = g(worktree, "merge", "--squash", "--no-commit", squashed, check=False,
+                       timeout=ohost.TRANSFER_TIMEOUT)
+            if merged.returncode != 0:
+                # From the base: merge_base_in did not bring the base in (a
+                # dirty clone, an open session, a view behind; view_told says
+                # which), so the squash ran from where the two parted. What
+                # kept the base out is said, then the office line that brings
+                # it in, and sends a merge session if that merge conflicts.
+                conflicts = unmerged(worktree)
+                raise DeliverError([f"the landed work does not go onto {audience}'s {base} as it is now: "
+                                    + (f"conflicts in {', '.join(conflicts[:12])}" if conflicts
+                                       else ohost._last_words(merged.stderr)) + "; nothing was pushed",
+                                    *view_told,
+                                    f"office deliver {folder} brings {audience}/{base} into the workbench first once "
+                                    f"nothing stops that merge (office projects refresh {name} when the clone's view "
+                                    "of it is behind), and sends a merge session when the merge conflicts"])
         g(worktree, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", *NEVER_DELIVERED)
         if g(worktree, "diff", "--cached", "--quiet", check=False).returncode == 0:
             raise DeliverError([f"nothing new to deliver: the landed work makes no change on {audience}'s "
@@ -1197,6 +1858,10 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             # Additive (0.39.0): the clone's view of the audience, said and
             # refreshed, and the clean merge of the base into the workbench.
             "view_told": view_told, "merged": base_merge,
+            # Additive (0.40.0): the sessions another folder delivered that
+            # the base holds, by history or by content, one line per record:
+            # they ride in nothing here.
+            "held_told": held_told,
             "commits_line": commits_line(len(words["commits"])) or "",
         }
         if hits:
@@ -1605,6 +2270,10 @@ def main(argv=None):
     p = sub.add_parser("check", help="office letterhead check --on PROJECT: the check in the project's repo, here or there")
     p.add_argument("office"); p.add_argument("--project", required=True); p.add_argument("--all", action="store_true")
     p.add_argument("--range", dest="range_spec"); p.add_argument("--words", action="append", default=[])
+    # 0.40.0: the lines a diff adds, as deliver reads a delivery, in the
+    # project's repo too (check_in_project took it since 0.38.0; the
+    # subcommand did not, so bin/office refused the pair).
+    p.add_argument("--added", action="store_true", help="the lines the range (or the index) adds, not its files whole")
     p = sub.add_parser("declare-author", help="declare a project's author and commit the floor plan")
     p.add_argument("office"); p.add_argument("--project", required=True); p.add_argument("--author", required=True)
     p = sub.add_parser("status-lines", help="office status's letterhead and push-guard lines")
@@ -1621,14 +2290,43 @@ def main(argv=None):
     p.add_argument("--folder")
     p = sub.add_parser("review-url", help="the review's URL for a remote's URL, a branch and a base, or nothing")
     p.add_argument("url"); p.add_argument("branch"); p.add_argument("base")
+    # The merge session (0.40.0).
+    p = sub.add_parser("merge-start", help="office start N --merge: the folder's merge job as tab-separated lines "
+                                           "(project, goal, write, say), its brief written to --brief-out")
+    p.add_argument("office"); p.add_argument("folder"); p.add_argument("--brief-out", required=True)
+    p = sub.add_parser("merge-sent", help="name the session office start --merge sent on the folder's merge job")
+    p.add_argument("office"); p.add_argument("folder", help="space/name"); p.add_argument("--sid", required=True)
+    p = sub.add_parser("land-merge", help="office land: a landed merge session's resolution made the merge commit; "
+                                          "prints `merge` on stdout when the session was one")
+    p.add_argument("office"); p.add_argument("--project", required=True); p.add_argument("--sid", required=True)
+    p.add_argument("--folder", required=True); p.add_argument("--day", required=True)
     a = ap.parse_args(argv)
     try:
+        if a.cmd == "merge-start":
+            got = merge_start(a.office, a.folder, a.brief_out)
+            print(f"project\t{got['project']}")
+            print(f"goal\t{got['goal']}")
+            for w in got["writes"]:
+                print(f"write\t{w}")
+            for line in got["said"]:
+                print(f"say\t{line}")
+            return 0
+        if a.cmd == "merge-sent":
+            log(merge_sent(a.office, a.folder, a.sid))
+            return 0
+        if a.cmd == "land-merge":
+            was, lines = land_merge(a.office, a.project, a.sid, a.folder, a.day)
+            for line in lines:
+                log(line)
+            if was:
+                print("merge")
+            return 0
         if a.cmd == "review-url":
             url = review_url(a.url, a.branch, a.base)
             print(url or "")
             return 0
         if a.cmd == "check":
-            rc, out, err = check_in_project(a.office, a.project, a.all, a.range_spec, a.words)
+            rc, out, err = check_in_project(a.office, a.project, a.all, a.range_spec, a.words, added=a.added)
             sys.stdout.write(out)
             sys.stderr.write(err)
             return rc

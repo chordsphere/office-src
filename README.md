@@ -293,6 +293,7 @@ just before it packs one. The details are below.
     office start                       # your downloads' new bundles by key, then which job by key
     office start --drop in-tray/2026-10-14-login-error.md   # a dropped message, straight out
     office start --sort                # the drops nothing carried, to a session of their own
+    office start 14 --merge            # the merge session office deliver 14 wrote, when bringing the audience in conflicts
     office start --planner             # a planner sitting from your words, what rides gathered for it
 
 On a terminal, bare `office start` first offers the planner's bundles in
@@ -414,9 +415,14 @@ a review's answer lands on the review's own branch. When a clone on a
 host has a stale view of the audience, deliver says by how much and
 offers `office projects refresh` first; and when the workbench is behind
 the audience's base and the merge is clean, it brings the base into the
-workbench itself, as one merge commit, before the squash (0.39.0).
-`office letterhead check` is the guard it runs first, on its
-own for any tree. The details are below.
+workbench itself, as one merge commit, before the squash (0.39.0). No
+delivery ends at a terminal (0.40.0): when that merge conflicts, deliver
+writes the merge's materials into the folder and its last line is
+`office start N --merge`, the merge session, whose resolution `office
+land` makes a merge commit; a review the audience merged as a squash is
+seen by its content; and a second delivery onto a branch carries what is
+new since the first. `office letterhead check` is the guard it runs
+first, on its own for any tree. The details are below.
 
 ### Build an office
 
@@ -1019,6 +1025,15 @@ required check) stay bale's questions on your terminal. The rest of the
 landing is as it would be: what is filed, what runs after and how it
 ends do not change with an accept.
 
+A merge session (`office start N --merge`, 0.40.0) is made real first:
+when the folder's merge job names the session that landed, land makes its
+resolution a merge commit in the workbench before anything else reads it
+(the details are under Delivering to the audience), says it, records a
+`merged` line in the folder's History and takes the job's materials out
+of the folder; a merge it cannot make is said with the line that makes it
+later, `office deliver N`. A merge session's notes carry no Walkthrough or
+Delivery, and the folder's two pages are left as the work's.
+
 After an applied landing, before the after-land actions, land files what
 the session's notes.md says (0.20.0), when it found the response on this
 machine, each section in a line: a project session's Walkthrough and
@@ -1262,7 +1277,8 @@ session applied in that project. In order, each step logged:
 - The audience's base branch is fetched (the project's `base`, or the
   audience remote's HEAD branch read from the clone), and the delivery
   branch when an earlier delivery made it: a second delivery for the
-  same folder adds to the same branch. The branch is chosen in one order
+  same folder adds to the same branch, carrying only what is new since
+  the last delivery there (0.40.0, below). The branch is chosen in one order
   (0.38.0), and `[office] the delivery branch is BRANCH: WHY` says which
   rule chose it: `--branch NAME`; else a `- branch: NAME` line in
   `delivery.md` (a short name, like `results-view`); else the branch the
@@ -1295,10 +1311,20 @@ session applied in that project. In order, each step logged:
   folder, the branch and the day, and `office deliver N --branch
   THAT-BRANCH` as the remedy, since that work would leave twice;
   `--others-too` does not admit it. The one exception is a base that
-  holds that delivery already (its workbench or delivery commit is on
-  the base); a review merged as a squash leaves neither there, so that
-  case refuses too, and a branch gone from the audience is said rather
-  than offered.
+  holds that delivery already: by history (its workbench or delivery
+  commit is on the base, a review merged as a merge commit or a
+  fast-forward) or, since 0.40.0, by content (the delivery commit's change
+  squashed onto the base, in a temporary worktree, changes nothing: a
+  review merged as a squash; the delivery commit is read where the
+  delivery is built, or fetched by its branch when that is not there).
+  A base that holds a later version of the same lines is not held, rightly,
+  since the work left twice would conflict; the refusal says the base
+  holds the delivery `by history or by content` in neither way, and a
+  branch gone from the audience is said rather than offered. Sessions
+  the base holds ride in nothing (0.40.0): one line says so (`folder 6's
+  session SID is on origin/main already (by content: folder 6's delivery
+  3f1a9c2) and rides in nothing here`), `--others-too` is not asked for
+  them, and the `delivered` line does not name them again.
 - The words come from `desk/FOLDER/delivery.md`: the commit subject and
   body, the review request's title and body, `- to: NAME` for the
   reviewer, and, beside it, `- branch: NAME` when the session names the
@@ -1331,7 +1357,8 @@ session applied in that project. In order, each step logged:
   line(s) the file already had hold the em dash (U+2014); not this
   delivery's, not refused`), and nothing stops (found 2026-10-28: a
   delivery was refused for six em dashes already on the audience's own
-  main). The words, and only they, are also held to the letterhead's
+  main); the question's closing line says so since 0.40.0, `letterhead on
+  the lines it adds and the words: clean`. The words, and only they, are also held to the letterhead's
   `[cleanup]` list: a fix made only to keep the letterhead is shipped
   clean and never named, so words naming one (`delivery.md:L: names a
   cleanup: 'em dashes' in: ...`) refuse the delivery; files are never
@@ -1422,13 +1449,57 @@ a real merge commit, so the workbench and the base now part at the
 base's tip: the squash runs from there and the range carries the
 folder's own work. A merge that conflicts is aborted, and the abort
 checked (no `MERGE_HEAD`, no tracked change left), and the delivery
-refuses naming the files: the office does not resolve a conflict in
-this release (a merge session, a bale session with both sides in
-context, is the next release's), and the remedy line says what to do by
-hand until then (`git merge origin/main` on the workbench branch in the
-clone, resolve and commit, then deliver again). The merge does not
-change which sessions another folder delivered: `base_holds` and the
-refusal of work leaving twice are as they were.
+refuses naming the files. The merge does not change which sessions
+another folder delivered: a review merged as a squash is seen by
+content, below.
+
+The merge session (0.40.0). No delivery ends at a terminal: the office
+never resolves a conflict itself, and never sends you into the clone to
+do it. When bringing the base into the workbench conflicts, deliver
+writes the merge's materials into the folder, under `merge/`: each
+conflicting file at its path in three versions, `parted/` (where the two
+sides parted), `workbench/` and `audience/`, and `log.txt`, the
+audience's commits since they parted, with `merge.md`, the job's page,
+all committed in the office (so they ride with the folder, and `office
+close` moves them with it). Its last line sends the session:
+
+    office start 14 --merge          # the merge session: goal, forecast, brief and project from the job
+
+The session is a bale session on the folder's project with both sides in
+context: its goal names the side and the files, its forecast is the
+conflicting files, its brief comes from the install's
+`templates/merge-brief.md`, and the job's page names the session sent.
+Its response ships each conflicting file as it should read after the
+merge and nothing else, and writes no Walkthrough, Delivery or Structure
+(the folder's pages are the work's). When it lands, `office land` makes
+the merge real before anything reads the workbench: a merge commit in the
+clone, as the project's author (`Bring origin/main into the workbench,
+resolved by SID (office land)`), whose first parent is the landed tip and
+whose second is the base's tip the job names, its tree git's own merge of
+everything that did not conflict and the session's version of each file
+the job names. Anything else (a file still unmerged that the session did
+not resolve, an uncommitted change, a session open in the clone) is
+aborted and checked, or not begun, and said with the line that makes it
+later: the next `office deliver N` makes the merge first when land could
+not. The folder's History gains `- DATE merged: origin/main 3f1a9c2 into
+the workbench, 7c1e2d3, resolved by SID`, the materials leave the
+folder, and the workbench and the base now part at that tip, so the next
+delivery squashes the folder's own work. Asked again while the session is
+out, deliver names `office land SID` instead.
+
+A continued delivery is squashed from its range (0.40.0). A delivery onto
+a branch (its own, another folder's, adopted) takes the range's net
+change since the last delivery there (bale's paths out of both ends), as
+one temporary commit cherry-picked onto the branch's tip with git's
+three-way fallback, so a second delivery that edits a line the first
+delivered goes, and only what is new leaves (before, the squash ran from
+where the workbench and the branch parted, and such a delivery conflicted
+with nothing moved on the audience). When the branch moved on the
+audience (a reviewer's commit on it) and the squash conflicts, the merge
+session is sent the same way, with the branch's tip in the base's place;
+once its resolution is a merge commit, the next delivery is read from
+where the workbench and the branch meet, and the sessions the branch
+already carries are not named again.
 
 The push guard. Declaring an audience (`office projects add --audience`,
 `set --audience`) writes a pre-push hook into the clone's `.git/hooks`,
@@ -1510,8 +1581,9 @@ files it touches whole, as office deliver reads a delivery: with
 Each added line is read at its line in the new file, and a new or
 renamed file is all added lines; a line a file already had is never a
 hit, and what such lines hold is told, one line per file. It is refused
-beside `--all`, and does not travel with `--on PROJECT` yet (refused by
-name; run it in the clone). Binary files are skipped by name and by a NUL
+beside `--all`, and travels with `--on PROJECT` since 0.40.0, so `office
+letterhead check --on api --added --range origin/main..HEAD` reads a
+project's range as deliver reads a delivery. Binary files are skipped by name and by a NUL
 byte; `OFFICE_DEBUG=1` names every file read. `--on PROJECT` runs it in the
 project's repo, through its shell on a host, where the check travels as
 the program python3 reads from stdin and writes nothing.
@@ -1768,7 +1840,7 @@ matches the floor plan.
 | lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after (one `land` call since 0.30.0: the office's record out, bale apply or retry, the outcome); since 0.37.0 bale's two accepts, passed as typed, said, and named after a refusal (`accept_flags`, `accept_said`, `accepts_bale_names`, `accept_line`); since 0.38.0 office sessions' search, the lane's project first and an unreadable project a line (`project_records`, `folder_lane`) |
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
 | lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives); since 0.38.0 the mask over what it hands back, a credential in a URL and a GitHub token (`mask_text`, `MaskedScreen`) |
-| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so; since 0.36.0 what bale's own commits changed taken out before the squash, own_commits and take_out_own; since 0.38.0 the lines the squash adds checked rather than its files whole, the branch rule and the rule that chose it, `branch_why`, a branch another folder delivered to continued and work it delivered refused twice, `other_deliveries`), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review; since 0.35.0 a folder's delivery.md read as the letterhead reads it at deliver and at land's review alike, the words that leave and nothing of the office's (delivery_words) |
+| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so; since 0.36.0 what bale's own commits changed taken out before the squash, own_commits and take_out_own; since 0.38.0 the lines the squash adds checked rather than its files whole, the branch rule and the rule that chose it, `branch_why`, a branch another folder delivered to continued and work it delivered refused twice, `other_deliveries`), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review; since 0.35.0 a folder's delivery.md read as the letterhead reads it at deliver and at land's review alike, the words that leave and nothing of the office's (delivery_words); since 0.40.0 the merge session's job, its materials and the merge commit made from its landed resolution, the content test of a delivery a review merged as a squash, and a continued delivery's range squash |
 | lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin); the characters an office's letterhead refuses and lifts, and a repository's pull-request templates; since 0.38.0 the lines a diff adds read rather than its files whole (`--added`), and the words-only lists (`WORDS_ONLY_SECTIONS`) |
 | share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks (its commit subjects, tags, branches, session ids and, since 0.36.0, its paths), one list for office letterhead check and the suite's text rules; and the characters an office with a letterhead refuses by default; since 0.38.0 `[cleanup]`, the names of a cleanup, read in words and commit messages only |
 | doctrine/OFFICE.md | how every office works; it opens with a reading card naming what each kind of session reads, and what a build session reads sits above its PAST THE CORE banner |
@@ -1785,7 +1857,7 @@ matches the floor plan.
 | lib/office_planner.py | a planner sitting from the occupant's words: what it concerns, and what the office gathers for it |
 | lib/office_meeting.py | meetings (0.26.0): his words read for when and what, the calendar's plan and record lines, the meetings near now, a prep's gathering and brief, the arising block, the meeting held, a drop tied |
 | share/watch-queries.toml | every query a watch can evaluate: the bale surface it reads, the value, how it compares, or the datum bale does not stamp yet |
-| templates/ | profile, folder, clipboard series and sheet (retired with the clipboards, 0.26.0), handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), each made into a page the first time a verb writes it; the folder's two pages, walkthrough.md and delivery.md, which ride with every build session; the in-tray's front page (in-tray-README.md) and the brief office start --drop sends (drop-brief.md); the handbook's front page (handbook-README.md) and chapter (handbook-chapter.md), and the brief office start --sort sends (sort-brief.md); the letterhead's front page, voice page and forbidden list (letterhead-README.md, letterhead-voice.md, letterhead-forbidden.txt); the calendar's two pages (calendar-plan.md, calendar-record.md) and a meeting's prep brief (prep-brief.md) |
+| templates/ | profile, folder, clipboard series and sheet (retired with the clipboards, 0.26.0), handbook chapter, rolodex card, suggestion slip, notepad page; blueprint and close report; the drafting-table pages (drafting-table-*.md), each made into a page the first time a verb writes it; the folder's two pages, walkthrough.md and delivery.md, which ride with every build session; the in-tray's front page (in-tray-README.md) and the brief office start --drop sends (drop-brief.md); the handbook's front page (handbook-README.md) and chapter (handbook-chapter.md), and the brief office start --sort sends (sort-brief.md); the letterhead's front page, voice page and forbidden list (letterhead-README.md, letterhead-voice.md, letterhead-forbidden.txt); the calendar's two pages (calendar-plan.md, calendar-record.md) and a meeting's prep brief (prep-brief.md); the merge session's brief office start --merge sends (merge-brief.md, 0.40.0) |
 | migrations/ | one file per breaking release; format in migrations/README.md |
 | RELEASES.md | release notes |
 | tests/ | the test suite; run.sh (with runner.py) runs it side by side; tests/fakes/ holds the fake bales as modules (0.27.0), each run through a three-line program a test writes in its own tree |
