@@ -238,6 +238,18 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.42.0 (session 2026-11-02-m10-pull-requests-002): pull requests
+  through gh, optional everywhere.
+  - office deliver shows the review as gh will open it and asks once
+    (`--open-review`, `--no-open-review`); yes opens it and records a
+    `review` History line; otherwise the review's body goes on the
+    clipboard with its title and URL printed.
+  - the walk-in, office desk, the home screen and the digest read review
+    state through gh (lib/office_review.py, the one door, `OFFICE_GH_PATH`).
+  - an added delivery shows the pull request's base; the survey records
+    gh; `office letterhead check --delivery`; the branch's name held to
+    the letterhead's marks; deliver names `office land SID` while a merge
+    session is out.
 - 0.41.0 (session 2026-11-02-home-screen-offers-001): the next step
   offered by key; a folder with an audience closes at delivery.
   - office land leaves a folder on a project with an audience on the

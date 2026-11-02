@@ -634,6 +634,45 @@ def slug_branch(folder, project, prefix, clone_said=None):
     return name, why + (f" ({clone_said})" if clone_said else "")
 
 
+# A folder's slug that ends in a three-digit counter (fix-login-002) reads
+# as a session id's tail, the slug and NNN bale mints, once it leaves as a
+# branch name with the date the slug lost before it (0.42.0).
+SLUG_COUNTER_RE = oh.LazyPattern(r"-[0-9]{3}$")
+
+
+def branch_marks(name, rules, rule):
+    """What the letterhead would refuse in a delivery branch's name, one
+    line each (0.42.0): the name read as the words are read (the office's
+    forbidden strings, names, phrasing, bale's marks and the cleanup list),
+    and, for a name the folder's slug chose (rule "slug"), a slug ending in
+    three digits, which reads as a session id. [] when the name may leave.
+    A name the occupant gave (--branch, the words' branch line) or the
+    clone's checked-out branch is held to the letterhead alone: an issue's
+    number at its end is his to name."""
+    import office_letterhead as olh
+    out = []
+    for _, _, kind, what, _ in olh.hits_in_text(name, olh.compile_rules(rules, words=True), "branch"):
+        out.append(f"{kind}: {what}")
+    if rule == "slug" and SLUG_COUNTER_RE.search(name):
+        out.append("marks: it ends in three digits, as a session id does (YYYY-MM-DD-slug-NNN)")
+    return out
+
+
+def check_branch_name(name, rules, rule, why):
+    """Refuse a delivery branch whose name the letterhead would refuse
+    anywhere else (branch_marks), before anything is fetched or made for it;
+    the remedy is --branch NAME."""
+    found = branch_marks(name, rules, rule)
+    if found:
+        # The flag's and the words' name is checked before any fetch; the
+        # clone's and the slug's once the audience has said whether it has
+        # the clone's branch, with nothing made in the clone or pushed.
+        done = "nothing was fetched or made" if rule in ("flag", "words") else "nothing was made or pushed"
+        raise DeliverError([f"the delivery branch would be {name} ({why}), and the letterhead refuses its name: "
+                            + "; ".join(found) + f"; {done}",
+                            "name another: --branch NAME (or a `- branch: NAME` line in delivery.md)"])
+
+
 def other_deliveries(office_root, rel, project, audience):
     """[(folder, day, record)] for every `delivered` History line another
     folder of this office keeps for this project and audience, on the desk
@@ -1182,9 +1221,16 @@ def resolve_landed_job(office_root, rel, folder, place, author, day, verb, sid=N
         return None, [f"the merge session {job['session']}'s resolution was not made a merge commit: the sessions "
                       f"open in the clone could not be read ({exc}); office deliver {folder} makes it"]
     if job["session"] in sessions:
-        # Sent and still out: nothing has landed to make a merge of.
+        # Sent and still out: nothing has landed to make a merge of. Deliver
+        # stops here and names the landing (0.42.0: the whole loop's test
+        # found that, with the session open in the clone, deliver went on to
+        # a squash that conflicts and named no office line for it).
         debug(f"the merge session {job['session']} is still open in the clone")
-        return None, []
+        if verb != "deliver":
+            return None, []
+        return None, [f"the merge session {job['session']} was sent for {rel}'s merge job ({rel}/{MERGE_DIR}/ holds "
+                      f"its materials) and has not landed: office land {job['session']} brings it back and makes "
+                      f"its resolution the merge commit, then office deliver {folder} delivers; nothing was pushed"]
     if sessions:
         return None, [f"the merge session {job['session']}'s resolution was not made a merge commit: "
                       f"{len(sessions)} session(s) are open in the clone ({', '.join(sessions)}), and a merge is never "
@@ -1410,6 +1456,16 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
         raise DeliverError([f"the delivery branch: {exc}"])
     if branch is not None and branch == base:
         raise DeliverError([f"the delivery branch would be {branch}, which is the base itself; name another: --branch NAME"])
+    # 0.42.0: the name is held to the letterhead's marks before anything is
+    # fetched or made: a name the letterhead refuses in a line never leaves
+    # as a branch either.
+    import office_letterhead as olh_
+    try:
+        name_rules = office_rules(office_root)
+    except (olh_.CheckError, OSError) as exc:
+        raise DeliverError([f"the letterhead check could not run: {exc}"])
+    if branch is not None:
+        check_branch_name(branch, name_rules, branch_rule, branch_why)
     guard_lines = []
     if facts["guard"] == "none":
         try:
@@ -1470,6 +1526,10 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             if branch == base:
                 raise DeliverError([f"the delivery branch would be {branch}, which is the base itself; name another: "
                                     "--branch NAME"])
+            # The clone's branch or the slug, once the audience has said
+            # which (0.42.0): held to the marks before the base is brought
+            # in or anything is made.
+            check_branch_name(branch, name_rules, branch_rule, branch_why)
         if on_branch is None:
             on_branch = fetch_branch(branch)
         continuing = on_branch
@@ -1640,6 +1700,15 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
                                 f"office deliver {folder} --branch {branch} --adopt adds this delivery to it, as a "
                                 "review's answer goes onto the review's own branch; or name another: --branch NAME; "
                                 "piped input is never asked"])
+        # 0.42.0: a delivery added to a branch the audience has (adopted,
+        # joined or continued) reads the open pull request on that branch
+        # through gh, when gh is here: its base is the delivery's from in the
+        # question, said when it is not the project's declared base. The
+        # squash is onto the branch's tip either way.
+        review_pr, review_pr_told = None, None
+        if continuing:
+            import office_review as orev
+            review_pr, review_pr_told = orev.open_pull_for(url, branch)
         since, since_why = None, None
         for _, rec in reversed(records):
             if rec["branch"] == branch and g(repo, "cat-file", "-e", f"{rec['workbench']}^{{commit}}", check=False).returncode == 0 \
@@ -1866,6 +1935,10 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             # at delivery (a session the base holds is delivered).
             "held_sessions": sorted(held),
             "commits_line": commits_line(len(words["commits"])) or "",
+            # Additive (0.42.0): the open pull request on the branch this
+            # delivery is added to ({number, url, base}, read through gh),
+            # or None; and the line saying why it was not read.
+            "review_pr": review_pr, "review_pr_told": review_pr_told,
         }
         if hits:
             # Nothing with a hit leaves: the worktree goes, the hits stay
@@ -2033,7 +2106,8 @@ def check_identities(worktree, start, author):
 
 def run(office_root, plan_, day):
     """Check the commits plan() made, push, record. Returns (words, told,
-    next lines)."""
+    next lines, the review's offer: what bin/office does about the review,
+    0.42.0)."""
     worktree, repo = plan_["worktree"], plan_["repo"]
     hosted = plan_.get("place") is not None
     if not pathlib.Path(worktree).is_dir():
@@ -2080,22 +2154,43 @@ def run(office_root, plan_, day):
     review = plan_["words"]["review"]
     joined = plan_.get("joined")
     nxt = []
+    # 0.42.0: what deliver does about the review once the branch is there.
+    # A branch with a review already open (joined, adopted, or one this
+    # folder continues whose pull request gh read) opens nothing and names
+    # the review that carries it; a fresh branch gets an offer: gh opens the
+    # review on the occupant's yes (bin/office shows it and asks once), and
+    # without gh, signed out, on no, or on a host gh does not reach, the
+    # review's body goes to the clipboard and its title and URL are printed,
+    # so the hand step is one paste. offer is that block, for bin/office.
+    offer = {"offer": False, "why": None, "folder": plan_["folder"], "project": plan_["project"],
+             "audience": plan_["audience"], "head": plan_["branch"], "base": plan_["base"],
+             "title": review["title"], "body": review["body"] or "", "carried_by": None}
+    pr = plan_.get("review_pr")
     if joined and not adopting:
         # Another folder of this office delivered to the branch, so its
         # review is open there already: this delivery is added to it.
-        url = branch_url(plan_["url"], plan_["branch"])
+        url = (pr or {}).get("url") or branch_url(plan_["url"], plan_["branch"])
         said = (f"{joined['folder']} delivered to {plan_['branch']} on {joined['day']}, so the review open there "
                 "carries this delivery too, and the words in delivery.md's Review section are what to reply with")
-        nxt.append(f"open the review: {url}" if url else
-                   f"open the review already open on the audience's git host ({plan_['url']}) for the branch "
-                   f"{plan_['branch']}")
+        if pr:
+            nxt.append(f"the review that carries it: #{pr['number']} {pr['url']}")
+            offer["carried_by"] = pr
+        else:
+            nxt.append(f"open the review: {url}" if url else
+                       f"open the review already open on the audience's git host ({plan_['url']}) for the branch "
+                       f"{plan_['branch']}")
         nxt.append(f"({said})")
     elif adopting:
         # The review is the one already open on the branch (made outside
         # the office): this delivery is added to it, and the review's words
         # are the reply, not a new review's form.
         url = branch_url(plan_["url"], plan_["branch"])
-        if url:
+        if pr:
+            nxt.append(f"the review that carries it: #{pr['number']} {pr['url']}")
+            nxt.append(f"(this delivery is added to {plan_['branch']}, so that review carries it, and the words in "
+                       "delivery.md's Review section are what to reply with)")
+            offer["carried_by"] = pr
+        elif url:
             nxt.append(f"open the review: {url}")
             nxt.append(f"(the reviews whose branch is {plan_['branch']}; this delivery is added to that branch, so the "
                        "review already open there carries it, and the words in delivery.md's Review section are "
@@ -2104,11 +2199,23 @@ def run(office_root, plan_, day):
             nxt.append(f"open the review already open on the audience's git host ({plan_['url']}) for the branch "
                        f"{plan_['branch']}: this delivery is added to it; reply with the words in delivery.md's "
                        f"Review section: {review['title']}")
+    elif pr:
+        # A branch of this folder's own whose review is open: it carries the
+        # delivery, and nothing is opened again.
+        nxt.append(f"the review that carries it: #{pr['number']} {pr['url']}")
+        nxt.append(f"(this delivery is added to {plan_['branch']}, so that review carries it, and the words in "
+                   "delivery.md's Review section are what to reply with)")
+        offer["carried_by"] = pr
     else:
+        import office_review as orev
+        made = orev.review_offer(plan_["url"], plan_["branch"], plan_["base"], review["title"], review["body"],
+                                 plan_["words"].get("to"))
+        offer.update({k: v for k, v in made.items() if k not in ("title", "body", "head", "base")})
         url = review_url(plan_["url"], plan_["branch"], plan_["base"], review["title"], review["body"])
+        offer["compare_url"] = url
         if url:
             nxt.append(f"open the review: {url}")
-            nxt.append("(the review's title and body ride in that URL; the git host fills its form from them)")
+            nxt.append(f"the review's title: {review['title']}")
         else:
             nxt.append(f"open the review on the audience's git host ({plan_['url']}): the branch is {plan_['branch']}, "
                        f"onto {plan_['base']}; the review's title: {review['title']}")
@@ -2121,7 +2228,7 @@ def run(office_root, plan_, day):
              f"{plan_['author']} onto {plan_['base']}" + how
              + f", covering {', '.join(plan_['sessions'] + sorted(plan_['others'])) or 'no session by name'}; "
              f"the workbench branch was not pushed." + ("" if recorded else " The folder does not record it."))
-    return words, told, nxt
+    return words, told, nxt, offer
 
 
 def still_to_deliver(office_root, plan_):
@@ -2293,6 +2400,10 @@ def main(argv=None):
     # project's repo too (check_in_project took it since 0.38.0; the
     # subcommand did not, so bin/office refused the pair).
     p.add_argument("--added", action="store_true", help="the lines the range (or the index) adds, not its files whole")
+    p.add_argument("--words-json", help="[[label, text], ...]: words that travel as one argument (--delivery's)")
+    p = sub.add_parser("delivery-words", help="office letterhead check --delivery: each delivery.md as deliver reads "
+                                              "it, as one JSON [[label, text], ...] on stdout (0.42.0)")
+    p.add_argument("pages", nargs="+")
     p = sub.add_parser("declare-author", help="declare a project's author and commit the floor plan")
     p.add_argument("office"); p.add_argument("--project", required=True); p.add_argument("--author", required=True)
     p = sub.add_parser("status-lines", help="office status's letterhead and push-guard lines")
@@ -2345,8 +2456,19 @@ def main(argv=None):
             url = review_url(a.url, a.branch, a.base)
             print(url or "")
             return 0
+        if a.cmd == "delivery-words":
+            pairs = []
+            for page in a.pages:
+                (label, text), unread = delivery_words(page)
+                if unread:
+                    log(unread_line(label, unread))
+                pairs.append([label, text])
+            print(json.dumps(pairs))
+            return 0
         if a.cmd == "check":
-            rc, out, err = check_in_project(a.office, a.project, a.all, a.range_spec, a.words, added=a.added)
+            words_text = [(str(l), str(x)) for l, x in json.loads(a.words_json)] if a.words_json else ()
+            rc, out, err = check_in_project(a.office, a.project, a.all, a.range_spec, a.words, words_text=words_text,
+                                            added=a.added)
             sys.stdout.write(out)
             sys.stderr.write(err)
             return rc
@@ -2425,7 +2547,7 @@ def main(argv=None):
                 debug(line)
             log("nothing was pushed, and nothing the delivery made is left")
             return 0
-        words, told, nxt = run(a.office, plan_, a.day)
+        words, told, nxt, offer = run(a.office, plan_, a.day)
         try:
             pending = still_to_deliver(a.office, plan_)
         except (OSError, oh.HelperError) as exc:
@@ -2433,7 +2555,7 @@ def main(argv=None):
             log(f"whether {plan_['folder']}'s work is all delivered could not be read ({exc}); it stays where it is")
             pending = None
         print(json.dumps({"words": words, "told": told, "next": nxt, "folder": plan_["folder"],
-                          "pending": pending}))
+                          "pending": pending, "review": offer}))
         return 0
     except ob.StartError as exc:
         for line in exc.lines:

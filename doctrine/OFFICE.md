@@ -117,29 +117,30 @@ Three boundaries hold that line, each with a guard.
    Some offices sit next to data that must never be shipped; their
    profile says which, and a session honors it before anything else.
 2. What leaves the office, into a project or to a person. Guards: the
-   letterhead, where an office has one, for anything that goes out: its
-   voice page, the occupant's style rule in his words (section 4 says who
-   reads it), and its check, `office letterhead check`, which names every
-   line that holds what the letterhead refuses (the names of models,
-   vendors and products; tell-tale phrasing an assistant writes, a
-   repository's own pull-request template's lines aside; bale's own marks;
-   the office's forbidden words, letterhead/forbidden.txt; and by default
-   the em dash, the en dash and the ellipsis, the template's lines aside
-   again, section 5); `office deliver`, the one way a project's landed
-   work reaches its audience's git host: a branch of curated commits in
-   the occupant's words, made from the audience's base, holding no bale
-   commit, merge, tag or branch, nothing a bale commit of its own changed
-   and no file bale's exclude list names, checked by the letterhead, each
-   commit shown whole and asked once, every one carrying the project's
-   declared author as author and committer, and never the workbench branch
-   itself; the push guard in the clone, which lets nothing reach the
+   letterhead, where an office has one, for anything that goes out: its voice
+   page, the occupant's style rule in his words (section 4 says who reads it),
+   and its check, `office letterhead check`, which names every line that holds
+   what the letterhead refuses (the names of models, vendors and products;
+   tell-tale phrasing an assistant writes, a repository's own pull-request
+   template's lines aside; bale's own marks; the office's forbidden words,
+   letterhead/forbidden.txt; and by default the em dash, the en dash and the
+   ellipsis, the template's lines aside again, section 5); `office deliver`,
+   the one way a project's landed work reaches its audience's git host: a
+   branch of curated commits in the occupant's words, made from the audience's
+   base, holding no bale commit, merge, tag or branch, nothing a bale commit
+   of its own changed and no file bale's exclude list names, checked by the
+   letterhead, each commit shown whole and asked once, every one carrying the
+   project's declared author as author and committer, and never the workbench
+   branch itself; it opens the review only through gh, only when asked, and
+   records it, and what it reads of review state is rendering, never copied
+   (section 10); the push guard in the clone, which lets nothing reach the
    audience but that one delivery branch (no tag, no bale branch, no other
    ref); `office land`'s review, which says what deliver would refuse and
    refuses nothing; and the rule that office context informs a session but
    never lands in a project. Every project session an office packs carries
-   that rule as a constraint: "Office context informs this session but
-   never lands in this project." Deliberation, candid notes and private
-   versions stay in the office even when a session read them for the work.
+   that rule as a constraint: "Office context informs this session but never
+   lands in this project." Deliberation, candid notes and private versions
+   stay in the office even when a session read them for the work.
 3. Where each repo is pushed. Guard: the profile's site section. An
    office repo is never pushed where a project's audience can read it.
 
@@ -184,11 +185,10 @@ A session is packed where it lands.
   rides beside the request as a context tarball made with
   `bale pack --context --include ...` from the office root, and the pack
   carries the constraint from section 2.
-- This doctrine rides as a context tarball made from the install's
-  doctrine directory: `bale pack --context` run on a copy of it, so the
-  install is never written. bale's include groups only pull paths inside
-  the repo being packed, and this doc lives in the install, not in the
-  office.
+- This doctrine rides as a context tarball made from the install's doctrine
+  directory: `bale pack --context` run on a copy of it, so the install is
+  never written. bale's include groups only pull paths inside the repo
+  being packed, and this doc lives in the install, not in the office.
 - Whatever a project declares rides too: each path in its `rides` (a
   directory inside another repo, a whole repo, or a file) becomes a
   context tarball beside every session on that project (section 10).
@@ -877,6 +877,36 @@ reviews open for that branch on the git host rather than a new review's
 form, and the next delivery adds to the branch as to one of the folder's
 own.
 
+The review is the delivery's last step, and gh is the office's one way
+to a git host's API (0.42.0). Before anything is fetched, the branch's
+name is held to the letterhead's marks: a name the letterhead would
+refuse in a line never leaves as a branch, and a name the folder's slug
+gives that ends in three digits reads as a session id (`--branch NAME`
+names another). After the push, for a branch with no review yet, when gh
+is on this machine and signed in to the audience's GitHub host (gh's
+sign-in is the occupant's, never read or written by the office), deliver
+shows the review as gh will open it (the Review section's title and
+body, the base, the head, the reviewer when the `to:` line reads as a
+login, and the gh line) and asks once, no by default; `--open-review`
+and `--no-open-review` are the twins, and piped with neither it opens
+nothing and says so. On yes gh opens it, and the folder's History gains
+a dated `review` line naming the branch, the number and the URL; gh's
+refusal is said whole, and the delivery stands, since the branch is on
+the audience already. Without gh, signed out, on no, or on a host gh
+does not reach, the review's body goes on the clipboard and its title
+and URL are printed, so opening it by hand is one paste. A delivery
+added to a branch whose review is open opens nothing: it names that
+review, and when gh reads its pull request the question shows the
+request's base as the delivery's from, said when it is not the
+project's declared base. Review state is read the same way, read-only,
+never asking: the walk-in, office desk, the home screen and the digest
+say each review on a branch the office delivered (`#N approved`, `#N
+changes requested`, `#N review pending`, `#N merged`, `#N closed`), and
+what answers a review that asked for changes; it is a rendering,
+recomputed on every run and kept nowhere (section 10). gh absent, signed
+out or the host not answering is one line in the project's place, never
+a refusal.
+
 A clone's view of its audience is refreshed through the occupant's
 machine (0.39.0). A clone on a host often cannot reach the audience's
 git host, so its remote-tracking refs stay where they were and a session
@@ -1022,10 +1052,12 @@ is one dated line per event, `- YYYY-MM-DD verb: text`, from a closed
 set of verbs, appended and never rewritten, and the status line always
 agrees with the last line that changed it (`ended`, which `office land`
 writes when it ends a read-only sitting, `withdrawn`, which `office
-withdraw` writes when it closes a session never worked, and `merged`,
+withdraw` writes when it closes a session never worked, `merged`,
 which `office deliver` writes when it brings the audience's base into the
 workbench and `office land` (or deliver) when a merge session's
-resolution becomes a merge commit, change nothing). `office sessions FOLDER SID
+resolution becomes a merge commit, and `review`, which `office deliver`
+writes when it opens a delivery's review through gh (0.42.0), change
+nothing). `office sessions FOLDER SID
 --ratified` records that the planner ratified a session's judgment
 calls, with `--except` for what was corrected and where it went; a
 brief's RATIFIED line does the same through `office start` (section 4).
@@ -1441,7 +1473,7 @@ Kinds:
 | withdraw | script: close a session the office sent out and that was never worked (no response in the downloads, no apply begun), named by its folder and asked once (--yes the twin): bale's unlock with reason abandoned where it is open, and a withdrawn line in its folder's History; a folder that recorded it alone is said with the line that closes it; with --bundle STEM, take a planner's bundle out of the offer by renaming every copy NAME.bale-bundle.declined, asked once, a bundle a session opened refused (0.41.0) | yes | occupant |
 | relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes | plumbing |
 | probe | script: run a worker's probe block where a folder's project lives (its repo, through its shell on a host, or the office root), for the folder's session open there or, with --project, a read-only sitting of its open in the office, under the sitting's id, stdin closed, once its purpose header has been shown and the occupant said yes; a block that calls office-on PROJECT spans the office and the projects it names, run in the office root with the helper on its PATH, each call's command run where that project lives; refuse by name a block with no PROBE BEGIN line or a header that does not say it is read-only; hand the output back whole, masked (a credential in a URL, a GitHub token; 0.38.0), the block on the clipboard, a fallback's probe-output/ carried to the session's out tray, and a History line in the folder; with no folder named, the one folder on the desk that records a session open where probes run, said, or those folders offered by key (0.41.0) | yes | plumbing |
-| deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, the lines it adds and the words checked by the letterhead (0.38.0: a line a file already had told, never refused), each commit shown whole and asked once with the rule that chose the branch, authored and committed as the declared author (asked once and kept when none is declared, --author the twin), recorded in the folder; a branch another folder of the office delivered to continued, and a session another folder delivered refused (0.38.0); a branch the audience has that no folder delivered to (made outside the office) adopted when the occupant says so (asked once, --adopt the twin), so a review's answer lands on the review's own branch; a refresh of the clone's view offered when it is behind, and the base brought into the workbench as a merge commit when that merge is clean, a conflict aborted and refused by name (0.39.0); a conflict's materials written into the folder and the merge session named, a landed merge session's resolution made a merge commit when land could not, a review merged as a squash seen by content and the sessions the base holds left out, a continued delivery squashed from its range (0.40.0); the folder closed at delivery once its work is delivered (--close, --leave-open), and with no folder named the folders landed and not delivered offered first by key (0.41.0) | yes | occupant |
+| deliver | script: carry a folder's landed work to its project's audience as a delivery branch of curated commits, the words from the folder's delivery.md, the lines it adds and the words checked by the letterhead (0.38.0: a line a file already had told, never refused), each commit shown whole and asked once with the rule that chose the branch, authored and committed as the declared author (asked once and kept when none is declared, --author the twin), recorded in the folder; a branch another folder of the office delivered to continued, and a session another folder delivered refused (0.38.0); a branch the audience has that no folder delivered to (made outside the office) adopted when the occupant says so (asked once, --adopt the twin), so a review's answer lands on the review's own branch; a refresh of the clone's view offered when it is behind, and the base brought into the workbench as a merge commit when that merge is clean, a conflict aborted and refused by name (0.39.0); a conflict's materials written into the folder and the merge session named, a landed merge session's resolution made a merge commit when land could not, a review merged as a squash seen by content and the sessions the base holds left out, a continued delivery squashed from its range (0.40.0); the folder closed at delivery once its work is delivered (--close, --leave-open), and with no folder named the folders landed and not delivered offered first by key (0.41.0); the branch's name held to the letterhead's marks before anything is fetched, the review shown as gh will open it and asked once (--open-review, --no-open-review), opened through gh on yes and recorded on the folder as a `review` line, else its body put on the clipboard with its title and URL printed, and a delivery added to a branch whose review is open shown from that pull request's base (0.42.0) | yes | occupant |
 | letterhead check | script, read-only: name every line in a tree, a range or a file that holds what the letterhead refuses (in an office with a letterhead, the dashes and the ellipsis by default, a lift said; a pull-request template's lines exempt from the phrasing rule and the three characters; words and commit messages, never files, held to the cleanup list too, 0.38.0); with --added, only the lines a range or the index adds, a line a file already had told (0.38.0) | yes | plumbing |
 | tour | script: build a throwaway office in a temporary directory, walk through the verbs on it, and delete it; runs no bale and touches no real office | yes | occupant |
 | moves | script: apply the in-tray's sorted drops (a folder minted through open's code for folder: new, or folder N; the page moved in whole with its brief, its History line, its goal and its tell), then the desk moves a sitting or a sort wrote, through open's, close's and the gate flags' own code, ticking each and writing a minted number onto its blueprint's decomposition line; stops at the first line it cannot apply | yes | plumbing |

@@ -4,6 +4,116 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.42.0
+
+Additive: no migration, nothing to do in any office. The fifth serial
+session of the plan begun on 2026-10-27: pull requests get a protocol,
+through gh, held to deliver's standard (shown whole, asked once, recorded
+on the folder). gh is optional everywhere: without it every surface does
+what it did, and says in one line that gh is not there where it would
+have read or opened something. What you see changes after a delivery's
+push, on the walk-in, the desk, the home screen and the digest of an
+office whose projects have delivered branches, in the survey, and in two
+deliver refusals; everything else is as it was.
+
+Deliver opens the review when you say so. After the push, for a branch
+with no review yet, when gh is on this machine and signed in to the
+audience's GitHub host (github.com, or a host named github.*), deliver
+shows the review as gh will open it (the Review section's title and
+body, the base, the head, the reviewer when delivery.md's `to:` line
+reads as a GitHub login, and the gh line, `gh pr create --repo
+HOST/OWNER/REPO --base --head --title --body-file [--reviewer]`) and asks
+once, `Open this review on the audience through gh? (--open-review)
+(y/n) [n]`. `--open-review` and `--no-open-review` are the twins; piped
+with neither, nothing is opened and that is said. On yes it prints
+`opened the review: #N URL`, Next names the open review, and the
+folder's History gains `- DATE review: BRANCH on AUDIENCE of PROJECT: #N
+URL`, a new History verb office status knows, committed alone. gh's
+refusal (signed out, no rights, a pull request already open) is said in
+gh's words, and the delivery stands. Without gh, signed out, on no, or
+on a GitLab host, the review's body goes on the clipboard, said as every
+copy is said, and its title and compare URL are printed under Next, so
+opening it by hand is one paste. A delivery added to a branch whose
+review is open opens nothing and names `the review that carries it: #N
+URL` when gh reads it. The office never signs gh in and writes no token,
+login or credential.
+
+The office reads review state. For each project with a branch the office
+delivered (the folders' `delivered` and `review` lines name them), one
+read-only `gh pr list` per project, a 15-second timeout, no prompt: the
+walk-in and `office desk` gain a `Reviews:` section after what is in
+flight (`proj: #12 approved (health-route, folder 14)`), each review `#N
+approved`, `#N changes requested`, `#N review pending`, `#N merged` or
+`#N closed`, and for a review that asked for changes a line saying what
+answers it; the desk's folder line says `[review #12 approved]` and its
+next names the changes asked for first; the home screen's project line
+ends `; reviews: ...`; the digest has a `Reviews` section. An open review
+always shows, a merged or closed one while its folder is on the desk or
+for a week. It is a rendering, recomputed every run and kept nowhere. gh
+absent, signed out or the host not answering is one line in the
+project's place, never a refusal.
+
+An added delivery is shown from the pull request's base. When a delivery
+is added to a branch (adopted, joined or continued) and gh reads the pull
+request open on it, the question's branch line shows that request's base
+as the delivery's from, and a `from:` line says when it is not the
+project's declared `base`; without gh, that line says the base was not
+read. The squash is onto the branch's tip either way, and the
+`delivered` line is unchanged.
+
+The survey records gh (its version and path, or `not found`) in Tools.
+
+`office letterhead check --delivery FILE` reads a delivery.md as deliver
+reads it (its `to:` line and its Commit and Review sections, saying what
+it did not read), so a hand check agrees with deliver on a page filed
+before 0.35.0, whose filing note names a session; it travels with `--on
+PROJECT`. `--words` stays a whole-file read.
+
+The delivery branch's name is held to the letterhead's marks before
+anything is fetched: a name the letterhead refuses in a line (a `bale/`
+branch, a session id, a forbidden word) is refused with `--branch NAME`,
+and a name the folder's slug gives that ends in three digits
+(`fix-login-002`) reads as a session id and is refused the same way. A
+name you give may end in an issue's number.
+
+A merge session still out stops deliver with its landing line. The
+whole loop's test found it: with the merge session open in the clone,
+deliver went on to a squash that conflicted and named no office line.
+Now it says the session was sent for the folder's merge job and has not
+landed, `office land SID brings it back`, as the README already said.
+
+What changed and where: lib/office_review.py (new: `gh_program`, the one
+door to gh, through the PATH or `OFFICE_GH_PATH`; `review_offer`,
+`open_review`, `record_review`, `review_records`, `open_pull_for`,
+`office_reviews`, `project_words`, `review_lines`; the `open`,
+`shown-line` and `states` subcommands); lib/office_deliver.py
+(`branch_marks` and `check_branch_name` in the plan's steps 3 and 4, the
+plan's `review_pr` and `review_pr_told`, run's review offer as a fourth
+return value and the run's `review` JSON, Next's title line, the
+`delivery-words` subcommand and the check's `--words-json`,
+`resolve_landed_job`'s line for a session still out); lib/office_helper.py
+(`review` in HISTORY_VERBS); lib/office_bale.py (`read_reviews`,
+`desk_folder_line`, the Reviews section in `desk_lines`, `folder_line`'s
+`next_first`); lib/office_home.py (`project_rows`' reviews);
+lib/office_digest.py (`reviews_section`); bin/office (deliver's
+`--open-review` and `--no-open-review`, `deliver_review`,
+`deliver_review_words`, the pull request's base in `deliver_show`, gh in
+the survey's Tools, `letterhead check --delivery`, the usage texts);
+README.md; and the doctrine (boundary 2 in the core gains the review in
+its lines, a bullet of section 4's list rewrapped in one line fewer to
+keep the banner at 299; past the banner, section 4 continued, the History
+verbs and the verbs table's deliver row).
+
+Tests: tests/test_pull_requests.py (new), one class per item:
+TestDeliverOpensTheReview and TestOnATerminalItIsAskedOnce;
+TestTheOfficeReadsReviewState; TestTheBaseIsThePullRequests;
+TestTheSurveyRecordsGh; TestTheCheckReadsADeliveryAsDeliverDoes;
+TestTheBranchNameIsHeldToTheMarks; TestTheUnits; gh is the suite's fake
+(tests/fakes/gh_fake.py), found through `OFFICE_GH_PATH`, which every
+`Env` and every job of the runner set empty. tests/test_deliver_merges.py
+TestTheWholeLoopThroughTheOffice runs the merge session's loop through
+the office's commands alone.
+
 ## 0.41.0
 
 Additive: no migration, nothing to do in any office. The fourth serial

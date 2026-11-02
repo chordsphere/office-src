@@ -455,7 +455,10 @@ gather_facts() {
   fact Machine login_shell "${SHELL:-unset}"
   fact Machine bash "$BASH_VERSION"
 
-  for t in bale git python3 R quarto node; do fact Tools "$t" "$(tool_version "$t")"; done
+  # gh since 0.42.0: office deliver opens a review through it, and the
+  # walk-in reads review state with it, so a session reads first whether
+  # this machine has it.
+  for t in bale git python3 R quarto node gh; do fact Tools "$t" "$(tool_version "$t")"; done
 
   tz="$(cat /etc/timezone 2>/dev/null || readlink /etc/localtime 2>/dev/null | sed 's#.*/zoneinfo/##')"
   fact Timezone system "${tz:-unknown}"
@@ -8126,6 +8129,7 @@ cmd_projects() {
 # planner's answer to a clarification back to the session's repo.
 
 DELIVER="$OFFICE_SRC/lib/office_deliver.py"
+REVIEW_PY="$OFFICE_SRC/lib/office_review.py"
 LETTERHEAD="$OFFICE_SRC/lib/office_letterhead.py"
 RULES="$OFFICE_SRC/share/letterhead.toml"
 deliver_py() { pylib "$DELIVER" "$@"; }
@@ -8133,7 +8137,8 @@ deliver_py() { pylib "$DELIVER" "$@"; }
 usage_deliver() {
   cat <<'USAGE'
 usage: office deliver [FOLDER] [--on PROJECT] [--branch NAME] [--adopt] [--author "Name <email>"] [--others-too]
-                      [--refresh | --no-refresh] [--close | --leave-open] [--yes]
+                      [--refresh | --no-refresh] [--close | --leave-open] [--open-review | --no-open-review]
+                      [--yes]
 Carries a folder's landed work to its project's audience as curated
 commits: a branch named by the branch rule below, made from the
 audience's base branch, holding the landed tree changes as one
@@ -8179,7 +8184,20 @@ commit's author and committer are checked against the declared author. After the
 delivered line (branch, sessions, workbench commit, delivery commit), and
 deliver prints what you do next: open the review (a URL when the git
 host's compare-URL shape is known, GitHub or GitLab; the branch's name
-otherwise) and whom to send it to, when the words name a reviewer. A
+otherwise) and whom to send it to, when the words name a reviewer.
+The review (0.42.0): when gh is on this machine, signed in to the
+audience's GitHub host, deliver shows the review as gh will open it (the
+title, base, head, the reviewer when delivery.md's to: line reads as a
+login, the body and the gh line) and asks once, y/N; yes opens it and the
+folder's History records a dated `review` line with its number and URL.
+Piped, it is opened only with --open-review. Without gh, signed out,
+on no, or on another host, the review's body goes on the clipboard and
+its title and URL are printed under Next, so opening it is one paste. A
+delivery added to a branch whose review is open opens nothing and names
+that review; when gh reads it, the question shows the pull request's
+base as the delivery's from. The branch's name is held to the
+letterhead's marks before anything is fetched (a slug ending in three
+digits reads as a session id): --branch NAME names another. A
 second delivery for the same folder adds to the same branch, carrying
 only what is new since the last delivery there (0.40.0: the range's net
 change applied onto the branch's tip, git's three-way merge where the
@@ -8266,6 +8284,8 @@ any push to the audience from the clone that deliver did not make.
   --close          close the folder after the push when its work is delivered,
                    piped too
   --leave-open     keep the folder on the desk after the push
+  --open-review    open the review through gh after the push, piped too
+  --no-open-review do not; put its body on the clipboard
   --yes            do not ask before pushing
 Under the hood: git fetch of the audience's base and branch, a thin git
 bundle of the clone's HEAD carried back for a hosted project, git revert
@@ -8276,13 +8296,17 @@ delivery.md, git commit as the author (author and committer, and
 GIT_AUTHOR_DATE and GIT_COMMITTER_DATE a second apart), each commit
 read back and checked, git push --no-follow-tags AUDIENCE
 refs/office/delivery:refs/heads/BRANCH with OFFICE_DELIVERY=BRANCH set
-for the push guard. OFFICE_DEBUG=1 shows every git call and connection.
+for the push guard; gh auth status --hostname HOST, and on yes gh pr
+create --repo HOST/OWNER/REPO --base --head --title --body-file
+[--reviewer]; gh pr list --head BRANCH for a branch's open review.
+OFFICE_DEBUG=1 shows every git and gh call and connection.
 Examples:
   office deliver health-route
   office deliver 14 --yes
   office deliver 14 --author "Pat Example <pat@example.org>"
   office deliver health-route --branch api-health --others-too
   office deliver 6 --branch picklists --adopt        (the review's answer onto the review's own branch)
+  office deliver 14 --yes --open-review             (piped: push, then open the review through gh)
 USAGE
 }
 
@@ -8297,15 +8321,29 @@ deliver_show() {
   # to it, which folder and when (joined); an adoption keeps its fixed
   # sentence. branch_why ends with the joined clause when there is one,
   # and the line says that once, in the parentheses after the name.
-  local how="" branch base why adopting continuing jfolder jday
+  local how="" branch base why adopting continuing jfolder jday prn prbase prtold project
   json_read "$plan" branch=branch base=base why=branch_why? adopting=adopting? continuing=continuing? \
-    jfolder=joined.folder? jday=joined.day?
+    jfolder=joined.folder? jday=joined.day? prn=review_pr.number? prbase=review_pr.base? prtold=review_pr_told? \
+    project=project?
   if [ -n "$adopting" ]; then how=" (adding to the branch on the audience, which was made outside the office: this folder records no delivery on it)"
   elif [ -n "$jfolder" ]; then
     how=" (adding to the branch $jfolder delivered to on $jday)"
     why="${why%"; $jfolder delivered to it on $jday, so this delivery continues on it"}"
   elif [ -n "$continuing" ]; then how=" (adding to the branch on the audience)"; fi
-  printf '  branch:   %s%s, from %s%s\n' "$branch" "$how" "$base" "${why:+ ($why)}"
+  # The base shown is the open pull request's on the branch when gh read
+  # one (0.42.0), said in one line when it is not the project's declared
+  # base; the squash is onto the branch's tip either way.
+  if [ -n "$prbase" ]; then
+    printf '  branch:   %s%s, from %s%s\n' "$branch" "$how" "$prbase" "${why:+ ($why)}"
+    if [ "$prbase" != "$base" ]; then
+      printf '  from:     %s, the base of the pull request #%s on %s, not %s'"'"'s declared base %s\n' "$prbase" "$prn" "$branch" "$project" "$base"
+    else
+      printf '  from:     %s, the base of the pull request #%s on %s\n' "$prbase" "$prn" "$branch"
+    fi
+  else
+    printf '  branch:   %s%s, from %s%s\n' "$branch" "$how" "$base" "${why:+ ($why)}"
+    [ -z "$prtold" ] || printf '  from:     %s (%s)\n' "$base" "$prtold"
+  fi
   # The base brought into the workbench before the squash (0.39.0).
   local merged_line
   merged_line="$(plan_field "$plan" merged.line)"
@@ -8363,9 +8401,12 @@ for l in plan.get("check_told") or []:
 
 cmd_deliver() {
   local want="" project="" branch="" others=0 yes=0 adopt=0 root name space tmp plan out line ans rc=0 url author="" who
-  local refresh="" closing=""
+  local refresh="" closing="" review_want=""
   while [ $# -gt 0 ]; do
     case "$1" in
+      --open-review|--no-open-review) [ -z "$review_want" ] || [ "$review_want" = "$1" ] \
+                                        || die "--open-review and --no-open-review contradict each other"
+                                      review_want="$1"; shift ;;
       --close) [ "$closing" != leave ] || die "--close and --leave-open contradict each other"; closing=close; shift ;;
       --leave-open) [ "$closing" != close ] || die "--close and --leave-open contradict each other"; closing=leave; shift ;;
       --on) [ $# -ge 2 ] || die "--on needs the project's name"; project="$2"; shift 2 ;;
@@ -8486,12 +8527,88 @@ cmd_deliver() {
   json_read - words=words told=told next=next pending=pending? pending_known=pending# <<< "$out"
   printf '\n%s\n' "$words"
   [ -z "$told" ] || while IFS= read -r line; do log "$line"; done <<< "$told"
+  # The review (0.42.0): opened through gh on the occupant's yes, or its
+  # body put on the clipboard; REVIEW_OPENED is `#N URL` once it is open.
+  # Before the close, so its History line is written where the folder is.
+  printf '%s' "$out" > "$tmp/run.json"
+  REVIEW_OPENED=""
+  deliver_review "$root" "$tmp" "$day" "$review_want"
   deliver_close "$root" "$space" "$name" "$closing" "$pending" "$pending_known"
   printf '\nNext:\n'
+  if [ -n "$REVIEW_OPENED" ]; then
+    # Open now: the lines that would open it by hand give way to it.
+    next="$(printf '%s\n' "$next" | grep -v -e '^open the review: ' -e "^the review's title: ")"
+    next="the review is open: $REVIEW_OPENED${next:+$'\n'$next}"
+  fi
   [ -z "$next" ] || printf '%s\n' "$next" | sed 's/^/  /'
-  url="$(printf '%s\n' "$next" | sed -n 's/^open the review: //p' | head -n 1)"
-  [ -z "$url" ] || to_clipboard "$url" "the review's URL" || true
+  [ -n "$REVIEW_OPENED" ] || deliver_review_words "$tmp/run.json"
   return 0
+}
+
+# deliver_review ROOT TMP DAY WANT: after the push, the review (0.42.0).
+# For a fresh branch, when gh is here, signed in to the audience's GitHub
+# host: the review shown as gh will open it (title, base, head, reviewer,
+# body and the gh line) and asked once, y/N, unless WANT (--open-review,
+# --no-open-review) says; piped with neither, nothing is opened and that
+# is said. On yes, office_review.py opens it and records the `review` line
+# on the folder; gh's refusal is said whole and the delivery stands. When
+# no review is offered (no gh, signed out, not a GitHub host), one line
+# says why. A branch whose review is open already opens nothing. Never
+# fails the delivery.
+deliver_review() {
+  local root="$1" tmp="$2" day="$3" want="$4" offered why carried title base head reviewer to body argv repo ans out
+  python3 -B -P -S -c 'import json,sys; json.dump(json.load(open(sys.argv[1])).get("review") or {}, open(sys.argv[2], "w"))' \
+    "$tmp/run.json" "$tmp/review.json" 2>/dev/null || { debug "the run said nothing of the review"; return 0; }
+  json_read "$tmp/review.json" offered=offer? why=why? carried=carried_by.number? title=title? base=base? head=head? \
+    reviewer=reviewer? to=to? body=body? argv=argv? repo=repo?
+  [ -z "$carried" ] || return 0
+  if [ -z "$offered" ]; then
+    [ -z "$why" ] || log "the review was not opened: $why"
+    [ "$want" != --open-review ] || [ -z "$why" ] || warn "--open-review: $why"
+    return 0
+  fi
+  printf '\nThe review, as gh will open it on %s:\n' "${repo%%/*}"
+  printf '  title:    %s\n' "$title"
+  printf '  base:     %s\n' "$base"
+  printf '  head:     %s\n' "$head"
+  if [ -n "$reviewer" ]; then printf '  reviewer: %s (delivery.md'"'"'s to: line)\n' "$reviewer"
+  elif [ -n "$to" ]; then printf '  reviewer: none passed to gh (delivery.md'"'"'s to: line, %s, does not read as a login; send it to them yourself)\n' "$to"
+  else printf '  reviewer: none (delivery.md names none)\n'; fi
+  printf '  body:\n'
+  if [ -n "$body" ]; then printf '%s\n' "$body" | sed 's/^/    /'; else printf '    (empty)\n'; fi
+  printf '  gh line:  %s\n' "$(pylib "$REVIEW_PY" shown-line --review "$tmp/review.json" 2>/dev/null)"
+  case "$want" in
+    --open-review) ans=y ;;
+    --no-open-review) ans=n ;;
+    *) if can_ask; then
+         ask ans "Open this review on the audience through gh? (--open-review) (y/n)" "n" 0 \
+           "y runs the gh line above, which opens the pull request on the audience's git host with the title, body, base and head shown, and the reviewer when one is named; the folder's History records its number and URL. n opens nothing: the review's body goes on the clipboard and its title and URL are printed, so opening it by hand is one paste (--no-open-review)."
+       else
+         log "the review was not opened: piped, nothing is opened on the audience without its question (office deliver --open-review opens it with the delivery)"
+         ans=n
+       fi ;;
+  esac
+  case "$ans" in y|Y|yes) ;; *) return 0 ;; esac
+  if out="$(pylib "$REVIEW_PY" open "$root" --review "$tmp/review.json" --day "$day")"; then
+    REVIEW_OPENED="${out#opened the review: }"
+    printf '%s\n' "$out"
+  fi
+  return 0
+}
+
+# deliver_review_words RUN: when the review was not opened by the office,
+# its words go where the occupant pastes them (0.42.0, the gaps of
+# 2026-10-28, A6): the Review section's body on the clipboard, said as
+# every copy is said, its title and URL already under Next. A branch whose
+# review is open already gets the same body: the reply's words.
+deliver_review_words() {
+  local body
+  json_read "$1" body=review.body?
+  if [ -z "$body" ]; then
+    debug "delivery.md's Review section has no body, so nothing goes to the clipboard"
+    return 0
+  fi
+  to_clipboard "$body" "the review's body" || true
 }
 
 # deliver_close ROOT SPACE NAME CLOSING PENDING KNOWN: after a push, the
@@ -8533,6 +8650,7 @@ deliver_close() {
 usage_letterhead_check() {
   cat <<'USAGE'
 usage: office letterhead check [PATH | --on PROJECT] [--all | --added] [--range A..B] [--words FILE]...
+                               [--delivery FILE]...
 The letterhead's guard on what leaves the office, run by hand: names
 every line that holds what the letterhead refuses, as file:line: what,
 and exits 1 with a hit, 0 clean. What it refuses is one list in the
@@ -8552,7 +8670,12 @@ Scope: the files a range changed and the range's commit messages
 (--range A..B, as office deliver checks a delivery); else the files a
 dirty tree changed, as they are; else the whole tree, with --all or when
 the directory is not a git repo (said so). --words FILE checks a text as
-it is (a delivery's words); in a git repo, a line of the words that is a
+it is, the whole file. --delivery FILE (since 0.42.0) reads a folder's
+delivery.md as office deliver reads it: its to: line and its Commit and
+Review sections, the words that leave, and not the page's heading or
+office land's filing note (which, on a page filed before 0.35.0, names a
+session), so a hand check agrees with deliver; use it for a delivery's
+words, and --words for any other text. In a git repo, a line of the words that is a
 line of the repo's own pull-request template, as HEAD holds it, is not
 held to the phrasing rule or the three characters (names, bale's marks
 and the forbidden list still read it). --added (since 0.38.0) reads the
@@ -8570,14 +8693,17 @@ Examples:
   office letterhead check --all ~/work/api
   office letterhead check --on api --range origin/main..HEAD
   office letterhead check --added --range origin/main..HEAD
-  office letterhead check --words desk/14-health-route/delivery.md
+  office letterhead check --delivery desk/14-health-route/delivery.md   (as deliver reads the words)
+  office letterhead check --words notes/announcement.md                  (any text, whole)
 USAGE
 }
 
 cmd_letterhead_check() {
-  local path="" project="" args=() root="" forbidden=() w added=0
+  local path="" project="" args=() root="" forbidden=() w added=0 deliveries=() words_json=""
   while [ $# -gt 0 ]; do
     case "$1" in
+      --delivery) [ $# -ge 2 ] || die "--delivery needs a delivery.md"; [ -f "$2" ] || die "--delivery $2: no such file"
+                  deliveries+=("$(readlink -f "$2")"); shift 2 ;;
       --on) [ $# -ge 2 ] || die "--on needs the project's name"; project="$2"; shift 2 ;;
       --all) args+=(--all); shift ;;
       --range) [ $# -ge 2 ] || die "--range needs A..B"; args+=(--range "$2"); shift 2 ;;
@@ -8589,6 +8715,14 @@ cmd_letterhead_check() {
     esac
   done
   [ -z "$project" ] || [ -z "$path" ] || die "--on PROJECT and a path are two trees; give one"
+  # --delivery (0.42.0): a folder's delivery.md read as office deliver reads
+  # it (office_deliver.delivery_words: its to: line and its Commit and
+  # Review sections, the page's heading and filing note left in the
+  # office), so a hand check agrees with deliver; --words reads a file whole.
+  if [ "${#deliveries[@]}" -gt 0 ]; then
+    words_json="$(deliver_py delivery-words "${deliveries[@]}")" || exit 2
+    args+=(--words-json "$words_json")
+  fi
   # The office's letterhead rides when there is an office here: its
   # forbidden strings, and the characters it refuses by default (0.25.0).
   root="$( (resolve_office) 2>/dev/null)" || root=""

@@ -1350,6 +1350,7 @@ coworker reviews. `office deliver FOLDER` is the crossing:
     office deliver 6 --branch picklists --adopt  # onto a pull request's branch made outside the office
     office deliver                               # the folders landed and not delivered, by key (0.41.0)
     office deliver 14 --yes --close              # piped: close the folder once its work is delivered
+    office deliver 14 --yes --open-review        # piped: push, then open the review through gh (0.42.0)
 
 A folder closes at delivery (0.41.0; the plan's ruling of 2026-10-29):
 `office land` leaves a folder on a project with an audience on the desk,
@@ -1611,6 +1612,70 @@ once its resolution is a merge commit, the next delivery is read from
 where the workbench and the branch meet, and the sessions the branch
 already carries are not named again.
 
+The review (0.42.0). gh, GitHub's own command line, is the office's one
+way to a git host's API, and optional everywhere: without it every
+surface does what it did before, and says in one line that gh is not
+there where it would have read or opened something. Each step:
+
+- Before anything is fetched, the delivery branch's name is held to the
+  letterhead's marks, read as the words are read: a name the letterhead
+  would refuse in a line (a `bale/` branch, a session id, a forbidden
+  word) is refused with `--branch NAME` as the remedy, and a name the
+  folder's slug gives that ends in three digits (`fix-login-002`) reads
+  as a session id and is refused the same way. A name you give with
+  `--branch` or the words' `branch:` line may end in an issue's number.
+- After the push, for a branch with no review yet, when gh is on this
+  machine (found on the PATH, or where `OFFICE_GH_PATH` says) and signed
+  in to the audience's GitHub host (github.com, or a host named
+  github.*), deliver shows the review as gh will open it: the Review
+  section's title and body, the base, the head, the reviewer when the
+  `to:` line reads as a GitHub login (`- to: @pat-reviewer`; a name is
+  printed as before and never passed to gh), and the gh line, `gh pr
+  create --repo HOST/OWNER/REPO --base BASE --head BRANCH --title TITLE
+  --body-file FILE [--reviewer LOGIN]`. It asks once, `Open this review
+  on the audience through gh? (--open-review) (y/n) [n]`; `--open-review`
+  and `--no-open-review` are the twins, and piped with neither it opens
+  nothing and says so.
+- On yes it prints `opened the review: #N URL`, and the folder's History
+  gains `- DATE review: BRANCH on origin of PROJECT: #N URL`, committed
+  alone; Next then names the open review rather than the compare page. gh
+  refusing (not signed in to that host, no rights, a pull request already
+  open on the branch) is said with gh's own words, and the delivery
+  stands: the branch is on the audience either way.
+- Without gh, signed out of that host, on no, or on a host gh does not
+  reach (GitLab, or a host of unknown shape), the review's body goes on
+  the clipboard, said as every copy is said, and its title and the
+  compare URL are printed under Next, so opening it by hand is one paste,
+  never a retype. The office never signs gh in, and writes no token,
+  login or credential anywhere.
+- A delivery added to a branch whose review is open (another folder's
+  branch, an adopted one, or this folder's own continued) opens nothing:
+  Next names `the review that carries it: #N URL` when gh reads it, the
+  reviews page for the branch otherwise, and the body goes on the
+  clipboard as the reply's words. When gh reads the pull request open on
+  the branch, the question's branch line shows the request's base as the
+  delivery's from, and a `from:` line says when it is not the project's
+  declared `base`; without gh it says in that line that the base was not
+  read. The squash is onto the branch's tip either way.
+- Review state is read, never asked for: `gh pr list --repo
+  HOST/OWNER/REPO --state all --json ...`, read-only, one call per project
+  with a branch the office delivered, a 15-second timeout, no prompt. The
+  walk-in and `office desk` gain a `Reviews:` section after what is in
+  flight, one line per project (`proj: #12 approved (health-route, folder
+  14)`), each review `#N approved`, `#N changes requested`, `#N review
+  pending`, `#N merged` or `#N closed`; a review that asked for changes
+  gets a line saying what answers it (a session on its branch, then
+  `office deliver N --branch BRANCH`). The desk's line for a folder says
+  `[review #12 approved]`, and its next names the changes asked for first.
+  The home screen's project line ends `; reviews: ...`, and the digest
+  has a `Reviews` section. An open review always shows; a merged or
+  closed one shows while its folder is on the desk, or for a week. It is
+  a rendering, recomputed on every run and kept nowhere. gh absent, signed
+  out or the host not answering is one line in the project's place
+  (`proj: review state not read: gh is not on this machine`), never a
+  refusal. A project on a host reads the same way from this machine, from
+  the repository a recorded review names.
+
 The push guard. Declaring an audience (`office projects add --audience`,
 `set --audience`) writes a pre-push hook into the clone's `.git/hooks`,
 outside what git tracks, as `--prepare` keeps everything the office
@@ -1643,13 +1708,18 @@ The letterhead check:
     office letterhead check --all ~/work/api     # the whole tree
     office letterhead check --on api --range origin/main..HEAD   # in a project's repo, on its host
     office letterhead check --added --range origin/main..HEAD    # the lines the range adds, as deliver reads
-    office letterhead check --words desk/14-health-route/delivery.md
+    office letterhead check --delivery desk/14-health-route/delivery.md   # a delivery's words, as deliver reads them
+    office letterhead check --words notes/announcement.md                  # any other text, whole
 
 It names every line that holds what the letterhead refuses, as
-`file:line: what`, and exits 1 with a hit. `--words` reads a file whole,
-heading and comments too; deliver reads only what of a `delivery.md`
-leaves (above), so on a page filed before 0.35.0 the hand check names the
-filing note's session id where deliver does not. What it refuses is one list in
+`file:line: what`, and exits 1 with a hit. For a folder's words use
+`--delivery` (0.42.0): it reads a `delivery.md` as deliver reads it, its
+`to:` line and its Commit and Review sections, and says in a line what it
+did not read (the page's heading, the note office land files under it),
+so the hand check agrees with deliver, on a page filed before 0.35.0 too,
+whose filing note names a session. `--words` reads a file whole, heading
+and comments too, for any other text. `--delivery` travels with `--on PROJECT`, to a
+project on a host too. What it refuses is one list in
 the install, share/letterhead.toml: the names of models, vendors and
 products; tell-tale phrasing an assistant writes and a person does not;
 and bale's marks (its commit subjects, `applied/` tags, `bale/` branches,
@@ -1970,6 +2040,7 @@ matches the floor plan.
 | lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives); since 0.38.0 the mask over what it hands back, a credential in a URL and a GitHub token (`mask_text`, `MaskedScreen`) |
 | lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so; since 0.36.0 what bale's own commits changed taken out before the squash, own_commits and take_out_own; since 0.38.0 the lines the squash adds checked rather than its files whole, the branch rule and the rule that chose it, `branch_why`, a branch another folder delivered to continued and work it delivered refused twice, `other_deliveries`), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review; since 0.35.0 a folder's delivery.md read as the letterhead reads it at deliver and at land's review alike, the words that leave and nothing of the office's (delivery_words); since 0.40.0 the merge session's job, its materials and the merge commit made from its landed resolution, the content test of a delivery a review merged as a squash, and a continued delivery's range squash |
 | lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin); the characters an office's letterhead refuses and lifts, and a repository's pull-request templates; since 0.38.0 the lines a diff adds read rather than its files whole (`--added`), and the words-only lists (`WORDS_ONLY_SECTIONS`) |
+| lib/office_review.py | pull requests through gh (0.42.0), the office's one door to a git host's API: gh found through `gh_program` (the PATH, or `OFFICE_GH_PATH`), the review deliver offers and opens on the occupant's yes and the `review` History line it leaves, the base of the pull request open on a branch, and the review state the walk-in, office desk, the home screen and the digest render, read-only and kept nowhere |
 | share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks (its commit subjects, tags, branches, session ids and, since 0.36.0, its paths), one list for office letterhead check and the suite's text rules; and the characters an office with a letterhead refuses by default; since 0.38.0 `[cleanup]`, the names of a cleanup, read in words and commit messages only |
 | doctrine/OFFICE.md | how every office works; it opens with a reading card naming what each kind of session reads, and what a build session reads sits above its PAST THE CORE banner |
 | doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |
@@ -2208,7 +2279,11 @@ the file `OFFICE_CONTAINER_MARKER` names (empty: none). Each `Env` and every
 job set both empty, so no survey a test runs starts your R, node, bale or
 office, or searches a WSL machine's Windows directories on the PATH;
 unset, as in everyday use, the survey reads the PATH and `/.dockerenv` as
-before.
+before. gh (0.42.0) is looked for the same way, in the directories
+`OFFICE_GH_PATH` lists, the PATH when it is unset: each `Env` and every job
+set it empty, so no test runs your gh, and the tests that want it put the
+suite's fake (tests/fakes/gh_fake.py, answering from a state file) in a
+directory of their own and name it.
 The tests that imitate WSL write a kernel version string of their own
 and put fake Windows programs in their own tree. `tests/test_suite_clock.py`
 fails the suite on a test file that reads the kernel's version or looks

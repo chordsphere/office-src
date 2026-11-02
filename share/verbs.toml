@@ -340,7 +340,9 @@ trigger = ["manual"]
 # a merge that conflicts writes the merge's materials into the folder
 # (merge/), for the merge session office start --merge sends, and a merge
 # session's resolution that office land could not make a merge commit is
-# made one here.
+# made one here. Since 0.42.0 it opens the review through gh when the
+# occupant says so (a pull request on the audience's git host, its number
+# and URL in a dated review line in the folder's History).
 [verbs.deliver]
 kind = "script"
 built = true
@@ -350,7 +352,8 @@ writes = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md", "a del
           "the clone's remote-tracking refs and base branch, when the occupant says to refresh them (0.39.0)",
           "a merge commit of the audience's base on the clone's workbench branch, when that merge is clean (0.39.0)",
           "desk/{folder}/merge", "a merge session's resolution as a merge commit on the clone's workbench branch (0.40.0)",
-          "filing-cabinet/{folder}, when its work is delivered (0.41.0)"]
+          "filing-cabinet/{folder}, when its work is delivered (0.41.0)",
+          "a pull request on the project's audience, through gh, when the occupant says to open the review (0.42.0)"]
 lands = []
 attended = true
 trigger = ["manual"]

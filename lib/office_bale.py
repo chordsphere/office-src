@@ -931,13 +931,17 @@ SIZE_RANK = {size: n for n, size in enumerate(oh.SIZES)}
 SUCCESSOR_RE = oh.LazyPattern(r"folders?\s+([\d,\s]+)")
 
 
-def folder_line(f):
+def folder_line(f, next_first=None):
     """`folder N  NAME  next: ...  (sessions: N)`, the name alone for a
-    folder with no number, and its size when it has one."""
+    folder with no number, and its size when it has one. next_first, when
+    given, is said before the folder's own Next (0.42.0: a review that asked
+    for changes)."""
     try:
         nxt, count = oh.folder_summary(f["path"], FOLDER_TEMPLATE)
     except (OSError, UnicodeDecodeError, oh.HelperError) as exc:
         return f"{f['name']}  (folder.md could not be read: {exc})"
+    if next_first:
+        nxt = f"{next_first}; then {nxt}"
     head = f"folder {f['number']}  {f['name']}" if f.get("number") else f["name"]
     size = (f["fields"].get("size") or [None])[0]
     return f"{head}  next: {nxt}  (sessions: {count})" + (f"  {size}" if size else "")
@@ -1147,12 +1151,46 @@ def classify_desk(folders, flying, since, table=None):
     return groups
 
 
+def desk_folder_line(f, groups):
+    """folder_line on the desk and the walk-in (0.42.0): with the reviews
+    on the folder's branches after it, `[review #12 approved]`, and a
+    review that asked for changes named first in its next."""
+    import office_review as orev
+    rows = (groups.get("reviews_by_rel") or {}).get(f["rel"])
+    if not rows:
+        return folder_line(f)
+    asked = orev.changes_requested(rows)
+    first = f"answer review #{asked['number']}'s requested changes on {asked['branch']}" if asked else None
+    return f"{folder_line(f, first)}  [{orev.folder_words(rows)}]"
+
+
+def read_reviews(office_root, folders, groups):
+    """The reviews on the branches this office delivered (0.42.0), read
+    through gh into groups: reviews (per project) and reviews_by_rel. A
+    rendering, recomputed on every run and cached nowhere; what cannot be
+    read is a line in its project's place, never a refusal."""
+    import office_review as orev
+    try:
+        groups["reviews"] = orev.office_reviews(office_root, folders)
+    except (OSError, oh.HelperError, orev.GhError) as exc:
+        debug(f"the reviews could not be read: {exc}")
+        groups["reviews"] = []
+    groups["reviews_by_rel"] = orev.by_folder(groups["reviews"])
+
+
 def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
     """The groups as the screen shows them. Full, for office desk; for
     the walk-in, In flight and the first ready folders."""
+    import office_review as orev
+    folder_line = lambda f: desk_folder_line(f, groups)  # noqa: E731  (0.42.0: the reviews on every line)
     lines = ["In flight:"]
     lines += [f"  {l}" for l in flight_lines]
     lines += [f"  {folder_line(f)}  [{open_words(f, groups)}]" for f in groups["open"]]
+    # The reviews on the branches the office delivered (0.42.0), after
+    # what is in flight, one line per project.
+    reviews = orev.review_lines(groups.get("reviews"))
+    if reviews:
+        lines += [""] + reviews
     parked = sum(len(v) for v in groups["parked"].values())
     errors = sum(1 for h in groups["parked"] if h.startswith("ERROR")) + len(groups["ready_errors"])
     on_desk = (len(groups["flying"]) + len(groups["open"]) + len(groups["ready"]) + parked + len(groups["candidates"])
@@ -1307,6 +1345,7 @@ def render_desk(rd, office_root, today, since=None, walk_in=False, now=None, gro
     groups["undelivered"], groups["merges"] = undelivered, merges
     groups["undelivered_by_rel"] = {u["folder"]["rel"]: u for u in undelivered}
     groups["merge_by_rel"] = {m["folder"]["rel"]: m for m in merges}
+    read_reviews(office_root, folders, groups)
     # The in-tray's unsorted drops, oldest first (0.19.0): the desk lists
     # them, the walk-in counts them, and the Next line may name one.
     try:

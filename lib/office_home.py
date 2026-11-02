@@ -222,11 +222,15 @@ def place_row(rd, cwd, names, now, tz):
     return f"last landed: {names.of(latest)}, {local_day(stamp, tz)} ({age_words(ob.parse_stamp(stamp), now)})", []
 
 
-def project_rows(rd, office_root, names, now, tz):
+def project_rows(rd, office_root, names, now, tz, reviews=None):
     """[(label, words)]: each project the office scopes, then the office
     itself when a session is open there. A project that cannot be read
-    says why on its own line; the others are read all the same."""
+    says why on its own line; the others are read all the same. reviews
+    (0.42.0; office_review.office_reviews, read once with the desk) adds
+    each project's review state after what is in flight on it."""
     import office_bale as ob
+    import office_review as orev
+    said = {got["name"]: orev.project_words(got, cites=False) for got in reviews or []}
     projects = ob.office_projects(office_root)
     rows = []
     if not projects:
@@ -238,6 +242,8 @@ def project_rows(rd, office_root, names, now, tz):
             # A paused project (0.41.0) is read for nothing: its row says so.
             words = (f"paused (office projects set {p['name']} --unpaused)" if exc.kind == "paused"
                      else f"cannot be read: {exc}")
+        if p["name"] in said:
+            words += f"; reviews: {said[p['name']]}"
         rows.append((p["name"], words))
     own = ob.office_registry(office_root)
     if own is not None:
@@ -671,7 +677,7 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
     doctrines = ob.Doctrines(office_root)
     for s in sittings:
         s["stale"] = doctrines.older(s["sid"])
-    rows = project_rows(rd, office_root, names, now, tz)
+    rows = project_rows(rd, office_root, names, now, tz, groups.get("reviews"))
     bundles = waiting_bundles(rd, office_root, directories, now) if directories else []
     try:
         meetings = om.near(office_root, tz or dt.timezone.utc, now)
