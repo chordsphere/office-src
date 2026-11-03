@@ -29,6 +29,7 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from test_office import REPO, Env, PATCH, h, kept_setup  # noqa: E402
 from test_read_side import FIXTURES, OPEN_WORKER, FakeBale, fixture_records, path_without_bale  # noqa: E402
+from test_start import kill_hung, wait_briefly  # noqa: E402
 
 import office_bale as ob  # noqa: E402
 
@@ -94,7 +95,11 @@ class Office:
 def terminal(env, cwd, argv, steps, limit=20):
     """Run the office command on a terminal. steps is a list of (prompt,
     answer): wait until the prompt shows, then type the answer. Returns
-    (exit code, everything the terminal showed)."""
+    (exit code, everything the terminal showed). A child still running
+    after the read deadline is a hang (0.43.0): it is killed with its
+    process group and the test fails (tests/test_start.py kill_hung), so a
+    question no step answers fails one test instead of hanging the
+    terminal lane."""
     pid, fd = pty.fork()
     if pid == 0:
         try:
@@ -126,7 +131,10 @@ def terminal(env, cwd, argv, steps, limit=20):
         start = seen.find(prompt.encode(), start) + len(prompt)
         os.write(fd, answer.encode() + b"\n")
     read_until(b"\x00never shown", 0)
-    _, status = os.waitpid(pid, 0)
+    done, status = wait_briefly(pid)
+    if not done:
+        kill_hung(pid, fd)
+        raise AssertionError(f"still running after its last step:\n{seen.decode('utf-8', 'replace')}")
     os.close(fd)
     return os.waitstatus_to_exitcode(status), seen.decode("utf-8", "replace")
 

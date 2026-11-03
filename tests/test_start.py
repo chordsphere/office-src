@@ -118,7 +118,13 @@ def on_a_terminal(test, argv, cwd, env, script):
     tests/test_front_door.py has started the tour since 0.26.0: a run
     started in the background from a non-interactive shell ignores both,
     and without this every program a test drives here would inherit that,
-    so a trap it sets on an interrupt could never fire."""
+    so a trap it sets on an interrupt could never fire.
+
+    A child still running after the read deadline is a hang (0.43.0): a
+    question the script does not answer waits for ever. It is killed,
+    with everything in its process group, and the test fails, as
+    run_on_a_pty in tests/test_front_door.py does, so one test fails
+    instead of the terminal lane hanging."""
     pid, fd = pty.fork()
     if pid == 0:
         try:
@@ -146,7 +152,9 @@ def on_a_terminal(test, argv, cwd, env, script):
         return marker in seen
 
     for marker, answer in script:
-        test.assertTrue(read_until(marker), seen.decode(errors="replace"))
+        if not read_until(marker):
+            kill_hung(pid, fd)
+            test.fail(f"never saw {marker!r}:\n{seen.decode(errors='replace')}")
         if answer is not None:  # None: the marker is only waited for (0.22.0)
             os.write(fd, answer.encode() + b"\n")
     deadline = time.time() + 60
@@ -161,9 +169,43 @@ def on_a_terminal(test, argv, cwd, env, script):
         if not chunk:
             break
         seen += chunk
-    _, status = os.waitpid(pid, 0)
+    done, status = wait_briefly(pid)
+    if not done:
+        kill_hung(pid, fd)
+        test.fail(f"still running after its last step:\n{seen.decode(errors='replace')}")
     os.close(fd)
     return os.waitstatus_to_exitcode(status), seen.decode(errors="replace")
+
+
+def wait_briefly(pid, limit=10):
+    """(done, wait status) for a child on a pty once its output has ended
+    or its read deadline passed: waited for up to limit seconds, never for
+    ever (0.43.0)."""
+    deadline = time.time() + limit
+    done, status = os.waitpid(pid, os.WNOHANG)
+    while done == 0 and time.time() < deadline:
+        time.sleep(0.1)
+        done, status = os.waitpid(pid, os.WNOHANG)
+    return done != 0, status
+
+
+def kill_hung(pid, fd):
+    """Kill a hung child on a pty and its process group (pty.fork made it a
+    session leader, so the group is everything it started), reap it and
+    close the pty (0.43.0). A child already gone is not an error."""
+    for kill in (lambda: os.killpg(pid, signal.SIGKILL), lambda: os.kill(pid, signal.SIGKILL)):
+        try:
+            kill()
+        except (ProcessLookupError, PermissionError):
+            pass
+    try:
+        os.waitpid(pid, 0)
+    except ChildProcessError:
+        pass
+    try:
+        os.close(fd)
+    except OSError:
+        pass
 
 
 def opener_from(text):

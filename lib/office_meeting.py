@@ -17,8 +17,11 @@ in the office's own line forms, kept to the byte (values illustrative):
     - every mon 09:00 weekly review [about: alpha, beta]
 
     calendar/record.md, what happened:
-    - 2026-10-26 09:00 weekly review: prep out, 2026-10-25-weekly-review-prep-001 [about: alpha, beta]
-    - 2026-10-26 09:00 weekly review: held, 2026-10-25-weekly-review-prep-001; arose: in-tray/2026-10-26-update-the-report.md; dropped: in-tray/2026-10-26-call-back.md [about: alpha, beta]
+    - 2026-10-26 09:00 weekly review: prep out, 2026-10-25-weekly-review-prep-001; doctrine: 0123456789ab [about: alpha, beta]
+    - 2026-10-26 09:00 weekly review: held, 2026-10-25-weekly-review-prep-001; arose: in-tray/2026-10-26-update-the-report.md; dropped: in-tray/2026-10-26-call-back.md; doctrine: 0123456789ab [about: alpha, beta]
+
+(The `doctrine:` part, since 0.43.0, is the short hash of the doctrine the
+prep went out under; a line from before it has none.)
 
 Times are local, in the floor plan's timezone; bale's clock is UTC. A plan
 line with no `[about: ...]` (written by hand, before 0.26.0) concerns the
@@ -118,7 +121,7 @@ ABOUT = r"(?: \[about: ([^\]]*)\])?"
 PLAN_ONE_RE = oh.LazyPattern(r"^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) (.+?)" + ABOUT + r"$")
 PLAN_SERIES_RE = oh.LazyPattern(r"^- every (mon|tue|wed|thu|fri|sat|sun|day|weekday) (\d{2}:\d{2}) (.+?)" + ABOUT + r"$")
 RECORD_RE = oh.LazyPattern(r"^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) ([^:]+?): (prep out|held), "
-                       r"(\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*-\d{3})((?:; (?:arose|dropped): [^;\[]*)*)"
+                       r"(\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*-\d{3})((?:; (?:doctrine|arose|dropped): [^;\[]*)*)"
                        + ABOUT + r"$")
 CANON_ONE_RE = oh.LazyPattern(r"^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})$")
 CANON_SERIES_RE = oh.LazyPattern(r"^every (mon|tue|wed|thu|fri|sat|sun|day|weekday) (\d{2}:\d{2})$")
@@ -437,19 +440,21 @@ def read_plan(root):
 
 def read_record(root):
     """The record lines the office wrote for meetings, each a dict: n, date,
-    time, title, state (prep out, held), sid, arose, dropped, about, key."""
+    time, title, state (prep out, held), sid, doctrine (the short hash the
+    prep went out under, 0.43.0, or None), arose, dropped, about, key."""
     lines = read_lines(pathlib.Path(root) / RECORD)
     out = []
     for n, line in enumerate(lines or [], 1):
         m = RECORD_RE.match(line.rstrip())
         if not m:
             continue
-        lists = {"arose": [], "dropped": []}
+        lists = {"doctrine": [], "arose": [], "dropped": []}
         for part in (m.group(6) or "").split("; ")[1:]:
             k, _, v = part.partition(": ")
             lists[k] = [x.strip() for x in v.split(",") if x.strip()]
         out.append({"n": n, "date": m.group(1), "time": m.group(2), "title": m.group(3).strip(),
-                    "state": m.group(4), "sid": m.group(5), "arose": lists["arose"], "dropped": lists["dropped"],
+                    "state": m.group(4), "sid": m.group(5), "doctrine": (lists["doctrine"] or [None])[0],
+                    "arose": lists["arose"], "dropped": lists["dropped"],
                     "about": about_list(m.group(7)), "key": f"{m.group(1)} {m.group(2)} {m.group(3).strip()}"})
     return out
 
@@ -460,6 +465,10 @@ def render_record(r):
         parts.append("arose: " + ", ".join(r["arose"]))
     if r["dropped"]:
         parts.append("dropped: " + ", ".join(r["dropped"]))
+    # The doctrine the prep went out under (0.43.0), last, so the lists keep
+    # their place after the id.
+    if r.get("doctrine"):
+        parts.append(f"doctrine: {r['doctrine']}")
     return f"- {r['date']} {r['time']} {r['title']}: {'; '.join(parts)}{about_suffix(r['about'])}"
 
 
@@ -665,10 +674,15 @@ def record_meeting(root, when, title, about):
     return line, changed, words
 
 
-def mark_prep_out(root, key, sid, tz):
+def mark_prep_out(root, key, sid, tz, doctrine=None):
     """The record line that says the meeting's prep is out, by its sid (a
     calendar that came without its record page, by hand or by an older
-    renovation, gets it first). Returns the changed paths."""
+    renovation, gets it first), stamping the short hash of the doctrine it
+    went out under when given its sha256 (0.43.0: no folder records a prep,
+    so its record line does what a sitting's Sessions line does, and the
+    walk-in compares it). Returns the changed paths."""
+    if doctrine is not None and not re.fullmatch(r"[0-9a-f]{64}", doctrine):
+        raise MeetingError(f"--doctrine is the doctrine's sha256, not {doctrine!r}")
     o = planned(root, key, tz)
     if o is None:
         raise MeetingError(f"the plan holds no meeting {key!r}")
@@ -678,7 +692,8 @@ def mark_prep_out(root, key, sid, tz):
     for w in words:
         log(w)
     write_record_line(root, {"date": o["date"], "time": o["time"], "title": o["title"], "state": "prep out",
-                             "sid": sid, "arose": [], "dropped": [], "about": o["about"]})
+                             "sid": sid, "doctrine": oh.doctrine_short(doctrine) if doctrine else None,
+                             "arose": [], "dropped": [], "about": o["about"]})
     return [c for c in changed if c != RECORD] + [RECORD]
 
 
@@ -1058,6 +1073,7 @@ def main(argv=None):
     p = sub.add_parser("prep-out")
     p.add_argument("office"); p.add_argument("--key", required=True); p.add_argument("--sid", required=True)
     p.add_argument("--tz", default="")
+    p.add_argument("--doctrine", help="the sha256 of the doctrine the prep went out under (0.43.0)")
     p = sub.add_parser("prep-of")
     p.add_argument("office"); p.add_argument("--sid", required=True)
     p = sub.add_parser("arising-check")
@@ -1123,7 +1139,7 @@ def main(argv=None):
                 print(f"{path}\t{why}")
             return 0
         if a.cmd == "prep-out":
-            for c in mark_prep_out(root, a.key, a.sid, tz):
+            for c in mark_prep_out(root, a.key, a.sid, tz, a.doctrine or None):
                 print(c)
             return 0
         if a.cmd == "tie":

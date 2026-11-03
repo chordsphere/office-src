@@ -806,6 +806,50 @@ def office_registry(office_root):
 # The office's own registry is read with the projects' and labeled so.
 OFFICE_LABEL = "this office"
 
+# Two read-only sittings open on one folder (0.43.0; the gaps of
+# 2026-10-28, A13): a successor sent while its predecessor stayed open, which
+# the occupant went back to. Each screen says it of every sitting on the
+# folder but the newest, so the key that ends the right one is plain.
+OLDER_SITTING_WORDS = "an older sitting on this folder, probably over"
+
+
+def older_sittings(office_root, sittings):
+    """The ids among sittings ((sid, folders) pairs: the read-only sittings
+    open, each with the folders that record it) that are not the newest
+    open on a folder they share. The newest is the one the folder's
+    Sessions section records last (office start appends each); a folder
+    that cannot be read orders by id, whose date comes first. A sitting
+    alone on its folders is never older."""
+    by_folder = {}
+    for sid, folders in sittings:
+        for rel in folders:
+            if sid not in by_folder.setdefault(rel, []):
+                by_folder[rel].append(sid)
+    older = set()
+    for rel, sids in by_folder.items():
+        if len(sids) < 2:
+            continue
+        try:
+            order = [s for s, _ in oh.folder_session_lines(pathlib.Path(office_root) / rel / "folder.md")]
+        except (OSError, UnicodeDecodeError) as exc:
+            debug(f"{rel}/folder.md cannot be read to order its sittings, so they are ordered by id: {exc}")
+            order = []
+        newest = max(sids, key=lambda s: (order.index(s) if s in order else -1, s))
+        older.update(s for s in sids if s != newest)
+    return older
+
+
+def standing_words(office_root, folders, sid=None):
+    """What a screen says of where a sitting stands (0.43.0): the standing
+    filed on the first of its folders that has one, in office_standing's
+    words, or None when none has."""
+    import office_standing as ostand
+    for rel in folders:
+        st = ostand.folder_standing(office_root, rel)
+        if st is not None:
+            return ostand.words(st, sid)
+    return None
+
 
 def in_flight(rd, office_root, now=None):
     """(lines, unreadable, flying): one line per open session in the
@@ -827,6 +871,9 @@ def in_flight(rd, office_root, now=None):
     doctrines = Doctrines(office_root)
     if not projects:
         lines.append(no_projects_line(projects))
+    # Each read-only sitting's line, by its index, so the line of every
+    # sitting but the newest on a folder says so once all are read (0.43.0).
+    sitting_lines = []
     for label, p in sources:
         try:
             cwd = rendered(p)
@@ -846,6 +893,16 @@ def in_flight(rd, office_root, now=None):
                 older = doctrines.older(sid) if read_only and folders else None
                 if older:
                     ends += f"; {older}"
+                # A prep's record line stamps its doctrine (0.43.0), compared
+                # as a folder's sitting's is.
+                if prep and prep.get("doctrine"):
+                    older = doctrines.older_stamp(prep["doctrine"])
+                    if older:
+                        ends += f"; {older}"
+                # Where the sitting stands (0.43.0), from its folder's page.
+                stands = standing_words(office_root, folders, sid) if read_only and folders else None
+                if stands:
+                    ends += f"; {stands}"
                 # The standalone sort belongs to no folder: it is the
                 # in-tray's session (0.20.0); a meeting's prep is the
                 # calendar's (0.26.0).
@@ -853,6 +910,8 @@ def in_flight(rd, office_root, now=None):
                                                 if label == OFFICE_LABEL and osort.is_sort_sid(sid) else
                                                 f"the meeting {prep['title']} ({prep['date']} {prep['time']}), its prep"
                                                 if prep else "no folder")
+                if read_only and folders:
+                    sitting_lines.append((len(lines), sid, folders))
                 if d is None:
                     lines.append(f"{label}: {sid} open, with no record in bale's telemetry yet -> {target}{ends}")
                     continue
@@ -866,6 +925,10 @@ def in_flight(rd, office_root, now=None):
                 continue
             bad += 1
             lines.append(f"{label}: cannot read: {exc}")
+    older = older_sittings(office_root, [(sid, folders) for _, sid, folders in sitting_lines])
+    for at, sid, _ in sitting_lines:
+        if sid in older:
+            lines[at] += f"; {OLDER_SITTING_WORDS}"
     if open_count == 0 and bad == 0 and projects:
         lines.append(f"none: no session is open in the {len(projects)} project(s) this office scopes"
                      + (", or in the office itself" if own is not None else ""))
@@ -1178,14 +1241,29 @@ def read_reviews(office_root, folders, groups):
     groups["reviews_by_rel"] = orev.by_folder(groups["reviews"])
 
 
+def desk_standing_lines(f, indent):
+    """office desk's line under a folder's next move (0.43.0): where the
+    folder's sitting stood when it last filed a standing, whose, and as of
+    when; [] when the folder has none. A folder whose sitting is open says
+    it on its In flight line instead."""
+    import office_standing as ostand
+    st = ostand.read_page(pathlib.Path(f["path"]).parent / ostand.PAGE) if f.get("path") else None
+    if st is None:
+        return []
+    return [f"{indent}standing, {st['sitting']}'s: {ostand.words(st)}"]
+
+
 def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
     """The groups as the screen shows them. Full, for office desk; for
-    the walk-in, In flight and the first ready folders."""
+    the walk-in, In flight and the first ready folders. office desk shows a
+    folder's standing under its line (0.43.0)."""
     import office_review as orev
     folder_line = lambda f: desk_folder_line(f, groups)  # noqa: E731  (0.42.0: the reviews on every line)
+    stands = (lambda f, indent: []) if walk_in else desk_standing_lines  # noqa: E731
     lines = ["In flight:"]
     lines += [f"  {l}" for l in flight_lines]
-    lines += [f"  {folder_line(f)}  [{open_words(f, groups)}]" for f in groups["open"]]
+    for f in groups["open"]:
+        lines += [f"  {folder_line(f)}  [{open_words(f, groups)}]", *stands(f, "    ")]
     # The reviews on the branches the office delivered (0.42.0), after
     # what is in flight, one line per project.
     reviews = orev.review_lines(groups.get("reviews"))
@@ -1200,6 +1278,7 @@ def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
         out = []
         for f in items:
             out.append(f"  {folder_line(f)}")
+            out += stands(f, "    ")
             out += [f"    {c}" for c in groups["cleared"].get(f["rel"], [])]
         return out
 
@@ -1237,9 +1316,12 @@ def desk_lines(groups, flight_lines, walk_in=False, ready_limit=3):
             lines.append(f"  {heading}")
             for f, also in groups["parked"][heading]:
                 lines.append(f"    {folder_line(f)}")
+                lines += stands(f, "      ")
                 lines += [f"      and {a}" for a in also]
     if groups["candidates"]:
-        lines += ["", "Candidates:"] + [f"  {folder_line(f)}" for f in groups["candidates"]]
+        lines += ["", "Candidates:"]
+        for f in groups["candidates"]:
+            lines += [f"  {folder_line(f)}", *stands(f, "    ")]
     lines += in_tray_lines(groups)
     lines += drafting_lines(groups)
     if groups["no_status"]:
@@ -3137,7 +3219,11 @@ class Doctrines:
     def older(self, sid):
         if self._stamps is None:
             self._stamps = session_doctrines(self.office_root)
-        stamped = self._stamps.get(sid)
+        return self.older_stamp(self._stamps.get(sid))
+
+    def older_stamp(self, stamped):
+        """The one line for a sitting stamped with this short hash (a
+        prep's record line carries its own, 0.43.0), or None."""
         if not stamped or not self.install or stamped == oh.doctrine_short(self.install):
             return None
         return oh.older_doctrine_words(stamped, self.install)
@@ -5075,11 +5161,13 @@ def sitting_plan(found, tarball, problems, bare=None, office_root=None):
     return plan
 
 
-def end_sitting(rd, office_root, plan, day):
+def end_sitting(rd, office_root, plan, day, by="office land", successor=None):
     """bale unlock for a read-only sitting, then one History line in each
     folder that records it, committed alone. The folder keeps its status:
     a planning folder may outlive one sitting, and closing it is the
-    occupant's (office close). Returns (words, told lines)."""
+    occupant's (office close). by names the verb that closed it, and
+    successor (0.43.0: office start, ending the sitting a brief succeeds)
+    the session sent in its place. Returns (words, told lines)."""
     sid, repo = plan["sid"], plan.get("where") or plan["repo"]
     try:
         report = rd.unlock(plan_place(plan), sid)
@@ -5103,7 +5191,8 @@ def end_sitting(rd, office_root, plan, day):
     for folder in plan["folders"]:
         rel = f"{folder}/folder.md"
         try:
-            _, wrote = oh.folder_event(root / rel, day, "ended", f"{sid}, a read-only sitting, closed by office land")
+            _, wrote = oh.folder_event(root / rel, day, "ended", f"{sid}, a read-only sitting, closed by {by}"
+                                       + (f", succeeded by {successor}" if successor else ""))
         except (OSError, UnicodeDecodeError, oh.HelperError) as exc:
             told.append(f"{rel}: the end of {sid} could not be written there ({exc}); the sitting is closed in bale")
             continue
@@ -5112,7 +5201,7 @@ def end_sitting(rd, office_root, plan, day):
             continue
         try:
             git(root, "add", "--", rel)
-            git(root, "commit", "-q", "-m", f"office land: {sid} ended in {pathlib.Path(folder).name}", "--", rel)
+            git(root, "commit", "-q", "-m", f"{by}: {sid} ended in {pathlib.Path(folder).name}", "--", rel)
         except LandError as exc:
             # The sitting is already closed in bale; the line stands on
             # disk and the occupant hears why it is not committed.
@@ -5124,6 +5213,40 @@ def end_sitting(rd, office_root, plan, day):
     if names:
         words += f" {names} stays as it was: closing a folder is yours (office close FOLDER)."
     return words, told
+
+
+def ends_plan(rd, office_root, request, successor):
+    """(plan, said) for the sitting a planner's brief succeeds (0.43.0): the
+    `--- ENDS SID ---` line of the request's brief, read as the LANDS line
+    is, and when SID is a read-only sitting open where the office reads and
+    a folder records it, the plan office land would end it by (sitting_plan),
+    for land-end. plan is None when there is nothing to end; said is the
+    lines to say either way: a line that does not read, a sitting that is
+    not open, not a sitting or recorded by no folder, or the successor
+    itself. Nothing here ends anything."""
+    text = oh.brief_from_request(request)
+    if text is None:
+        return None, []
+    sid, said = oh.brief_ends(text)
+    said = [f"the brief's ENDS line: {p}" for p in said]
+    if sid is None:
+        return None, said
+    if sid == successor:
+        return None, said + [f"the brief's ENDS line names {sid}, the session it sent, so nothing is ended"]
+    every, problems = open_anywhere(rd, office_root, sid=sid)
+    found = [x for x in every if x["sid"] == sid]
+    if not found:
+        unread = f" ({'; '.join(problems)})" if problems else ""
+        return None, said + [f"the brief succeeds {sid}, which is not open where the office reads{unread}, so nothing "
+                             "is ended"]
+    x = found[0]
+    if not x["read_only"]:
+        return None, said + [f"the brief succeeds {sid}, which is open and not a read-only sitting, so start does not "
+                             f"end it (office land {sid} lands it)"]
+    if not x["folders"]:
+        return None, said + [f"the brief succeeds {sid}, a read-only session no folder records, so it is not the "
+                             "office's to end"]
+    return sitting_plan([x], None, problems, office_root=office_root), said
 
 
 # --- withdrawing a session that was never worked (0.24.0) -------------------------------
@@ -5841,9 +5964,17 @@ def land_main(a):
                              accept_base_drift=a.accept_base_drift)
             pathlib.Path(a.plan).write_text(json.dumps(plan), encoding="utf-8")
             return 0
+        if a.cmd == "start-ends":
+            plan, said = ends_plan(rd, a.office, a.request, a.sid)
+            for line in said:
+                print(f"say\t{line}")
+            if plan is not None:
+                pathlib.Path(a.plan).write_text(json.dumps(plan), encoding="utf-8")
+                print(f"end\t{plan['sid']}\t{plan['label']}\t{', '.join(plan['folders'])}")
+            return 0
         plan = json.loads(pathlib.Path(a.plan).read_text(encoding="utf-8"))
         if a.cmd == "land-end":
-            words, told = end_sitting(rd, a.office, plan, a.day)
+            words, told = end_sitting(rd, a.office, plan, a.day, by=a.by or "office land", successor=a.successor)
             print(json.dumps({"words": words, "told": told}))
             return 0
         if a.cmd == "land-after":
@@ -5988,8 +6119,14 @@ def build_parser(only=None):
                    help="pass bale's --accept-checkpoint-change to the apply or retry (0.37.0; as typed on office land)")
     p.add_argument("--accept-base-drift", action="append", default=[], metavar="PATH",
                    help="pass bale's --accept-base-drift PATH to the apply or retry (repeatable; as typed)")
+    p = add("start-ends", help="the sitting a request's brief succeeds (its ENDS line, 0.43.0): say LINE, and "
+                               "end SID LABEL FOLDERS with its plan for land-end into --plan")
+    p.add_argument("office"); p.add_argument("--request", required=True); p.add_argument("--sid", required=True)
+    p.add_argument("--plan", required=True)
     p = add("land-end", help="end a read-only sitting: bale unlock, then the folder's History; one JSON line")
     p.add_argument("office"); p.add_argument("--plan", required=True); p.add_argument("--day", required=True)
+    p.add_argument("--by", help="the verb that ends it, for its History line (default office land; 0.43.0)")
+    p.add_argument("--successor", help="the session sent in its place, for its History line (0.43.0)")
     p = add("land", help="the landing (0.30.0, once land-prepare, land-run and land-outcome): the office's "
                          "record out of an office session's folder, said; bale apply or retry, the terminal's; "
                          "what happened, from bale's records, one JSON line into --outcome; exit 0, 1 when "
@@ -6098,7 +6235,7 @@ def main(argv=None):
         except (oh.HelperError, BaleError, ohost.HostError, OSError) as exc:
             log(f"error: {exc}")
             return 1
-    if a.cmd == "land" or a.cmd.startswith("land-"):
+    if a.cmd == "land" or a.cmd.startswith("land-") or a.cmd == "start-ends":
         return land_main(a)
     if a.cmd == "relay":
         try:

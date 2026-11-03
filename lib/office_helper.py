@@ -2099,6 +2099,47 @@ def brief_branch(text):
     return branch, problems
 
 
+# --- the sitting a planner's brief succeeds (0.43.0) -------------------------------------
+#
+# A planner's successor sitting is packed from a bundle in the office's own
+# registry, and bale's read-only sweep does not reach it, so twice the
+# predecessor stayed open beside it for a day and the occupant went back to
+# the old one (the gaps of 2026-10-28, A13). The brief names the sitting it
+# succeeds, as one line kept to the byte like the LANDS line and read where
+# it is read (doctrine section 4, continued; the value illustrative):
+#
+#   --- ENDS 2026-10-27-alpha-plan-sitting-001 ---
+#
+# office start, once bale has opened the bundle's session, ends that sitting
+# as office land ends one (asked once on a terminal; --end-predecessor and
+# --keep-predecessor the twins). A line that does not read, or a second
+# one, is said; the first is taken.
+
+ENDS_MARK_RE = LazyPattern(r"^--- ENDS (\S+) ---$")
+ENDS_MARK_PREFIX = "--- ENDS "
+
+
+def brief_ends(text):
+    """(sid, problems) from a brief's text: the session the first `---
+    ENDS SID ---` line outside fenced blocks and notepad pages names, or
+    None when the brief carries none that reads; problems names every line
+    that begins like the marker and does not read as one, and a second
+    marker."""
+    sid, problems = None, []
+    for n, line in brief_marker_lines(text):
+        if not line.startswith(ENDS_MARK_PREFIX):
+            continue
+        m = ENDS_MARK_RE.match(line)
+        if not m or not SID_RE.match(m.group(1)):
+            problems.append(f"line {n}: not `--- ENDS SID ---` (SID a session's id): {line}")
+            continue
+        if sid is not None:
+            problems.append(f"line {n}: a second ENDS line; the first is taken: {line}")
+            continue
+        sid = m.group(1)
+    return sid, problems
+
+
 def folders_recording(root, sid):
     """The folders (space/name) whose Sessions record sid, desk first."""
     out = []

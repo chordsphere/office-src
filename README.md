@@ -108,7 +108,12 @@ copies of its stem the item says so, the newest offered), each unsorted
 drop and the sort, desk moves a sitting decided, an office out of step
 with the install, and a read-only sitting, which only you can say is
 over (its item says when it is out under an older doctrine than the
-install's). Keys for a new job (`o`), sending a session out (`s`),
+install's; when two sittings are open on one folder, the item of each
+but the newest ends `; an older sitting on this folder, probably over`,
+0.43.0; and once the sitting has filed where it stands, the item says
+it, `step N of M: words; waiting on you: words (as of DATE TIME)`, with a
+second key that files a new standing from the clipboard, `office
+standing N`). Keys for a new job (`o`), sending a session out (`s`),
 bringing one back (`l`), a note (`n`), a drop (`d`), the whole desk
 (`k`) and help (`h`) are always there, and `q` leaves; `w` withdraws a
 session never worked, or a bundle no session opened, while one waits. A
@@ -137,7 +142,10 @@ its `FAILED` or `BROKEN` verdict as written, or a `RUNNING` one over an
 hour old, with the log to read), the sessions in flight in its projects
 and in the office itself with the folder each belongs to (a read-only
 sitting out under an older doctrine than the install's says so on its
-line, both short hashes named, 0.33.0), how many
+line, both short hashes named, 0.33.0, and so does a meeting's prep,
+0.43.0; a sitting's line says where it stands when its folder has a
+standing, and an older one open beside a newer on the same folder says
+so, 0.43.0), how many
 folders are ready, parked and candidates and the first three ready ones,
 how many drops wait unsorted in the in-tray and how old the oldest is,
 this week and its gaps, the last notepad lines and the slips, and the
@@ -352,7 +360,12 @@ local branch, or a new one tracking the one remote that has it; a clone
 with uncommitted changes, with a session open in it, or with no such
 branch locally or on a remote it has fetched stops the start with nothing
 written and says what to do there (the office fetches nothing), and a
-clone already on the branch is said.
+clone already on the branch is said. One whose brief names the sitting it
+succeeds (`--- ENDS SID ---`, 0.43.0) has start end that sitting, once
+bale has opened the new session and the opener is on the clipboard, as
+`office land` ends one: asked once on a terminal, default yes
+(`--end-predecessor` and `--keep-predecessor` are the twins); piped with
+neither it is said, with the land line, and nothing is ended.
 
 ### Bring it back
 
@@ -379,7 +392,11 @@ markers: `--- OFFICE land SID ---`, the folder's number, title, place and
 state (`folder: N, TITLE (desk/NAME, open; closes at delivery)`), the
 deliver line, the letterhead's review of the landing for a project with
 an audience, and `--- OFFICE END ---`, so the planner never asks for
-them. It asks nothing about ratification: the
+them; with a `reviews:` line for each review gh reads on the folder's
+branches (0.43.0). Piped, nothing is copied, so land prints that block
+whole with the office's lines after bale's, under `The block for the
+planner, whole, with the office's lines:` (0.43.0). It asks nothing about
+ratification: the
 planner ratifies in the next brief it writes, and `office start` files
 it. `office relay` carries a planner's answer to a clarification back
 to the session's repo, through the project's shell for a hosted one. The
@@ -428,7 +445,29 @@ command where the project lives. With no folder named (0.41.0), when
 exactly one folder on the desk records a session open where probes run
 (a read-only sitting, or a session in the office or on a project), the
 probe is that folder's, and it says so; with several, those folders
-alone are offered by key, sittings first. The details are below.
+alone are offered by key, sittings first. The block's stderr is masked
+on the screen too (0.43.0). When the text you copy carries the sitting's
+standing block after the probe block (0.43.0), probe files it on the
+folder first and says so in one line, so one paste does both.
+
+### Where a sitting stands
+
+    office standing 21                   # the sitting's last standing block, from the clipboard
+
+A planner sitting prints its standing at the end of any turn where its
+plan or its place in it changed: one block, `--- STANDING BEGIN SID
+---`, `step N of M: words`, one `- [x]`, `- [>]` or `- [ ]` line per
+step, `waiting on you: words`, `--- STANDING END ---` (the doctrine,
+section 4 continued, pins it to the byte). `office standing FOLDER`
+(0.43.0) files it on the sitting's folder as `standing.md`, replaced
+whole each time and committed on its own, from the clipboard on a
+terminal, a file, or stdin (`-`); `office probe` files one that rides with
+a probe block, and the home screen's key runs it. A block that does not
+read, or that is not a session the folder records, is refused by name and
+the page is left as it was. Then the home screen, the walk-in's In flight
+line and `office desk`, under the folder's next move, show the step you
+are on and what waits on you. The page stays when the sitting ends, as
+the record of where it ended; a successor's filing replaces it.
 
 ### Deliver it to the audience
 
@@ -1138,6 +1177,7 @@ held landing's and the worker's get none):
     --- OFFICE land SID ---
     folder: N, TITLE (desk/NAME, open; closes at delivery)
     next: office deliver N
+    reviews: #12 approved (fix-login)
     letterhead: SID's landing is clean for delivery: ...
     --- OFFICE END ---
 
@@ -1145,10 +1185,18 @@ The `folder:` line's parenthesis is `desk/NAME, open; closes at
 delivery` on a project with an audience, `desk/NAME, open` when land left
 it open for another reason, `filing-cabinet/NAME, closed, done` when land
 closed it, and the line is `folder: none` when no folder records the
-session. `next:` is there only when land printed deliver's Next line; the
-letterhead's lines only for a project with an audience, exactly as land
+session. `next:` is there only when land printed deliver's Next line;
+`reviews:` (0.43.0), one line a review, only for a project with an
+audience when gh reads a review on a branch the folder delivered to (none
+when there is none or gh is not there; the read is the walk-in's, one `gh
+pr list`, never a prompt); the letterhead's lines only for a project with
+an audience, exactly as land
 printed them after the landing; an office session's tail is the folder
-line alone between the markers.
+line alone between the markers. Off a terminal (a landing run from a
+script or a session, 0.43.0), nothing is copied, so after bale's own
+printing land prints each block for the planner whole with its tail,
+under one line, `The block for the planner, whole, with the office's
+lines:`; on a terminal nothing changes.
 
 After an applied landing it runs the project's after-land actions in
 its repo, in order (`office projects set NAME --after-land ./install.sh`
@@ -1186,7 +1234,8 @@ A read-only sitting the office sent out lands nothing; when it is over,
 `office land SID` (or the folder) ends it: `bale unlock` in its repo,
 and an `ended` line in the folder's History. The folder stays as it is,
 since a planning folder may outlive one sitting; `office close` is
-yours. A HOLD, a refusal or a clarification lands nothing: nothing
+yours. Its `standing.md`, when it filed one, stays too, as the record of
+where it ended (0.43.0). A HOLD, a refusal or a clarification lands nothing: nothing
 runs after, and the next line is named. An office
 session's folder changed after its pack, when `office start` recorded the
 session; `office land` puts it back as it was packed while bale lands, so
@@ -1315,9 +1364,14 @@ stands for it)`. A line is masked, never dropped, so the block's count
 and its trailer still match. The mask is a seatbelt, not a promise: a
 probe should still never print a remote URL with a credential in it
 (`git remote -v`, `git config --get remote.NAME.url`), a token of any
-other shape printed bare is not caught, and stderr, a fallback's
-`probe-output/` files and the block's own closing `bale clipboard` copy
-are not masked. `OFFICE_PROBE_TIMEOUT` (seconds, default 1800) stops a
+other shape printed bare is not caught, and a fallback's `probe-output/`
+files and the block's own closing `bale clipboard` copy are not masked.
+The block's stderr is masked the same way since 0.43.0 (a `git fetch`
+against a remote with a credential in it prints the URL there), read
+beside stdout and shown as it comes, never kept or copied; when its mask
+replaced anything, the count's line says which stream (`1 credential in a
+URL on stdout and 1 GitHub token on stderr were masked (xxx stands for
+each)`). `OFFICE_PROBE_TIMEOUT` (seconds, default 1800) stops a
 block that runs past it.
 
 The file-based fallback (TARBALL.md 4.4) leaves `probe-output/` where it
@@ -2037,10 +2091,11 @@ matches the floor plan.
 | lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library); since 0.28.0 the LazyPattern and OneSubcommand every module's start leans on; since 0.29.0 `batch`, several subcommands of any lib/ module in one process, and `skew-report`; since 0.30.0 `bytecode-check`, office status's line on the install's bytecode cache; since 0.33.0 the doctrine stamp a sitting's Sessions line carries (`sitting_words`, `session_doctrine`) |
 | lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after (one `land` call since 0.30.0: the office's record out, bale apply or retry, the outcome); since 0.37.0 bale's two accepts, passed as typed, said, and named after a refusal (`accept_flags`, `accept_said`, `accepts_bale_names`, `accept_line`); since 0.38.0 office sessions' search, the lane's project first and an unreadable project a line (`project_records`, `folder_lane`) |
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
-| lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives); since 0.38.0 the mask over what it hands back, a credential in a URL and a GitHub token (`mask_text`, `MaskedScreen`) |
+| lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives); since 0.38.0 the mask over what it hands back, a credential in a URL and a GitHub token (`mask_text`, `MaskedScreen`), and since 0.43.0 over its stderr too |
+| lib/office_standing.py | where a sitting stands (0.43.0): the standing block read to its shape (`read_block`, the last block in a text counting), taken out of a probe's text (`split`), filed as a folder's standing.md (`write`) and said on the screens (`folder_standing`, `words`) |
 | lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so; since 0.36.0 what bale's own commits changed taken out before the squash, own_commits and take_out_own; since 0.38.0 the lines the squash adds checked rather than its files whole, the branch rule and the rule that chose it, `branch_why`, a branch another folder delivered to continued and work it delivered refused twice, `other_deliveries`), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review; since 0.35.0 a folder's delivery.md read as the letterhead reads it at deliver and at land's review alike, the words that leave and nothing of the office's (delivery_words); since 0.40.0 the merge session's job, its materials and the merge commit made from its landed resolution, the content test of a delivery a review merged as a squash, and a continued delivery's range squash |
 | lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin); the characters an office's letterhead refuses and lifts, and a repository's pull-request templates; since 0.38.0 the lines a diff adds read rather than its files whole (`--added`), and the words-only lists (`WORDS_ONLY_SECTIONS`) |
-| lib/office_review.py | pull requests through gh (0.42.0), the office's one door to a git host's API: gh found through `gh_program` (the PATH, or `OFFICE_GH_PATH`), the review deliver offers and opens on the occupant's yes and the `review` History line it leaves, the base of the pull request open on a branch, and the review state the walk-in, office desk, the home screen and the digest render, read-only and kept nowhere |
+| lib/office_review.py | pull requests through gh (0.42.0), the office's one door to a git host's API: gh found through `gh_program` (the PATH, or `OFFICE_GH_PATH`), the review deliver offers and opens on the occupant's yes and the `review` History line it leaves, the base of the pull request open on a branch, and the review state the walk-in, office desk, the home screen and the digest render, read-only and kept nowhere; since 0.43.0 the `reviews:` lines of land's tail (`tail_lines`) |
 | share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks (its commit subjects, tags, branches, session ids and, since 0.36.0, its paths), one list for office letterhead check and the suite's text rules; and the characters an office with a letterhead refuses by default; since 0.38.0 `[cleanup]`, the names of a cleanup, read in words and commit messages only |
 | doctrine/OFFICE.md | how every office works; it opens with a reading card naming what each kind of session reads, and what a build session reads sits above its PAST THE CORE banner |
 | doctrine/checks/ | checks a session pastes into its validation; rides with the doctrine into every office session. filed-append-only.sh proves a filed page only grew at its end |

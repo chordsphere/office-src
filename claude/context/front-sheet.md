@@ -238,6 +238,17 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.43.0 (session 2026-11-03-m10-standing-001): where a sitting stands.
+  - a sitting's standing block is filed on its folder as standing.md by
+    `office standing FOLDER` (new, plumbing), by office probe when it rides
+    with the probe block, and by the home screen's key; the home screen,
+    the walk-in and office desk show the step and what waits on you.
+  - a brief's `--- ENDS SID ---` line has office start end the sitting it
+    succeeds (asked once; `--end-predecessor`, `--keep-predecessor`), and
+    the screens say when two sittings are open on one folder.
+  - a prep's record line stamps its doctrine, compared on the walk-in; the
+    probe's stderr is masked; land prints the planner's block with its tail
+    when piped, and the tail names the folder's reviews.
 - 0.42.0 (session 2026-11-02-m10-pull-requests-002): pull requests
   through gh, optional everywhere.
   - office deliver shows the review as gh will open it and asks once
