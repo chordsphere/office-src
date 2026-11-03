@@ -41,6 +41,9 @@ The command line (bin/office calls it through pylib):
         the gh line an offer will run, as deliver's question shows it
     office_review.py states OFFICE [--project NAME]
         each project's review lines, as the walk-in and the digest say them
+    office_review.py tail-lines OFFICE --project NAME --folder REL
+        the `reviews: #N STATE (BRANCH)` lines office land puts on its tail
+        after `next:` for the landed folder's branches (0.43.0)
 
 Standard library only. Logs on stderr with an [office] prefix.
 """
@@ -550,6 +553,30 @@ def changes_requested(rows):
     return next((r for r in rows if r["decision"] == "CHANGES_REQUESTED" and r["state"] == "OPEN"), None)
 
 
+def tail_lines(office_root, project, folder, environ=None):
+    """The reviews line(s) of the office's tail on the planner's block
+    (0.43.0): `reviews: #N STATE (BRANCH)` for each pull request gh reads on
+    a branch the landed folder (space/name, or its name) delivered to or
+    opened a review for, one per line. [] when the project has no audience,
+    the folder delivered nothing yet, gh is not there or cannot read the
+    state: the tail says nothing then, since a line about why would be
+    noise on every landing before a first delivery. The read is the one the
+    walk-in makes (one gh pr list for the project, the same timeout, never
+    a prompt)."""
+    import office_bale as ob
+    entry = next((p for p in ob.office_projects(office_root) or [] if p["name"] == project), None)
+    if entry is None or not entry.get("audience") or entry.get("paused"):
+        return []
+    name = folder.split("/", 1)[-1]
+    got = project_reviews(entry, oh.read_folders(office_root), environ=environ)
+    if not got or got["problem"]:
+        if got and got["problem"]:
+            debug(f"the tail's reviews line is left out: {got['problem']}")
+        return []
+    return [f"reviews: {r['words']} ({r['branch']})" for r in got["rows"]
+            if any(rel.split("/", 1)[-1] == name for rel in r["folders"])]
+
+
 # --- the command line ----------------------------------------------------------------------
 
 def main(argv=None):
@@ -562,6 +589,8 @@ def main(argv=None):
     p.add_argument("--review", required=True)
     p = sub.add_parser("states", help="each project's review lines")
     p.add_argument("office"); p.add_argument("--project")
+    p = sub.add_parser("tail-lines", help="the reviews lines of land's tail for one folder (0.43.0)")
+    p.add_argument("office"); p.add_argument("--project", required=True); p.add_argument("--folder", required=True)
     a = ap.parse_args(argv)
     try:
         if a.cmd == "open":
@@ -579,6 +608,10 @@ def main(argv=None):
             offer = json.loads(pathlib.Path(a.review).read_text(encoding="utf-8"))
             print(shown_line(create_argv(offer["repo"], offer["base"], offer["head"], offer["title"],
                                          offer.get("reviewer"))))
+            return 0
+        if a.cmd == "tail-lines":
+            for line in tail_lines(a.office, a.project, a.folder):
+                print(line)
             return 0
         if a.cmd == "states":
             for got in office_reviews(a.office):

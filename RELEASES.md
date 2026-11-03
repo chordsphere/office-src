@@ -4,6 +4,143 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.43.0
+
+Additive: no migration, nothing to do in any office. The sixth serial
+session of the plan begun on 2026-10-27: the office shows where a sitting
+stands, and a sitting's predecessor no longer stays open beside it. What
+you see changes for a read-only sitting that files its standing, for a
+planner's bundle whose brief names the sitting it succeeds, for two
+sittings open on one folder, for a meeting's prep, for a probe that
+prints a credential on stderr, and for a landing run off a terminal;
+everything else is as it was.
+
+A sitting files where it stands. The sitting prints its standing block
+at the end of any turn where its plan or its place changed (`--- STANDING
+BEGIN SID ---`, `step N of M: words`, one `- [x]`, `- [>]` or `- [ ]`
+line per step, exactly one `[>]` and it the Nth, `waiting on you: words`,
+`--- STANDING END ---`; the last block in a text counts), and `office
+standing FOLDER [FILE | -]`, a new plumbing verb, files it on the
+sitting's folder as `standing.md`: a heading, `- as of: DATE TIME` in the
+office's timezone, `- sitting: SID`, then the block's lines, replaced
+whole on each filing and committed alone (`office standing: SID in
+NAME`). It reads a file, stdin, or on a terminal the clipboard; piped
+with neither it names the two. A block off the shape, or one whose id is
+not a session the folder records, is refused by name (`the standing block
+does not read: line 6: ...`) and the page is left as it was; an open
+session whose forecast holds the page keeps the write out, said. When the
+text `office probe` reads carries a standing beside the probe block (the
+sitting prints both in one fence, the standing last), probe takes it out
+first, so none of its lines runs or reads as an `office-on` call, files
+it, says so in one line, and runs the probe as before; one that does not
+read is said and not filed, and the probe goes on.
+
+The office shows it. The home screen's item for the sitting ends `; step
+N of M: words; waiting on you: words (as of DATE TIME)`, and beside it a
+second key, `File where folder N, TITLE stands now, from the sitting's
+last standing block on the clipboard`, runs `office standing N`. The
+walk-in's In flight line for the sitting carries the same words, and
+`office desk` shows `standing, SID's: ...` under a folder's line once its
+sitting is no longer in flight. A sitting with no standing filed shows as
+before. `office land`, ending the sitting, leaves the page as the record
+of where it ended; `office close` moves it with the folder; nothing
+deletes it.
+
+office start ends the sitting a brief succeeds. A planner's brief may
+carry `--- ENDS SID ---`, read as the LANDS and BRANCH lines are. When
+start opens such a bundle, after bale has opened the successor and the
+opener is on the clipboard, it ends SID as land ends a sitting (bale
+unlock, and `- DATE ended: SID, a read-only sitting, closed by office
+start, succeeded by NEW` in each folder that records it, committed as
+`office start: SID ended in NAME`), asking once on a terminal, `End the
+sitting SID, which this brief succeeds? (--end-predecessor) (y/n) [y]`;
+`--end-predecessor` and `--keep-predecessor` are the twins, and piped
+with neither it is said with the land line and nothing is ended. An ENDS
+line naming a sitting that is not open, not read-only or recorded by no
+folder is one line, and the start stands. And whatever a brief says, when
+a folder records two or more read-only sittings open, the home screen's
+item and the walk-in's line of each but the newest (the one the folder's
+Sessions section records last) end `; an older sitting on this folder,
+probably over`, and `office probe`, asked which sitting a block is for,
+offers the newest first.
+
+A prep's doctrine is stamped and compared. A meeting's prep record line
+now ends its lists with `; doctrine: SHORT`, the doctrine it went out
+under, and the walk-in's In flight line for the prep compares it with the
+install's as it compares a folder's sitting's (`out under an older
+doctrine: OFFICE.md OLD when it went out, NEW the install's now`);
+nothing refuses. A record line from before 0.43.0 has none and is not
+compared.
+
+The probe's stderr is masked. Its stderr is read from a pipe of its own,
+beside stdout, and reaches the terminal through a mask of its own, so a
+credential in a URL or a GitHub token there comes out as `xxx`; it is
+still shown and never kept or copied. When stderr's mask replaced
+anything, the count's line names each stream (`1 credential in a URL on
+stdout and 1 GitHub token on stderr were masked (xxx stands for each)`).
+
+The office's tail is printed when land is piped, with review state. Off
+a terminal nothing is copied, so a landing run from a script or a
+session showed the tail to nobody: now, at the end of an applied landing,
+land prints each block for the planner whole with the tail after bale's
+END marker, under `The block for the planner, whole, with the office's
+lines:`. The block comes before the after-land actions' summary, so what became
+of each action stays land's last lines, and deliver's Next line on a
+project with an audience its very last. On a terminal nothing changes.
+The tail gains, after `next:`,
+`reviews: #N STATE (BRANCH)` for each review gh reads on a branch the
+landed folder delivered to, one per line; none when there is none, when
+gh is not there, or when the project has no audience. The read is the
+walk-in's: one `gh pr list` for the project, the same timeout, never a
+prompt.
+
+What changed and where: lib/office_standing.py (new: `read_block`,
+`split`, `page_text`, `read_page`, `folder_standing`, `words`, `write`;
+the `check`, `split`, `write` and `show` subcommands); bin/office (the
+`standing` verb, `cmd_standing`, `usage_standing` and `file_standing`,
+which probe shares; cmd_probe's split before its check; cmd_start's
+`--end-predecessor` and `--keep-predecessor` and `start_end_predecessor`,
+after the opener; start_prep's `--doctrine` to the record; land_tail's
+`reviews:` lines and `print_relays_whole`, piped, before the actions'
+summary; the usage texts);
+lib/office_helper.py (`brief_ends`, `ENDS_MARK_RE`); lib/office_bale.py
+(`OLDER_SITTING_WORDS`, `older_sittings`, `standing_words`,
+`desk_standing_lines`, In flight's older, standing and prep doctrine words,
+`Doctrines.older_stamp`, `ends_plan` and the `start-ends` subcommand,
+`end_sitting`'s `by` and `successor` and land-end's `--by` and
+`--successor`); lib/office_home.py (`sitting_item_words`, the standing
+key); lib/office_probe.py (`newest_first`, stderr's MaskedScreen,
+`mask_parts`, `stream_masks_words`); lib/office_host.py (run_probe's
+`err_screen`, a thread copying stderr; its return is as before);
+lib/office_meeting.py (the record line's `doctrine`, `mark_prep_out`'s
+`doctrine`, prep-out's `--doctrine`); lib/office_review.py (`tail_lines`
+and the `tail-lines` subcommand); templates/sitting-brief.md and
+templates/prep-brief.md (what the sitting owes: the standing block, and
+for a sitting the ENDS line); share/verbs.toml (`standing`, and probe's
+writes); README.md; and the doctrine, past its banner only (section 4,
+continued: the ENDS line, the standing block beside the ARISING block,
+the prep's stamp; the verbs table's standing, probe, start and land
+rows). The banner stays at line 299.
+
+Tests: tests/test_standing.py (new, 34 tests), one class per item:
+TestTheBlock, TestOfficeStanding and TestOfficeStandingOnATerminal;
+TestProbeFilesTheStanding; TestTheScreensShowIt and
+TestTheHomeScreenOnATerminal; TestTheBriefsSayIt;
+TestLandLeavesTheStanding; TestThePrepsDoctrine;
+TestTheHarnessesKillAHungChild; TestTheProbesStderrIsMasked;
+TestTheEndsLine and TestTheEndsLineOnATerminal; TestTheTailWhenLandIsPiped;
+TestReviewStateOnTheTail. The suite's two pty harnesses that drive a
+terminal, tests/test_start.py `on_a_terminal` and tests/test_desk_verbs.py
+`terminal`, kill a child still running after their read deadline, with
+its process group, and fail the test (`kill_hung`, `wait_briefly`), as
+tests/test_front_door.py `run_on_a_pty` does, so a question no test
+answers fails one test instead of hanging the terminal lane; no test's
+body changed for it. tests/test_meetings_view.py's prep test reads the
+record line with its new `doctrine:` part, and tests/test_probe.py
+TestTheMaskIsSaid holds the module's new sentence on what the mask
+catches. The fast tier gains the verb's
+entry point and the block's and the briefs' classes.
+
 ## 0.42.0
 
 Additive: no migration, nothing to do in any office. The fifth serial

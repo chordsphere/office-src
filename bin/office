@@ -4248,6 +4248,7 @@ usage: office start new [--words TEXT] [--in-office | --on PROJECT] [--goal TEXT
                     [--refresh | --no-refresh]
        office start [FOLDER] [--in-office | --on PROJECT] --bundle FILE [--leave-out PATH]... [--no-rides]
                     [--carry N... | --carry none] [--refresh | --no-refresh]
+                    [--end-predecessor | --keep-predecessor]
        office start --drop PAGE [--title TITLE] [--lane LANE] [--size SIZE] [--goal TEXT] [--slug SLUG]
                     [--write PATH]... [--include PATH]... [--leave-out PATH]... [--no-rides]
        office start --sort
@@ -4289,6 +4290,15 @@ lands on the branch checked out), or with no such branch locally or on a
 remote it has fetched stops the start with nothing written and says what
 to do there (the checkout fetches nothing); a clone already on the branch is
 said. A BRANCH line in a bundle that lands in the office is refused.
+A brief that names the sitting it succeeds (--- ENDS SID ---, 0.43.0: SID
+a read-only sitting the office has open that a folder records) has start
+end that sitting once bale has opened the bundle's session and the opener
+is on the clipboard, as office land ends one: bale unlock, and an ended
+line in its folder's History. It asks once on a terminal, default yes
+(--end-predecessor and --keep-predecessor are the twins); piped with
+neither, it says so with the office land line and ends nothing. An ENDS
+line that does not read, or names a sitting not open or no folder records,
+is one line, and the start stands.
 For a project with an audience, start compares the clone's view of the
 audience's base (origin/main, say) with the base as this machine sees it
 (git ls-remote) before anything is packed and before that checkout (0.39.0).
@@ -5064,11 +5074,14 @@ start_prep() {
   out="$(reader start "$root" - --where office --goal "$title" --slug "$slug" --read-only "${includes[@]}" \
            --brief "$tmp/README.md" --tray-root "$tray_root")" || exit 1
   # What the reader printed, read once (0.29.0; it was five reads).
-  local warnings carried sid_rc tray_rc warnings_rc carried_rc opener_rc
-  json_read - sid=sid tray=tray warnings=warnings carried=carried opener=opener <<< "$out"
+  local warnings carried doctrine sid_rc tray_rc warnings_rc carried_rc opener_rc doctrine_rc
+  json_read - sid=sid tray=tray warnings=warnings carried=carried opener=opener doctrine=doctrine? <<< "$out"
   [ "$sid_rc" = 0 ] || die "could not read what office start packed"
   [ -z "$warnings" ] || while IFS= read -r why; do warn "$why"; done <<< "$warnings"
-  if mapfile -t paths < <(meetx prep-out "$root" --key "$key" --sid "$sid" --tz "$tz") && [ "${#paths[@]}" -gt 0 ]; then
+  # The record line stamps the doctrine the prep went out under (0.43.0),
+  # which the walk-in compares with the install's, as a folder's sitting's.
+  if mapfile -t paths < <(meetx prep-out "$root" --key "$key" --sid "$sid" --tz "$tz" ${doctrine:+--doctrine "$doctrine"}) \
+      && [ "${#paths[@]}" -gt 0 ]; then
     commit_paths "$root" "office start --prep: $key, its prep $sid" "${paths[@]}" || true
   else
     warn "the calendar's record could not say $sid is the prep for $key (the line above says why); office land $sid ends it all the same once that line is written"
@@ -5342,6 +5355,7 @@ cmd_start() {
   START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_BUNDLE_FOUND=""; START_DROP_PAGE=""
   START_BRANCH=""; START_BRANCH_DONE=0
   START_REFRESH=""; START_REFRESH_DONE=0
+  START_ENDS=""
   PLANNER_FILE=""; PLANNER_CONCERNS=(); PLANNER_WHY=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -5378,6 +5392,9 @@ cmd_start() {
       --leave-out) [ $# -ge 2 ] || die "--leave-out needs a path that rides with the project (office projects lists them)"
                    leave_out+=("$2"); shift 2 ;;
       --no-rides) no_rides=1; shift ;;
+      --end-predecessor|--keep-predecessor)
+        [ -z "$START_ENDS" ] || [ "$START_ENDS" = "$1" ] || die "--end-predecessor and --keep-predecessor are two answers; give one"
+        START_ENDS="$1"; shift ;;
       --refresh|--no-refresh) [ -z "$START_REFRESH" ] || [ "$START_REFRESH" = "$1" ] || die "--refresh and --no-refresh contradict each other"
                               START_REFRESH="$1"; shift ;;
       --carry) [ $# -ge 2 ] || die "--carry needs a rider's number (office riders lists them), or none"
@@ -5852,8 +5869,66 @@ cmd_start() {
     printf '\nWhen the response comes back: office land %s\n' "$sid"
   fi
   start_desktop "$tray" "$opener"
+  # The sitting the bundle's brief succeeds (0.43.0): ended after the opener
+  # is on the clipboard, so a refusal of the end never costs the pack.
+  if [ -n "$bundle" ]; then
+    start_end_predecessor "$root" "$request" "$sid" "$day"
+  elif [ -n "$START_ENDS" ]; then
+    log "$START_ENDS goes with a planner's bundle whose brief names the sitting it succeeds; nothing was ended"
+  fi
   [ "$filed_rc" = 0 ] || warn "the session is open and its tray is ready, but a page of the sitting's words was not filed (the lines above say why)"
   return "$filed_rc"
+}
+
+# start_end_predecessor ROOT REQUEST SID DAY: the read-only sitting the
+# request's brief names on its ENDS line (0.43.0; the gaps of 2026-10-28,
+# A13), ended as office land ends one (bale unlock, the `ended` History
+# line), once bale has opened the successor SID. Asked once on a terminal,
+# default yes; --end-predecessor and --keep-predecessor are the twins; piped
+# with neither it is said, with the land line, and not done. A line that
+# does not read, or names a sitting that is not open or that no folder
+# records, is one line, and the start stands. Never fails the start.
+start_end_predecessor() {
+  local root="$1" request="$2" sid="$3" day="$4" tmp out key a b c pred="" label="" folders="" ans words told
+  local words_rc told_rc
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/office-ends.XXXXXXXX")" || { warn "no temporary directory to read the brief's ENDS line; nothing was ended"; return 0; }
+  TMP_PATHS+=("$tmp")
+  out="$(reader start-ends "$root" --request "$request" --sid "$sid" --plan "$tmp/plan.json")" \
+    || { warn "the brief's ENDS line could not be read (the line above says why); nothing was ended"; return 0; }
+  while IFS=$'\t' read -r key a b c; do
+    case "$key" in
+      say) log "$a" ;;
+      end) pred="$a"; label="$b"; folders="$c" ;;
+    esac
+  done <<< "$out"
+  if [ -z "$pred" ]; then
+    [ -z "$START_ENDS" ] || log "$START_ENDS: the brief names no sitting open to end, so nothing was ended"
+    return 0
+  fi
+  printf '\n' >&2
+  case "$START_ENDS" in
+    --keep-predecessor) log "--keep-predecessor: the sitting $pred, which this brief succeeds, stays open ($folders); office land $pred ends it"; return 0 ;;
+    --end-predecessor) log "--end-predecessor: ending the sitting $pred, which this brief succeeds" ;;
+    *)
+      if ! can_ask; then
+        log "this brief succeeds the sitting $pred ($label; $folders), still open: not ended, since piped input is never asked (--end-predecessor ends it); office land $pred ends it"
+        return 0
+      fi
+      ask ans "End the sitting $pred, which this brief succeeds? (--end-predecessor) (y/n)" "y" 0 \
+        "The brief of the session just sent names the read-only sitting it succeeds. y ends that sitting now, as office land ends one: bale unlock where it is open, and an ended line in its folder's History; a sitting lands nothing, so nothing is lost. n leaves it open: office land $pred ends it later."
+      case "$ans" in
+        y|Y|yes|Yes|YES) ;;
+        *) log "the sitting $pred stays open, as you said; office land $pred ends it"; return 0 ;;
+      esac ;;
+  esac
+  if ! out="$(reader land-end "$root" --plan "$tmp/plan.json" --day "$day" --by "office start" --successor "$sid")"; then
+    warn "the sitting $pred was not ended (the line above says why); the session $sid is out all the same, and office land $pred ends it"
+    return 0
+  fi
+  json_read - words=words told=told <<< "$out"
+  printf '%s\n' "$words"
+  [ -z "$told" ] || while IFS= read -r a; do log "$a"; done <<< "$told"
+  return 0
 }
 
 # The pages of a sitting's words the request's brief carries, filed in
@@ -6284,6 +6359,12 @@ land_tail() {
     printf 'folder: %s%s (%s)\n' "${n:+$n, }" "${title:-${where#*/}}" "$state"
   fi
   [ -z "$nxt" ] || printf 'next: %s\n' "$nxt"
+  # The review state of the folder's branches (0.43.0): one line a review,
+  # read through gh as the walk-in reads it; none when there is none, gh is
+  # not there, or the project has no audience.
+  if [ -n "$project" ] && [ -n "$audience" ] && [ -n "$where" ]; then
+    pylib "$REVIEW_PY" tail-lines "$root" --project "$project" --folder "$where" 2>/dev/null || true
+  fi
   if [ -n "$project" ] && [ -n "$audience" ] && [ -s "$review" ]; then
     while IFS= read -r line; do printf '%s\n' "$line"; done < "$review"
   fi
@@ -6742,7 +6823,6 @@ cmd_land() {
     land_close_folders "$root" "$folders" "$sid" "$day"
   fi
   land_watches "$root" "$tz" "$day"
-  after_land_summary "$repo"
   # On a project with an audience, land ends with deliver's line (0.41.0):
   # the folder's number filled in, after the relay's clipboard line.
   local deliver_next="" deliver_why="" where_now
@@ -6758,7 +6838,13 @@ cmd_land() {
     fi
   fi
   LAND_TAIL="$(land_tail "$root" "$folders" "$project" "$LAND_AUDIENCE" "$tmp/review" "$deliver_next")"
-  carry_relays "$landed" 1
+  # Piped (0.43.0), the planner's block whole with the office's tail, before
+  # the actions' summary, so what became of each action stays land's last
+  # lines and deliver's Next line its very last.
+  relays_read "$landed"
+  [ -t 1 ] || print_relays_whole
+  after_land_summary "$repo"
+  carry_relays "$landed" 1 preread
   [ -z "$deliver_next" ] || printf 'Next: %s  (%s)\n' "$deliver_next" "$deliver_why"
   return "$rc"
 }
@@ -6835,13 +6921,14 @@ land_held() {
 # landing's last step: a block whose copy is not confirmed is printed again
 # there, whole, since bale printed it far above.
 carry_relays() {
-  local out="$1" at_end="$2" relays i=0 block to outcome ans crc relays_rc outcome_rc block_rc to_rc
-  # The count and the outcome in one read, then each block with whom it is
-  # for in one (0.29.0; it was two reads each).
-  json_read - relays=relays# outcome=outcome <<< "$out"
-  while [ "$i" -lt "$relays" ]; do
-    json_read - block=relays.$i.lines to=relays.$i.to <<< "$out"
-    if [ "$outcome" = clarification ]; then
+  local out="$1" at_end="$2" i=0 block to ans crc
+  # The blocks are read once (relays_read), or were read already for this
+  # outcome by the caller (0.43.0: PREREAD, when the piped printing came
+  # first), so the reads stay one for the count and one a block.
+  [ "${3:-}" = preread ] || relays_read "$out"
+  while [ "$i" -lt "${#RELAY_BLOCKS[@]}" ]; do
+    block="${RELAY_BLOCKS[$i]}"; to="${RELAY_TOS[$i]}"
+    if [ "$RELAY_OUTCOME" = clarification ]; then
       printf '\nFor the planner, whole:\n\n%s\n' "$block"
     fi
     # The office's tail (0.41.0) after bale's END marker, on an applied
@@ -6858,6 +6945,40 @@ carry_relays() {
     to_clipboard "$block" "the block for the $to"; crc=$?
     if [ "$crc" != 0 ] && [ "$at_end" = 1 ] && [ -t 1 ]; then
       printf '\nThe block for the %s, whole, to copy from here:\n\n%s\n' "$to" "$block"
+    fi
+    i=$((i + 1))
+  done
+  return 0
+}
+
+# relays_read OUTCOME: the blocks bale printed to carry, read from the
+# landing's outcome JSON into RELAY_BLOCKS and RELAY_TOS (whom each is
+# for), and the outcome into RELAY_OUTCOME: the count and the outcome in
+# one read, then each block with whom it is for in one (0.29.0).
+RELAY_BLOCKS=(); RELAY_TOS=(); RELAY_OUTCOME=""
+relays_read() {
+  local out="$1" relays i=0 block to outcome relays_rc outcome_rc block_rc to_rc
+  RELAY_BLOCKS=(); RELAY_TOS=()
+  json_read - relays=relays# outcome=outcome <<< "$out"
+  RELAY_OUTCOME="$outcome"
+  while [ "$i" -lt "$relays" ]; do
+    json_read - block=relays.$i.lines to=relays.$i.to <<< "$out"
+    RELAY_BLOCKS+=("$block"); RELAY_TOS+=("$to")
+    i=$((i + 1))
+  done
+}
+
+# print_relays_whole: off a terminal at the end of an applied landing
+# (0.43.0), each block for the planner relays_read read printed whole with
+# the office's tail after bale's END marker, under one marked line. Piped,
+# nothing is copied, so a landing run from a script or a session would
+# otherwise show the tail to nobody; on a terminal it is never called.
+print_relays_whole() {
+  local i=0
+  [ -n "${LAND_TAIL:-}" ] || return 0
+  while [ "$i" -lt "${#RELAY_BLOCKS[@]}" ]; do
+    if [ "${RELAY_TOS[$i]}" = planner ]; then
+      printf "\nThe block for the planner, whole, with the office's lines:\n\n%s\n%s\n" "${RELAY_BLOCKS[$i]}" "$LAND_TAIL"
     fi
     i=$((i + 1))
   done
@@ -8894,19 +9015,24 @@ this machine; through the project's shell, in its path, for a project on
 a host (the plain form, with no terminal: a probe never waits on one); in
 the office root for the office itself. One reach of the host, as every
 verb reaches. Its output, stdout and stderr, comes back whole, its stdout
-masked (since 0.38.0): a credential in a URL comes back as
-scheme://user:xxx@host, its user kept, and a GitHub token (ghp_ and its
-kin, github_pat_) as ghp_xxx, on the screen as the block streams and on
-the clipboard. The lines from PROBE BEGIN to PROBE END go on this
+masked (since 0.38.0) and its stderr too (since 0.43.0): a credential in
+a URL comes back as scheme://user:xxx@host, its user kept, and a GitHub
+token (ghp_ and its kin, github_pat_) as ghp_xxx, on the screen as the
+block streams and on the clipboard. stderr is shown, never kept or
+copied. The lines from PROBE BEGIN to PROBE END go on this
 machine's clipboard (clipboard_command; on WSL clip.exe), since the
 block's own closing clipboard step runs where no clipboard is, and the
 office says how many lines came back, whether the integrity trailer's
-count matches them, and how many credentials it masked, when any. The
-mask is a seatbelt, not a promise: a probe should still not print a
-remote URL with a credential in it (git remote -v, git config --get
-remote.NAME.url); a token of another shape printed bare is not caught,
-and stderr, a fallback's probe-output/ files and the block's own closing
-clipboard step are not masked.
+count matches them, and how many credentials it masked, when any, on
+which stream when stderr's mask replaced one. The mask is a seatbelt, not
+a promise: a probe should still not print a remote URL with a credential
+in it (git remote -v, git config --get remote.NAME.url); a token of
+another shape printed bare is not caught, and a fallback's probe-output/
+files and the block's own closing clipboard step are not masked.
+A standing block in the same text (0.43.0: the sitting prints it after the
+probe block, in one fence) is taken out before the block is read and filed
+on the folder first, as office standing FOLDER files it, said in one line;
+one that does not read is said and not filed, and the probe goes on.
 A probe-output/ directory the run leaves (the file-based fallback) is
 carried to the session's out tray, ~/out-tray/SID/probe-output/, and
 removed where it ran. The folder's History gains `- DATE probe: SID, N
@@ -8957,6 +9083,123 @@ Examples:
   office probe 21 --project office-src         (a sitting's probe of office-src's repo, under the sitting's id)
   office probe 6 probe.sh                      (a block calling office-on m10-api: the office root, reaching m10-api)
 USAGE
+}
+
+# --- where a sitting stands: office standing (0.43.0) ---------------------------------
+#
+# A sitting prints its standing block at the end of any turn where its plan
+# or its place in it changed (doctrine section 4, continued, pins the block
+# to the byte); the office files it on the sitting's folder as
+# desk/FOLDER/standing.md, the page the home screen, the walk-in and office
+# desk read. lib/office_standing.py reads and writes it; this is the verb,
+# and the filing office probe shares when a standing rides with a probe.
+
+STANDING_PY="$OFFICE_SRC/lib/office_standing.py"
+standx() { pylib "$STANDING_PY" "$@"; }
+
+usage_standing() {
+  cat <<'USAGE'
+usage: office standing [FOLDER] [FILE | -]
+Files where a read-only sitting stands on its folder: the last standing
+block in the text (--- STANDING BEGIN SID --- to --- STANDING END ---,
+doctrine section 4, continued), written as desk/FOLDER/standing.md, a
+heading, `- as of: DATE TIME` in the office's timezone, `- sitting: SID`,
+then the block's lines. The page is replaced whole on each filing and
+committed on its own; the home screen, the walk-in's In flight line and
+office desk show it. The text comes from FILE, from stdin (-), or, with
+neither on a terminal, from the clipboard (paste_command in this
+machine's ~/.config/office-src/machine.toml); a chat's code fence around
+it, and a probe block beside it, are fine.
+A block that does not read (a step line, one line per step with exactly
+one `- [>]`, the waiting line), or whose id is not a session the folder
+records, is refused by name, and the page is left as it was. An open
+session in this office's registry whose forecast holds the page keeps
+the write out, said (the one-writer rule). No bale verb runs.
+office probe files a standing that rides with the probe block in the same
+text, and the home screen offers this verb by key for each sitting out.
+  FOLDER   the sitting's folder: its name, a unique part of it, or folder N;
+           asked on a terminal when left out
+  FILE     the text holding the block; - reads it from stdin
+Examples:
+  office standing 21                 (the block on the clipboard)
+  office standing 21 standing.txt
+  office standing plan-it - < chat.txt
+USAGE
+}
+
+# file_standing ROOT NAME FILE VIA STRICT: the last standing block in FILE
+# filed as desk/NAME/standing.md and committed alone, said in one line.
+# STRICT 1 (office standing) stops on a block that does not read or a page
+# an open session holds; 0 (office probe) says why and returns 1, so the
+# probe goes on.
+file_standing() {
+  local root="$1" name="$2" file="$3" via="$4" strict="$5" held rc tz out sid words sid_rc words_rc
+  local refuse=die
+  [ "$strict" = 1 ] || refuse=warn
+  if ! out="$(standx check --file "$file" --office "$root" --folder "desk/$name")"; then
+    $refuse "the standing from $via was not filed (the line above says why); desk/$name/standing.md is as it was"
+    return 1
+  fi
+  held="$(reader writers "$root" "desk/$name/$STANDING_PAGE" 2>/dev/null)"; rc=$?
+  if [ "$rc" = 3 ]; then
+    printf '%s\n' "$held" | sed 's/^/[office]   /' >&2
+    $refuse "an open session holds desk/$name/$STANDING_PAGE (the one-writer rule), so the standing is not filed beside it; office standing $name files it once that session is in"
+    return 1
+  fi
+  [ "$rc" = 0 ] || warn "bale's registry in this office could not be read; the standing is filed without the one-writer check"
+  tz="$(office_tz "$root")"
+  out="$(standx write "$root" "desk/$name" --file "$file" --day "$(office_date "$tz")" --time "$(office_time "$tz")")" || {
+    $refuse "the standing from $via was not filed (the line above says why); desk/$name/standing.md is as it was"
+    return 1
+  }
+  json_lines() { printf '%s\n' "$out" | sed -n "s/^$1\t//p"; }
+  sid="$(json_lines sid)"; words="$(json_lines words)"
+  commit_paths "$root" "office standing: $sid in $name" "desk/$name/$STANDING_PAGE" || true
+  log "filed $sid's standing on desk/$name, from $via: $words"
+  return 0
+}
+STANDING_PAGE="standing.md"
+
+cmd_standing() {
+  local want="" file="" root name tmp text_file via rc
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help) usage_standing; return 0 ;;
+      -) [ -z "$file" ] || die "office standing takes one text: FILE, or - for stdin"; file="-"; shift ;;
+      -*) usage_standing >&2; die "office standing does not know $1; it takes a folder and FILE or -" ;;
+      *) if [ -z "$want" ]; then want="$1"; elif [ -z "$file" ]; then file="$1"
+         else die "office standing takes a folder and one text (FILE, or - for stdin)"; fi; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ -z "$want" ]; then
+    can_ask || { usage_standing >&2; die "name the sitting's folder: office standing FOLDER; piped input is never asked"; }
+    ask_folder want "$root" desk standing
+  fi
+  name="$(find_folder "$root" desk "$want")" || exit 1
+  [ -f "$root/desk/$name/folder.md" ] || die "desk/$name has no folder.md"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/office-standing.XXXXXXXX")" || die "no temporary directory for the block"
+  TMP_PATHS+=("$tmp")
+  text_file="$tmp/text"
+  if [ "$file" = "-" ]; then
+    [ ! -t 0 ] || die "office standing FOLDER - reads the block from stdin, and stdin is this terminal: pipe it in, give it as a file, or leave it on the clipboard and give neither"
+    cat > "$text_file" || die "could not read the block from stdin"
+    via="stdin"
+  elif [ -n "$file" ]; then
+    [ -f "$file" ] || die "$file: no such file (the block is a file, - for stdin, or neither for the clipboard)"
+    cp -- "$file" "$text_file" || die "could not read $file"
+    via="file $(basename -- "$file")"
+  else
+    can_ask || die "office standing reads the clipboard only on a terminal: give the block as a file (office standing $want FILE) or on stdin (office standing $want -); piped input is never asked"
+    paste_setting "office standing reads the sitting's block from the clipboard when it is given no file" \
+      "give the block as a file (office standing FOLDER FILE) or on stdin (office standing FOLDER -)"
+    log "reading the standing from the clipboard ($PASTE)"
+    timeout 15 bash -c "$PASTE" < /dev/null > "$text_file" 2> "$tmp/paste.err"; rc=$?
+    [ "$rc" = 0 ] || die "the clipboard could not be read: $PASTE exited $rc ($(tail -n 1 "$tmp/paste.err")); paste_command in $MACHINE_FILE"
+    via="the clipboard"
+  fi
+  file_standing "$root" "$name" "$text_file" "$via" 1
 }
 
 # ask_probe_project VAR NAMES: where the probe runs, office or one of the
@@ -9041,6 +9284,17 @@ cmd_probe() {
     [ "$rc" = 0 ] || die "the clipboard could not be read: $PASTE exited $rc ($(tail -n 1 "$tmp/paste.err")); paste_command in $MACHINE_FILE"
     grep -q '[^[:space:]]' "$block_file" \
       || die "the clipboard is empty ($PASTE printed nothing): copy the worker's probe block first, or give it as FILE or -"
+  fi
+  # A standing that rides with the probe (0.43.0): the sitting prints both
+  # in one fence, the standing after the probe. It is taken out of the text
+  # first, so none of its lines runs as the block's or reads as an office-on
+  # call, and filed on the folder, said in one line; one that does not read
+  # is said, and the probe goes on as without it.
+  local split_out
+  split_out="$(standx split --file "$block_file" --block-out "$tmp/probe-only" --standing-out "$tmp/standing")" || exit 1
+  if [ "$split_out" = standing ]; then
+    mv -f -- "$tmp/probe-only" "$block_file" || die "could not take the standing out of the probe's text"
+    file_standing "$root" "$name" "$tmp/standing" "the probe's text" 0 || true
   fi
   # A block the office does not run is refused by name before anything is
   # reached: no PROBE BEGIN line, no purpose header, or a header that
@@ -9872,7 +10126,12 @@ Bring one back
                             runs a worker's probe block where the folder's project lives
                             (on its host, in its container), after showing its header and
                             asking once; the output back whole, a credential in a URL masked,
-                            and the block on the clipboard
+                            and the block on the clipboard; a sitting's standing beside the
+                            block is filed on the folder first
+  office standing FOLDER [FILE]
+                            files where a read-only sitting stands (its last standing
+                            block, from the clipboard, a file or stdin) on its folder, as
+                            standing.md, which the home screen, the walk-in and the desk show
 
 Deliver it to the audience
   office deliver [FOLDER]   the folder's landed work to its project's audience as
@@ -9918,7 +10177,7 @@ EOF
 }
 
 # The verbs office help VERB explains, each through its own --help.
-HELP_VERBS=" init found survey status upgrade where default note slip drop meeting open desk week close reopen sessions projects start land withdraw tour version moves blueprint rider riders agenda rulings evidence watches digest deliver letterhead relay probe "
+HELP_VERBS=" init found survey status upgrade where default note slip drop meeting open desk week close reopen sessions projects start land withdraw tour version moves blueprint rider riders agenda rulings evidence watches digest deliver letterhead relay probe standing "
 # The two-word verbs, as office help VERB WORD (or VERB-WORD, the key
 # share/verbs.toml gives them) explains them.
 HELP_PAIRS=" blueprint-open blueprint-ratify blueprint-close rider-add rider-carry rider-consumed agenda-add watches-check letterhead-check "
@@ -10004,6 +10263,7 @@ main() {
     letterhead) cmd_letterhead "$@" ;;
     relay) cmd_relay "$@" ;;
     probe) cmd_probe "$@" ;;
+    standing) cmd_standing "$@" ;;
     withdraw) cmd_withdraw "$@" ;;
     *) usage >&2; die "unknown verb: $verb" ;;
   esac

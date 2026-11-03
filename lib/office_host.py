@@ -1523,11 +1523,15 @@ def probe_command(place, block):
             f"exec bash -c {shlex.quote(block)} office-probe </dev/null\n")
 
 
-def run_probe(place, block, screen=None, timeout=None, env=None):
+def run_probe(place, block, screen=None, timeout=None, env=None, err_screen=None):
     """Run a probe block where the place is: on this machine, bash in its
     directory; on a host, through the plain form of its shell, after the
     reach. Its stdout is copied to screen (this terminal's stdout) as it
-    comes and kept; its stderr goes to this terminal as it is. env adds to
+    comes and kept; its stderr goes to this terminal as it is, or, given
+    err_screen (0.43.0: office probe's mask), is read from a pipe of its
+    own in a thread beside stdout and copied to err_screen as it comes,
+    never kept, so the screen's order is the block's as near as two pipes
+    allow. env adds to
     or overrides this process's environment for a block run on this
     machine (0.34.0: office probe puts office-on on a spanning block's
     PATH). Returns (exit code, stdout text, whether the backstop stopped
@@ -1550,10 +1554,28 @@ def run_probe(place, block, screen=None, timeout=None, env=None):
     full = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     full.update(env or {})
     try:
-        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, env=full)
+        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, env=full,
+                                stderr=subprocess.PIPE if err_screen is not None else None)
     except OSError as exc:
         raise HostError("shell", f"could not run {argv[0]}: {exc}")
     stopped = {"yes": False}
+    err_thread = None
+    if err_screen is not None:
+        def copy_stderr():
+            # The block's stderr, chunk by chunk as it comes, to err_screen;
+            # a writer that fails stops the copy, never the block.
+            efd = proc.stderr.fileno()
+            try:
+                while True:
+                    chunk = os.read(efd, 4096)
+                    if not chunk:
+                        break
+                    err_screen.write(chunk)
+                    err_screen.flush()
+            except (OSError, ValueError) as exc:
+                debug(f"the probe block's stderr could not be copied to the screen: {exc}")
+        err_thread = threading.Thread(target=copy_stderr, name="probe-stderr", daemon=True)
+        err_thread.start()
 
     def stop():
         stopped["yes"] = True
@@ -1575,6 +1597,9 @@ def run_probe(place, block, screen=None, timeout=None, env=None):
     finally:
         timer.cancel()
     code = proc.wait()
+    if err_thread is not None:
+        err_thread.join()
+        proc.stderr.close()
     text = kept.decode("utf-8", "replace")
     if code == _NO_DIR and not kept:
         raise HostError("path", f"no such directory {'on ' + place.host if place.hosted else 'on this machine'}: "

@@ -955,8 +955,11 @@ class TestTheMaskIsSaid(unittest.TestCase):
             self.assertIn("printed bare", said)
             self.assertIn("is not caught", said)
         said = " ".join(op.__doc__.split())
-        self.assertIn("The block's stderr, the fallback's probe-output/ files and the block's own closing clipboard "
-                      "step (bale clipboard, run inside the block) are not masked", said)
+        # 0.43.0: the block's stderr is masked on the screen too; the
+        # fallback's files and the block's own clipboard step still are not.
+        self.assertIn("The block's stderr is masked on the screen too", said)
+        self.assertIn("the fallback's probe-output/ files and the block's own closing clipboard step (bale "
+                      "clipboard, run inside the block) are not masked", said)
 
 
 class TestTheMaskOnATerminal(ProbeCase):

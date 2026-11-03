@@ -87,3 +87,25 @@ held in the calendar and files each item of your arising block as a drop
 in the in-tray, tied to this meeting, so the next meeting on these
 projects sees the drops, and the folders they become, in its own prep.
 The unsorted drops that ride are read, and owe no Sort here.
+
+It owes him where it stands too. At the end of any turn where its plan
+or its place in it changed, it prints its standing block, kept to the byte
+as the arising block is (doctrine section 4, continued), after the probe
+block when the turn ends in one:
+
+```
+--- STANDING BEGIN 2026-10-25-weekly-review-prep-001 ---
+step 1 of 2: brief him on what landed
+- [>] brief him on what landed
+- [ ] keep the arising block during the meeting
+waiting on you: nothing
+--- STANDING END ---
+```
+
+Its BEGIN line names this session's id; then `step N of M: words`; one
+`- [x]`, `- [>]` or `- [ ]` line per step, exactly one `[>]`, the Nth;
+last `waiting on you: words`, or `waiting on you: nothing` while the
+sitting is working. A sitting a folder records is filed by `office probe`
+or the home screen's key (`office standing FOLDER`); no folder records a
+prep, so its standing is his to read in the chat, and the office files it
+nowhere.

@@ -63,6 +63,7 @@ deliver = ["test_audience_line.TestDeliver.test_the_crossing_pushes_one_curated_
 letterhead = ["test_audience_line.TestTheLetterheadCheck.test_the_command_reads_the_offices_forbidden_file_and_never_writes_it"]
 relay = ["test_audience_line.TestRelay.test_it_runs_bale_relay_in_the_sessions_repo_with_the_answer_on_stdin"]
 probe = ["test_probe.TestProbeHere.test_one_command_runs_it_in_the_repo_and_hands_the_block_back"]
+standing = ["test_standing.TestOfficeStanding.test_a_block_is_filed_as_the_folders_page_and_committed_alone"]
 
 [also]
 tests = [
@@ -164,4 +165,6 @@ tests = [
   "test_watches_digest.TestDoctrineAndTemplates",
   "test_watches_digest.TestNextLineMoves",
   "test_watches_digest.TestRegisterAndLog",
+  "test_standing.TestTheBlock",
+  "test_standing.TestTheBriefsSayIt",
 ]

@@ -489,6 +489,24 @@ def drop_items(groups, projects):
     return out
 
 
+def sitting_item_words(s, names):
+    """The home screen's words for a read-only sitting out: the key that
+    ends it, then what is known of it, each after a semicolon: out under an
+    older doctrine (0.33.0), where it stands, from its folder's standing
+    (0.43.0), and last an older sitting on its folder (0.43.0)."""
+    import office_bale as ob
+    where = "the office" if s["label"] == ob.OFFICE_LABEL else s["label"]
+    words = f"End the sitting {names.of(s['sid'])} ({where}), once it is over"
+    if s.get("stale"):
+        words += f"; it is {s['stale']}"
+    if s.get("standing"):
+        words += f"; {s['standing']}"
+    # Last, as the brief says the item ends (0.43.0).
+    if s.get("older"):
+        words += f"; {ob.OLDER_SITTING_WORDS}"
+    return words
+
+
 def home_items(skew, founded, out, groups, projects, slips, behind, bundles, names, directories, now, sittings=(),
                meetings=(), cache=None):
     """The waiting list, in order: the Next line's move first (marked),
@@ -532,10 +550,15 @@ def home_items(skew, founded, out, groups, projects, slips, behind, bundles, nam
     # A sitting lands nothing, and nothing in the office knows when it is
     # over (doctrine section 7): never the Next line, but a key that ends it.
     # One out under an older doctrine says so (0.33.0), its stale key set
-    # by home() from the folder's Sessions line.
-    items += [item(f"End the sitting {names.of(s['sid'])} ({'the office' if s['label'] == ob.OFFICE_LABEL else s['label']}), "
-                   "once it is over" + (f"; it is {s['stale']}" if s.get("stale") else ""), ["land", s["sid"]])
-              for s in sittings]
+    # by home() from the folder's Sessions line; one that is not the newest
+    # open on its folder says so (0.43.0, older), and where it stands when
+    # its folder has a standing (0.43.0, standing), with a second key that
+    # files a new one from the clipboard (office standing FOLDER).
+    for s in sittings:
+        items.append(item(sitting_item_words(s, names), ["land", s["sid"]]))
+        if s.get("standing_key"):
+            items.append(item(f"File where {names.of(s['sid'])} stands now, from the sitting's last standing block "
+                              "on the clipboard", ["standing", s["standing_key"]]))
     items += [item(f"End the prep for {m['title']} once the meeting is over: land records it held and files what "
                    "arose", ["land", m["sid"]]) for m in meetings if m["state"] == "prep out"]
     # The Next line's move, first: an item above when it is one, else its
@@ -675,8 +698,16 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
     every, _ = ob.open_anywhere(rd, office_root, rendering=True)
     sittings = [x for x in every if x["read_only"] and x["folders"]]
     doctrines = ob.Doctrines(office_root)
+    older = ob.older_sittings(office_root, [(s["sid"], s["folders"]) for s in sittings])
     for s in sittings:
         s["stale"] = doctrines.older(s["sid"])
+        s["older"] = s["sid"] in older
+        s["standing"] = ob.standing_words(office_root, s["folders"], s["sid"])
+        # The key that files a new standing (0.43.0): the sitting's folder on
+        # the desk, by its number, offered beside the item once the folder
+        # has a standing; the first comes with a probe, or office standing.
+        desk = [names.folders[r] for r in s["folders"] if r.startswith("desk/") and r in names.folders]
+        s["standing_key"] = ob.folder_key(desk[0]) if desk and s["standing"] else None
     rows = project_rows(rd, office_root, names, now, tz, groups.get("reviews"))
     bundles = waiting_bundles(rd, office_root, directories, now) if directories else []
     try:

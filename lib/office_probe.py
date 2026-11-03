@@ -44,9 +44,11 @@ personal access token, and it went to chat, the clipboard and the
 probe's record (2026-10-28). The mask is defense in depth, not a promise:
 a probe should not print a remote URL with a credential in it in the first
 place (git remote -v, git config --get remote.NAME.url), and a token of
-any other shape printed bare is not caught. The block's stderr, the
-fallback's probe-output/ files and the block's own closing clipboard step
-(bale clipboard, run inside the block) are not masked.
+any other shape printed bare is not caught. The block's stderr is masked
+on the screen too (0.43.0: a git fetch against a remote with a credential
+in it prints the URL there), shown and never kept; the fallback's
+probe-output/ files and the block's own closing clipboard step (bale
+clipboard, run inside the block) are not masked.
 
 A block that calls `office-on PROJECT ...` (0.34.0) spans the office and
 the projects it names: it runs in the office root, under the folder's
@@ -225,8 +227,13 @@ def read_output(text):
 
 def count_words(result):
     """The one line that says what came back, and, when the mask replaced
-    anything (result["masked"], from mask_text), how many it replaced."""
-    return _came_back_words(result) + masked_words(result.get("masked"))
+    anything (result["masked"], from mask_text, on stdout; and since 0.43.0
+    result["masked_stderr"], on stderr), how many it replaced, saying which
+    stream when stderr's mask replaced any."""
+    out, err = result.get("masked"), result.get("masked_stderr")
+    if not any((err or {}).values()):
+        return _came_back_words(result) + masked_words(out)
+    return _came_back_words(result) + stream_masks_words(out, err)
 
 
 def _came_back_words(result):
@@ -286,6 +293,30 @@ def add_masks(total, more):
     for kind, n in more.items():
         total[kind] = total.get(kind, 0) + n
     return total
+
+
+def mask_parts(masked):
+    """What a mask replaced, as phrases: ['1 credential in a URL', '2
+    GitHub tokens'], [] for nothing."""
+    masked = masked or {}
+    urls, tokens = masked.get("url", 0), masked.get("token", 0)
+    parts = []
+    if urls:
+        parts.append(f"{urls} credential in a URL" if urls == 1 else f"{urls} credentials in URLs")
+    if tokens:
+        parts.append(f"{tokens} GitHub token" if tokens == 1 else f"{tokens} GitHub tokens")
+    return parts
+
+
+def stream_masks_words(out, err):
+    """The end of the count's line when stderr's mask replaced anything
+    (0.43.0), naming the stream of each: '; 1 credential in a URL on stdout
+    and 1 GitHub token on stderr were masked (xxx stands for each)'."""
+    said = [f"{' and '.join(mask_parts(m))} on {name}" for name, m in (("stdout", out), ("stderr", err))
+            if mask_parts(m)]
+    total = sum(sum((m or {}).values()) for m in (out, err))
+    one = total == 1
+    return f"; {' and '.join(said)} {'was' if one else 'were'} masked ({MASK} stands for {'it' if one else 'each'})"
 
 
 def masked_words(masked):
@@ -414,6 +445,14 @@ def open_sittings(office_root, recorded, rd):
     return [s for s, read_only in rd.open_sessions(registry) if read_only and s in recorded]
 
 
+def newest_first(sittings, recorded):
+    """The sittings, the one the folder recorded last first (0.43.0): when
+    two are open on one folder the newer is the successor, and an older one
+    is probably over (the gaps of 2026-10-28, A13), so a probe asked which
+    sitting it is for offers the newest first."""
+    return sorted(sittings, key=lambda s: recorded.index(s) if s in recorded else -1, reverse=True)
+
+
 def choose_session(candidates, sittings, slug, sid=None):
     """The session a probe is for, from the folder's recorded sessions open
     where it runs (candidates) and its read-only sittings open in the
@@ -461,10 +500,13 @@ def plan(office_root, folder_rel, project, block_file, sid=None, rd=None):
     # The sessions open where it runs, and whether probe-output/ is there
     # already: on a host, both in one connection (the reach).
     there_already = False
+    read_only_here = set()
     try:
         if label == OFFICE:
             registry = ob.office_registry(office_root)
-            open_here = [s for s, _ in rd.open_sessions(registry)] if registry is not None else []
+            opened = rd.open_sessions(registry) if registry is not None else []
+            open_here = [s for s, _ in opened]
+            read_only_here = {s for s, ro in opened if ro}
             there_already = (pathlib.Path(place.path) / OUTPUT_DIR).exists()
         elif place.hosted:
             _, runs = rd.prefetch(place, [("status", {})],
@@ -484,6 +526,10 @@ def plan(office_root, folder_rel, project, block_file, sid=None, rd=None):
     except ohost.HostError as exc:
         raise ProbeError([f"{label}: {exc}; nothing ran"])
     candidates = [s for s in recorded if s in open_here]
+    # A probe of the office for a folder with several sittings open there
+    # offers the newest first (0.43.0), the other sessions as before.
+    candidates = ([s for s in candidates if s not in read_only_here]
+                  + newest_first([s for s in candidates if s in read_only_here], recorded))
     # The folder's read-only sittings open in the office (0.33.0), for a
     # probe of a project: read only when the folder records a session that
     # is not open there, so a folder whose sessions are all the project's
@@ -491,7 +537,8 @@ def plan(office_root, folder_rel, project, block_file, sid=None, rd=None):
     sittings = []
     if label != OFFICE and any(s not in open_here for s in recorded):
         try:
-            sittings = open_sittings(office_root, [s for s in recorded if s not in open_here], rd)
+            sittings = newest_first(open_sittings(office_root, [s for s in recorded if s not in open_here], rd),
+                                    recorded)
         except ob.BaleError as exc:
             raise ProbeError([f"the office: its open sittings could not be read, so the office cannot say whether "
                               f"this probe is for one of {name}'s: {exc}; nothing ran"])
@@ -563,7 +610,7 @@ def plan_spanning(office_root, folder_rel, project, block, sid, rd):
         raise ProbeError([f"the office: its open sessions could not be read, so the office cannot say which session "
                           f"this probe is for: {exc}; nothing ran"])
     office_sids = [s for s, _ in open_office]
-    sittings = [s for s, read_only in open_office if read_only and s in recorded]
+    sittings = newest_first([s for s, read_only in open_office if read_only and s in recorded], recorded)
     candidates = [s for s in recorded if s in open_in_projects or (s in office_sids and s not in sittings)]
     pool = candidates + [s for s in sittings if s not in candidates]
     if not pool and sid is None:
@@ -664,7 +711,7 @@ def run_on(plan_data, project, words):
     return run_.returncode, out, err
 
 
-def run(plan_data, block_file, tray_root, screen=None, plan_file=None):
+def run(plan_data, block_file, tray_root, screen=None, plan_file=None, err_screen=None):
     """Run the block where the plan says, then read what came back and
     carry the fallback's directory. Returns the result: code, stopped
     (the office's backstop stopped it), found, closed, block (lines),
@@ -680,9 +727,11 @@ def run(plan_data, block_file, tray_root, screen=None, plan_file=None):
     is masked the same way before the block is read out of it, so the
     result's block, which bin/office copies to the clipboard, holds no
     credential the mask knows. A spanning block's office-on output comes
-    back on the same stream and is masked with it. The block's stderr goes
-    to the terminal as it is, and a fallback's probe-output/ files are
-    carried unread: neither is masked."""
+    back on the same stream and is masked with it. The block's stderr
+    reaches err_screen (this terminal's stderr when None) through a
+    MaskedScreen of its own (0.43.0), shown and never kept; the count's
+    line says what each stream's mask replaced. A fallback's probe-output/
+    files are carried unread, and are not masked."""
     import os
     import office_host as ohost
     place = place_from(plan_data["place"])
@@ -697,21 +746,27 @@ def run(plan_data, block_file, tray_root, screen=None, plan_file=None):
             "where that project lives, stdin closed")
     log(f"running the probe {plan_data['where']}, stdin closed; its output follows, whole")
     masked_screen = MaskedScreen(screen if screen is not None else sys.stdout.buffer)
+    # The block's stderr through a mask of its own (0.43.0): a git fetch
+    # against a remote with a credential in it prints the URL there. It is
+    # shown, never kept or copied.
+    masked_err = MaskedScreen(err_screen if err_screen is not None else sys.stderr.buffer)
     try:
-        code, text, stopped = ohost.run_probe(place, block["text"], screen=masked_screen, env=env)
+        code, text, stopped = ohost.run_probe(place, block["text"], screen=masked_screen, env=env,
+                                              err_screen=masked_err)
     except ohost.HostError as exc:
         raise ProbeError([f"{plan_data['project']}: {exc}; the block did not run to its end, and nothing was carried"])
     finally:
         # A last line with no line end is shown now, masked, however the
         # run ended.
         masked_screen.close()
+        masked_err.close()
     text, masked = mask_text(text)
     if masked != masked_screen.counts:
         # The two masks read the same bytes, decoded two ways; a difference
         # is a bug to see, never to pass over.
         log(f"warning: the mask counted {masked} in the kept output but {masked_screen.counts} on the screen; "
             "the block handed back is the kept output's, masked")
-    out = dict(read_output(text), masked=masked)
+    out = dict(read_output(text), masked=masked, masked_stderr=masked_err.counts)
     result = dict(out, code=code, stopped=stopped, words=count_words(out), carried=None, carry_problem=None,
                   carried_files=0)
     if stopped:

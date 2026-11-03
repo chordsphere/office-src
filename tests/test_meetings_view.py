@@ -406,8 +406,9 @@ class TestThePrepAndItsEnd(MeetingCase):
         self.assertIn(f"{self.folder}/walkthrough.md: what landed on alpha in the 14 days before it", proc.stderr)
         self.assertIn(f"office land {sid} ends it, records the meeting held and files what arose", proc.stdout)
         self.assertEqual(sorted(p.name for p in (self.root / "desk").iterdir()), desk)
-        self.assertIn(f"- 2026-10-30 14:00 alpha review: prep out, {sid} [about: alpha]\n",
-                      (self.root / om.RECORD).read_text())
+        # 0.43.0: the record line ends with the doctrine the prep went out under.
+        self.assertRegex((self.root / om.RECORD).read_text(),
+                         rf"- 2026-10-30 14:00 alpha review: prep out, {sid}; doctrine: [0-9a-f]{{12}} \[about: alpha\]\n")
         tray = re.search(r"^Out tray: (\S+)$", proc.stdout, re.M).group(1)
         files = request_members(tray)
         manifest = json.loads(files["manifest.json"])
