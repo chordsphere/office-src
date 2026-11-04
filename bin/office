@@ -515,7 +515,10 @@ write_survey() {
   local root="$1" facts
   facts="$(mktemp)" || die "cannot make a temp file for the survey"
   gather_facts "$root" > "$facts"
-  if ! helper survey-render --facts "$facts" --previous "$root/$SURVEY_REL" --out "$root/$SURVEY_REL"; then
+  # The Machine section names the offices machine.toml lists (0.44.0), read
+  # by the render itself, so the survey starts no helper more.
+  if ! helper survey-render --facts "$facts" --previous "$root/$SURVEY_REL" --out "$root/$SURVEY_REL" \
+      --machine-file "$MACHINE_FILE"; then
     rm -f "$facts"; die "could not write $root/$SURVEY_REL"
   fi
   rm -f "$facts"
@@ -1092,6 +1095,9 @@ cmd_init() {
       "$TEMPLATES/profile.md" > "$root/$PROFILE_REL" || die "could not write the profile stub"
   printf '.bale/\n' > "$root/.gitignore"
 
+  # Every office built here is listed in machine.toml's offices (0.44.0),
+  # the default or not, before the first survey, which names the list.
+  list_office "$root" "office init"
   log "first survey"
   write_survey "$root" | sed 's/^/[office] survey: /' >&2
   # After the survey, so the survey page is on disk to be a pull.
@@ -4118,6 +4124,17 @@ MACHINE_FILE="$CONFIG_DIR/machine.toml"
 # copy, so the install is never written.
 START_INSTALL_FILES=()
 
+# list_office ROOT WHY: ROOT appended to machine.toml's offices (0.44.0) when
+# it is not listed, said in one line; nothing when it is. Never fails the
+# verb: a list that cannot be written is said.
+list_office() {
+  local out
+  out="$(helper offices "$MACHINE_FILE" --add "$1" 2>&1)" \
+    || { warn "machine.toml's offices could not be written ($out); office default $1 lists it"; return 0; }
+  [ -z "$out" ] || log "listed $1 in $MACHINE_FILE's offices ($2): the home screen of every office here shows what waits for it"
+  return 0
+}
+
 # A per-machine setting, outside every office: KEY from machine.toml, or
 # the default given. An empty value in the file turns a desktop step off.
 machine_setting() {
@@ -4515,12 +4532,22 @@ offer_bundles() {
   local root="$1" out rows=() row path stem age words vals=() d dl=() chosen=""
   downloads_known || downloads_setting "office start offers the planner's bundles in your downloads that no session has opened"
   while IFS= read -r d; do [ -n "$d" ] && dl+=(--dir "$d"); done <<< "$DOWNLOADS"
-  if ! out="$(homex bundles "$root" "${dl[@]}")"; then
+  if ! out="$(homex bundles "$root" --machine-file "$MACHINE_FILE" "${dl[@]}")"; then
     warn "the bundles in your downloads could not be read (the line above says why); start goes on to the jobs on the desk"
     return 0
   fi
   [ -n "$out" ] || { debug "no planner bundle in the downloads waits to be opened"; return 0; }
   mapfile -t rows <<< "$out"
+  # Exactly one waiting (0.44.0): the downloads answer the question, so it
+  # is taken, and said; a plain office start FOLDER starts a job instead.
+  if [ "${#rows[@]}" -eq 1 ]; then
+    IFS=$'\t' read -r path stem age words <<< "${rows[0]}"
+    if [ -n "$path" ]; then
+      bundle="$path"
+      log "from the downloads: one bundle waits, $stem; starting it (a plain office start FOLDER starts a job instead)"
+      return 0
+    fi
+  fi
   for row in "${rows[@]}"; do
     IFS=$'\t' read -r path stem age words <<< "$row"
     [ -n "$path" ] || continue
@@ -4544,11 +4571,14 @@ offer_bundles() {
 ask_where() {
   local __w="$1" __p="$2" def="$3" why="$4" known="$5" lane="${6:-}" ans list vals=() n
   list="$(printf '%s' "$known" | paste -sd, - | sed 's/,/, /g')"
-  can_ask || die "say where the work lands: --in-office, or --on PROJECT ($list); piped input is never asked"
-  if [ -n "$why" ]; then ans="$def"; log "the work lands in $([ "$def" = office ] && printf 'the office' || printf '%s' "$def"): $why (--in-office or --on PROJECT says otherwise)"
-  elif [ -n "$lane" ]; then ans="$lane"; log "the work lands on $lane, the project the folder's lane names (--in-office sends it to the office instead)"
-  elif [ -z "$known" ]; then ans=office; log "the work lands in the office: it scopes no project (office projects add adds one)"
+  # An answer an artifact or a record gives is taken piped as on a
+  # terminal (0.44.0), said in one line naming where it came from; only a
+  # question nothing answers refuses, naming the flags.
+  if [ -n "$why" ]; then ans="$def"; log "from the bundle: the work lands in $([ "$def" = office ] && printf 'the office' || printf '%s' "$def"): $why (--in-office or --on PROJECT says otherwise)"
+  elif [ -n "$lane" ]; then ans="$lane"; log "from the folder: the work lands on $lane, the project the folder's lane names (--in-office sends it to the office instead)"
+  elif [ -z "$known" ]; then ans=office; log "from the floor plan: the work lands in the office: it scopes no project (office projects add adds one)"
   else
+    can_ask || die "say where the work lands: --in-office, or --on PROJECT ($list); nothing answers it (no bundle's paths, no lane), and piped input is never asked"
     while IFS= read -r n; do [ -n "$n" ] && vals+=("$n" "$n: the session changes its repo, with this office's context beside it"); done <<< "$known"
     vals+=(office "the office: the session works in this office (the folder, the notepad)")
     printf 'Where the work lands:\n' >&2
@@ -4733,6 +4763,17 @@ offer_riders() {
   for v in "${includes[@]}"; do rargs+=(--include "${v%/}"); done
   [ "$read_only" = 0 ] || rargs+=(--read-only)
   [ -z "$bundle" ] || rargs+=(--bundle "$bundle")
+  # The brief's RIDES lines (0.44.0) name the riders, piped or not; --carry
+  # and --carry none still win.
+  local from_brief=0
+  if [ "${START_RIDES_NONE:-0}" = 1 ] && [ "${#START_RIDES[@]}" -eq 0 ] && [ "$carry_none" = 0 ] && [ "${#carry[@]}" -eq 0 ]; then
+    log "from the brief: RIDES none, so no rider is carried (--carry N carries one)"
+    return 0
+  fi
+  if [ "${#START_RIDES[@]}" -gt 0 ]; then
+    from_brief=1
+    for v in "${START_RIDES[@]}"; do rargs+=(--rides "$v"); done
+  fi
   out="$(reader start-riders "$root" "$folder" "${rargs[@]}")" || out=""
   [ -n "$out" ] && mapfile -t rows <<< "$out"
   if [ "$carry_none" = 1 ]; then
@@ -4746,6 +4787,9 @@ offer_riders() {
     if [ "$named" = 1 ]; then
       printf '%s\n' "${carry[@]}" | grep -qxF -- "$n" \
         || log "rider $n ($t) rides this forecast too (rides $r); --carry $n would carry it"
+    elif [ "$from_brief" = 1 ]; then
+      log "from the brief: rider $n, $t, rides $r (its RIDES line names $touched): carried with this session (--carry none leaves it on the riders page)"
+      take+=("$n")
     elif can_ask; then
       # Its path glob says the next session that touches it carries it,
       # and this one does: the office carries it, and says so (0.22.0).
@@ -5312,9 +5356,15 @@ bundle_lands_read() {
     fi
     [ -n "$file" ] || { debug "the bundle $(basename "$bundle") is not a file here, so its brief's LANDS line is not read; bale's search finds it"; return 0; }
   fi
-  out="$(reader bundle-lands "$root" --bundle "$file")" || { warn "the bundle's brief could not be read for where it lands (the line above says why); asking as before"; return 0; }
-  while IFS=$'\t' read -r key a b; do
+  out="$(reader bundle-lands "$root" --bundle "$file" --machine-file "$MACHINE_FILE")" || { warn "the bundle's brief could not be read for where it lands (the line above says why); asking as before"; return 0; }
+  local c elsewhere=() lands_on=""
+  START_RIDES=(); START_RIDES_NONE=0
+  while IFS=$'\t' read -r key a b c; do
     case "$key" in
+      rides) START_RIDES+=("$a") ;;
+      rides-none) START_RIDES_NONE=1 ;;
+      elsewhere) elsewhere+=("$a" "$b"); lands_on="$c" ;;
+      nowhere) lands_on="$a" ;;
       absent) debug "the bundle's brief carries no LANDS line: where it lands and which folder are asked as before" ;;
       place) lands_where="$a"; lands_project="$b" ;;
       folder) lands_folder="$a" ;;
@@ -5323,6 +5373,22 @@ bundle_lands_read() {
       say) log "$a" ;;
     esac
   done <<< "$out"
+  # A LANDS line naming a project this office does not scope (0.44.0): not
+  # a refusal, but the office that scopes it, named with the line that
+  # starts it there, or that no office on this machine does. Nothing is
+  # started here, and nothing written.
+  if [ -n "$lands_on" ] && [ -z "$where" ]; then
+    local i
+    if [ "${#elsewhere[@]}" -gt 0 ]; then
+      for ((i = 0; i < ${#elsewhere[@]}; i += 2)); do
+        log "from the brief: the bundle lands on $lands_on, which ${elsewhere[$((i + 1))]} scopes (${elsewhere[$i]}), not this office; OFFICE_ROOT=$(qword "${elsewhere[$i]}") office start --bundle $(qword "$file") starts it there"
+      done
+    else
+      log "from the brief: the bundle lands on $lands_on, which no office on this machine scopes (machine.toml's offices); office projects add $lands_on PATH scopes it here, and office withdraw --bundle $(basename "$file" .bale-bundle) takes it out of the offer"
+    fi
+    log "nothing was started here, and nothing written"
+    exit 0
+  fi
   # The branch the session builds on (0.34.0): checked out where the bundle
   # opens, before bale open --check (check_start_bundle).
   [ -z "$START_BRANCH" ] || log "the bundle's brief names the branch its session builds on: $START_BRANCH (its BRANCH line); start checks it out in the project's clone before bale opens the bundle"
@@ -5342,7 +5408,7 @@ bundle_lands_read() {
       want="$lands_folder"
     fi
   fi
-  [ -z "$lands_words" ] || log "$lands_words (its LANDS line); neither question is asked"
+  [ -z "$lands_words" ] || log "from the brief: $lands_words (its LANDS line); neither question is asked (--on, --in-office or a folder given says otherwise)"
 }
 
 cmd_start() {
@@ -5355,7 +5421,7 @@ cmd_start() {
   START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_BUNDLE_FOUND=""; START_DROP_PAGE=""
   START_BRANCH=""; START_BRANCH_DONE=0
   START_REFRESH=""; START_REFRESH_DONE=0
-  START_ENDS=""
+  START_ENDS=""; START_RIDES=(); START_RIDES_NONE=0
   PLANNER_FILE=""; PLANNER_CONCERNS=(); PLANNER_WHY=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -5714,7 +5780,6 @@ cmd_start() {
         debug "where defaults to $where_default for this bundle: $where_why"
       fi
     fi
-    can_ask || die "say where the work lands: --in-office, or --on PROJECT ($(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')); piped input is never asked"
     ask_where where project "$where_default" "$where_why" "$names" "$lane_project"
   fi
   start_check_place "$where" "$project" "$names"
@@ -6141,6 +6206,13 @@ terminal, the clipboard once you have copied the block; one line says what
 it filed. A block that does not read stops land with the sitting open.
 An after-land action runs only through office
 land: a session applied by hand with bale apply runs none.
+Bare, with several sessions out (0.44.0), the one whose response-SID.tar.gz
+is in your downloads lands, said, piped as on a terminal; with responses for
+several, those are offered first on a terminal. Every line land hands you is
+an office line: after bale's own output, `In office words:` names each bale
+verb bale's lines named with the office line that does it; a clarification
+ends `Next: office relay SID ANSWER-FILE`, its block for the planner carrying
+the office's tail with that line.
 bale refuses two things without asking: a checkpoint that changed between
 the pack and the landing (after bale amend-checkpoint, say), and a file
 whose base moved since the pack. Each is accepted only on the landing you
@@ -6344,7 +6416,7 @@ land_where_now() {
 # (NEXT), and the review's lines as land_review returned them. bale's block
 # stays byte-identical between its markers; the tail rides after them.
 land_tail() {
-  local root="$1" folder="$2" project="$3" audience="$4" review="$5" nxt="$6" where n title state line
+  local root="$1" folder="$2" project="$3" audience="$4" review="$5" nxt="$6" answer="${7:-}" where n title state line
   printf -- '--- OFFICE land %s ---\n' "$LAND_SID"
   where="$( [ -n "$folder" ] && land_where_now "$root" "$folder")"
   if [ -z "$where" ]; then
@@ -6357,6 +6429,13 @@ land_tail() {
       *) if [ -n "$audience" ]; then state="$where, open; closes at delivery"; else state="$where, open"; fi ;;
     esac
     printf 'folder: %s%s (%s)\n' "${n:+$n, }" "${title:-${where#*/}}" "$state"
+  fi
+  # A clarification's tail (0.44.0): the office line the planner's answer
+  # comes back by, so the planner never hands bale's back; nothing else.
+  if [ -n "$answer" ]; then
+    printf 'answer: %s\n' "$answer"
+    printf -- '--- OFFICE END ---\n'
+    return 0
   fi
   [ -z "$nxt" ] || printf 'next: %s\n' "$nxt"
   # The review state of the folder's branches (0.43.0): one line a review,
@@ -6580,19 +6659,41 @@ cmd_land() {
   if [ -z "$sid" ] && [ -z "$folder" ] && [ -z "$response" ]; then
     out="$(reader land-out "$root")" || die "could not read which sessions are out"
     n="$(printf '%s' "$out" | grep -c .)"
+    # Several out (0.44.0): a response in the downloads names its session
+    # (response-SID.tar.gz), so the one with a response here lands, said,
+    # piped as on a terminal; with responses for several, they are offered
+    # first. A file is a file to offer, never a verdict: bale says whether
+    # it lands.
+    local with_response="" here_n=0 rargs=() rsid
+    if [ "$n" -gt 1 ] && downloads_take "$dl" "$dl_rc"; then
+      while IFS= read -r d; do [ -n "$d" ] && rargs+=(--dir "$d"); done <<< "$DOWNLOADS"
+      while IFS=$'\t' read -r rsid _; do [ -n "$rsid" ] && rargs+=(--sid "$rsid"); done <<< "$out"
+      with_response="$(homex responses "${rargs[@]}" 2>/dev/null | cut -f1)" || with_response=""
+      here_n="$(printf '%s' "$with_response" | grep -c .)"
+    fi
+    if [ "$n" -gt 1 ] && [ "$here_n" = 1 ]; then
+      sid="$with_response"
+      log "from the downloads: response-$sid.tar.gz is here, so $sid lands (office land SID names another)"
+      n=1; out="$sid"
+    fi
     case "$n" in
       0) die "no session is out: none that a folder records is open in this office or in a project it scopes (office start sends one out)" ;;
       1) sid="${out%%$'\t'*}" ;;
       *) if ! can_ask; then
            printf '%s\n' "$out" | sed 's/\t/  (/; s/\t/; /; s/$/)/; s/^/[office]   /' >&2
-           die "$n sessions are out; name one: office land SID; piped input is never asked"
+           die "$n sessions are out$([ "$here_n" -gt 1 ] && printf ', %s with a response in your downloads' "$here_n"); name one: office land SID; piped input is never asked"
          fi
-         # One key per session out, named by its folder (0.22.0).
-         local svals=() srow ssid swhere sfolders
-         while IFS=$'\t' read -r ssid swhere sfolders; do
-           [ -n "$ssid" ] || continue
-           svals+=("$ssid" "$(land_words "$root" "$ssid" "$swhere" "$sfolders")")
-         done <<< "$out"
+         # One key per session out, named by its folder (0.22.0); those
+         # with a response in the downloads first (0.44.0).
+         local svals=() srow ssid swhere sfolders pass
+         for pass in 1 0; do
+           while IFS=$'\t' read -r ssid swhere sfolders; do
+             [ -n "$ssid" ] || continue
+             if printf '%s\n' "$with_response" | grep -qxF -- "$ssid"; then [ "$pass" = 1 ] || continue
+             else [ "$pass" = 0 ] || continue; fi
+             svals+=("$ssid" "$(land_words "$root" "$ssid" "$swhere" "$sfolders")$([ "$pass" = 1 ] && printf '; its response is in your downloads')")
+           done <<< "$out"
+         done
          printf 'Sessions out:\n' >&2
          pick sid "Which session lands, by its key (office land SID)" \
            "The session whose response came back, by its key in the list above. Each is named by the folder that records it." \
@@ -6717,8 +6818,11 @@ cmd_land() {
     *) exit 1 ;;
   esac
   # How it ended, read once (0.29.0; it was five reads).
-  local told applied next outcome words_rc told_rc applied_rc next_rc outcome_rc
-  json_read - words=words told=told applied=applied next=next outcome=outcome <<< "$out"
+  local told applied next outcome words_rc told_rc applied_rc next_rc outcome_rc translated translated_rc
+  json_read - words=words told=told applied=applied next=next outcome=outcome translated=office_words? <<< "$out"
+  # bale's own lines above stay bale's record; the verbs they name are
+  # said once in the office's words (0.44.0), before the office's own.
+  [ -z "$translated" ] || printf '\nIn office words:\n%s\n' "$(printf '%s\n' "$translated" | sed 's/^/  /')"
   printf '\n%s\n' "$words"
   [ -z "$told" ] || while IFS= read -r line; do log "$line"; done <<< "$told"
 
@@ -6728,6 +6832,13 @@ cmd_land() {
   # applied); when nothing landed, nothing runs after, so they go now.
   local landed="$out"
   if [ -z "$applied" ]; then
+    # A clarification's block for the planner carries the office's tail
+    # (0.44.0): the folder, and the office line the answer comes back by.
+    LAND_TAIL=""
+    if [ "$outcome" = clarification ]; then
+      LAND_SID="$sid"
+      LAND_TAIL="$(land_tail "$root" "${folders_all%%$'\n'*}" "" "" "" "" "office relay $sid ANSWER-FILE")"
+    fi
     carry_relays "$landed" 0
     [ -z "$ratify$except" ] || log "nothing landed, so nothing is ratified"
     [ "$LAND_CLOSE" != close ] || log "nothing landed, so no folder is closed"
@@ -6928,14 +7039,15 @@ carry_relays() {
   [ "${3:-}" = preread ] || relays_read "$out"
   while [ "$i" -lt "${#RELAY_BLOCKS[@]}" ]; do
     block="${RELAY_BLOCKS[$i]}"; to="${RELAY_TOS[$i]}"
+    # The office's tail (0.41.0) after bale's END marker, on an applied
+    # landing's blocks for the planner and (0.44.0) a clarification's: in
+    # the clipboard copy and in the whole printing. bale's block itself is
+    # left byte for byte.
+    if { [ "$at_end" = 1 ] || [ "$RELAY_OUTCOME" = clarification ]; } && [ "$to" = planner ] && [ -n "${LAND_TAIL:-}" ]; then
+      block="$block"$'\n'"$LAND_TAIL"
+    fi
     if [ "$RELAY_OUTCOME" = clarification ]; then
       printf '\nFor the planner, whole:\n\n%s\n' "$block"
-    fi
-    # The office's tail (0.41.0) after bale's END marker, on an applied
-    # landing's blocks for the planner only: in the clipboard copy and in the
-    # whole printing below. bale's block itself is left byte for byte.
-    if [ "$at_end" = 1 ] && [ "$to" = planner ] && [ -n "${LAND_TAIL:-}" ]; then
-      block="$block"$'\n'"$LAND_TAIL"
     fi
     if [ "$i" -gt 0 ] && [ -t 1 ] && can_ask; then
       ask ans "Return puts the block for the $to on the clipboard" "" 0 \
@@ -9033,16 +9145,25 @@ A standing block in the same text (0.43.0: the sitting prints it after the
 probe block, in one fence) is taken out before the block is read and filed
 on the folder first, as office standing FOLDER files it, said in one line;
 one that does not read is said and not filed, and the probe goes on.
+The run line (0.44.0): one more comment line in the block's purpose
+header, `# office: probe FOLDER [--project NAME] [--sid SID]`, kept to the
+byte. With no FOLDER given the block is read first and the line gives the
+folder, the project and the session, said (`from the block: ...`); what it
+leaves out is read as below, a flag typed wins, said, and a part naming a
+folder not on the desk, a project not scoped or a session not open is said
+and read as without it. A text that holds a standing block and no probe
+block files the standing (as office standing does) and runs nothing.
 A probe-output/ directory the run leaves (the file-based fallback) is
 carried to the session's out tray, ~/out-tray/SID/probe-output/, and
 removed where it ran. The folder's History gains `- DATE probe: SID, N
 lines`.
   FOLDER         the job whose session asked for the probe: its name, a
-                 unique part of it, or folder N. Left out (0.41.0): the one
-                 folder on the desk that records a session open where
-                 probes run, said; with several, those folders by key on
-                 a terminal, sittings first; with none, asked from every
-                 folder on a terminal
+                 unique part of it, or folder N. Left out: the block is read
+                 first, and its run line (below) names it (0.44.0); else the
+                 one folder on the desk that records a session open where
+                 probes run, said (0.41.0); with several, those folders by
+                 key on a terminal, sittings first; with none, asked from
+                 every folder on a terminal
   FILE           the block as the worker returned it (a chat's code fence
                  around it is fine); - reads it from stdin, which then
                  cannot answer the question, so --yes goes with it
@@ -9077,6 +9198,7 @@ are open), then the block through bash -c there; OFFICE_DEBUG=1 shows every
 shell call, and OFFICE_PROBE_TIMEOUT=<seconds> (default 1800) stops a block
 that runs longer.
 Examples:
+  office probe                                 (the block on the clipboard; its run line says the folder, project and session)
   office probe 13                              (the block on the clipboard; asks where when the lane does not say)
   office probe fix-login probe.sh --project web-api
   office probe 13 - --project office-src --yes < probe.sh
@@ -9215,15 +9337,73 @@ ask_probe_project() {
     "" 0 "${vals[@]}"
 }
 
+# probe_read_text FILE OUT TMP: the probe's text, from FILE, stdin (-) or,
+# with neither, the clipboard (paste_command in machine.toml), into OUT.
+probe_read_text() {
+  local file="$1" out="$2" tmp="$3" rc
+  if [ "$file" = "-" ]; then
+    [ ! -t 0 ] || die "office probe FOLDER - reads the block from stdin, and stdin is this terminal: pipe the block in, give it as a file, or leave it on the clipboard and give neither"
+    cat > "$out" || die "could not read the block from stdin"
+    PROBE_VIA="stdin"
+  elif [ -n "$file" ]; then
+    [ -f "$file" ] || die "$file: no such file (the block is a file, - for stdin, or neither for the clipboard)"
+    cp -- "$file" "$out" || die "could not read $file"
+    PROBE_VIA="the file"
+  else
+    paste_setting "office probe reads the block from the clipboard when it is given no file"
+    log "reading the block from the clipboard ($PASTE)"
+    timeout 15 bash -c "$PASTE" < /dev/null > "$out" 2> "$tmp/paste.err"; rc=$?
+    [ "$rc" = 0 ] || die "the clipboard could not be read: $PASTE exited $rc ($(tail -n 1 "$tmp/paste.err")); paste_command in $MACHINE_FILE"
+    grep -q '[^[:space:]]' "$out" \
+      || die "the clipboard is empty ($PASTE printed nothing): copy the worker's probe block first, or give it as FILE or -"
+    PROBE_VIA="the clipboard"
+  fi
+}
+
+# probe_split_standing BLOCK TMP: a standing that rides with the probe
+# (0.43.0): the sitting prints both in one fence, the standing after the
+# probe. It is taken out of the text first, so none of its lines runs as
+# the block's or reads as an office-on call; PROBE_STANDING names the file
+# it went to, empty when the text held none.
+probe_split_standing() {
+  local block_file="$1" tmp="$2" split_out
+  PROBE_STANDING=""
+  split_out="$(standx split --file "$block_file" --block-out "$tmp/probe-only" --standing-out "$tmp/standing")" || exit 1
+  if [ "$split_out" = standing ]; then
+    mv -f -- "$tmp/probe-only" "$block_file" || die "could not take the standing out of the probe's text"
+    PROBE_STANDING="$tmp/standing"
+  fi
+}
+
+# probe_standing_only ROOT NAME: a text that holds a standing and no probe
+# block (0.44.0) files the standing and runs nothing, so one verb takes
+# either paste. NAME is the folder given, or empty: then the folder that
+# records the standing's sitting. Returns 1 when the text holds a probe
+# block (or no standing), for the probe to go on.
+probe_standing_only() {
+  local root="$1" name="$2" block_file="$3"
+  [ -n "$PROBE_STANDING" ] || return 1
+  ! probe_py has-block "$block_file" || return 1
+  if [ -z "$name" ]; then
+    name="$(standx folder-of "$root" --file "$PROBE_STANDING")" \
+      || die "$PROBE_VIA holds a standing and no probe, and the standing could not be filed (the line above says why): office standing FOLDER files it; nothing ran"
+  fi
+  file_standing "$root" "$name" "$PROBE_STANDING" "$PROBE_VIA" 1 || exit 1
+  log "$PROBE_VIA holds a standing and no probe: filed on desk/$name; nothing to run"
+  return 0
+}
+
 cmd_probe() {
   local want="" file="" project="" sid="" yes=0 root name md tmp block_file plan_file result_file out rc ans
   local names cands=() c tray_root tz day where block held
+  local typed_project="" typed_sid="" text_read=0 sid_soft=() line_key line_val run_line="" line_folder="" line_project="" line_sid=""
+  PROBE_VIA=""; PROBE_STANDING=""
   while [ $# -gt 0 ]; do
     case "$1" in
       -h|--help) usage_probe; return 0 ;;
       --yes) yes=1; shift ;;
-      --project) [ $# -ge 2 ] || die "--project needs a project's name, or office for the office itself"; project="$2"; shift 2 ;;
-      --sid) [ $# -ge 2 ] || die "--sid needs the session's id"; sid="$2"; shift 2 ;;
+      --project) [ $# -ge 2 ] || die "--project needs a project's name, or office for the office itself"; project="$2"; typed_project="$2"; shift 2 ;;
+      --sid) [ $# -ge 2 ] || die "--sid needs the session's id"; sid="$2"; typed_sid="$2"; shift 2 ;;
       -) [ -z "$file" ] || die "office probe takes one block"; file="-"; shift ;;
       -*) usage_probe >&2; die "office probe does not know $1; the flags above are what it takes" ;;
       *) if [ -z "$want" ]; then want="$1"; elif [ -z "$file" ]; then file="$1"
@@ -9234,6 +9414,53 @@ cmd_probe() {
   require_current "$root"
   if [ -n "$sid" ]; then
     [[ "$sid" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*-[0-9]{3}$ ]] || die "--sid $sid: not a session id (YYYY-MM-DD-slug-NNN)"
+  fi
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/office-probe.XXXXXXXX")" || die "no temporary directory for the block"
+  TMP_PATHS+=("$tmp")
+  block_file="$tmp/block.sh"
+
+  # With no folder named (0.44.0) the block is read first: its run line,
+  # `# office: probe FOLDER [--project NAME] [--sid SID]` in its purpose
+  # header, says the folder, the project and the session, so one copy runs
+  # it. What the line leaves out is read as before; a flag typed wins.
+  if [ -z "$want" ]; then
+    probe_read_text "$file" "$block_file" "$tmp"
+    text_read=1
+    probe_split_standing "$block_file" "$tmp"
+    if probe_standing_only "$root" "" "$block_file"; then return 0; fi
+    out="$(probe_py run-line "$block_file")" || exit 1
+    while IFS=$'\t' read -r line_key line_val; do
+      case "$line_key" in
+        line) run_line="$line_val" ;; folder) line_folder="$line_val" ;;
+        project) line_project="$line_val" ;; sid) line_sid="$line_val" ;;
+      esac
+    done <<< "$out"
+    if [ -n "$run_line" ]; then
+      log "from the block: ${run_line#\# office: }"
+      if ( find_folder "$root" desk "$line_folder" ) >/dev/null 2>&1; then
+        want="$line_folder"
+      else
+        log "the block's run line names folder $line_folder, which the desk does not hold; the folder is read as without it"
+      fi
+      if [ -n "$line_project" ]; then
+        if [ -n "$typed_project" ]; then
+          [ "$typed_project" = "$line_project" ] || log "--project $typed_project, as typed, stands over the block's --project $line_project"
+        elif [ "$line_project" = office ] || helper project-names "$root/$MANIFEST_REL" 2>/dev/null | grep -qxF -- "$line_project"; then
+          project="$line_project"
+        else
+          log "the block's run line names --project $line_project, which this office does not scope; where it runs is read as without it"
+        fi
+      fi
+      if [ -n "$line_sid" ]; then
+        if [ -n "$typed_sid" ]; then
+          [ "$typed_sid" = "$line_sid" ] || log "--sid $typed_sid, as typed, stands over the block's --sid $line_sid"
+        elif [[ "$line_sid" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*-[0-9]{3}$ ]]; then
+          sid="$line_sid"; sid_soft=(--sid-soft)
+        else
+          log "the block's run line names --sid $line_sid, which is not a session id; the session is read as without it"
+        fi
+      fi
+    fi
   fi
 
   # Which job. With no folder named (0.41.0): the one folder on the desk
@@ -9267,35 +9494,17 @@ cmd_probe() {
   md="$root/desk/$name/folder.md"
   [ -f "$md" ] || die "desk/$name has no folder.md"
 
-  # The block: a file, stdin, or the clipboard.
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/office-probe.XXXXXXXX")" || die "no temporary directory for the block"
-  TMP_PATHS+=("$tmp")
-  block_file="$tmp/block.sh"
-  if [ "$file" = "-" ]; then
-    [ ! -t 0 ] || die "office probe FOLDER - reads the block from stdin, and stdin is this terminal: pipe the block in, give it as a file, or leave it on the clipboard and give neither"
-    cat > "$block_file" || die "could not read the block from stdin"
-  elif [ -n "$file" ]; then
-    [ -f "$file" ] || die "$file: no such file (the block is a file, - for stdin, or neither for the clipboard)"
-    cp -- "$file" "$block_file" || die "could not read $file"
-  else
-    paste_setting "office probe reads the block from the clipboard when it is given no file"
-    log "reading the block from the clipboard ($PASTE)"
-    timeout 15 bash -c "$PASTE" < /dev/null > "$block_file" 2> "$tmp/paste.err"; rc=$?
-    [ "$rc" = 0 ] || die "the clipboard could not be read: $PASTE exited $rc ($(tail -n 1 "$tmp/paste.err")); paste_command in $MACHINE_FILE"
-    grep -q '[^[:space:]]' "$block_file" \
-      || die "the clipboard is empty ($PASTE printed nothing): copy the worker's probe block first, or give it as FILE or -"
+  # The block: a file, stdin, or the clipboard, read now when a folder was
+  # named (the folder settled first, 0.41.0).
+  if [ "$text_read" = 0 ]; then
+    probe_read_text "$file" "$block_file" "$tmp"
+    probe_split_standing "$block_file" "$tmp"
+    if probe_standing_only "$root" "$name" "$block_file"; then return 0; fi
   fi
-  # A standing that rides with the probe (0.43.0): the sitting prints both
-  # in one fence, the standing after the probe. It is taken out of the text
-  # first, so none of its lines runs as the block's or reads as an office-on
-  # call, and filed on the folder, said in one line; one that does not read
-  # is said, and the probe goes on as without it.
-  local split_out
-  split_out="$(standx split --file "$block_file" --block-out "$tmp/probe-only" --standing-out "$tmp/standing")" || exit 1
-  if [ "$split_out" = standing ]; then
-    mv -f -- "$tmp/probe-only" "$block_file" || die "could not take the standing out of the probe's text"
-    file_standing "$root" "$name" "$tmp/standing" "the probe's text" 0 || true
-  fi
+  # The standing that rode with the probe is filed on the folder first,
+  # said in one line; one that does not read is said, and the probe goes
+  # on as without it.
+  [ -z "$PROBE_STANDING" ] || file_standing "$root" "$name" "$PROBE_STANDING" "the probe's text" 0 || true
   # A block the office does not run is refused by name before anything is
   # reached: no PROBE BEGIN line, no purpose header, or a header that
   # does not say it is read-only.
@@ -9327,7 +9536,7 @@ cmd_probe() {
   # one reach of a host.
   plan_file="$tmp/plan.json"
   while :; do
-    out="$(probe_py plan "$root" "desk/$name" --project "$project" --block "$block_file" ${sid:+--sid "$sid"})"; rc=$?
+    out="$(probe_py plan "$root" "desk/$name" --project "$project" --block "$block_file" ${sid:+--sid "$sid"} ${sid_soft[@]+"${sid_soft[@]}"})"; rc=$?
     case "$rc" in
       0) printf '%s\n' "$out" > "$plan_file"; break ;;
       5) # One per line: the id, a tab, its words (a sitting says so).
@@ -9754,6 +9963,13 @@ walk_in() {
   fi
   vars+=(notes)
   batch_call calls -q recent-notes "$root/notepad" 3
+  # The other offices on this machine (0.44.0), read in the same process:
+  # machine.toml's offices and downloads, each office's bale registries.
+  local elsewhere="" elsewhere_rc=0
+  if [ -f "$MACHINE_FILE" ]; then
+    vars+=(elsewhere)
+    batch_call calls -q home:elsewhere "$root" --machine-file "$MACHINE_FILE"
+  fi
   batch_run "${vars[@]}" -- "${calls[@]}"
   case $desk_rc in
     0|3) printf '%s\n' "$desk" ;;
@@ -9775,6 +9991,13 @@ walk_in() {
   if [ -n "$notes" ]; then printf '%s\n' "$notes" | sed 's/^/  /'; else printf '  nothing noted yet\n'; fi
   slips="$(find "$root/suggestion-box" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
   printf '\nSuggestion box: %s slip(s).\n' "$slips"
+  # The other offices on this machine (0.44.0), after this office's own
+  # sections: what waits for each, read from its bale registries and the
+  # downloads alone, each with the line that runs it there.
+  [ "$elsewhere_rc" = 0 ] || elsewhere=""
+  if [ -n "$elsewhere" ]; then
+    printf '\nThe other offices on this machine:\n%s\n' "$elsewhere"
+  fi
   printf '\nFrom here: office start, office land, office note TEXT, office slip TEXT, office drop, office open, office close FOLDER, office desk, office week, office projects, office status. office help lists everything by what you want to do; office tour tries it all on a throwaway office.\n'
   printf '\n%s\n' "$next"
 }
@@ -9810,6 +10033,10 @@ home_screen() {
     downloads_setting "the home screen offers the responses and the planner's bundles it finds in your downloads"
   fi
   while IFS= read -r d; do [ -n "$d" ] && dl+=(--dir "$d"); done <<< "$DOWNLOADS"
+  # The offices on this machine (0.44.0): one opened here that is not
+  # listed yet is listed now, said once, so an office built before 0.44.0
+  # joins the list the first time its home screen opens.
+  list_office "$root" "its home screen opened"
   menu="$(mktemp)" || die "cannot make a temp file for the home screen"
   TMP_PATHS+=("$menu")
   while :; do
@@ -9819,7 +10046,7 @@ home_screen() {
     today="$(office_date "$WALK_TZ")"; since="$(last_walk_in "$root")"
     : > "$menu"
     if ! homex page "$root" --today "$today" ${since:+--since "$since"} --tz "$WALK_TZ" --skew "$WALK_SKEW" \
-        --founded "$WALK_FOUNDED" --menu-file "$menu" "${dl[@]}"; then
+        --founded "$WALK_FOUNDED" --menu-file "$menu" --machine-file "$MACHINE_FILE" "${dl[@]}"; then
       printf 'The home screen could not be worked out (the line above says why; OFFICE_DEBUG=1 office says more).\n'
       printf 'office desk shows the desk, and office help the verbs.\n'
       return 1
@@ -9841,6 +10068,11 @@ home_screen() {
       office)
         debug "the home screen runs: office ${fields[*]:2}"
         env -u OFFICE_RERUN -u OFFICE_REACHED_FILE "$OFFICE_SRC/bin/office" "${fields[@]:2}"; rc=$? ;;
+      elsewhere)
+        # Another office's item (0.44.0): its verb run there, as if typed
+        # there, with that office's root.
+        debug "the home screen runs: OFFICE_ROOT=${fields[2]} office ${fields[*]:3}"
+        env -u OFFICE_RERUN -u OFFICE_REACHED_FILE OFFICE_ROOT="${fields[2]}" "$OFFICE_SRC/bin/office" "${fields[@]:3}"; rc=$? ;;
       shell)
         debug "the home screen runs: ${fields[2]}"
         bash -c "${fields[2]}"; rc=$? ;;
@@ -9881,6 +10113,8 @@ usage: office default [PATH]
 Shows this machine's default office, the one a command acts on outside any
 office, or makes PATH the default. The first office init on a machine sets
 it. It is kept in ~/.config/office-src/default-office, outside every office.
+PATH is also listed in machine.toml's offices (0.44.0) when it is not, the
+list of the offices on this machine each home screen reads.
 Examples:
   office default
   office default ~/offices/home
@@ -9899,6 +10133,7 @@ cmd_default() {
   [ -f "$root/$MANIFEST_REL" ] || die "not an office (no $MANIFEST_REL): $root"
   mkdir -p "$CONFIG_DIR" && printf '%s\n' "$root" > "$DEFAULT_FILE" || die "cannot write $DEFAULT_FILE"
   log "this machine's default office is now $root"
+  list_office "$root" "office default"
 }
 
 usage_version() {

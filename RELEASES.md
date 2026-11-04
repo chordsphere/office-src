@@ -4,6 +4,168 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.44.0
+
+Additive: no migration, nothing to do in any office. The seventh serial
+session of the plan begun on 2026-10-27: answers from the artifact. A
+question office start or office land would ask is not asked when a
+bundle's brief, a response's file name or an office record already
+answers it; the offices on this machine are listed, and each office's
+home screen shows what waits for the others; every line the office hands
+you to type is an office line; and one copy of a probe block runs it.
+What you see changes for a bare start or land with something in your
+downloads, for a bundle whose brief names its riders or another office's
+project, for a landing that ends in a HOLD, a clarification or a
+bailout, for bare `office probe`, and on the home screen and the walk-in
+when a second office is listed; everything else is as it was.
+
+Answers from the artifact. An answer taken is said in one line, `from
+the brief: ...`, `from the folder: ...`, `from the downloads: ...`,
+with the flag that says otherwise in parentheses, piped as on a
+terminal; only a question nothing answers refuses piped, naming its flag
+(`say where the work lands: --in-office, or --on PROJECT (alpha);
+nothing answers it (no bundle's paths, no lane), and piped input is
+never asked`). So `office start FOLDER --goal TEXT` piped takes where
+the work lands from the folder's lane, and from a bundle's paths, as it
+did on a terminal. Bare `office start` on a terminal with exactly one
+bundle waiting takes it (`from the downloads: one bundle waits, STEM;
+starting it (a plain office start FOLDER starts a job instead)`); with
+several it offers them by key as before. Bare `office land` with several
+sessions out and a response in the downloads for exactly one of them
+lands that one, piped or not (`from the downloads: response-SID.tar.gz
+is here, so SID lands`); with responses for several, the keys list
+those first, each saying its response is in your downloads. A
+planner's brief may name the riders its session carries, one line per
+ride kept to the byte beside LANDS, BRANCH, RATIFIED and ENDS: `---
+RIDES PATH ---` (PATH a rider's path glob, as `office rider add
+--rides` takes it) or `--- RIDES none ---`. With RIDES lines start
+carries exactly the queued riders whose glob matches one, piped or not,
+each said (`from the brief: rider N, TITLE, rides GLOB (its RIDES line
+names PATH): carried with this session`); `--carry` and `--carry none`
+still win; with none, the forecast's rule as before. A LANDS line naming
+a project this office does not scope is no longer a question and a
+refusal: start names the office on this machine that scopes it, with
+the line that starts it there (`OFFICE_ROOT=ROOT office start --bundle
+FILE`), or says that none does, and starts nothing. What leaves the
+office (deliver's question, the review's) is never answered from an
+artifact.
+
+The offices on this machine. machine.toml gains `offices`, a list of
+office roots. `office init` appends the office it builds (the default or
+not), `office default PATH` appends PATH, and an office's home screen
+appends it the first time it opens there unlisted, said once, so an
+office built before 0.44.0 joins the list on its own; a listed root that
+is no longer an office is said and skipped by every reader, never
+removed. The survey's Machine section names the offices listed
+(`offices: NAME (ROOT); NAME (ROOT)`). The home screen and the walk-in,
+after this office's own sections, show one section per other listed
+office, headed `NAME (ROOT):`: the responses in your downloads for
+sessions that office or its projects have out, the bundles that land on
+a project only it scopes, and the sittings out there, each a key on the
+home screen (`Land SLUG (PROJECT, in NAME): a response for it was saved
+AGE in your downloads`) that runs the verb in that office, as if typed
+there, and on the walk-in its line, `OFFICE_ROOT=ROOT office land SID`.
+Another office is read through its bale registries and the downloads
+alone, never its desk, notepad or handbook. A bundle any listed office
+opened leaves every office's offer; one landing on a project another
+office scopes leaves this office's offer and is offered under that
+office; one landing on a project no office here scopes is counted in one
+line (`N bundle(s) in your downloads land on projects no office on this
+machine scopes: STEM, ...; office withdraw --bundle STEM takes one out
+of the offer`). Bare start's offer is cut the same way.
+
+The office's words over bale's. bale's own output at a landing still
+rides above the office's words, byte for byte, as bale's record; after
+it, before the office's own words, the office prints `In office
+words:`, one line per bale verb bale's lines named (`bale retry ->
+office land SID --response FILE`, `bale relay -> office relay SID
+FILE`, `bale unlock -> office withdraw SID, for a session never worked;
+office land SID, for a sitting`, and for revert and amend-checkpoint `no
+office line: type it in REPO`); nothing when they named none. A
+clarification's Next line is `office relay SID ANSWER-FILE, with the
+planner's answer saved here as ANSWER-FILE (office relay carries it to
+bale relay in REPO[, through HOST's shell])`, never bale's `(cd REPO &&
+bale relay ...)`, and the planner's block gets the office's tail after
+bale's END marker: the folder line and `answer: office relay SID
+ANSWER-FILE`, so the planner never hands bale's line back. A bailout's
+Next line says plainly that the office has no line for it yet (`no
+office line yet: type bale handoff RESPONSE in REPO; it packs the fresh
+session the handoff asks for, and office sessions N SID records it in
+the folder`): `office start FOLDER --handoff RESPONSE`, the brief's item
+4, is left for a session of its own.
+
+One copy runs a probe. A probe block's purpose header may carry `#
+office: probe FOLDER [--project NAME] [--sid SID]`, kept to the byte.
+`office probe` with no folder reads the block first (a file, stdin or
+the clipboard) and takes the folder, the project and the session from
+the line, said (`from the block: probe 21 --project alpha --sid SID`);
+what it leaves out is read as before, a flag typed wins (`--project
+office, as typed, stands over the block's --project alpha`), and a line
+naming a folder the desk does not hold, a project the office does not
+scope or a session not open is one line, that part read as without it.
+The line is shown with the header and never run; a line that begins so
+and does not read is refused by name. The home screen gains `[r] run
+the probe on the clipboard` (`office probe`), shown while a folder on the
+desk records a session open where probes run. A text office probe reads
+that holds a standing block and no probe block files the standing on
+the folder that records its sitting and runs nothing (`the clipboard
+holds a standing and no probe: filed on desk/NAME; nothing to run`), so
+one verb takes either paste. The home screen's standing key shows for
+every read-only sitting a folder records from its first turn, filed or
+not; MAX_ITEMS stays nine, since a key is one keypress.
+
+The planner's half. templates/sitting-brief.md and
+templates/prep-brief.md say, in What the sitting owes, that the sitting
+hands the occupant office lines only, writes the probe block's `#
+office: probe ...` line, and may write RIDES lines; the doctrine pins
+both past its banner.
+
+What changed and where: bin/office (cmd_probe reads the block first with
+no folder, `probe_read_text`, `probe_split_standing`,
+`probe_standing_only`; cmd_land's reading of the downloads, the `In
+office words:` list and the clarification's tail; `land_tail`'s answer
+line; carry_relays' tail on a clarification's block; `ask_where` piped;
+`offer_bundles`' one bundle; `bundle_lands_read`'s RIDES, elsewhere and
+nowhere lines; `offer_riders`' RIDES; `list_office`, called by init,
+default and the home screen; the home screen's `elsewhere` menu kind;
+the walk-in's other offices; write_survey's machine file);
+lib/office_helper.py (`OFFICES_KEY`, `machine_offices`,
+`listed_offices`, `add_machine_office` and the `offices` subcommand;
+`brief_rides`, `RIDES_MARK_RE`; survey-render's offices fact);
+lib/office_bale.py (`office_words`, `BALE_VERBS`, `relay_next_line`,
+`handoff_line`, `plan_repo_words`, `plan_folder_key`; outcome_words'
+clarification and bailout lines; bundle_lands' rides, elsewhere and
+nowhere; start-riders' `--rides`); lib/office_home.py (the r key,
+the standing key from the first turn, `other_offices`, `cut_by_office`,
+`office_section`, `other_sections`, `nowhere_line`, the `elsewhere` and
+`responses` subcommands, `--machine-file` on page and bundles);
+lib/office_probe.py (`run_line`, `RUN_LINE_PREFIX`, `soft_sid` and
+plan's `--sid-soft`, the `run-line` and `has-block` subcommands);
+lib/office_standing.py (`folder_of`, `folder-of`);
+lib/office_drafting.py (`riders_for_rides`); templates/sitting-brief.md
+and templates/prep-brief.md; share/verbs.toml (init, default, start,
+land, probe); README.md; and the doctrine, past its banner only
+(section 4, continued: the RIDES line, the probe's run line, the answers
+an artifact gives; section 10: the office's lines over bale's; section
+13: the machine's offices). The banner stays at line 299.
+
+Tests: tests/test_from_the_artifact.py (new, 37 tests), one class per
+item or a unit class beside its verb class: TestTheRidesLine,
+TestAnswersFromTheArtifact and TestTheOneBundleOnATerminal (1);
+TestTheOfficesList and TestTheOfficesOnThisMachine, two invented offices
+in the test's own tree (2); TestOfficeWords and
+TestTheLandingsOfficeWords (3); TestABailoutsLine (4); TestTheRunLine and
+TestOneCopyRunsAProbe (5); TestTheStandingAlone and
+TestTheStandingFromTheClipboard (6); TestThePlannersHalf (7). Existing
+tests changed with what they pin: the bare-start offer test holds two
+bundles (one is taken now), the planner's terminal bundle test takes the
+one bundle without a key, the unscoped LANDS test reads the new line,
+piped start's refusals expect the goal's once the lane answers where, the
+standing key's test counts it before any standing, the hosted
+clarification's Next line is office relay's, and three return-trip tests
+that held machine.toml absent now hold only that land writes no
+downloads there (init lists the office in it).
+
 ## 0.43.0
 
 Additive: no migration, nothing to do in any office. The sixth serial

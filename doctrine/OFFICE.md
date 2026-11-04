@@ -449,6 +449,60 @@ folder's Sessions section records last) end `; an older sitting on this
 folder, probably over`, and `office probe`, asked which sitting a block is
 for, offers the newest first.
 
+A planner's brief may name the riders its session carries (0.44.0), one
+line per ride, in the same shape and read in the same places (values
+illustrative):
+
+  ```
+  --- RIDES lib/alpha.py ---
+  --- RIDES docs/* ---
+  --- RIDES none ---
+  ```
+
+PATH is a rider's path glob as `office rider add --rides` takes it. With
+RIDES lines, `office start` carries exactly the queued riders whose glob
+matches a RIDES path, piped or not, and says so (`from the brief: rider N,
+...`); `--- RIDES none ---` carries none; `--carry N` and `--carry none`
+still win. A line that does not read is said, and the lines that read are
+taken. A brief with no RIDES line changes nothing: the riders the forecast
+touches are carried on a terminal and named piped, as before.
+
+A probe block's purpose header may carry one more comment line (0.44.0),
+kept to the byte (values illustrative):
+
+  ```
+  # office: probe 21 --project alpha --sid 2026-10-27-alpha-plan-sitting-001
+  ```
+
+FOLDER as `office probe` takes it (its name, a unique part of it, or its
+number), the two flags as `office probe`'s own, either left out. `office
+probe` given no folder reads the block first and takes the folder, the
+project and the session from the line, saying so (`from the block: probe
+21 --project alpha --sid SID`); what the line leaves out is read as before
+(the one folder with a session open, the lane); a flag typed wins over the
+line, said. A line naming a folder the desk does not hold, a project the
+office does not scope or a session not open is one line, and that part is
+read as without it. The line is shown with the header, never run. The
+sitting writes it on every probe block it returns, so one copy of the block
+runs it; the office reads it. A text that holds a standing block and no
+probe block is filed as `office standing` files it, on the folder that
+records its sitting, and nothing runs, so one verb takes either paste.
+
+The answers a session's artifacts give (0.44.0). A question `office start`
+or `office land` would ask is not asked when an artifact (a bundle's brief,
+a response's file name, a request's manifest) or an office record (the
+folder's lane, the floor plan, bale's registry) answers it: the answer
+taken is said in one line, `from the brief: ...`, `from the folder: ...`,
+`from the downloads: ...`, with the flag that says otherwise, piped as on a
+terminal; only a question nothing answers refuses piped, naming its flag.
+Bare `office start` with one bundle waiting takes it; bare `office land`
+with several sessions out and a response in the downloads for one lands
+that one. A LANDS line naming a project this office does not scope is no
+refusal: start names the office on this machine that scopes it, with the
+line that starts it there, or says none does, and starts nothing. What
+leaves the office (a delivery's push, a review) is never answered from an
+artifact: a worker's response never decides what reaches an audience.
+
 A planner sitting from the occupant's words (0.24.0): `office start
 --planner`, the home screen's p key. He says what he wants a planner for,
 in his words, and a read-only sitting goes out from the office, recorded
@@ -2006,6 +2060,23 @@ hands at the terminal, and records which sessions belong to which job;
 it never records what bale records, never schedules a session, never
 dispatches one to a model and never carries pastes.
 
+Every line the office prints for the occupant to type is an office line
+(0.44.0): `office start`, `office land`, `office relay`, `office withdraw`,
+`office probe`, never `bale open` and never a bale verb. bale's own lines are
+the record, kept where bale printed them (its output at a landing rides on
+the terminal above the office's words, byte for byte) and never the
+instruction. After bale's output at a landing the office prints `In office
+words:`, one line per bale verb bale's lines named, each with the office line
+that does it (`bale retry -> office land SID --response FILE`, `bale relay ->
+office relay SID FILE`, `bale unlock -> office withdraw SID` for a session
+never worked and `office land SID` for a sitting), or, for a verb the office
+has no line for (revert, amend-checkpoint, and until `office start --handoff`
+exists, handoff), `no office line: type it in REPO` with the repo named. A
+clarification's Next line is `office relay SID ANSWER-FILE`, and the office's
+tail on the planner's block gains `answer: office relay SID ANSWER-FILE`, so
+the planner never hands bale's line back. A sitting hands the occupant office
+lines only.
+
 ## 11. One office per set of house rules
 
 Topics do not earn offices; different rules do. A new kind of job with
@@ -2113,6 +2184,26 @@ facts only, shallow, fast.
 
 A number that can go stale is computed where it is shown -- by a survey
 step or the digest -- and never written down as a standing count.
+
+The machine's offices (0.44.0). Two offices may share one occupant, one
+machine and one downloads directory. machine.toml (the office's own
+per-machine settings, ~/.config/office-src/machine.toml, never bale's)
+lists them as `offices`, the one home of the list: no office's floor plan
+names another. `office init` appends the office it builds, `office default
+PATH` appends PATH, and an office's home screen appends it when it opens
+there unlisted, said once; a listed root that is no longer an office is
+said and skipped by every reader, never removed by the office. The survey's
+Machine section names the offices listed. Each office's home screen and
+walk-in show, after their own sections, one section per other listed
+office: the responses in the downloads for sessions it or its projects
+have out, the bundles that land on a project only it scopes, and the
+sittings out there, each a key (or, on the walk-in, a line) that runs the
+verb there, `OFFICE_ROOT=ROOT office VERB`, as if typed there. Another
+office is read through its bale registries and the downloads alone, never
+its desk, notepad or handbook, and nothing is written there but by the
+verb the key runs. A bundle any listed office's registry records as opened
+leaves every office's offer; one landing on a project no office scopes is
+counted in one line.
 
 ## 14. Versioning and upgrades
 

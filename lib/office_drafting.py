@@ -856,6 +856,37 @@ def riders_for_forecast(root, forecast, project=None):
     return hits
 
 
+def riders_for_rides(root, rides_paths, project=None):
+    """The queued riders on the page a brief's RIDES lines name (0.44.0):
+    [{number, title, rides, touched}] in the page's order, touched being
+    the RIDES paths each matches. A rider matches a RIDES path when the
+    path is its rides line as written, or its glob, or a path the glob
+    covers (glob_touches); project is as for riders_for_forecast."""
+    if not (pathlib.Path(root) / SPACE).is_dir() or not rides_paths:
+        return []
+    hits = []
+    for r in Table(root).riders():
+        rides = first(r["fields"], "rides")
+        if r["home"] != "page" or not rides or rides.startswith("folder "):
+            continue
+        if r["status"] not in (None, "queued"):
+            continue
+        owner, glob = rides_parts(rides)
+        if owner is not None and owner != project:
+            continue
+        touched = []
+        for path in rides_paths:
+            p_owner, p_glob = rides_parts(path)
+            if p_owner is not None and p_owner != project:
+                continue
+            if path.strip() == rides.strip() or p_glob.strip().strip("/") == glob.strip().strip("/") \
+                    or glob_touches(glob, p_glob):
+                touched.append(path)
+        if touched:
+            hits.append({"number": r["number"], "title": r["title"], "rides": rides, "touched": touched})
+    return hits
+
+
 def render_riders(root, forecast=(), orphans_only=False, project=None):
     t = Table(root)
     if not (pathlib.Path(root) / SPACE).is_dir():

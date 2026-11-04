@@ -113,10 +113,23 @@ but the newest ends `; an older sitting on this folder, probably over`,
 0.43.0; and once the sitting has filed where it stands, the item says
 it, `step N of M: words; waiting on you: words (as of DATE TIME)`, with a
 second key that files a new standing from the clipboard, `office
-standing N`). Keys for a new job (`o`), sending a session out (`s`),
+standing N`; since 0.44.0 the key shows from the sitting's first turn,
+before any standing is filed). Keys for a new job (`o`), sending a session out (`s`),
 bringing one back (`l`), a note (`n`), a drop (`d`), the whole desk
 (`k`) and help (`h`) are always there, and `q` leaves; `w` withdraws a
-session never worked, or a bundle no session opened, while one waits. A
+session never worked, or a bundle no session opened, while one waits;
+`r` runs the probe on the clipboard (`office probe`) while a folder on the
+desk records a session open where probes run (0.44.0). After this
+office's own sections comes one section per other office this machine
+lists (machine.toml's `offices`, 0.44.0), headed `NAME (ROOT):`: the
+responses in your downloads for sessions it or its projects have out,
+the bundles that land on a project only it scopes, and the sittings out
+there, each a key that runs the verb in that office as if typed there
+(`OFFICE_ROOT=ROOT office land SID`); it is read through that office's
+bale registries and your downloads alone, never its pages. A bundle that
+lands on a project no office here scopes is counted in one line instead
+of offered. The home screen lists the office it opens in when it is not
+listed yet, said once. A
 project marked paused (`office projects set NAME --paused`, 0.41.0) has
 the line `NAME: paused (office projects set NAME --unpaused)` and is
 read for nothing. A key runs the verb's own code with its arguments
@@ -149,7 +162,9 @@ so, 0.43.0), how many
 folders are ready, parked and candidates and the first three ready ones,
 how many drops wait unsorted in the in-tray and how old the oldest is,
 this week and its gaps, the last notepad lines and the slips, and the
-verbs to reach for. It ends with one Next line: the one command to type
+verbs to reach for, and then (0.44.0) one section per other office this
+machine lists, each waiting item with the line that runs it there,
+`OFFICE_ROOT=ROOT office VERB ...`. It ends with one Next line: the one command to type
 now, with its arguments filled in, worked out from the office on every
 walk-in and never written down. In the order they win:
 
@@ -157,7 +172,7 @@ walk-in and never written down. In the order they win:
 |---|---|
 | is behind the install, or ahead of it | `office upgrade` (or `office status`, which names the versions; or `office land SID` while the renovation upgrade sent out is out) |
 | scopes the install's source, which has moved past the install | `(cd SOURCE && ./install.sh)` (start and land run the install, so until it is level they run the old office) |
-| has a session out | `office land SID` (when its response is in your downloads, land finds it) |
+| has a session out | `office land SID` (when its response is in your downloads, land finds it; bare `office land` with several out lands the one whose response is there, 0.44.0) |
 | has desk moves a sitting decided, or sorted drops waiting in the in-tray, not yet run | `office moves` (until they run, the desk is not in the order the sitting decided) |
 | has a folder whose merge job waits for its session (0.41.0) | `office start N --merge` (start --merge sends the session that resolves it) |
 | has a folder whose work landed on a project with an audience and is not delivered (0.41.0) | `office deliver N` for the newest landing (deliver carries it to the audience; the others are counted) |
@@ -367,6 +382,23 @@ bale has opened the new session and the opener is on the clipboard, as
 (`--end-predecessor` and `--keep-predecessor` are the twins); piped with
 neither it is said, with the land line, and nothing is ended.
 
+What an artifact or a record answers is not asked (0.44.0). Each answer
+taken is said in one line, `from the brief: ...`, `from the folder:
+...`, `from the downloads: ...`, with the flag that says otherwise, piped
+as on a terminal: piped, `office start FOLDER --goal TEXT` takes where the
+work lands from the folder's lane as a terminal does, and only a question
+nothing answers refuses, naming its flag. Bare `office start` on a
+terminal with one bundle waiting takes it (`from the downloads: one bundle
+waits, STEM; starting it`); with several it offers them by key. A brief
+may name the riders its session carries, `--- RIDES PATH ---` per ride or
+`--- RIDES none ---`: start carries exactly those, piped or not, and says
+so; `--carry` and `--carry none` still win. A LANDS line naming a project
+another office on this machine scopes is no refusal: start names that
+office with the line that starts the bundle there,
+`OFFICE_ROOT=ROOT office start --bundle FILE`, or says no office here
+scopes it, and starts nothing. Deliver's question and the review's are
+never answered from an artifact.
+
 ### Bring it back
 
     office land                          # the session out: bale apply, how it ended, the relay
@@ -395,7 +427,19 @@ an audience, and `--- OFFICE END ---`, so the planner never asks for
 them; with a `reviews:` line for each review gh reads on the folder's
 branches (0.43.0). Piped, nothing is copied, so land prints that block
 whole with the office's lines after bale's, under `The block for the
-planner, whole, with the office's lines:` (0.43.0). It asks nothing about
+planner, whole, with the office's lines:` (0.43.0). Every line land hands
+you is an office line (0.44.0): after bale's own output, which stays as
+bale's record, `In office words:` lists each bale verb bale's lines named
+with the office line that does it (`bale retry -> office land SID
+--response FILE`, `bale relay -> office relay SID FILE`, `bale unlock ->
+office withdraw SID`), or `no office line: type it in REPO` for revert and
+amend-checkpoint. A clarification ends `Next: office relay SID
+ANSWER-FILE, ...`, and its block for the planner carries the office's
+tail with `answer: office relay SID ANSWER-FILE`. A bailout's line says
+there is no office line for the handoff yet and names bale's, and where.
+Bare `office land` with several sessions out lands the one whose response
+is in your downloads (`from the downloads: response-SID.tar.gz is here, so
+SID lands`); with responses for several, it offers those first. It asks nothing about
 ratification: the
 planner ratifies in the next brief it writes, and `office start` files
 it. `office relay` carries a planner's answer to a clarification back
@@ -449,6 +493,20 @@ alone are offered by key, sittings first. The block's stderr is masked
 on the screen too (0.43.0). When the text you copy carries the sitting's
 standing block after the probe block (0.43.0), probe files it on the
 folder first and says so in one line, so one paste does both.
+
+    office probe                         # 0.44.0: the block's own run line says the folder, project and session
+
+A sitting writes one more comment line in the block's purpose header
+(0.44.0), `# office: probe FOLDER [--project NAME] [--sid SID]`: with no
+folder named, `office probe` reads the block first and takes all three
+from it, said (`from the block: probe 21 --project office-src --sid
+SID`), so copying the block once and typing `office probe` (or the home
+screen's `r`) runs it. A flag you type wins over the line, said; a part of
+the line the office cannot use (a folder not on the desk, a project it does
+not scope, a session not open) is said and read as without it. A text
+holding a standing and no probe block is filed as `office standing` files
+it, and nothing runs (`the clipboard holds a standing and no probe: filed
+on desk/NAME; nothing to run`).
 
 ### Where a sitting stands
 
@@ -517,7 +575,9 @@ projects add` (the path, the name, what rides with it, what runs after it
 lands), until a plain return. `--project PATH` (or `--project
 NAME=PATH`, repeatable) is the flag twin, each checked before anything is
 built, and `--no-projects` skips the question; piped, it asks nothing.
-The office is unfounded until its founding session writes the profile,
+The office is listed in this machine's machine.toml `offices` (0.44.0),
+the default or not, so every office here shows what waits for it. The
+office is unfounded until its founding session writes the profile,
 and init sends that session out itself. It asks the profile's questions,
 one per section of the profile's required shape (`share/profile-shape.toml`)
 in its order, each worded from the section's asks line. An answer may run
@@ -604,6 +664,15 @@ A command acts on OFFICE_ROOT if set, else the office around the working
 directory (found by walking up to floor-plan/manifest.toml), else the
 machine's default, kept in ~/.config/office-src/default-office. The
 first `office init` on a machine sets it.
+
+Two offices may share one machine and one downloads directory (0.44.0).
+`offices` in ~/.config/office-src/machine.toml lists them, the one place
+the list lives: `office init` adds the office it builds, `office default
+PATH` adds PATH, and an office's home screen adds it the first time it
+opens there unlisted, said once. A listed root that is no longer an
+office is said and skipped, never removed; edit the file to take it out.
+`office survey`'s Machine section names the offices listed, and each
+office's home screen and walk-in show what waits for the others.
 
 ### Folders: numbers, fields, statuses and gates
 
@@ -1171,8 +1240,10 @@ cannot make, cannot confirm, or that reads back otherwise is said in a
 line, and the block is printed again, whole. Since 0.41.0 each block for
 the planner after an applied landing carries the office's tail after
 bale's END marker, in the copy and in that whole printing (bale's block
-stays byte for byte between its markers; a clarification's block, a
-held landing's and the worker's get none):
+stays byte for byte between its markers; a held landing's block and the
+worker's get none, and since 0.44.0 a clarification's gets the folder line
+and `answer: office relay SID ANSWER-FILE`, the office line the planner's
+answer comes back by, and nothing else):
 
     --- OFFICE land SID ---
     folder: N, TITLE (desk/NAME, open; closes at delivery)

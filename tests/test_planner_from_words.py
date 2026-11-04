@@ -314,11 +314,14 @@ class TestBundleLands(LandCase):
         self.assertIn("# Plan the docs\n", md)
 
     def test_a_place_or_a_folder_the_office_does_not_hold_is_said_and_asked(self):
+        # Since 0.44.0 a project this office does not scope is no refusal and
+        # no question: the line names the office that scopes it, or that none
+        # on this machine does (tests/test_from_the_artifact.py, item 1).
         b = self.bundle("--- LANDS gamma, folder 1 ---", stem="2026-10-16-g")
-        proc = self.run_office("start", "--bundle", str(b), check=1)
-        self.assertIn("says it lands on gamma, which this office does not scope (it scopes: alpha); where it lands "
-                      "is asked", proc.stderr)
-        self.assertIn("say where the work lands: --in-office, or --on PROJECT (alpha)", proc.stderr)
+        proc = self.run_office("start", "--bundle", str(b), check=0)
+        self.assertIn("from the brief: the bundle lands on gamma, which no office on this machine scopes", proc.stderr)
+        self.assertIn("nothing was started here, and nothing written", proc.stderr)
+        self.assertNotIn("Packed ", proc.stdout)
         b = self.bundle("--- LANDS alpha, folder 99 ---", stem="2026-10-16-h")
         proc = self.run_office("start", "--bundle", str(b), check=1)
         self.assertIn("names folder 99, which this office does not hold; which job is asked", proc.stderr)
@@ -443,10 +446,11 @@ class TestOnATerminal(LandCase):
         bundle_file(self.downloads, "2026-10-16-docs", ["Tidy the docs", "--slug", "docs", "--write", "docs",
                                                         "--constraint", ob.PROJECT_CONSTRAINT],
                     brief="# Brief\n\nTidy the docs.\n\n--- LANDS alpha, folder 1 ---\n")
-        code, seen = on_a_terminal(self, [str(self.e.office_bin), "start"], self.root, self.e.env, [
-            (b"(--bundle FILE) [return skips]:", "1"),
-        ])
+        # The one bundle waiting is taken without its key since 0.44.0
+        # (tests/test_from_the_artifact.py, item 1).
+        code, seen = on_a_terminal(self, [str(self.e.office_bin), "start"], self.root, self.e.env, [])
         self.assertEqual(code, 0, seen)
+        self.assertIn("from the downloads: one bundle waits, 2026-10-16-docs", seen)
         self.assertIn("(its LANDS line); neither question is asked", seen)
         self.assertNotIn("Which job", seen)
         self.assertNotIn("Where the work lands", seen)
