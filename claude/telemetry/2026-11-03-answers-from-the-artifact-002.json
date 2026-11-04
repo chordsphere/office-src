@@ -1,0 +1,159 @@
+{
+  "record_version": 1,
+  "session_id": "2026-11-03-answers-from-the-artifact-002",
+  "created_at": "2026-11-03T23:58:33+00:00",
+  "attempts": [
+    {
+      "at": "2026-11-03T23:58:33+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib",
+        "share",
+        "templates",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-11-03-answers-from-the-artifact-002.log",
+      "bundle": {
+        "stem": "2026-11-03-answers-from-the-artifact",
+        "brief_sha256": "34a3051a314889006ec2856253b884214ebbe28873e73bc963503e4b854f7812",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "7158307df414381924b4520ffa928d3d51fcbb10e9d39412f08ac09af5e979f1"
+      },
+      "provenance": {
+        "work_class": "mixed",
+        "packer": "chordsphere",
+        "packed_at": "2026-11-03T23:58:33+00:00"
+      }
+    },
+    {
+      "at": "2026-11-04T01:17:26+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-11-03-answers-from-the-artifact-002.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "VERSION is 0.44.0": "pass",
+          "the doctrine's core is unchanged and the banner at line 299": "pass",
+          "the pinned words are in the tree": "pass",
+          "tests/run.sh --fast (with this session's tests)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "tests/run.sh, the touched modules whole (--slow)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {},
+        "reconciliation_parsed": false,
+        "validation_will_run": [
+          "bin/office is executable",
+          "bash -n bin/office",
+          "python3 compile lib and tests",
+          "toml files read",
+          "VERSION is 0.44.0",
+          "the doctrine's core is unchanged and the banner at line 299",
+          "the pinned words are in the tree",
+          "tests/run.sh --fast (with this session's tests)",
+          "tests/run.sh, the touched modules whole (--slow)"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib",
+        "share",
+        "templates",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib/office_bale.py",
+        "lib/office_drafting.py",
+        "lib/office_helper.py",
+        "lib/office_home.py",
+        "lib/office_probe.py",
+        "lib/office_standing.py",
+        "share/verbs.toml",
+        "templates/prep-brief.md",
+        "templates/sitting-brief.md",
+        "tests/test_from_the_artifact.py",
+        "tests/test_home_screen.py",
+        "tests/test_planner_from_words.py",
+        "tests/test_return_trip.py",
+        "tests/test_standing.py",
+        "tests/test_start.py"
+      ],
+      "feedback": null,
+      "log": ".bale/logs/2026-11-03-answers-from-the-artifact-002.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-11-04T01:17:26+00:00",
+  "outcome": "applied"
+}
