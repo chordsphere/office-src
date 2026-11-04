@@ -936,7 +936,8 @@ def paused_set_line(name, paused):
     """What office projects set says when it sets or clears the mark."""
     if paused:
         return (f"{name} is paused: the office reads nothing of it and sends nothing to it until office projects "
-                f"set {name} --unpaused")
+                f"set {name} --unpaused (one thing is still read: which of its sessions a bundle in your downloads "
+                "opened, so that bundle leaves the offer)")
     return f"{name} is not paused: the office reads it and sends sessions to it again"
 REMOTE_NAME_RE = LazyPattern(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 AUTHOR_RE = LazyPattern(r"^(?P<name>[^<>]+?)\s*<(?P<email>[^<>@\s]+@[^<>@\s]+)>$")
@@ -1069,7 +1070,7 @@ def check_host_keys(host, shell=None, connect=None):
 
 
 def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys=None, audience_keys=None,
-                     paused=None):
+                     paused=None, new_path=None):
     """Write a project's declarations, keeping every other byte of the
     floor plan. A list replaces the key's value; [] removes the key;
     None leaves it as it is. host_keys is a dict of the three host keys
@@ -1077,7 +1078,10 @@ def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys
     them; audience_keys the same for the audience line's three (any
     subset of them, each a string checked here, or None to remove it).
     paused (0.41.0) True writes `paused = true`, False removes the key,
-    None leaves it. Returns the project's entry as it reads back. Refuses
+    None leaves it. new_path (0.46.0, office projects set NAME --path) is
+    the project's path rewritten, as checked by the caller (office
+    projects add's check); the old clone is never touched. Returns the
+    project's entry as it reads back. Refuses
     a project the table does not list, a key written over several lines
     (not the shape this writes), and a value that does not check."""
     if not PROJECT_NAME_RE.match(name):
@@ -1101,6 +1105,10 @@ def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys
         want[key] = AUDIENCE_CHECKS[key](value) if value is not None else None
     if paused is not None:
         want[PAUSED_KEY] = True if paused else None
+    if new_path is not None:
+        if not str(new_path).strip() or "\n" in str(new_path):
+            raise HelperError(f"a project's path is one line, not {new_path!r}")
+        want["path"] = str(new_path).strip()
     path = pathlib.Path(manifest_path)
     text = path.read_text(encoding="ascii")
     lines = text.splitlines()
@@ -1114,7 +1122,7 @@ def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys
     body = lines[start + 1:end]
     for key, value in want.items():
         at = [i for i, l in enumerate(body) if re.match(rf"^\s*{key}\s*=", l)]
-        string_key = key in HOST_KEYS or key in AUDIENCE_KEYS
+        string_key = key in HOST_KEYS or key in AUDIENCE_KEYS or key == "path"
         for i in at:
             if key != PAUSED_KEY and not body[i].rstrip().endswith('"' if string_key else "]"):
                 raise HelperError(f"[projects.{name}] writes {key} over several lines, which office projects "
@@ -1143,7 +1151,7 @@ def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys
     if entry["problem"]:
         raise HelperError(f"{path}: {name} does not read back as written ({entry['problem']}); the floor plan needs a look")
     for key, value in want.items():
-        if entry[key] != (bool(value) if key == PAUSED_KEY else value):
+        if entry[key] != (bool(value) if key == PAUSED_KEY else value):  # path: as written, read back as written
             raise HelperError(f"{path}: {key} did not read back as written; the floor plan needs a look")
     return entry
 
@@ -1812,6 +1820,111 @@ def folder_set_field(folder_md, key, value):
     lines.insert(field_position(lines, key), line)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return line
+
+
+# --- a folder's fields after office open: office folder N (0.46.0) ---------------------
+#
+# office open writes a folder's fields once; office folder N is the one
+# writer of them after that (doctrine section 5). Each field it is given
+# replaces that field's line, or is written where FIELD_ORDER puts it when
+# the folder lacks it; a field it names leaves the folder's provisional
+# list (a field the occupant set is his); one History line per field says
+# what changed, `- DATE re-scoped: FIELD from OLD to NEW (office folder)`.
+# The status is never one of them: open, close and reopen write it.
+
+# The lane a folder carries when its work is the office's own (office
+# folder N --in-office, or the office answered when start or probe asked
+# where): two words, so it can never be a project's name, and every reader
+# that looks for a project in a lane finds none in it.
+OFFICE_LANE = "the office"
+# The fields office folder N writes, in the order its flags are said.
+EDIT_FIELDS = ("lane", "title", "size", "goal", "source", "class")
+
+
+def lane_is_office(lane):
+    """Whether a lane value says the work is the office's own."""
+    return " ".join(str(lane or "").split()).lower() == OFFICE_LANE
+
+
+def folder_field_values(folder_md):
+    """{field: its value, or None} for EDIT_FIELDS, the title from the
+    folder's heading; and the provisional list."""
+    f = parse_folder(pathlib.Path(folder_md).read_text(encoding="utf-8"))
+    values = {k: (f["title"] if k == "title" else (f["fields"].get(k) or [None])[0]) for k in EDIT_FIELDS}
+    marked = f["fields"].get("provisional") or []
+    try:
+        provisional = provisional_list(marked[0]) if marked else []
+    except HelperError:
+        provisional = []
+    return values, provisional
+
+
+def folder_edit(folder_md, changes, day):
+    """Write each (field, value) of changes into the folder, the office
+    command's edit after office open: the field's line replaced, or
+    written where FIELD_ORDER puts it; the title is the folder's heading.
+    A field named leaves the provisional list; one History line per
+    field that changed. A value equal to the field's own changes nothing.
+    Refuses a folder from before the field block (no status line or no
+    History) and a value the field does not take, writing nothing.
+    Returns [(field, old or None, new)] for the fields that changed."""
+    dt.date.fromisoformat(day)
+    path = pathlib.Path(folder_md)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    f = parse_folder("\n".join(lines))
+    if not f["has_status_line"] or not f["has_history"]:
+        raise HelperError(f"{path.parent.name} is from before the field block (it has no status line or no "
+                          "History), so office folder writes nothing in it")
+    wanted = []
+    for key, value in changes:
+        if key not in EDIT_FIELDS:
+            raise HelperError(f"office folder writes {', '.join(EDIT_FIELDS)}, not {key!r}")
+        wanted.append((key, OFFICE_LANE if key == "lane" and lane_is_office(value) else normalize_field(key, value)))
+    marked = f["fields"].get("provisional") or []
+    try:
+        provisional = provisional_list(marked[0]) if marked else []
+    except HelperError:
+        provisional = None  # does not read: left exactly as it is (office status names it)
+    done = []
+    for key, value in wanted:
+        if provisional is not None and key in provisional:
+            provisional.remove(key)
+        first = next((i for i, l in enumerate(lines[1:], 1) if l.startswith("## ")), len(lines))
+        if key == "title":
+            old = f["title"]
+            if old == value:
+                continue
+            if lines and lines[0].startswith("# "):
+                lines[0] = f"# {value}"
+            else:
+                lines.insert(0, f"# {value}")
+        else:
+            idx = next((i for i in range(1, first) if FIELD_LINE_RE.match(lines[i])
+                        and FIELD_LINE_RE.match(lines[i]).group(1) == key), None)
+            old = FIELD_LINE_RE.match(lines[idx]).group(2).strip() if idx is not None else None
+            if old == value:
+                continue
+            if idx is None:
+                lines.insert(field_position(lines, key), f"- {key}: {value}")
+            else:
+                lines[idx] = f"- {key}: {value}"
+        done.append((key, old, value))
+    if provisional is not None and marked:
+        first = next((i for i, l in enumerate(lines[1:], 1) if l.startswith("## ")), len(lines))
+        idx = next((i for i in range(1, first) if FIELD_LINE_RE.match(lines[i])
+                    and FIELD_LINE_RE.match(lines[i]).group(1) == "provisional"), None)
+        if idx is not None:
+            if provisional:
+                lines[idx] = f"- provisional: {', '.join(provisional)}"
+            else:
+                del lines[idx]
+    for key, old, new in done:
+        entry = history_line(day, "re-scoped", f"{key} from {old if old is not None else 'none'} to {new} "
+                                               "(office folder)")
+        lines = append_line_to_section(lines, "History", entry)
+    if done or (provisional is not None and marked):
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return done
 
 
 def record_session_opening(folder_md, sid, day, words=None):
@@ -3592,7 +3705,8 @@ def cmd_project_declare(a):
             audience_keys[key] = None
         elif given is not None:
             audience_keys[key] = given
-    entry = set_declarations(a.manifest, a.name, rides, after, host_keys, audience_keys or None, paused)
+    entry = set_declarations(a.manifest, a.name, rides, after, host_keys, audience_keys or None, paused,
+                             new_path=a.path)
     if paused is not None and rides is None and after is None and host_keys is None and not audience_keys:
         # --paused or --unpaused alone (0.41.0): the one line, and nothing else.
         print(paused_set_line(a.name, paused))
@@ -3791,6 +3905,17 @@ def cmd_folder_set_field(a):
     line = folder_set_field(a.folder_md, a.key, a.value)
     if line:
         print(line)
+
+
+def cmd_folder_edit(a):
+    """office folder N's write (0.46.0): one line per field that changed,
+    FIELD<tab>OLD<tab>NEW (OLD `none` when it had no value)."""
+    changes = [(k, getattr(a, k)) for k in EDIT_FIELDS if getattr(a, k) is not None]
+    if not changes:
+        raise HelperError("office folder writes a field it is given: --lane, --title, --size, --goal, --source "
+                          "or --class")
+    for key, old, new in folder_edit(a.folder_md, changes, a.day):
+        print(f"{key}\t{old if old is not None else 'none'}\t{new}")
 
 
 def cmd_ratify(a):
@@ -4431,6 +4556,7 @@ def build_parser(only=None):
         p.add_argument(f"--{flag}", dest=key); p.add_argument(f"--no-{flag}", dest=f"no_{key}", action="store_true")
     p.add_argument("--paused", action="store_true", help="mark the project paused (0.41.0)")
     p.add_argument("--unpaused", action="store_true", help="take the paused mark off")
+    p.add_argument("--path", help="the project's path rewritten (0.46.0), checked by the caller first")
     p.set_defaults(fn=cmd_project_declare)
     p = add("check-audience-key", help="one of the audience line's keys as it would be stored, or why not")
     p.add_argument("key", choices=AUDIENCE_KEYS); p.add_argument("value"); p.set_defaults(fn=cmd_check_audience_key)
@@ -4474,6 +4600,12 @@ def build_parser(only=None):
                                                 "the folder carries none; prints the line, or nothing")
     p.add_argument("folder_md"); p.add_argument("--key", required=True); p.add_argument("--value", required=True)
     p.set_defaults(fn=cmd_folder_set_field)
+    p = add("folder-edit", help="office folder N's write (0.46.0): each field given replaces its line, leaves "
+                                "the provisional list and gets a re-scoped History line; FIELD, OLD, NEW per change")
+    p.add_argument("folder_md"); p.add_argument("--day", required=True)
+    for key in EDIT_FIELDS:
+        p.add_argument(f"--{key}")
+    p.set_defaults(fn=cmd_folder_edit)
     p = add("finished-folder", help="exit 0 when land offers to close the folder after SID landed; "
                                                "else 3 and why not")
     p.add_argument("folder_md"); p.add_argument("sid"); p.set_defaults(fn=cmd_finished_folder)

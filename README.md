@@ -49,8 +49,8 @@ help VERB`) explains one verb, with examples.
 `office help` lists your own verbs, one line each in plain words: the
 home screen, `note` and `drop` (the instant captures), `slip`, `start`
 (with `start new`, the one door for new work, and `start --planner`, a
-planner sitting from your words), `meeting`, `land`, `withdraw`, `desk`, `close`,
-`deliver`, `projects add`, `tour` and `init`, with what a folder is (one job, what was asked in your words and
+planner sitting from your words), `meeting`, `land`, `withdraw`, `desk`, `map`,
+`folder`, `tray`, `close`, `deliver`, `projects add`, `tour` and `init`, with what a folder is (one job, what was asked in your words and
 the sessions that worked on it) and what a project is (a repo whose
 audience may read it, with the office holding what is around it). The
 rest is the plumbing the office and its sessions use: a session names
@@ -114,7 +114,12 @@ but the newest ends `; an older sitting on this folder, probably over`,
 it, `step N of M: words; waiting on you: words (as of DATE TIME)`, with a
 second key that files a new standing from the clipboard, `office
 standing N`; since 0.44.0 the key shows from the sitting's first turn,
-before any standing is filed). Keys for a new job (`o`), sending a session out (`s`),
+before any standing is filed), and, while a session is out whose response
+is not in your downloads yet, `Open the out tray for folder N, TITLE again
+(its files and opener)`, which runs `office tray SID` (0.46.0). Every item
+has a key: the first nine `1` to `9`, the rest letters no fixed key takes
+(`b`, `c`, `e`, ...), so nothing waits unlisted (0.46.0). Keys for a new
+job (`o`), the map (`a`: every project and its folders), sending a session out (`s`),
 bringing one back (`l`), a note (`n`), a drop (`d`), the whole desk
 (`k`) and help (`h`) are always there, and `q` leaves; `w` withdraws a
 session never worked, or a bundle no session opened, while one waits;
@@ -270,6 +275,9 @@ projects' documentation, as a planner's bundle you send or delete.
     office open house-hunt --thread < thread.txt     # ...seeded with the thread that started it
     office open fix-login --goal "Fix the login redirect"   # ...with the goal office start offers
     office desk                                      # in flight, ready in order, parked, candidates
+    office map                                       # every project, and its folders under it with their state
+    office map 12                                    # one folder's whole record, and the lines that change it
+    office folder 12 --lane alpha --size medium      # change a folder's fields (alone: they and their lines)
     office week                                      # this week's calendar and its gaps
     office close fix-login                           # to the filing cabinet, done
     office reopen fix-login                          # back to the desk, history and all
@@ -294,6 +302,26 @@ Asked are never touched). Every flag still sets its field, and a field a
 flag sets is yours. A title another folder took today gets a name of its
 own. `office open` is the same code without the session: plumbing now,
 for a folder that should wait on the desk.
+
+`office map` (0.46.0, the `a` key) is folders and projects on one page:
+each project with its facts on one line (here or on its host, its
+audience line, paused), what rides with it and what runs after it lands,
+then every folder whose lane names it, on the desk and in the filing
+cabinet, newest first, `folder N  TITLE  (SIZE)  STATE` in the desk's
+words (in flight, landed and not delivered, delivered, a review, a merge
+job waiting, ready, parked, closed), its riders by number under it; then
+the office's own folders. `office map alpha` is one project's section,
+`office map 12` one folder's whole record: its fields, its sessions as
+`office sessions` shows them, its riders, deliveries, reviews and
+standing, the lines that act on it next, and the lines that change its
+fields. The map writes nothing. `office folder 12` changes those fields:
+`--lane PROJECT` (or `--in-office`, the work is the office's own),
+`--title`, `--size`, `--goal`, `--source`, `--class`; each replaces its
+line, takes the field off the provisional line, and adds a `re-scoped`
+History line, and the folder is committed alone. Alone it prints the
+fields and the line that changes each. When `office start`, `office
+deliver` or `office probe` has to ask which project a folder's work is on,
+your answer becomes its lane that way and is said, so it is asked once.
 
 A folder is named by the date and a slug, and can be named by any unique
 part of that name or by its number, `folder 12`; asked for one, a verb
@@ -329,18 +357,35 @@ just before it packs one. The details are below.
     office start --sort                # the drops nothing carried, to a session of their own
     office start 14 --merge            # the merge session office deliver 14 wrote, when bringing the audience in conflicts
     office start --planner             # a planner sitting from your words, what rides gathered for it
+    office tray                        # the newest session's out tray opened again, and its opener
 
 On a terminal, bare `office start` first offers the planner's bundles in
 your downloads that no session has opened, newest first, one key each (a
-plain return goes on), then asks which job, by key, or a new one in your
+plain return goes on): the newest nine, and one line for the rest, `and
+N more, oldest first: office start --bundle FILE starts one by name,
+office withdraw --bundle STEM takes one out of the offer` (0.46.0). A
+bundle a paused project's session opened is read as opened too, and
+leaves the offer. Then it asks which job, by key, or a new one in your
 words. Where the work lands is the folder's lane (asked by key only when
-the lane names no project), the goal is the folder's own or your words,
+the lane names no project, and your answer is then kept as the lane, so it
+is asked once; a lane `the office` sends it to the office), the goal is the folder's own or your words,
 what the session will change is the session's to forecast, and what
 rides with a project rides as declared; each is said, not asked. It
 packs the session with bale where the work lands, records it in the
 folder, and puts every file to attach in one out tray, `~/out-tray/SID`,
 beside the opener it prints: attach the tray's files to a fresh chat and
-paste the opener. When the brief carries the planner's ratification of
+paste the opener. Its screen (0.46.0) is cut to what you need to read:
+one `[office]` line per thing settled from an artifact or a record (the
+`from the ...` lines), the copy of the opener, the tray opened, and last,
+before the opener, `next: attach every file in the out tray (PATH) to a
+fresh chat, then paste the opener below (office tray SID opens the tray
+and prints the opener again)`; the rest is said under `OFFICE_DEBUG=1`,
+and piped every line is said as before. Start keeps the opener it prints
+beside the tray, `~/out-tray/SID.opener.txt` (outside the tray, so every
+file in the tray is still one to attach): `office tray`, `office tray N`
+or `office tray SID` opens the tray again as start does, lists its files
+and prints the opener again, so a closed window or a lost clipboard costs
+one line; it writes nothing. When the brief carries the planner's ratification of
 earlier sessions (`--- RATIFIED SID ---` lines), start files each in the
 folder that records that session, wherever it is, and says so. On WSL
 the opener goes on the clipboard as start's last copy, read back to
@@ -662,6 +707,8 @@ rendering says bale is missing and the rest of the command works.
     office where               # the office a command here acts on
     office default [PATH]      # this machine's default office
     office version             # the installed version and where it came from
+    office map                 # every project with its facts, riders and folders, each folder's state
+    office projects set alpha --path ~/work/alpha-2   # point a project at another clone (the old one left as it is)
 
 A command acts on OFFICE_ROOT if set, else the office around the working
 directory (found by walking up to floor-plan/manifest.toml), else the
@@ -678,6 +725,23 @@ office is said and skipped, never removed; edit the file to take it out.
 office's home screen and walk-in show what waits for the others.
 
 ### Folders: numbers, fields, statuses and gates
+
+A folder's fields are written by the office command alone: `office open`
+writes them once, `office land` files a session's Structure over the
+provisional ones, and since 0.46.0 `office folder N` is the one writer of
+them after that, on the desk or in the filing cabinet: `--lane PROJECT`
+(a project the office scopes) or `--in-office` (the lane reads `the
+office`: the work is the office's own, and start, deliver and probe stop
+asking where), `--title`, `--size` (small, medium or high), `--goal`,
+`--source` and `--class` each replace their line (or write it where the
+field block puts it), take the field off the provisional line, and add one
+History line per field, `- DATE re-scoped: FIELD from OLD to NEW (office
+folder)`; the folder is committed alone. An open session in the office
+whose forecast holds the folder keeps the write out (the one-writer
+rule), and a session out on another project than a new lane names is
+said, never refused. The status is never one of them. `office folder N`
+alone prints the fields and the line that changes each, and `office map
+N` ends with the same lines.
 
 On a terminal, `office open` asks for the job in your own words and
 works out the rest (0.22.0): the title is the words' first line, the slug
@@ -1970,13 +2034,34 @@ delivery's names none, since a session id is one of bale's marks and
     office projects --landed bin/office      # the last applied session that landed a path
     office projects office-src --versions    # the version trail of one project
     office projects set distributions-app --paused   # read nothing of it, send nothing to it (0.41.0)
+    office projects set api --path ~/work/api-2      # another clone, checked as add checks one (0.46.0)
+    office projects set api --branch-prefix feature/ # before a delivery branch's short name (0.46.0)
+    office projects set api --edit                   # every group, keep or change, on a terminal
+
+What `office projects set` asks (0.46.0): given a project and any flag,
+it changes that flag's group and asks about no other; given a project and
+no flag on a terminal, it asks group by group as before (where it is, the
+audience line, what rides, what runs after it lands), which `--edit`
+names explicitly (piped, `--edit` refuses). `--path PATH` re-points a
+declared project at another clone: the path is checked as `office
+projects add` checks one (here, or on the project's host through its
+shell: a git repo bale runs in, or prepared with `--prepare`), the floor
+plan's `path` is rewritten, and the old clone is never touched or
+removed; one line says both paths. `--branch-prefix PREFIX` and
+`--no-branch-prefix` write and clear the audience line's fifth key, the
+prefix office deliver's branch rule puts before a delivery branch's short
+name; the listing shows it with the audience line.
 
 A project can be marked paused (0.41.0; the gaps of 2026-10-28, A7):
 `office projects set NAME --paused` writes `paused = true` in its
 [projects] entry, committed as set commits, and says `NAME is paused: the
 office reads nothing of it and sends nothing to it until office projects
-set NAME --unpaused`; `--unpaused` removes the key. Given alone, either
-asks nothing else. Every rendering that reads a project's repo (the
+set NAME --unpaused (one thing is still read: which of its sessions a
+bundle in your downloads opened, so that bundle leaves the offer)`;
+`--unpaused` removes the key. Given alone, either asks nothing else. The
+one read (0.46.0): the home screen and bare `office start` read a paused
+project's session list once per screen to tell whether a bundle in your
+downloads was opened there, so it leaves the offer as any other. Every rendering that reads a project's repo (the
 walk-in and its In flight, the home screen's project line, `office desk`,
 `office status`, `office sessions`, `office projects` and its renderings,
 the digest and the watches) reads nothing of a paused project, no bale

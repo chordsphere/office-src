@@ -4,6 +4,105 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.46.0
+
+Additive: no migration, nothing to do in any office. The ninth serial
+session of the plan begun on 2026-10-27: folders and projects, one map of
+both, a folder's fields edited by one verb, and a CLI you can read. What
+you see changes for `office map`, `office folder` and `office tray`,
+which are new; for a start, deliver or probe that asks which project a
+folder is on; for bare `office start` with more than nine bundles waiting
+and for start's screen on a terminal; for `office projects set` given a
+flag on a terminal; for a bundle opened on a paused project; and on a
+home screen with more than nine things waiting. Everything else is as it
+was.
+
+One map. `office map` is every project the office scopes on one page:
+its facts on one line (here or on its host, its audience line, paused),
+what rides with it and what runs after it lands, one line each, then
+every folder whose lane names it, on the desk and in the filing cabinet,
+newest number first, `folder N  TITLE  (SIZE)  STATE`, the state in the
+desk's words (in flight: SID, out since DAY; landed SID on DAY, not
+delivered; delivered BRANCH on DAY; review #N STATE; merge job waiting;
+ready; parked; closed, done; a sitting's step N of M), its riders by
+number under it; then the office, with the folders whose lane names no
+project. `office map alpha` is one project's section; `office map 12` is
+one folder's whole record: its fields, its sessions as `office sessions`
+shows them, its riders, deliveries, reviews and standing, the lines that
+act on it next (`office land SID`, `office tray SID`, `office deliver
+12`, `office start 12`), and last the lines that change its fields. The
+map reads what the desk reads, once, and writes nothing
+(lib/office_map.py). The home screen's `a` key runs it.
+
+A folder's fields, edited by one verb. `office folder N` is the one
+writer of a folder's fields after `office open`: `--lane PROJECT` (a
+project the office scopes) or `--in-office`, `--title`, `--size`,
+`--goal`, `--source` and `--class` each replace their line, or write it
+where the field block puts it, take the field off the provisional line,
+and add one History line per field, `- DATE re-scoped: FIELD from OLD to
+NEW (office folder)`; the folder is committed alone, on the desk or in
+the filing cabinet. Alone it prints the fields and the line that changes
+each. `--in-office` writes the lane `the office`, two words that can
+never be a project's name: start, deliver and probe read it as the
+office's own work and stop asking. An open session in the office whose
+forecast holds the folder keeps the write out (the one-writer rule); a
+session out on another project than the new lane names is said, never
+refused. The status is never written here.
+
+A lane asked once is kept. When `office start` or `office probe` asks
+where a folder's work lands because its lane names no project, or
+`office deliver` on a terminal asks which project (it used to refuse and
+name `--on`), the answer becomes the folder's lane through `office
+folder`'s writer, said: `desk/NAME's lane is PROJECT now, so this is not
+asked again (office folder N --lane says otherwise)`. A flag typed for
+one run (`--on`, `--in-office`, `--project`) writes nothing; piped, the
+flag or the refusal naming it, as before.
+
+The bundle offer and start's screen. Bare `office start` offers the
+newest nine bundles by key and one line for the rest: `and N more, oldest
+first: office start --bundle FILE starts one by name, office withdraw
+--bundle STEM takes one out of the offer`. On a terminal, start's
+`[office]` lines are cut to what you read: the `from the ...` lines, the
+opener's copy, the tray opened, and last, before the opener, `next:
+attach every file in the out tray (PATH) to a fresh chat, then paste the
+opener below (office tray SID opens the tray and prints the opener
+again)`; the opener now comes after its copy, and the stdout line that
+said the same is gone. The rest (the survey, the out tray's files one by
+one, bale open --check, the folder opened, the session recorded) is said
+under `OFFICE_DEBUG=1`; piped, every line is said as before, for the
+scripts and sessions that read the record. A bundle start that asks
+nothing prints four or five.
+
+The out tray, opened again. Start keeps the opener it prints beside the
+tray, `OUT_TRAY/SID.opener.txt`, outside the tray so every file in it is
+still one to attach. `office tray` (the newest session out), `office tray
+N` (the folder's newest session) or `office tray SID` opens the tray as
+start does (machine.toml's `open_command`; on WSL, Explorer), lists its
+files and prints the opener again; it writes nothing. The home screen
+offers it, `Open the out tray for folder N, TITLE again (its files and
+opener)`, while a session is out whose response is not in your downloads.
+
+`office projects set`. Given a project and any flag, it changes that
+flag's group and asks about no other; given none on a terminal, it asks
+group by group as before, which `--edit` names (piped, `--edit` refuses).
+`--path PATH` re-points a declared project at another clone, checked as
+`office projects add` checks one, here or through the project's host
+(`--prepare` prepares it); the floor plan's path is rewritten and the
+old clone is never touched. `--branch-prefix PREFIX` and
+`--no-branch-prefix` write and clear the audience line's fifth key, the
+one deliver's branch rule reads.
+
+A bundle opened on a paused project leaves the offer: the home screen and
+bare start read a paused project's session list (one status call per
+screen) for this one thing, and `office projects set NAME --paused`'s line
+says so. Every home-screen item has a key: `1` to `9`, then the letters
+no fixed key takes (`b`, `c`, `e`, ...), then capitals; the `and N more`
+line is gone.
+
+Tests: tests/test_folders_and_projects.py, one class per item;
+tests/test_home_screen.py's page test and tests/test_home_screen_offers.py's
+paused line pin the new keys and the new words.
+
 ## 0.45.0
 
 Additive: no migration, nothing to do in any office. The eighth serial

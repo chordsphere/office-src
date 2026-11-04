@@ -64,6 +64,9 @@ letterhead = ["test_audience_line.TestTheLetterheadCheck.test_the_command_reads_
 relay = ["test_audience_line.TestRelay.test_it_runs_bale_relay_in_the_sessions_repo_with_the_answer_on_stdin"]
 probe = ["test_probe.TestProbeHere.test_one_command_runs_it_in_the_repo_and_hands_the_block_back"]
 standing = ["test_standing.TestOfficeStanding.test_a_block_is_filed_as_the_folders_page_and_committed_alone"]
+map = ["test_folders_and_projects.TestTheMap.test_a_name_that_is_neither_refuses_naming_the_projects"]
+folder = ["test_folders_and_projects.TestOfficeFolder.test_alone_it_prints_the_fields_and_the_lines_that_change_each"]
+tray = ["test_folders_and_projects.TestTheTray.test_what_it_refuses"]
 
 [also]
 tests = [

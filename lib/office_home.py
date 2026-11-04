@@ -47,6 +47,10 @@ The command line:
         of the sessions named, those whose response-SID.tar.gz is in the
         downloads (0.44.0): SID<tab>PATH, its newest copy; office land's
         bare reading of which session lands
+    office_home.py tray OFFICE --tray-root DIR [--sid SID | --folder REL]
+        office tray (0.46.0): the out tray to open again, KEY<tab>VALUE
+        lines: sid, path, one file per line, and opener (the copy of the
+        opener start keeps beside the tray, or nothing)
     office_home.py copies --name NAME [--dir DIR]... [--now ISO]
         every browser copy of one name in the downloads, newest first:
         PATH<tab>AGE (office land's choice after a HOLD)
@@ -73,8 +77,9 @@ BUNDLE_EXT = ".bale-bundle"
 # bundle that waited two weeks unopened was withdrawn or replaced, and the
 # home screen is for what waits now. office start --bundle still opens it.
 RECENT_DAYS = 14
-# The home screen's waiting list holds at most this many keyed things;
-# the rest are counted, and office desk lists them.
+# The home screen's first keys are the digits 1 to 9 (MAX_ITEMS); since
+# 0.46.0 every item past them takes a letter no fixed key takes
+# (item_keys), so nothing it lists goes without a key.
 MAX_ITEMS = 9
 COPY_RE = oh.LazyPattern(r" \(\d+\)$")
 
@@ -393,9 +398,12 @@ def sid_for_slug(slug):
 def every_place(office_root):
     """[(label, where)] for the office's own registry and each project it
     scopes that can be read; a project that cannot is said under
-    OFFICE_DEBUG and skipped."""
+    OFFICE_DEBUG and skipped. A paused project is read here too (0.46.0):
+    which bundle one of its sessions opened is the one thing the home
+    screen and bare start read of it (one status call per screen), so a
+    bundle opened there leaves the offer as any other."""
     import office_bale as ob
-    found, bad = ob.repos(office_root, rendering=True)
+    found, bad = ob.repos(office_root, rendering=False)
     for line in bad:
         debug(f"no bundle is looked for there: {line}")
     return [(label, cwd) for label, _, cwd in found]
@@ -763,6 +771,8 @@ def home_items(skew, founded, out, groups, projects, slips, behind, bundles, nam
 
 FIXED_KEYS = (
     ("o", "a new job, in your words", "office", ["start", "new"]),
+    # The map (0.46.0): every project with its facts and its folders.
+    ("a", "the map: every project and its folders", "office", ["map"]),
     # A planner sitting from his words (0.24.0): what he wants a planner
     # for, and nothing else; its folder is minted from his words, as the o
     # key's is (office start --planner offers the desk's folders by key).
@@ -808,6 +818,17 @@ def key_lines(keys, width=76):
     return [f"  {l}" for l in lines + ([line] if line else [])]
 
 
+def item_keys(count):
+    """The keys of the first count items (0.46.0): 1 to 9, then the
+    lowercase letters no fixed key takes, then the capitals; one keypress
+    each, as read_key reads them. None past the last of them."""
+    import string
+    taken = {k for k, *_ in FIXED_KEYS}
+    keys = [str(n) for n in range(1, MAX_ITEMS + 1)]
+    keys += [c for c in string.ascii_lowercase if c not in taken] + list(string.ascii_uppercase)
+    return [keys[i] if i < len(keys) else None for i in range(count)]
+
+
 def render_page(rows, items, out_count, desk_line=None, withdrawable=0, probe_ready=False, others=(),
                 nowhere=None):
     """(lines, menu): the home screen below its heading lines, and the
@@ -827,31 +848,36 @@ def render_page(rows, items, out_count, desk_line=None, withdrawable=0, probe_re
         lines += ["", desk_line]
     lines += ["", "Waiting on you:"]
     menu = []
-    shown = items[:MAX_ITEMS]
-    if not shown:
+    # Every item has a key (0.46.0): this office's, then each other
+    # office's, numbered on from one another, 1 to 9 and then letters.
+    keys = item_keys(len(items) + sum(len(theirs) for _, _, theirs in others))
+    at = 0
+
+    def keyed(it, mark=""):
+        nonlocal at
+        key = keys[at]
+        at += 1
+        if key is None:  # past every key a keypress can be: said, never silent
+            return False
+        lines.append(f"  [{key}] {it['label']}{mark}")
+        menu.append((key, it["kind"], it["argv"]))
+        return True
+
+    if not items:
         lines.append("  nothing waits on you")
-    for n, it in enumerate(shown, 1):
-        mark = "  (next)" if it.get("next") else ""
-        lines.append(f"  [{n}] {it['label']}{mark}")
-        menu.append((str(n), it["kind"], it["argv"]))
-    if len(items) > MAX_ITEMS:
-        lines.append(f"  and {len(items) - MAX_ITEMS} more: office desk lists the drops and the folders")
+    for it in items:
+        keyed(it, "  (next)" if it.get("next") else "")
     if nowhere:
         lines.append(f"  {nowhere}")
-    n = len(shown)
     for heading, said, theirs in others:
         lines += ["", f"{heading}:"]
         lines += [f"  {l}" for l in said]
-        room = max(0, MAX_ITEMS - n)
-        for it in theirs[:room]:
-            n += 1
-            lines.append(f"  [{n}] {it['label']}")
-            menu.append((str(n), it["kind"], it["argv"]))
-        if len(theirs) > room:
-            lines.append(f"  and {len(theirs) - room} more there: {heading.split(' (', 1)[0]}'s own home screen "
-                         "lists them")
+        for it in theirs:
+            keyed(it)
         if not said and not theirs:
             lines.append("  nothing waits on you there")
+    if at > len([k for k in keys if k]):
+        lines.append(f"  and {at - len([k for k in keys if k])} more than there are keys: office desk lists them")
     keys = []
     for key, words, kind, argv in FIXED_KEYS:
         if key == "l" and not out_count:
@@ -923,6 +949,9 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
         meetings = []
     items = home_items(skew, founded, out, groups, projects, ob.count_slips(office_root), behind, bundles, names,
                        directories, now, sittings, meetings, cache)
+    # The out trays to open again (0.46.0): one per session out whose
+    # response is not in the downloads and whose tray is still there.
+    items += tray_items(every, names, directories, tray_root_of(machine_file))
     # The sessions out that were never worked: the w key's (office withdraw).
     try:
         offered, _, _ = ob.withdraw_view(rd, office_root, directories)
@@ -939,6 +968,98 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
                      "  (this machine's downloads are not set, so no response or bundle there is offered)")
     write_menu(menu_file, menu)
     return lines
+
+
+# --- the out tray, opened again (0.46.0) -----------------------------------------------
+#
+# office start fills a session's out tray at OUT_TRAY/SID (machine.toml's
+# out_tray, default ~/out-tray; SID-2 when the name is taken) and, since
+# 0.46.0, keeps the opener it printed beside the tray, as SID.opener.txt,
+# outside the tray so "attach every file in the out tray" stays true.
+# office tray reads both back; it writes nothing.
+
+OPENER_SUFFIX = ".opener.txt"
+
+
+def tray_root_of(machine_file):
+    """The out tray's root: machine.toml's out_tray, else ~/out-tray."""
+    value = None
+    if machine_file:
+        try:
+            value = oh.machine_string(machine_file, "out_tray")
+        except (OSError, oh.HelperError) as exc:
+            debug(f"out_tray in {machine_file} does not read, so the default is used: {exc}")
+    return pathlib.Path(os.path.expanduser(value or "~/out-tray"))
+
+
+def tray_dir(tray_root, sid):
+    """The out tray start filled for sid: OUT_TRAY/SID, else the newest
+    SID-N beside it; None when there is none."""
+    root = pathlib.Path(tray_root)
+    exact = root / sid
+    if exact.is_dir():
+        return exact
+    others = [d for d in root.glob(f"{sid}-*") if d.is_dir() and d.name[len(sid) + 1:].isdigit()]
+    return max(others, key=lambda d: int(d.name[len(sid) + 1:])) if others else None
+
+
+def opener_copy(tray):
+    """The copy of the opener kept beside a tray, or None."""
+    path = pathlib.Path(tray).with_name(pathlib.Path(tray).name + OPENER_SUFFIX)
+    return path if path.is_file() else None
+
+
+def tray_items(every, names, directories, tray_root):
+    """A home screen item per session out (one a folder records, or the
+    in-tray's sort) whose response is not in the downloads and whose out
+    tray is still there: its key runs office tray SID."""
+    import office_bale as ob
+    import office_sort as osort
+    items = []
+    for x in every:
+        if not (x["folders"] or (x["label"] == ob.OFFICE_LABEL and osort.is_sort_sid(x["sid"]))):
+            continue
+        if not x["read_only"] and ob.browser_copies(directories or [], f"response-{x['sid']}.tar.gz"):
+            continue
+        if tray_dir(tray_root, x["sid"]) is None:
+            continue
+        items.append(item(f"Open the out tray for {names.of(x['sid'])} again (its files and opener)",
+                          ["tray", x["sid"]]))
+    return items
+
+
+def tray_reading(rd, office_root, tray_root, sid=None, folder=None):
+    """(sid, tray, opener copy or None) for office tray: the session named,
+    the newest a folder records, or the newest session out from this
+    office with a tray. Refuses (HelperError) when there is none."""
+    import office_bale as ob
+    if sid:
+        tray = tray_dir(tray_root, sid)
+        if tray is None:
+            raise oh.HelperError(f"no out tray for {sid} in {tray_root} (office start fills one there; a tray "
+                                 "moved or deleted is gone)")
+        return sid, tray, opener_copy(tray)
+    if folder:
+        recorded = [s for s, _ in oh.folder_session_lines(pathlib.Path(office_root) / folder / "folder.md")]
+        for s in reversed(recorded):
+            tray = tray_dir(tray_root, s)
+            if tray is not None:
+                return s, tray, opener_copy(tray)
+        raise oh.HelperError(f"{folder} records {'no session' if not recorded else 'no session with an out tray in ' + str(tray_root)}"
+                             " (office start FOLDER sends one out)")
+    every, problems = ob.open_anywhere(rd, office_root, rendering=True)
+    for line in problems:
+        debug(f"office tray could not read every repo: {line}")
+    found = []
+    for x in every:
+        tray = tray_dir(tray_root, x["sid"])
+        if tray is not None and (x["folders"] or x["label"] == ob.OFFICE_LABEL):
+            found.append((tray.stat().st_mtime, x["sid"], tray))
+    if not found:
+        raise oh.HelperError(f"no session out from this office has an out tray in {tray_root} (office tray SID "
+                             "opens an older session's)")
+    _, s, tray = max(found)
+    return s, tray, opener_copy(tray)
 
 
 # --- office open's reading of his words -------------------------------------------------
@@ -1001,6 +1122,9 @@ def main(argv=None):
                                                "copies, or the refusal)")
     p.add_argument("office"); p.add_argument("--stem", required=True); p.add_argument("--dir", action="append", default=[])
     p.add_argument("--check", action="store_true"); p.add_argument("--now")
+    p = sub.add_parser("tray", help="office tray (0.46.0): the out tray to open again: sid, path, files, opener")
+    p.add_argument("office"); p.add_argument("--tray-root", required=True)
+    p.add_argument("--sid"); p.add_argument("--folder")
     p = sub.add_parser("copies", help="every browser copy of a name in the downloads, newest first: PATH, AGE")
     p.add_argument("--name", required=True); p.add_argument("--dir", action="append", default=[])
     p.add_argument("--now")
@@ -1032,6 +1156,18 @@ def main(argv=None):
                 copies = ob.browser_copies(a.dir, f"response-{sid}.tar.gz")
                 if copies:
                     print(f"{sid}\t{copies[0][0]}")
+            return 0
+        if a.cmd == "tray":
+            rd = ob.Reader()
+            if a.sid and a.folder:
+                raise oh.HelperError("office tray takes a session or a folder, not both")
+            sid, tray, opener = tray_reading(rd, a.office, pathlib.Path(os.path.expanduser(a.tray_root)), a.sid,
+                                             a.folder)
+            print(f"sid\t{sid}")
+            print(f"path\t{tray}")
+            for f in sorted(p.name for p in tray.iterdir() if p.is_file()):
+                print(f"file\t{f}")
+            print(f"opener\t{opener or ''}")
             return 0
         now = now_from(a)
         if a.cmd == "copies":

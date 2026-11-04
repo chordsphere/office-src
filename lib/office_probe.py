@@ -631,10 +631,13 @@ def place_from(record):
 
 def lane_of(office_root, folder_rel):
     """The project the folder's lane names, when the office scopes it, else
-    None (a lane is `project: paths`)."""
+    None (a lane is `project: paths`); `office` when the lane says the
+    work is the office's own (0.46.0, oh.OFFICE_LANE)."""
     import office_bale as ob
     md = pathlib.Path(office_root) / folder_rel / "folder.md"
     folder = oh.parse_folder(md.read_text(encoding="utf-8"))
+    if oh.lane_is_office((folder["fields"].get("lane") or [""])[0]):
+        return "office"
     projects = ob.office_projects(office_root) or []
     return ob.lane_project(folder, [p["name"] for p in projects])
 

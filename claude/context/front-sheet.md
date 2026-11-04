@@ -238,6 +238,27 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.46.0 (session 2026-11-04-folders-and-projects-002): folders and
+  projects.
+  - `office map [PROJECT | FOLDER]` (lib/office_map.py): every project with
+    its facts, riders and folders under it by lane, each folder's state in
+    the desk's words; one folder's whole record ending with the lines that
+    change it. It writes nothing.
+  - `office folder N` is the one writer of a folder's fields after open
+    (office_helper.folder_edit): a replaced line, off the provisional
+    list, a `re-scoped` History line per field; `--in-office` writes the
+    lane `the office`. A lane start, deliver or probe had to ask is kept.
+  - start: the offer shows the newest nine; on a terminal its lines are
+    cut (`detail`, under OFFICE_DEBUG), the last before the opener says
+    what to do next; the opener is kept beside the tray as SID.opener.txt,
+    which `office tray [SID | FOLDER]` prints again as it reopens the tray.
+  - `office projects set` asks only what its flags imply (`--edit` walks
+    everything), `--path` re-points a clone, `--branch-prefix` writes the
+    audience line's fifth key; a bundle a paused project's session opened
+    leaves the offer; every home-screen item has a key (1 to 9, then
+    letters).
+  - Additive: no migration. tests/test_folders_and_projects.py holds the
+    release's tests.
 - 0.45.0 (session 2026-11-04-spanning-probe-001): the spanning probe's two
   defects.
   - a reach is read from a real `office-on` call alone, the bare name
