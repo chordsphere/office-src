@@ -485,7 +485,10 @@ planner sitting's probe of a project's repo works the same way:
 sitting's id (0.33.0). A block that spans the office and a project's host
 calls `office-on PROJECT COMMAND` on its own lines (0.34.0): it runs in
 the office root with that helper on its PATH, and each call runs its
-command where the project lives. With no folder named (0.41.0), when
+command where the project lives. A reach is a call, never the helper's
+name in a string, a comment, a heredoc or an echo's text, and the call's
+words arrive there as given, so `office-on PROJECT bash -c SCRIPT` runs
+SCRIPT whole (0.45.0). With no folder named (0.41.0), when
 exactly one folder on the desk records a session open where probes run
 (a read-only sitting, or a session in the office or on a project), the
 probe is that folder's, and it says so; with several, those folders
@@ -1397,14 +1400,24 @@ sitting that needs the office's pages and a hosted repo in one probe,
 say, which before this ran several probes by hand. Such a block calls
 `office-on PROJECT COMMAND...` on its own lines, naming one of the
 office's projects literally each time (never through a variable; a header
-line that mentions the helper names no project). `office probe` reads the
+line that mentions the helper names no project). A reach is a call
+(0.45.0): `office-on` counts only where it is a command's first word, at a
+line's start or after `$(`, a backtick, `|`, `&&`, `;`, `(` or `{`, never
+its name inside a string, a comment, a heredoc's body or an echo's text,
+so a block that only mentions the helper is a plain block, run where the
+folder's lane says. `office probe` reads the
 names before anything runs and refuses one the office does not scope,
 then runs the block in the office root with `office-on` first on its
 PATH, a helper written for that one run beside the plan: each call runs
 its command where that project lives, in its repo here or through its
 shell in its path on a host, stdin closed, its output on the block's own
 stream and its exit code returned (97 when the project cannot be reached,
-or is not one the block named). Such a block takes no `--project`
+or is not one the block named). The call's words arrive as given
+(0.45.0): each is quoted on the way to the project's shell, so
+`office-on PROJECT bash -c SCRIPT` runs SCRIPT whole there, a word with a
+space stays one word, and a quote or a `$` in a word arrives as your shell
+left it; a shell line is written `office-on PROJECT sh -c 'LINE'`, since
+one quoted word is one command's name. Such a block takes no `--project`
 (`office` is the only one that fits, and is said); its session is the
 folder's open in the office, a sitting or an office session, or in a
 project it reaches, chosen by the rule above; a fallback's
@@ -2162,7 +2175,7 @@ matches the floor plan.
 | lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library); since 0.28.0 the LazyPattern and OneSubcommand every module's start leans on; since 0.29.0 `batch`, several subcommands of any lib/ module in one process, and `skew-report`; since 0.30.0 `bytecode-check`, office status's line on the install's bytecode cache; since 0.33.0 the doctrine stamp a sitting's Sessions line carries (`sitting_words`, `session_doctrine`) |
 | lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after (one `land` call since 0.30.0: the office's record out, bale apply or retry, the outcome); since 0.37.0 bale's two accepts, passed as typed, said, and named after a refusal (`accept_flags`, `accept_said`, `accepts_bale_names`, `accept_line`); since 0.38.0 office sessions' search, the lane's project first and an unreadable project a line (`project_records`, `folder_lane`) |
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
-| lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives); since 0.38.0 the mask over what it hands back, a credential in a URL and a GitHub token (`mask_text`, `MaskedScreen`), and since 0.43.0 over its stderr too |
+| lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives; since 0.45.0 a reach is read from a call alone, `calls_of`, and `run_on` quotes the call's words); since 0.38.0 the mask over what it hands back, a credential in a URL and a GitHub token (`mask_text`, `MaskedScreen`), and since 0.43.0 over its stderr too |
 | lib/office_standing.py | where a sitting stands (0.43.0): the standing block read to its shape (`read_block`, the last block in a text counting), taken out of a probe's text (`split`), filed as a folder's standing.md (`write`) and said on the screens (`folder_standing`, `words`) |
 | lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so; since 0.36.0 what bale's own commits changed taken out before the squash, own_commits and take_out_own; since 0.38.0 the lines the squash adds checked rather than its files whole, the branch rule and the rule that chose it, `branch_why`, a branch another folder delivered to continued and work it delivered refused twice, `other_deliveries`), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review; since 0.35.0 a folder's delivery.md read as the letterhead reads it at deliver and at land's review alike, the words that leave and nothing of the office's (delivery_words); since 0.40.0 the merge session's job, its materials and the merge commit made from its landed resolution, the content test of a delivery a review merged as a squash, and a continued delivery's range squash |
 | lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin); the characters an office's letterhead refuses and lifts, and a repository's pull-request templates; since 0.38.0 the lines a diff adds read rather than its files whole (`--added`), and the words-only lists (`WORDS_ONLY_SECTIONS`) |
