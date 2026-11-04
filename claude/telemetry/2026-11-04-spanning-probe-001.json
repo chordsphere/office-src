@@ -1,0 +1,286 @@
+{
+  "record_version": 1,
+  "session_id": "2026-11-04-spanning-probe-001",
+  "created_at": "2026-11-04T01:21:23+00:00",
+  "attempts": [
+    {
+      "at": "2026-11-04T01:21:23+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-11-04-spanning-probe-001.log",
+      "bundle": {
+        "stem": "2026-11-03-spanning-probe",
+        "brief_sha256": "58ed8f4bc27fe0f906b82510b46057643532003a0df471a19c800247c56ae5b2",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "d1745d996c0e2ec94c5fd0702494c51ef8df0caae89efd67680fe04908463fe1"
+      },
+      "provenance": {
+        "work_class": "mixed",
+        "packer": "chordsphere",
+        "packed_at": "2026-11-04T01:21:21+00:00"
+      }
+    },
+    {
+      "at": "2026-11-04T03:08:36+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-11-04-spanning-probe-001.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "office_probe units: reaches from calls alone, run_on quoting": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "tests/run.sh --fast test_spanning_probe": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "tests/run.sh test_probe test_three_gaps test_standing (--slow)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "office_probe units: reaches from calls alone, run_on quoting": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "tests/run.sh --fast test_spanning_probe": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "tests/run.sh test_probe test_three_gaps test_standing (--slow)": {
+            "claim": "pass",
+            "verdict": "skip",
+            "agreement": "n/a"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "python syntax (ast.parse) of the four .py files",
+          "the record: VERSION 0.45.0, RELEASES.md's first entry, the front sheet's line",
+          "doctrine/OFFICE.md: banner still line 299, both rules past it",
+          "README.md: both rules in the two paragraphs",
+          "office_probe units: reaches from calls alone, run_on quoting",
+          "tests/run.sh --fast test_spanning_probe",
+          "tests/run.sh test_probe test_three_gaps test_standing (--slow)"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib/office_probe.py",
+        "tests/test_probe.py",
+        "tests/test_spanning_probe.py",
+        "tests/test_three_gaps.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.56",
+            "contract_docs": {
+              "AGENT.md": "31dcdded2a8fd175f7778c2bd1be09688e89e76b8fd4cd62b7646aacfa2782c4",
+              "TARBALL.md": "3037b905ee561af44f27cc83ec45d832feb7d429a98d4e07b4482a518cda6e94",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "a8e5714e51049768e52bb5bc0ede9338db1175e7095d9b2bdd0d314ab3e01078"
+            },
+            "packer": "chordsphere",
+            "work_class": "mixed",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-11-04T01:21:21+00:00",
+            "base_files": {
+              "README.md": "fe1145b928bee97e4bdf9de2e5261c9047d5ecec989efac34b448d014c20dac3",
+              "RELEASES.md": "0137c3f60fb77b23d921573522e99f2547936371c69eeae21f3caf09da6ce3ef",
+              "VERSION": "2e67466499d10d356b662dee575193faed47851ad2cd230d762d2d5b4231118f",
+              "claude/context/front-sheet.md": "474c4cb7da3a264bebdcff4db22646636920adbc8604d2918c5b3ce5f40ace6c",
+              "doctrine/OFFICE.md": "e85a406bf7979de574aebc7234b1efe12278bc695ed6a953e3b4d5ac0e3019d1",
+              "lib/office_bale.py": "4c2799d76d8f627b0f4d99cbc94d4ca57180b7886aa1e2c5d28e2b3583a63d00",
+              "lib/office_deliver.py": "c24608567930122fd276e00d8cf6ce1e6e104388ae01abca3cee517c0fadcdd2",
+              "lib/office_digest.py": "1654d3d43203e466d33c73c22cdec43470402d6492f3fac201806e85aa056d8d",
+              "lib/office_door.py": "26a712cdf634ebd72f5a4b78f95587661c06a2636668aac068a2a64ef730b1b5",
+              "lib/office_drafting.py": "a7975eae94d5b4a5f92886c274906f59ebbca25adb9c7b570248710151347898",
+              "lib/office_drop.py": "05679f1740b69bc3c277b4fbd44afd133806f465b225d3f1a526d7e143ba2989",
+              "lib/office_helper.py": "bafb1a947badafb9e6a67a92322a3430e374d9fc8ff63e8de6ba0097c8cfa4dc",
+              "lib/office_home.py": "589e1f82905e05d44b16f07c967a6f0c575a9ee841bb490d8a7b196109e7532f",
+              "lib/office_host.py": "6c4d729669fcc99c617264fb7aa3db9a377c55d1fd8509d5d1d5fda2f9a53b7a",
+              "lib/office_letterhead.py": "2cc7622ebd689e1d9e42619c3f0ec7933bb3b34f202b1e93ed152eab4cf3ecdd",
+              "lib/office_meeting.py": "f385ede365fed3008de30c50ee0344f84fee3df3b5ab754d7a8cf24fa60be986",
+              "lib/office_planner.py": "65265e78085f46aa1c1b534f06e70bff10a3f191b5d1ab2be448b4650a36327c",
+              "lib/office_probe.py": "8d69947f735f0ab43d549bae649b1798236e6766ce9c8165cc3e16c638ab7faf",
+              "lib/office_refresh.py": "1c90daeeca3821367560a1394ef894a0413397f99cbf0b3b48172dc844c67e9b",
+              "lib/office_review.py": "3544f1fab92a0ecaca5a268d231f81fa793cda9f1ca22c3814907c3e978f3840",
+              "lib/office_sort.py": "f652fae1ba4d6f6693598027d3471fb6498ff26a60111e3bed5227d8b8969f82",
+              "lib/office_standing.py": "7e9dbd4f3add7d0288eec6b71fc4ed8bf4b504bf361c1e8afd6dd6434cc7c597",
+              "lib/office_watches.py": "f1cd465a01f959882df74d2cf9677727d04793c35246c0c11e621318e87b5ec8",
+              "tests/fakes/gh_fake.py": "c7ac15c54c3d2d7c3b4cd741f103d75d069df8d4a943874f6239005a16064835",
+              "tests/fakes/land_bale.py": "1c276d52e3d7b825743d8a54f2eb40b46db973a31edd214e408e49c014ef6e26",
+              "tests/fakes/pack_bale.py": "fbf35a9c88afa7d9c8d64dbb985e7985476196311911dd05b1fc143fc768d22b",
+              "tests/fakes/replay_bale.py": "f31101e58b28106452c4572b6e38a7642276937076b1f0cc320c9b185c56eea5",
+              "tests/fakes/small_bales.py": "25e74224d580bddfc5a2eb91696d7816c8a4e8f73ea20deb7c9dc2be0422bc4b",
+              "tests/fast-tier.toml": "a8f08b0f0be2a9a75c2d54283fa6c5aa3ba5fab2620317d3d4658da224f93680",
+              "tests/run.sh": "35b3954b5bf5d4e975ba58026bc8c313e11e94f1e97bd5f2140aa963f40829cf",
+              "tests/runner.py": "d255c4e31416e719befb1d3d0e1e581dabe3a5c21eaad5a1b02f36ced1a1fc7f",
+              "tests/test_answer_review.py": "c8f6b8996e08ba64519cf9c5da5a25f7366cdbc0a33558130d680b5056542461",
+              "tests/test_audience_line.py": "58d15a91df1abb2c1d3549b8c0a9a325184874750b61ebeb10f59849affe3b29",
+              "tests/test_bale_own_commits.py": "50d07c6ca6c51e282c56bc81aa9e1483fc4d72abcf73bbfd7104c8503b2b3514",
+              "tests/test_clean_delivery.py": "42c2fafd9e87b1b9037ad3c97f1a9ddc2974cb800571dddaad930d84a56d8a1d",
+              "tests/test_deliver_merges.py": "e9b699de1f281cc3c4f285012178d5f875219d3e974b860755a1c0be9a911f80",
+              "tests/test_delivery_words.py": "1aacd84854e0c8de6bf6578163d6a671439bc65e49a109a92def8db954b75c6f",
+              "tests/test_desk_verbs.py": "cdcbc0d90a3638aad053319713ed225fa6f98e20be8bd745d932cbf2146dd890",
+              "tests/test_drafting_table.py": "d14930bf0c9c8a01b868ea7c7cdd7df13088765fc42655f25326addc772c4c4c",
+              "tests/test_drop.py": "7ed73e08c58fa70d4a3fa5253bb034f26f215a979002781c1f81cdc75484d889",
+              "tests/test_filed_append_only.py": "9daf033c18db0969190168fb2276dd835c3abd71a56f5bd01d0d6f0edd76d45b",
+              "tests/test_founding_door.py": "b02dcbbd571f7b10c23fd739a1aec5bfa467b3ffd7e924ead1be869a2fe7ddcd",
+              "tests/test_from_the_artifact.py": "0045b18e741b5883d7bc3025c334516dfb1fbe79f94d514ce5610b48fd42bebf",
+              "tests/test_front_door.py": "be8231e228d56b75b6e790de1def723e6968bbce6958597c8cbfc5fe88fb40c0",
+              "tests/test_home_screen.py": "65110dc6562bf99b1521501e3b2446d8db9127e2f2b4fdcbf9bb54502adf13a2",
+              "tests/test_home_screen_offers.py": "3c1dce0302b9f18ca9b3a2166574207c95868c35326ed331af2caa93c2952881",
+              "tests/test_host_refresh.py": "cef425f3579b308e9f621f715ecf7cb0c8661820df944bb6579f2e56b7405e5e",
+              "tests/test_land.py": "6db66a22d29faab9e936eae91be7b6e8c177a4634a899c1e321cc4c69713fc1f",
+              "tests/test_meetings_view.py": "56980328a9a9e5dffe79eb8f93aed52d965a54df8bd4337edbf767b95e0ab223",
+              "tests/test_office.py": "83f6712b8fc634ca19284a2f4e660ade0b2e929a4f7db8f197062177bae1c609",
+              "tests/test_one_door.py": "30abff9672dce9f22fea8fd5b005ee1d20715573692030730975405e440e5c9a",
+              "tests/test_out_trip_to_host.py": "291e9e1030ddd6ba84a1a462170049baa45bae72f7e669cd5521284d31a88824",
+              "tests/test_planner_from_words.py": "0f5c55fd38205ed3905fc347b47815ed98759d45693948cd7e59251eca67d3cf",
+              "tests/test_probe.py": "d3453fd1f6d5885070fd8f19bf8785be60cc2d082927b91de4054c60c82367e6",
+              "tests/test_project_on_host.py": "aac408a2df6d73d5cdfe098ef50dd5d4d78b66d567d2b0f1d00f3ad85aae68e3",
+              "tests/test_pull_requests.py": "ec6dc7b92cf9bc4adb111f81d355e2b812aa3fcf542cb25b1c6f8690ba444bbc",
+              "tests/test_read_side.py": "f69f3a9665e0d5d1e1bd2631d13c6436dbdba35867b1d78b3bfb50b0785fb600",
+              "tests/test_return_trip.py": "f333a2ae052b53e1faac6998df47701ebaf4c388a4fddae7e8a19414170ea3da",
+              "tests/test_second_trip.py": "b2e2972997e49f91ffe15b696357d2a94f94cc38db819e1f6e34e2621bb3dda5",
+              "tests/test_sessions_read.py": "ef808b84a8ccf21f24fff804e27731366e1f823ebd28be07c0d81a4b33e83906",
+              "tests/test_sort.py": "eb81db37d2887f9cf2cbfc69e57f30ffb3d6b6597d3839dc15a525ea7ff650ba",
+              "tests/test_standing.py": "2eec767c562808eac3a81a6e05708241134898b8911179b785b450b28472a407",
+              "tests/test_start.py": "4ef1fc2a5cd8f143491358bf62f441132e8e5bd7ca036fff31c4fa878178d94d",
+              "tests/test_suite_clock.py": "75c8111b1661710bdfeb5313790278677bf9c330a3c40de8eee646b19e66a436",
+              "tests/test_third_trip.py": "5b8b7d76b71c5fb153a698fe16b95f78453b2f68eb52cb1465a758cebe3e944a",
+              "tests/test_three_gaps.py": "f14f8f2eaddff1db623440451c5066c7e0a7026cb362c643f7cea47d139f412d",
+              "tests/test_tidy.py": "4522fe1fa74eca8a3a55a0f71e53468ab0be4d530e6b68199fae61d97660815e",
+              "tests/test_walkthrough_tidy.py": "41992df92329fecd0f5fe8c13057947d3764ab5bb4c9a9839490f9824ecfd9a0",
+              "tests/test_watches_digest.py": "bd90d845ff9faf2ae3081fe1b174e2df3df4efc7fd0d9c93989199c6046e924d"
+            },
+            "model_identity": "anthropic:claude-fable-5-1"
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "The brief's enumerated command positions were a floor, not a ceiling: `&`, bash's command-taking words (if, then, elif, else, while, until, do, !, time), a NAME=value prefix and a case pattern's `)` also leave office-on in command position (flagged, notes.md decision 2).",
+            "A shell line written as one quoted word (office-on alpha 'a; b') is one command's name under the new rule and fails with 127; the brief's 'a word with spaces stays one word' was read as covering it (notes.md decision 5)."
+          ],
+          "judgment_calls": [
+            "The call reader is a small scan of the block's shell syntax (calls_of), not a regex: quotes, backslashes, comments, heredocs, $( ), backticks, groups.",
+            "`\\office-on` and `'office-on'` as a first word are not calls (the sitting's lean).",
+            "A call whose project is not a bare name still names no reach (as before); calls_of reports it as (line, None) for a later refusal (Proposal 1).",
+            "The 0.34.0 spanning tests (test_three_gaps spanning_block, the helper unit; test_probe's masked call) were rewritten to sh -c LINE / two words, since they depended on the re-split.",
+            "Tests live in a new module, tests/test_spanning_probe.py, one class per item plus a hosted class (a different fixture base)."
+          ],
+          "budget_pressure": "none",
+          "includes_missing": [],
+          "compaction_occurred": {
+            "occurred": false,
+            "disclosure_ref": null
+          },
+          "docs_read": [
+            "manifest.json",
+            "AGENT.md (META through 11.2)",
+            "README.md (the request's brief, whole)",
+            "TARBALL.md sections 1, 2, 5, 7, 8, 10.1",
+            "tools/craft_response.py (header, help) and tools/response_lint.py (header, help, the self_reported schema)",
+            "lib/office_probe.py (whole), lib/office_host.py (run_many, run_in, _call_block)",
+            "tests/test_probe.py (ProbeCase, TestProbeOnAHost, TestTheMaskedRun), tests/test_three_gaps.py (the spanning classes)",
+            "tests/test_project_on_host.py (the fake ssh), tests/test_out_trip_to_host.py (HostedStartCase)",
+            "tests/test_suite_clock.py TestTheRecord, tests/test_office.py OFFICE_SPECIFIC, tests/run.sh, tests/fast-tier.toml (head)",
+            "doctrine/OFFICE.md (the banner, the spanning paragraph), README.md (the two paragraphs, the module row), RELEASES.md (0.44.0, 0.43.0 heads), claude/context/front-sheet.md (Recent changes)",
+            "claude/responses/2026-11-03-answers-from-the-artifact-002/notes.md (as the notes' model)",
+            "home-office/desk/.../folder.md (the folder for this session)"
+          ]
+        }
+      },
+      "log": ".bale/logs/2026-11-04-spanning-probe-001.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-11-04T03:08:36+00:00",
+  "outcome": "applied"
+}
