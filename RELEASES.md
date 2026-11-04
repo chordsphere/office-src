@@ -4,6 +4,57 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.45.0
+
+Additive: no migration, nothing to do in any office. The eighth serial
+session of the plan begun on 2026-10-27: the spanning probe's two defects,
+reported on 2026-11-03. A reach is read from a real `office-on` call
+alone, and the call's words reach the project's shell as the block's shell
+gave them. What you see changes for a probe block that mentions the helper
+in text without calling it, and for a call whose words hold a space, a
+quote or a `$`; everything else is as it was.
+
+A reach is a call. `office probe` read a block's reaches with a regex over
+its text, so `echo "office-on alpha"`, the name in a heredoc, or a word in
+any non-comment line that mentioned the helper made the block a spanning
+one: planned for the office root, `--project` refused, and a name the
+office does not scope refusing the block. Now `office-on` counts as a
+reach only where it is a command's first word: at a line's start, or after
+`$(`, a backtick, `|`, `||`, `&&`, `;`, `&`, `(` or `{` on the same line,
+or after a word that takes a command (`if`, `then`, `else`, `elif`,
+`while`, `until`, `do`, `!`, `time`) or a `NAME=value` word; never inside
+a quoted string, a comment, a heredoc's body or an `echo`'s text, and
+never as part of another word (`./office-on`, `my-office-on`). A quoted or
+escaped first word (`'office-on'`, `\office-on`) is not the bare name and
+is not a call. A block whose only mention of the helper is text is a
+plain block, run where the folder's lane says, as before 0.34.0. The
+reader (lib/office_probe.py `calls_of`) is a small scan of the block's
+shell syntax, not a regex and not a shell: quotes, backslashes, comments,
+heredocs (`<<WORD`, `<<-WORD`, quoted or not), `$( )`, backticks and
+groups; a shape it does not read (a command inside `${...}`) reads as
+text. `office_probe.py reaches BLOCK` prints what it finds, as before.
+
+The words arrive as given. `office-on PROJECT COMMAND...` handed the words
+to the project's shell joined with spaces, so the shell split them again:
+`office-on alpha bash -c 'git status; echo x'` ran `bash -c git status`
+and then `echo x`, and `grep -n "a b" FILE` arrived as four words. Now
+`run_on` quotes each word (shlex.join) as one line for `bash -c`, so
+`bash -c SCRIPT` runs SCRIPT whole where the project lives, a word with a
+space stays one word, and a quote or a `$` in a word arrives as the
+occupant's shell left it. On a host the quoted line goes through the
+project's shell exactly as office_host.run_in sends an argv; nothing else
+about where or how a call runs changes. One consequence: a shell line
+written as one quoted word, `office-on alpha 'pwd -P; git status'`, which
+the re-split used to run by accident, is now the name of one command and
+fails as such (exit 127); write it `office-on alpha sh -c 'pwd -P; git
+status'`. The doctrine (section 4, continued) and the README say both
+rules in a sentence each.
+
+Tests: tests/test_spanning_probe.py, one class per rule and a third for
+the hosted call through the fake shell; tests/test_three_gaps.py's
+spanning block and tests/test_probe.py's masked call write their shell
+lines as `sh -c LINE` now.
+
 ## 0.44.0
 
 Additive: no migration, nothing to do in any office. The seventh serial

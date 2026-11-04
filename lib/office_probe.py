@@ -55,7 +55,12 @@ the projects it names: it runs in the office root, under the folder's
 session open in the office or in one of those projects, and each
 office-on call runs its command where that project lives. The M10
 walkthrough's planner sitting (2026-10-27) needed the work office's
-folder and the hosted repo in one probe, and ran six by hand.
+folder and the hosted repo in one probe, and ran six by hand. A reach is
+read from a call alone (0.45.0): the bare word office-on where a command
+begins, never its name in a string, a comment, a heredoc or an echo's
+text (calls_of); and the call's words reach the project's shell as the
+block's shell gave them, each quoted (run_on), so `office-on PROJECT bash
+-c SCRIPT` runs SCRIPT whole there.
 
 bale is read only for the sessions open where the project lives (bale
 status --json, through office_bale's reader), and the shell is run only
@@ -98,9 +103,20 @@ RUN_LINE_PREFIX = "# office: probe "
 RUN_LINE_RE = oh.LazyPattern(r"^# office: probe (\S+)((?: --(?:project|sid) \S+)*)$")
 RUN_FLAG_RE = oh.LazyPattern(r" --(project|sid) (\S+)")
 # The helper a spanning block calls (0.34.0): `office-on PROJECT COMMAND...`
-# on a line that is not a comment names a project the block reaches.
+# names a project the block reaches. A reach is read from a call alone
+# (0.45.0, calls_of): the bare word `office-on` where a command begins,
+# never from the name inside a string, a comment, a heredoc's body or an
+# echo's text (a regex over the text counted those, so `echo "office-on
+# alpha"` made a block a spanning one, 2026-11-03). The project is the
+# bare word after it, in this shape; a variable there names nothing.
 ON_HELPER = "office-on"
-REACH_RE = oh.LazyPattern(r"(?<![\w./-])office-on\s+([A-Za-z0-9_][A-Za-z0-9_-]*)")
+ON_NAME_RE = oh.LazyPattern(r"[A-Za-z0-9_][A-Za-z0-9_-]*")
+# The words after which the next word still begins a command, as bash
+# reads them: a reserved word that takes a command, or `NAME=value` set
+# for the one command (`if office-on alpha test -e x; then`,
+# `LC_ALL=C office-on alpha git log`).
+COMMAND_WORDS = frozenset(("if", "then", "elif", "else", "while", "until", "do", "!", "time"))
+ASSIGNMENT_RE = oh.LazyPattern(r"[A-Za-z_][A-Za-z0-9_]*\+?=")
 # The exit code office-on gives when the project cannot be reached at all
 # (a host that stopped answering), told apart from the command's own.
 EXIT_ON_UNREACHED = 97
@@ -222,17 +238,199 @@ def run_line(header):
     return None, None
 
 
+def calls_of(text):
+    """The `office-on` calls in a block's text (0.45.0), in order, one
+    (line number, project) pair per call: the project is the bare word
+    after the helper's name when it is one (ON_NAME_RE), None when it is
+    not (a variable, a quoted word, no word at all). A call is the bare
+    word `office-on` where a command begins: at a line's start, or after
+    `;`, `|`, `||`, `&&`, `&`, `(`, `{`, `$(` or a backtick, or after a
+    word that takes a command (COMMAND_WORDS) or a `NAME=value` word; read
+    through bash's quoting (single and double quotes, a backslash, a
+    line continuation), its comments (`#` at a word's start to the line's
+    end) and its heredocs (`<<WORD` to the line that is WORD; `<<-` strips
+    tabs), so the name inside a string, a comment, a heredoc's body or an
+    echo's text is text, not a call, and `\\office-on` or `'office-on'` is
+    not the bare name. A plain scan, not a shell: it reads enough of bash
+    to tell a call from text (a case pattern's `)` begins a command too),
+    and a shape it does not read (a command inside `${...}`, an alias)
+    reads as text."""
+    calls = []
+    # The contexts open at this point in the text: a command list (where
+    # a word may begin a command) or a double-quoted string, innermost
+    # last; a string appends to the word of the command list under it.
+    stack = [_command_list(None)]
+    heredocs = []  # (delimiter, strips tabs), for the next line's end
+    i, n, line_no = 0, len(text), 1
+
+    def end_word(cmd):
+        """A word of the command list ends here: what it was, in bash's
+        reading of the words before it, decides what the next one is."""
+        if not cmd["in_word"]:
+            return
+        word, bare = "".join(cmd["word"]), cmd["bare"]
+        cmd["word"], cmd["in_word"], cmd["bare"] = [], False, True
+        if cmd["heredoc"] is not None:
+            heredocs.append((word, cmd["heredoc"]))
+            cmd["heredoc"] = None
+        elif cmd["after_on"]:
+            calls.append((cmd["on_line"], word if bare and ON_NAME_RE.fullmatch(word) else None))
+            cmd["after_on"] = False
+        elif cmd["at_start"]:
+            if bare and word == ON_HELPER:
+                cmd["after_on"], cmd["on_line"], cmd["at_start"] = True, line_no, False
+            elif not ((bare and word in COMMAND_WORDS) or ASSIGNMENT_RE.match(word)):
+                # A quoted value is still an assignment (`X="a b" office-on
+                # alpha ls`); a quoted reserved word is not one.
+                cmd["at_start"] = False
+
+    def separator(cmd):
+        """`;`, `|`, `&` or a line's end: the command ends, a new one may
+        begin; a call that reached the end with no project named one."""
+        end_word(cmd)
+        if cmd["after_on"]:
+            calls.append((cmd["on_line"], None))
+            cmd["after_on"] = False
+        cmd["at_start"] = True
+
+    while i < n:
+        ctx, c = stack[-1], text[i]
+        if ctx["kind"] == "dq":
+            cmd = ctx["cmd"]
+            if c == "\\" and i + 1 < n:
+                cmd["word"].append(text[i + 1])
+                line_no += text[i + 1] == "\n"
+                i += 2
+            elif c == '"':
+                stack.pop()
+                i += 1
+            elif c == "$" and text[i + 1:i + 2] == "(":
+                stack.append(_command_list(")"))
+                i += 2
+            elif c == "`":
+                stack.append(_command_list("`"))
+                i += 1
+            else:
+                cmd["word"].append(c)
+                line_no += c == "\n"
+                i += 1
+            continue
+        cmd = ctx
+        if c in " \t":
+            end_word(cmd)
+            i += 1
+        elif c == "\n":
+            separator(cmd)
+            i += 1
+            line_no += 1
+            while heredocs:
+                delimiter, strips_tabs = heredocs.pop(0)
+                while i < n:
+                    end = text.find("\n", i)
+                    end = n if end < 0 else end
+                    line = text[i:end]
+                    i = end + 1
+                    line_no += 1
+                    if (line.lstrip("\t") if strips_tabs else line) == delimiter:
+                        break
+        elif c == "\\":
+            if i + 1 < n:
+                if text[i + 1] == "\n":
+                    line_no += 1  # a line continuation: the word goes on
+                else:
+                    cmd["word"].append(text[i + 1])
+                    cmd["in_word"], cmd["bare"] = True, False
+            i += 2
+        elif c == "'":
+            close = text.find("'", i + 1)
+            close = n if close < 0 else close
+            cmd["word"].extend(text[i + 1:close])
+            cmd["in_word"], cmd["bare"] = True, False
+            line_no += text.count("\n", i, close)
+            i = close + 1
+        elif c == '"':
+            cmd["in_word"], cmd["bare"] = True, False
+            stack.append({"kind": "dq", "cmd": cmd})
+            i += 1
+        elif c == "$" and text[i + 1:i + 2] == "(":
+            cmd["in_word"], cmd["bare"] = True, False
+            stack.append(_command_list(")"))
+            i += 2
+        elif c == "`":
+            if cmd["closer"] == "`":
+                end_word(cmd)
+                stack.pop()
+            else:
+                cmd["in_word"], cmd["bare"] = True, False
+                stack.append(_command_list("`"))
+            i += 1
+        elif c == "#" and not cmd["in_word"]:
+            end = text.find("\n", i)
+            i = n if end < 0 else end
+        elif c in ";|&":
+            separator(cmd)
+            i += 1
+        elif c == "(":
+            end_word(cmd)
+            stack.append(_command_list(")"))
+            i += 1
+        elif c == ")":
+            end_word(cmd)
+            if cmd["closer"] == ")" and len(stack) > 1:
+                stack.pop()
+                if stack[-1]["kind"] == "cmd" and not stack[-1]["in_word"]:
+                    # A subshell stood where a command begins; inside a word
+                    # (`x=$(...)`) the word's end decides.
+                    stack[-1]["at_start"] = False
+            else:
+                # One that closes nothing opened here ends a case pattern
+                # (`a) office-on alpha ls;;`), and a command begins.
+                cmd["at_start"] = True
+            i += 1
+        elif c in "{}" and not cmd["in_word"] and (i + 1 >= n or text[i + 1] in " \t\n;"):
+            # The reserved words: `{` opens a group where a command begins,
+            # `}` closes one.
+            cmd["at_start"] = c == "{"
+            i += 1
+        elif c == "<" and text[i:i + 3] != "<<<" and text[i:i + 2] == "<<":
+            end_word(cmd)
+            strips_tabs = text[i + 2:i + 3] == "-"
+            cmd["heredoc"] = strips_tabs
+            i += 3 if strips_tabs else 2
+        elif c in "<>":
+            end_word(cmd)
+            i += 1
+            while i < n and text[i] in "<>&":
+                i += 1
+        else:
+            cmd["word"].append(c)
+            cmd["in_word"] = True
+            i += 1
+    for ctx in reversed(stack):
+        if ctx["kind"] == "cmd":
+            separator(ctx)
+    return calls
+
+
+def _command_list(closer):
+    """A command list the reader is inside: what closes it (`)`, a
+    backtick, or None for the block itself), whether the next word begins
+    a command, the word being read and whether it is bare so far, whether
+    the last word was office-on (the next names the project), and whether
+    the next word is a heredoc's delimiter."""
+    return {"kind": "cmd", "closer": closer, "at_start": True, "word": [], "in_word": False, "bare": True,
+            "after_on": False, "on_line": 0, "heredoc": None}
+
+
 def reaches_of(lines):
     """The projects a block reaches with `office-on PROJECT ...` (0.34.0),
-    in order of first call, read from the lines that are not comments: a
-    header may say what the helper is for without naming a project."""
+    in order of first call, read from its calls alone (calls_of, 0.45.0):
+    a header may say what the helper is for, and a string, a heredoc or
+    an echo may hold its name, without naming a project."""
     out = []
-    for line in lines:
-        if line.lstrip().startswith("#"):
-            continue
-        for m in REACH_RE.finditer(line):
-            if m.group(1) not in out:
-                out.append(m.group(1))
+    for _, name in calls_of("\n".join(lines)):
+        if name is not None and name not in out:
+            out.append(name)
     return out
 
 
@@ -732,21 +930,28 @@ def write_on_helper(directory, plan_file):
 
 
 def run_on(plan_data, project, words):
-    """What `office-on PROJECT COMMAND...` does (0.34.0): the words, joined
-    with spaces as a shell line, run where the project lives through
-    office_host (in its directory on this machine; through its shell, in
-    its path, on a host), stdin closed. Returns (exit code, stdout,
-    stderr); a project the plan does not reach, or that cannot be
-    reached, is a ProbeError."""
+    """What `office-on PROJECT COMMAND...` does (0.34.0): the words, each
+    quoted for a shell (shlex.join, 0.45.0) as one line, run where the
+    project lives through office_host (in its directory on this machine;
+    through its shell, in its path, on a host), stdin closed. The words
+    reach the project's shell as the block's shell gave them: `bash -c
+    SCRIPT` runs SCRIPT whole, a word with a space in it stays one word,
+    and a quote or a `$` in a word arrives as it was left (before 0.45.0
+    the words were joined with spaces and the project's shell split them
+    again, so `bash -c 'echo one; echo two'` ran `bash -c echo one` and
+    then `echo two`, 2026-11-03). Returns (exit code, stdout, stderr); a
+    project the plan does not reach, or that cannot be reached, is a
+    ProbeError."""
+    import shlex
     import office_host as ohost
     reaches = plan_data.get("reaches") or {}
     if project not in reaches:
         raise ProbeError([f"{ON_HELPER} {project}: not a project this probe reaches (its block names: "
                           f"{', '.join(reaches) or 'none'}); a name is read from the block before it runs, so "
                           "name each project literally, never through a variable"])
-    command = " ".join(words).strip()
-    if not command:
+    if not any(word.strip() for word in words):
         raise ProbeError([f"{ON_HELPER} {project}: no command given"])
+    command = shlex.join(words)
     place = place_from(reaches[project])
     try:
         run_ = ohost.run_in(place, ["bash", "-c", command], timeout=ohost.TRANSFER_TIMEOUT)

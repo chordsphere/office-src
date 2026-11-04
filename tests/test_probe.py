@@ -900,7 +900,9 @@ class TestTheMaskedRun(ProbeCase):
 
     def test_a_spanning_blocks_office_on_output_is_masked_with_it(self):
         text = probe_block(lines=())
-        call = f"  office-on alpha {shlex.quote('echo ' + shlex.quote(REMOTE))}"
+        # Two words, the URL one of them: since 0.45.0 a call's words reach
+        # the project's shell as given, so a shell line is `sh -c LINE`.
+        call = f"  office-on alpha echo {shlex.quote(REMOTE)}"
         self.block.write_text(text.replace('  echo "cwd: $(pwd -P)"', call + '\n  echo "cwd: $(pwd -P)"'))
         proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=0)
         self.assertIn("office-on is on the block's PATH for alpha", proc.stderr)

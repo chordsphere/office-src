@@ -238,6 +238,18 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.45.0 (session 2026-11-04-spanning-probe-001): the spanning probe's two
+  defects.
+  - a reach is read from a real `office-on` call alone, the bare name
+    where a command begins (lib/office_probe.py `calls_of`), never from
+    the name in a string, a comment, a heredoc or an echo's text; a block
+    that only mentions the helper is a plain block.
+  - `run_on` quotes each word (shlex.join) on the way to the project's
+    shell, so `office-on PROJECT bash -c SCRIPT` runs SCRIPT whole and a
+    word with a space stays one word; a shell line as one quoted word is
+    now `sh -c LINE`.
+  - Additive: no migration. tests/test_spanning_probe.py holds the
+    release's tests.
 - 0.44.0 (session 2026-11-03-answers-from-the-artifact-002): answers from
   the artifact.
   - a question start or land would ask is taken from a bundle's brief, a

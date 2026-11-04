@@ -2021,13 +2021,19 @@ hosted repo in one block: which folder records which session, and what
 that session's clone is on. Such a block calls `office-on PROJECT
 COMMAND...` on its own lines, naming one of the office's projects
 literally each time, and `office probe` reads those names before anything
-runs, refusing one the office does not scope. It then runs the block in
-the office root with `office-on` first on its PATH, a helper the office
-writes for that one run: each call runs its command where that project
-lives, through the project's shell on a host, stdin closed, its output on
-the block's own stream and its exit code returned (97 when the project
-cannot be reached). The block's purpose header still promises it is
-read-only, and the promise covers every command the calls run. Its
+runs, refusing one the office does not scope. A reach is a call (0.45.0):
+`office-on` counts only where it is a command's first word, never its
+name inside a string, a comment, a heredoc's body or an echo's text, so a
+block that only mentions the helper is a plain block. It then runs the
+block in the office root with `office-on` first on its PATH, a helper the
+office writes for that one run: each call runs its command where that
+project lives, through the project's shell on a host, stdin closed, its
+output on the block's own stream and its exit code returned (97 when the
+project cannot be reached). The call's words arrive as given (0.45.0):
+each is quoted on the way to the project's shell, so `office-on PROJECT
+bash -c SCRIPT` runs SCRIPT whole there and a word with a space stays one
+word. The block's purpose header still promises it is read-only, and the
+promise covers every command the calls run. Its
 session is the folder's open in the office, a sitting or an office
 session, or in a project it reaches, chosen by the rule a probe of one
 place uses; such a block takes no `--project`. Nothing on the host is

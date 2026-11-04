@@ -332,10 +332,13 @@ class TestTheBundlesBranchOnAHost(HostedStartCase):
 
 def spanning_block(project="alpha", slug="fix-login", writes=False):
     """A probe block in the crafter's shape whose body calls office-on for
-    a project: where the block runs, where the call ran, and its code."""
-    lines = [f"  office-on {project} 'pwd -P; git rev-parse --is-inside-work-tree'",
+    a project: where the block runs, where the call ran, and its code. A
+    shell line goes as `sh -c LINE`: since 0.45.0 the call's words reach
+    the project's shell as given (one quoted word is one command's name,
+    not a line)."""
+    lines = [f"  office-on {project} sh -c 'pwd -P; git rev-parse --is-inside-work-tree'",
              '  echo "on exit: $?"',
-             f"  office-on {project} 'exit 3'",
+             f"  office-on {project} sh -c 'exit 3'",
              '  echo "on exit: $?"',
              '  echo "cwd: $(pwd -P)"',
              '  if IFS= read -r x; then echo "stdin had: $x"; else echo "stdin closed"; fi']
@@ -417,7 +420,7 @@ class TestASpanningProbe(ProbeCase):
         proc = subprocess.run(["office-on", "alpha", "git", "log", "--format=%s", "-n", "1"], env=env,
                               capture_output=True, text=True)
         self.assertEqual((proc.returncode, proc.stdout), (0, "init\n"), proc.stderr)
-        proc = subprocess.run(["office-on", "alpha", "exit 5"], env=env, capture_output=True, text=True)
+        proc = subprocess.run(["office-on", "alpha", "sh", "-c", "exit 5"], env=env, capture_output=True, text=True)
         self.assertEqual(proc.returncode, 5)
         proc = subprocess.run(["office-on", "beta", "true"], env=env, capture_output=True, text=True)
         self.assertEqual(proc.returncode, op.EXIT_ON_UNREACHED)
