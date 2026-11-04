@@ -461,8 +461,11 @@ class TestAProjectMarkedPaused(LandCase):
 
     def test_set_writes_the_key_and_says_it(self):
         proc = self.run_office("projects", "set", "alpha", "--paused", check=0)
+        # 0.46.0: the line says the one thing still read of a paused project.
         self.assertEqual(proc.stdout.strip(), "alpha is paused: the office reads nothing of it and sends nothing to it "
-                                              "until office projects set alpha --unpaused")
+                                              "until office projects set alpha --unpaused (one thing is still read: "
+                                              "which of its sessions a bundle in your downloads opened, so that bundle "
+                                              "leaves the offer)")
         plan = (self.root / "floor-plan/manifest.toml").read_text()
         self.assertIn("paused = true", plan)
         self.assertEqual(self.subjects(1), ["office projects: set alpha --paused"])

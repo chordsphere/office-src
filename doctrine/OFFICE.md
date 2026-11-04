@@ -1162,7 +1162,26 @@ never came back, or came back off its shape and was not filed. The number is the
 N: `office open` mints it as one more than the highest number on the
 desk and in the filing cabinet, and it is never reused or renumbered. A
 folder from before numbers keeps none and is cited by its name; nothing
-ever numbers it after the fact. A verb that mints a number or appends to a page (a folder, a
+ever numbers it after the fact.
+
+After `office open`, the one writer of a folder's fields is `office
+folder N` (0.46.0): each of its flags (`--lane PROJECT` or `--in-office`,
+`--title`, `--size`, `--goal`, `--source`, `--class`) replaces that
+field's line, or writes it where the field block puts it, takes the field
+off the provisional line (a field the occupant set is his, and no
+Structure changes it after), and appends one History line per field,
+`- DATE re-scoped: FIELD from OLD to NEW (office folder)`; the folder is
+committed alone, on the desk or in the filing cabinet alike. A lane names
+a project the office scopes, or reads `the office` (two words, never a
+project's name) when the work is the office's own. When `office start`,
+`office deliver` or `office probe` has to ask which project a folder's
+work is on because its lane names none, the answer is written as the
+lane through the same writer and said, so it is asked once; a flag typed
+for one run writes nothing. The status is never one of its fields:
+open, close and reopen write it. `office map` shows every project with
+its folders under it by lane, each with its state in the desk's words,
+and one folder's whole record with the lines that change it; it writes
+nothing. A verb that mints a number or appends to a page (a folder, a
 rider, an agenda item, a blueprint, a desk move applied) refuses while an
 open session in the office's own bale registry forecasts the space, page
 or folder it writes, and names the session: sessions are kept apart by
@@ -1593,6 +1612,9 @@ Kinds:
 | meeting | script (0.26.0): a meeting, said once in the occupant's words, when it happens and what it concerns, asked only when his words do not say when or name none of the office's projects (--words, --when, --about PROJECT, --in-office the twins); one line in the calendar's plan, a series never asked for again; the calendar arrives with the first; no folder | yes | occupant |
 | open | script: start a numbered folder on the desk, or a candidate, or one born done in the filing cabinet; on a terminal, from the occupant's words (the title, the Asked section and the goal office start takes, each worked-out field marked provisional); with --goal, the goal; the code office start new mints a folder through | yes | plumbing |
 | desk | script: in flight, ready in order, parked under what each waits for, candidates | yes | occupant |
+| map | script, read-only (0.46.0): every project the office scopes with its facts, what rides with it and what runs after it lands, and every folder whose lane names it with its state in the desk's words, then the office's own folders; one project's section, or one folder's whole record ending with the lines that change it | yes | occupant |
+| folder | script (0.46.0): the one writer of a folder's fields after open (lane, title, size, goal, source, class): each a replaced line, off the provisional list, one re-scoped History line per field, the folder committed alone; never its status; alone, its fields and the line that changes each | yes | occupant |
+| tray | script, read-only (0.46.0): a session's out tray opened again as start opens it, its files listed and its opener printed again from the copy start keeps beside the tray | yes | occupant |
 | week | script: this week's calendar and its gaps, and a meeting whose prep is out | yes | plumbing |
 | close | script: move a folder to the filing cabinet, done, absorbed, split or retired | yes | occupant |
 | reopen | script: move a done folder back to the desk | yes | plumbing |
@@ -1836,7 +1858,11 @@ and the difference is written down, never smoothed.
 
 The projects an office scopes are its floor plan's [projects] table: a
 name and the path of each project's repo, absolute or under a home
-directory, written by `office projects add` and never by hand; `office
+directory, written by `office projects add` and `office projects set`
+and never by hand (since 0.46.0 set changes only the groups its flags
+name, `--edit` walks every group, `--path` re-points a project at another
+clone checked as add checks one, the old clone never touched, and
+`--branch-prefix` writes the audience line's fifth key); `office
 init` asks which projects a new office watches and adds each through the
 same questions. An office with no table scopes nothing, and every
 rendering says so rather than showing an empty screen as if it were

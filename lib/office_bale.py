@@ -2738,7 +2738,9 @@ class Tray:
             name = f"{stem}-{n}{dot}{ext}"
         shutil.copy2(src, self.dir / name)
         self.files.append(name)
-        log(f"out tray: {name}")
+        # On start's screen (0.46.0, START_SCREEN) the tray's path and its
+        # files are said once, below; each file's line is a debug line there.
+        (debug if os.environ.get("START_SCREEN") == "1" else log)(f"out tray: {name}")
         return name
 
     def finish(self, sid):

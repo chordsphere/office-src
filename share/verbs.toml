@@ -191,6 +191,47 @@ lands = []
 attended = true
 trigger = ["manual"]
 
+# The map (0.46.0): every project the office scopes with its facts, what
+# rides with it and what runs after it lands, and every folder whose lane
+# names it, each with its state in the desk's words; then the office's own
+# folders. With a project, its section; with a folder, its whole record and
+# the lines that act on it and change its fields. It reads what the desk
+# reads, once, and writes nothing.
+[verbs.map]
+kind = "script"
+built = true
+surface = "occupant"
+writes = []
+lands = []
+attended = true
+trigger = ["manual"]
+
+# A folder's fields after office open (0.46.0): the one writer of its lane,
+# title, size, goal, source and class, each a replaced line, a field it
+# names taken out of the provisional list, and a re-scoped History line per
+# field; never its status (open, close and reopen write that). Office
+# start, deliver and probe write a lane they had to ask for through it.
+[verbs.folder]
+kind = "script"
+built = true
+surface = "occupant"
+writes = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md"]
+lands = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md"]
+attended = true
+trigger = ["manual"]
+
+# A session's out tray opened again (0.46.0), as start opens it, its files
+# listed and its opener printed again from the copy start keeps beside the
+# tray; it writes nothing.
+[verbs.tray]
+kind = "script"
+built = true
+surface = "occupant"
+writes = []
+lands = []
+attended = true
+trigger = ["manual"]
+
 [verbs.week]
 kind = "script"
 built = true
@@ -246,7 +287,11 @@ trigger = ["manual", "after-build"]
 # clone's view of its audience level (its remote-tracking refs, its base
 # fast-forwarded when it can be, and one ref saying when and from where),
 # and prepare (add --prepare, set --prepare) writes bale.toml's [sandbox]
-# enabled = false in the clone only where bale's sandbox cannot run.
+# enabled = false in the clone only where bale's sandbox cannot run. Since
+# 0.46.0 set asks only what its flags imply (--edit walks every group),
+# --path re-points a project at another clone (the old one never touched)
+# and --branch-prefix / --no-branch-prefix write the audience line's fifth
+# key.
 [verbs.projects]
 kind = "script"
 built = true

@@ -420,7 +420,9 @@ class TestBlueprints(unittest.TestCase):
         includes = [argv[i + 1] for i, a in enumerate(argv) if a == "--include"]
         self.assertEqual(writes, [f"desk/{close.name}", "notepad", DT])
         self.assertEqual(includes, [f"desk/{close.name}", f"{DT}/blueprints/{bid}", member, f"{DT}/rulings.md"])
-        tray = next((o.e.home / "out-tray").iterdir())
+        # The tray is the one directory there; since 0.46.0 the opener's copy
+        # sits beside it as SID.opener.txt.
+        tray = next(d for d in (o.e.home / "out-tray").iterdir() if d.is_dir())
         self.assertIn("office-src-install/templates/close-report.md",
                       tar_names(tray / "context-office-src-install.tar.gz"))
         request = next(tray.glob("request-*.tar.gz"))

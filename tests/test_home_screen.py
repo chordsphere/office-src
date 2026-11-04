@@ -156,9 +156,14 @@ class TestTheHomeScreenUnits(unittest.TestCase):
         self.assertIn("  [1] thing 0  (next)", lines)
         self.assertIn("  [9] thing 8", lines)
         self.assertNotIn("  [10] thing 9", lines)
-        self.assertIn("  and 2 more: office desk lists the drops and the folders", lines)
+        # 0.46.0: every item has a key, past nine a letter no fixed key takes,
+        # so no "and N more" line hides any; the map has the a key.
+        self.assertIn("  [b] thing 9", lines)
+        self.assertIn("  [c] thing 10", lines)
+        self.assertFalse([l for l in lines if "more:" in l], lines)
         keys = [k for k, _, _ in menu]
-        self.assertEqual(keys, [str(n) for n in range(1, 10)] + ["o", "p", "m", "s", "n", "d", "k", "h", "q"])
+        self.assertEqual(keys, [str(n) for n in range(1, 10)] + ["b", "c"]
+                         + ["o", "a", "p", "m", "s", "n", "d", "k", "h", "q"])
         self.assertNotIn("[l]", "\n".join(lines), "nothing is out, so there is nothing to bring back")
         self.assertTrue(all(len(l) <= 80 for l in lines if l.startswith("  [o]") or l.startswith("  [")))
         _, menu = hs.render_page([], [], 1)

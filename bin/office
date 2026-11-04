@@ -32,6 +32,12 @@ log()   { printf '[office] %s\n' "$*" >&2; }
 warn()  { printf '[office] warning: %s\n' "$*" >&2; }
 die()   { printf '[office] error: %s\n' "$*" >&2; exit 1; }
 debug() { [ "${OFFICE_DEBUG:-0}" = "1" ] && printf '[office] debug: %s\n' "$*" >&2; return 0; }
+# detail TEXT (0.46.0): a line of what office start did that the occupant
+# need not read to go on. On start's screen (START_SCREEN: a start whose
+# stderr is a terminal) it is said under OFFICE_DEBUG only, so the screen
+# holds what was settled, what he must know and what to do next; piped it
+# is a line as before, for the scripts and sessions that read the record.
+detail() { if [ "${START_SCREEN:-0}" = 1 ]; then debug "$*"; else log "$*"; fi; }
 
 # -B throughout: the helper imports office_host, the reader imports the
 # helper, and an install is never written to.
@@ -208,6 +214,8 @@ pick() {
     printf '  [%s] %s\n' "$((__p_i + 1))" "${__p_labels[$__p_i]}" >&2
     [ -z "$__p_def" ] || [ "${__p_vals[$__p_i]}" != "$__p_def" ] || __p_defkey="$((__p_i + 1))"
   done
+  # PICK_TRAILER (0.46.0): one line said after the keys, before the question.
+  [ -z "${PICK_TRAILER:-}" ] || printf '%s\n' "$PICK_TRAILER" >&2
   while :; do
     ask __p_ans "$__p_q" "$__p_defkey" "$__p_req" "$__p_help"
     if [ -z "$__p_ans" ] && [ "$__p_req" = 0 ]; then printf -v "$__p_var" '%s' ""; return 0; fi
@@ -1292,7 +1300,7 @@ commit_survey() {
   fi
   n="$(printf '%s\n' "$report" | grep -c '^\(added\|removed\|changed\) ' || true)"
   git -C "$root" commit -q -m "$who: $n facts changed" -- "$SURVEY_REL" || return 1
-  log "committed $SURVEY_REL ($n facts changed)"
+  detail "committed $SURVEY_REL ($n facts changed)"
 }
 
 # Before office start packs anything (office survey --before-pack, which
@@ -1328,7 +1336,7 @@ refresh_survey() {
     commit_survey "$root" "$report" "office start: survey" \
       || warn "the survey was refreshed but not committed; $SURVEY_REL is changed on disk"
   fi
-  log "surveyed this machine again for the session ($(helper survey-age "$root/$SURVEY_REL" --install "$(install_version)" 2>/dev/null))"
+  detail "surveyed this machine again for the session ($(helper survey-age "$root/$SURVEY_REL" --install "$(install_version)" 2>/dev/null))"
 }
 
 usage_status() {
@@ -2359,7 +2367,7 @@ cmd_open() {
       if [ -z "$source" ] && [ -n "$words_file" ]; then source="the occupant"; fi
     fi
     if [ "$filed" = 1 ] && [ -z "$sid" ]; then die "--filed needs --sid SID, the session the job was done in"; fi
-    [ "$asked" = 0 ] || log "the size is small and the source $([ -n "$source" ] && printf '%s' "$source" || printf 'unsaid'), for now; the title, size and goal are provisional until the session that works the job sends back its own (other fields take flags: office open --help)"
+    [ "$asked" = 0 ] || detail "the size is small and the source $([ -n "$source" ] && printf '%s' "$source" || printf 'unsaid'), for now; the title, size and goal are provisional until the session that works the job sends back its own (other fields take flags: office open --help)"
   else
     [ -n "$slug" ] || [ -n "$title" ] || die "open needs a slug or a title: office open SLUG, or --title TITLE; piped input is never asked"
     [ "$filed" = 0 ] || [ -n "$sid" ] || die "--filed needs --sid SID, the session the job was done in; piped input is never asked"
@@ -2430,9 +2438,279 @@ cmd_open() {
       || die "could not write $folder/thread.md"
     log "seeded $folder/thread.md from stdin"
   fi
-  log "opened $folder as folder $number, $status"
+  detail "opened $folder as folder $number, $status"
   commit_paths "$root" "office open: $name (folder $number)" "$folder" || true
   printf '%s\n' "$folder"
+}
+
+# --- a folder's fields, and the map (0.46.0) ------------------------------------
+#
+# office folder N is the one writer of a folder's fields after office open
+# (lib/office_helper.py folder_edit): each flag replaces its field's line,
+# takes the field out of the provisional list, and appends a re-scoped
+# History line; the folder is committed alone. office map reads the desk,
+# the floor plan and the folders once and puts each folder under the
+# project its lane names (lib/office_map.py); it writes nothing.
+
+usage_folder() {
+  cat <<'USAGE'
+usage: office folder [FOLDER] [--lane PROJECT | --in-office] [--title TITLE] [--size SIZE]
+                     [--goal TEXT] [--source SOURCE] [--class CLASS]
+Changes a folder's fields after office open, on the desk or in the filing
+cabinet: each flag replaces that field's line (or writes it where the
+folder's field block puts it), takes the field out of the folder's
+provisional list (a field you set is yours, and no session's Structure
+changes it after that), and adds one History line per field, `re-scoped:
+FIELD from OLD to NEW (office folder)`; the folder is committed alone.
+With no flag it prints the folder's fields and the line that changes each.
+The lane must name a project this office scopes; --in-office says the
+work is the office's own (the lane then reads `the office`, and office
+start, office deliver and office probe stop asking where it lands). The
+size is small, medium or high, as office open takes it; the class one of
+bale's work classes. The status is never written here: office open, close
+and reopen write it. An open session in the office whose forecast holds
+the folder keeps the write out (the one-writer rule), and a session out on
+another project than a new lane names is said, never refused.
+Examples:
+  office folder 3                              (its fields, and the lines that change each)
+  office folder 3 --lane alpha                 (its work lands on alpha)
+  office folder 3 --in-office --title "Tidy the notepad"
+  office folder 12 --size medium --goal "Fix the login redirect on every browser"
+USAGE
+}
+
+# folder_held ROOT REL: the one-writer rule for a folder's page: the open
+# sessions in the office's own registry whose forecast holds REL/folder.md,
+# one line each, and exit 3; 0 when none holds it; 1 when the registry
+# cannot be read.
+folder_held() {
+  local out rc
+  out="$(reader writers "$1" "$2/folder.md" 2>/dev/null)"; rc=$?
+  [ "$rc" = 0 ] || [ -z "$out" ] || printf '%s\n' "$out"
+  return "$rc"
+}
+
+# folder_write ROOT REL DAY FLAGS...: office folder's write, the one-writer
+# rule first; each change said in one line, the folder committed alone.
+# Returns 1 when nothing could be written (said), 0 otherwise.
+folder_write() {
+  local root="$1" rel="$2" day="$3" out rc key old new changed=() held
+  shift 3
+  held="$(folder_held "$root" "$rel")"; rc=$?
+  case "$rc" in
+    0) ;;
+    3) printf '%s\n' "$held" | sed 's/^/[office]   /' >&2
+       warn "an open session in the office holds $rel/folder.md, so office folder writes nothing beside it (the one-writer rule); change it once that session is applied or closed"
+       return 1 ;;
+    *) warn "bale's registry in this office could not be read, so the one-writer rule could not be checked; writing $rel/folder.md anyway" ;;
+  esac
+  out="$(helper folder-edit "$root/$rel/folder.md" --day "$day" "$@")" || return 1
+  if [ -z "$out" ]; then
+    log "$rel: nothing changed (each field already says that)"
+    return 0
+  fi
+  while IFS=$'\t' read -r key old new; do
+    [ -n "$key" ] || continue
+    log "$rel: $key from $old to $new"
+    changed+=("$key")
+  done <<< "$out"
+  commit_paths "$root" "office folder: $(basename "$rel") re-scoped: $(printf '%s\n' "${changed[@]}" | paste -sd, - | sed 's/,/, /g')" "$rel/folder.md" || true
+  return 0
+}
+
+# keep_lane ROOT REL ANSWER (0.46.0): a lane asked once is kept. When
+# office start, office deliver or office probe had to ask which project a
+# folder's work is on (its lane names none), the answer, a project or
+# office, becomes the folder's lane through office folder's own write, and
+# that is said; a flag typed (--on, --in-office, --project) wins for its
+# run and writes nothing, so this is called only after a question.
+keep_lane() {
+  local root="$1" rel="$2" ans="$3" day key out
+  [ -n "$ans" ] && [ -f "$root/$rel/folder.md" ] || return 0
+  day="$(office_date "$(office_tz "$root")")"
+  key="$(helper folder-facts "$root/$rel/folder.md" 2>/dev/null | sed -n 's/^number\t//p')"
+  [ -n "$key" ] || key="$(basename "$rel")"
+  if [ "$ans" = office ]; then out="$(folder_write "$root" "$rel" "$day" --lane "the office" 2>&1)"
+  else out="$(folder_write "$root" "$rel" "$day" --lane "$ans" 2>&1)"; fi
+  if [ $? = 0 ]; then
+    debug "$out"
+    log "$rel's lane is $([ "$ans" = office ] && printf 'the office' || printf '%s' "$ans") now, so this is not asked again (office folder $key --lane says otherwise)"
+  else
+    printf '%s\n' "$out" >&2
+    log "$rel's lane is not kept, so this is asked again next time (office folder $key --lane PROJECT keeps one)"
+  fi
+  return 0
+}
+
+# find_any_folder ROOT WANT: a folder on the desk, else in the filing
+# cabinet; prints SPACE/NAME.
+find_any_folder() {
+  local name
+  if name="$( (find_folder "$1" desk "$2") 2>/dev/null)"; then printf 'desk/%s\n' "$name"; return 0; fi
+  name="$(find_folder "$1" filing-cabinet "$2")" || return 1
+  printf 'filing-cabinet/%s\n' "$name"
+}
+
+cmd_folder() {
+  local want="" root rel day names args=() lane="" in_office=0 v k given=0 out
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --lane|--title|--size|--goal|--source|--class)
+        [ $# -ge 2 ] || die "$1 needs a value (office folder --help explains it)"
+        [ "$1" != --lane ] || lane="$2"
+        args+=("$1" "$2"); given=1; shift 2 ;;
+      --in-office) in_office=1; given=1; shift ;;
+      -h|--help) usage_folder; return 0 ;;
+      -*) usage_folder >&2; die "office folder does not know $1; the flags above are what it takes" ;;
+      *) [ -z "$want" ] || die "office folder takes one folder"; want="$1"; shift ;;
+    esac
+  done
+  [ "$in_office" = 0 ] || [ -z "$lane" ] || die "--lane and --in-office are two lanes; give one"
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  if [ -z "$want" ]; then
+    can_ask || { usage_folder >&2; die "name the folder: office folder N; piped input is never asked"; }
+    ask_folder want "$root" desk "change"
+  fi
+  rel="$(find_any_folder "$root" "$want")" || exit 1
+  if [ "$given" = 0 ]; then
+    pylib "$MAP_PY" fields "$root" "$rel"
+    return $?
+  fi
+  names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+  if [ -n "$lane" ]; then
+    printf '%s\n' "$names" | grep -qxF -- "$lane" \
+      || die "--lane $lane: no such project in this office (it scopes: $(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g'); --in-office says the work is the office's own); nothing was written"
+  fi
+  [ "$in_office" = 0 ] || args+=(--lane "the office")
+  for k in size class; do
+    v=""
+    for ((i = 0; i < ${#args[@]}; i += 2)); do [ "${args[$i]}" != "--$k" ] || v="${args[$((i + 1))]}"; done
+    [ -z "$v" ] || helper normalize-field "$k" "$v" >/dev/null || die "--$k $v: nothing was written (the line above says what $k takes)"
+  done
+  # A session out on another project than the new lane names: said, never
+  # refused (the session lands where it was packed).
+  if [ -n "$lane$([ "$in_office" = 1 ] && printf x)" ]; then
+    local sid_line sid where
+    while IFS=$'\t' read -r sid where; do
+      [ -n "$sid" ] || continue
+      if [ "$in_office" = 1 ] && [ "$where" != "this office" ]; then
+        warn "$sid is out on $where for $rel; it lands there as packed, whatever the lane says now"
+      elif [ -n "$lane" ] && [ "$where" != "$lane" ]; then
+        warn "$sid is out $([ "$where" = "this office" ] && printf 'in the office' || printf 'on %s' "$where") for $rel; it lands there as packed, whatever the lane says now"
+      fi
+    done < <(pylib "$MAP_PY" open-for "$root" "$rel" 2>/dev/null)
+  fi
+  day="$(office_date "$(office_tz "$root")")"
+  folder_write "$root" "$rel" "$day" "${args[@]}" || exit 1
+}
+
+usage_map() {
+  cat <<'USAGE'
+usage: office map [PROJECT | FOLDER]
+One page of every project this office scopes and its folders. Each project
+has a heading, its facts on one line (here or on its host, its audience
+line, paused when it is), what rides with it and what runs after it lands,
+one line each; then every folder whose lane names it, on the desk and in
+the filing cabinet, newest number first, one line each: folder N, its
+title, its size and its state in the desk's words (in flight, landed and
+not delivered, delivered, a review, a merge job waiting, closed), its
+riders under it by number. Then the office: the folders whose lane names
+no project. With PROJECT, that project's section alone; with FOLDER (its
+number or a part of its name), the folder's whole record: its fields, its
+sessions as office sessions shows them, its riders, its deliveries and
+reviews, its standing, the lines that act on it next, and the lines that
+change its fields. It writes nothing; off a terminal it prints the same.
+Examples:
+  office map
+  office map alpha
+  office map 12
+USAGE
+}
+
+cmd_map() {
+  local want="" root today names rel
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help) usage_map; return 0 ;;
+      -*) usage_map >&2; die "office map does not know $1; it takes a project or a folder" ;;
+      *) [ -z "$want" ] || die "office map takes one project or one folder"; want="$1"; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  require_current "$root"
+  today="$(office_date "$(office_tz "$root")")"
+  if [ -z "$want" ]; then pylib "$MAP_PY" page "$root" --today "$today"; return $?; fi
+  names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+  if printf '%s\n' "$names" | grep -qxF -- "$want"; then
+    pylib "$MAP_PY" page "$root" --today "$today" --project "$want"; return $?
+  fi
+  rel="$(find_any_folder "$root" "$want")" \
+    || die "office map $want: no project or folder by that name (projects: $(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g'))"
+  pylib "$MAP_PY" page "$root" --today "$today" --folder "$rel"
+}
+
+# --- the out tray, opened again (0.46.0) -----------------------------------------
+
+usage_tray() {
+  cat <<'USAGE'
+usage: office tray [SID | FOLDER]
+Opens a session's out tray again, as office start opens it (machine.toml's
+open_command; on WSL, Explorer), prints its path and the files in it, and
+prints the opener again from the copy office start keeps beside the tray
+(OUT_TRAY/SID.opener.txt), so a closed window or a lost clipboard costs
+one line. With no argument, the tray of the newest session out from this
+office; with a folder (its number or a part of its name), the tray of its
+newest session; with a session id, that session's. It writes nothing.
+Examples:
+  office tray
+  office tray 12
+  office tray 2026-11-04-fix-login-001
+USAGE
+}
+
+cmd_tray() {
+  local want="" root tray_root out key val sid="" path="" opener="" files=() rel open
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help) usage_tray; return 0 ;;
+      -*) usage_tray >&2; die "office tray does not know $1; it takes a session id or a folder" ;;
+      *) [ -z "$want" ] || die "office tray takes one session or one folder"; want="$1"; shift ;;
+    esac
+  done
+  root="$(resolve_office)" || exit 1
+  tray_root="$(machine_setting out_tray "$HOME/out-tray")"
+  case "$tray_root" in "~"|"~/"*) tray_root="$HOME${tray_root#\~}" ;; esac
+  if [ -z "$want" ]; then
+    out="$(homex tray "$root" --tray-root "$tray_root")" || exit 1
+  elif [[ "$want" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-.+-[0-9]{3}$ ]]; then
+    out="$(homex tray "$root" --tray-root "$tray_root" --sid "$want")" || exit 1
+  else
+    rel="$(find_any_folder "$root" "$want")" || exit 1
+    out="$(homex tray "$root" --tray-root "$tray_root" --folder "$rel")" || exit 1
+  fi
+  while IFS=$'\t' read -r key val; do
+    case "$key" in sid) sid="$val" ;; path) path="$val" ;; file) files+=("$val") ;; opener) opener="$val" ;; esac
+  done <<< "$out"
+  printf 'Out tray for %s: %s\n' "$sid" "$path"
+  for val in "${files[@]}"; do printf '  %s\n' "$val"; done
+  [ "${#files[@]}" -gt 0 ] || printf '  (empty: its files were moved or deleted)\n'
+  if [ -t 1 ]; then
+    if on_wsl; then open="$(machine_setting open_command "$(desktop_tool explorer.exe)")"
+    else open="$(machine_setting open_command "")"; fi
+    if [ -n "$open" ]; then
+      (cd "$path" && $open . >/dev/null 2>&1 &)
+      log "opened the out tray with $open"
+    fi
+  fi
+  if [ -z "$opener" ]; then
+    log "no copy of the opener is kept beside this tray (office start keeps one since 0.46.0); the request in the tray is the session's, and bale status SID in its repo names it"
+    return 0
+  fi
+  printf '\nAttach every file in the out tray to a fresh chat, then paste the opener:\n\n'
+  printf -- '--8<-- session opener --8<--\n%s\n--8<-- end session opener --8<--\n' "$(cat "$opener")"
+  [ ! -t 1 ] || to_clipboard "$(cat "$opener")" "the opener"
+  return 0
 }
 
 usage_desk() {
@@ -2853,12 +3131,12 @@ cmd_reopen() {
 # records, the folder is open: status open and an opened line. DOCTRINE,
 # a sitting's doctrine sha256, is stamped in the line's words (0.33.0).
 record_session() {
-  local root="$1" folder="$2" sid="$3" words="$4" day="$5" doctrine="${6:-}" out rc
+  local root="$1" folder="$2" sid="$3" words="$4" day="$5" doctrine="${6:-}" out rc line
   out="$(helper record-session "$root/$folder/folder.md" "$sid" ${words:+--words "$words"} ${day:+--day "$day"} \
            ${doctrine:+--doctrine "$doctrine"})"; rc=$?
   case $rc in
-    0) log "recorded $sid in $folder"
-       printf '%s\n' "$out" | tail -n +2 | sed "s|^|[office] $(basename "$folder"): |" >&2
+    0) detail "recorded $sid in $folder"
+       while IFS= read -r line; do [ -z "$line" ] || detail "$(basename "$folder"): $line"; done < <(printf '%s\n' "$out" | tail -n +2)
        commit_paths "$root" "office sessions: $sid in $(basename "$folder")" "$folder/folder.md" || true ;;
     4) log "$sid is already recorded in $folder" ;;
     *) die "could not record $sid in $folder/folder.md" ;;
@@ -4528,6 +4806,7 @@ ask_start_folder() {
 # newest first, one key each; choosing one starts it as office start
 # --bundle does, and a plain return goes on to the jobs on the desk. Sets
 # bundle. Where downloads land is asked once on this machine, and kept.
+OFFER_MAX=9
 offer_bundles() {
   local root="$1" out rows=() row path stem age words vals=() d dl=() chosen=""
   downloads_known || downloads_setting "office start offers the planner's bundles in your downloads that no session has opened"
@@ -4548,14 +4827,24 @@ offer_bundles() {
       return 0
     fi
   fi
+  # The newest nine, one key each (0.46.0); the rest in one line that says
+  # how to start one by name and how to take one out of the offer.
+  local shown=0 rest=()
   for row in "${rows[@]}"; do
     IFS=$'\t' read -r path stem age words <<< "$row"
     [ -n "$path" ] || continue
+    if [ "$shown" -ge "$OFFER_MAX" ]; then rest+=("$stem"); continue; fi
     [ "${#words}" -le 60 ] || words="${words:0:57}..."
     vals+=("$path" "$stem, saved $age${words:+: $words}")
+    shown=$((shown + 1))
   done
   printf "Planner's bundles in your downloads that no session has opened, newest first:\n" >&2
-  pick chosen "The bundle to start, by its key; a plain return goes on to the jobs on the desk (--bundle FILE)" \
+  local trailer=""
+  if [ "${#rest[@]}" -gt 0 ]; then
+    trailer="  and ${#rest[@]} more, oldest first: office start --bundle FILE starts one by name, office withdraw --bundle STEM takes one out of the offer"
+    debug "not offered by key, newest first: ${rest[*]}"
+  fi
+  PICK_TRAILER="$trailer" pick chosen "The bundle to start, by its key; a plain return goes on to the jobs on the desk (--bundle FILE)" \
     "A planner's bundle carries a whole session: its goal, what it may change and its brief. Its key starts it, as office start --bundle FILE does. bale's records say which bundles a session was opened from; those are not offered. A plain return goes on to the jobs on the desk." \
     --skip 0 "${vals[@]}"
   [ -z "$chosen" ] || { bundle="$chosen"; log "starting the planner's bundle $(basename "$bundle")"; }
@@ -4574,7 +4863,9 @@ ask_where() {
   # An answer an artifact or a record gives is taken piped as on a
   # terminal (0.44.0), said in one line naming where it came from; only a
   # question nothing answers refuses, naming the flags.
+  START_WHERE_ASKED=0
   if [ -n "$why" ]; then ans="$def"; log "from the bundle: the work lands in $([ "$def" = office ] && printf 'the office' || printf '%s' "$def"): $why (--in-office or --on PROJECT says otherwise)"
+  elif [ "$lane" = office ]; then ans=office; log "from the folder: the work lands in the office, as the folder's lane says (--on PROJECT sends it to a project instead)"
   elif [ -n "$lane" ]; then ans="$lane"; log "from the folder: the work lands on $lane, the project the folder's lane names (--in-office sends it to the office instead)"
   elif [ -z "$known" ]; then ans=office; log "from the floor plan: the work lands in the office: it scopes no project (office projects add adds one)"
   else
@@ -4583,8 +4874,9 @@ ask_where() {
     vals+=(office "the office: the session works in this office (the folder, the notepad)")
     printf 'Where the work lands:\n' >&2
     pick ans "Where the work lands, by its key (--in-office or --on PROJECT)" \
-      "A project: the session changes that project's repo and is packed there, with this office's context riding beside it, never inside it. The office: the session works in this office and is packed here. The folder's lane names no project, so the office cannot tell which." \
+      "A project: the session changes that project's repo and is packed there, with this office's context riding beside it, never inside it. The office: the session works in this office and is packed here. The folder's lane names no project, so the office cannot tell which; your answer becomes its lane, so it is asked once." \
       "" 0 "${vals[@]}"
+    START_WHERE_ASKED=1
   fi
   if [ "$ans" = office ]; then printf -v "$__w" '%s' office; return 0; fi
   printf -v "$__w" '%s' project; printf -v "$__p" '%s' "$ans"
@@ -4696,7 +4988,7 @@ check_start_bundle() {
     [ -z "$out" ] || while IFS= read -r line; do [ -n "$line" ] && log "$line"; done <<< "$out"
     START_BRANCH_DONE=1
   fi
-  log "asking bale whether it can open $(basename "$bundle") $place (bale open --check, which writes nothing)"
+  detail "asking bale whether it can open $(basename "$bundle") $place (bale open --check, which writes nothing)"
   local cargs=(--where "$where")
   [ "$where" != project ] || cargs+=(--project "$project")
   # The host was checked once this start (start-check): not again.
@@ -4711,7 +5003,7 @@ check_start_bundle() {
       bale$'\t'*) said+=("${line#bale$'\t'}") ;;
     esac
   done <<< "$(printf '%s\n' "$out" | tail -n +2)"
-  [ -z "$found_at" ] || log "bale found it at $found_at, and every gate it runs before an open passed"
+  [ -z "$found_at" ] || detail "bale found it at $found_at, and every gate it runs before an open passed"
   # Where bale found it, for start to read a bare-named bundle's pack line
   # there (whether it is a sitting, so the digest goes before it): a file
   # on this machine only, never a hosted bundle's words.
@@ -5056,14 +5348,8 @@ start_sort() {
   printf 'Packed %s for the in-tray (the standalone sort; no folder records it).\n\n' "$sid"
   printf 'Out tray: %s\n' "$tray"
   [ -z "$carried" ] || printf '%s\n' "$carried" | sed 's/^/  /'
-  printf '\nAttach every file in the out tray to a fresh chat, then paste the opener:\n\n'
-  if [ -z "$opener" ]; then
-    warn "bale printed no opener between its scissor lines; the session is open, and bale status shows it"
-    return 0
-  fi
-  printf -- '--8<-- session opener --8<--\n%s\n--8<-- end session opener --8<--\n' "$opener"
+  hand_over_opener "$sid" "$tray" "$opener" || return 0
   printf '\nWhen the response comes back: office land %s\n' "$sid"
-  start_desktop "$tray" "$opener"
   return 0
 }
 
@@ -5133,14 +5419,8 @@ start_prep() {
   printf 'Packed %s for the meeting %s (its prep; the calendar records it, and no folder).\n\n' "$sid" "$title"
   printf 'Out tray: %s\n' "$tray"
   [ -z "$carried" ] || printf '%s\n' "$carried" | sed 's/^/  /'
-  printf '\nAttach every file in the out tray to a fresh chat, then paste the opener:\n\n'
-  if [ -z "$opener" ]; then
-    warn "bale printed no opener between its scissor lines; the session is open, and bale status shows it"
-    return 0
-  fi
-  printf -- '--8<-- session opener --8<--\n%s\n--8<-- end session opener --8<--\n' "$opener"
+  hand_over_opener "$sid" "$tray" "$opener" || return 0
   printf '\nThe same sitting serves before the meeting and during it. When the meeting is over: office land %s ends it, records the meeting held and files what arose as drops.\n' "$sid"
-  start_desktop "$tray" "$opener"
   return 0
 }
 
@@ -5423,6 +5703,9 @@ cmd_start() {
   START_REFRESH=""; START_REFRESH_DONE=0
   START_ENDS=""; START_RIDES=(); START_RIDES_NONE=0
   PLANNER_FILE=""; PLANNER_CONCERNS=(); PLANNER_WHY=""
+  # start's screen (0.46.0): on a terminal, the lines it need not read go
+  # under OFFICE_DEBUG (detail), here and in the reader it runs.
+  if [ -t 2 ]; then START_SCREEN=1; export START_SCREEN; fi
   while [ $# -gt 0 ]; do
     case "$1" in
       --in-office) [ -z "$where" ] || [ "$where" = office ] || die "--in-office and --on are two places; give one"; where=office; in_office_given=1; shift ;;
@@ -5766,6 +6049,10 @@ cmd_start() {
     *) lane_project="$(printf '%s' "$lane" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')" ;;
   esac
   printf '%s\n' "$names" | grep -qxF -- "$lane_project" || lane_project=""
+  # A lane that says the work is the office's own (0.46.0: office folder
+  # --in-office, or the office answered once): where is settled.
+  local lane_where="$lane_project"
+  [ -n "$lane_where" ] || [ "$(printf '%s' "$lane" | tr '[:upper:]' '[:lower:]' | tr -s ' ' | sed 's/^ //; s/ $//')" != "the office" ] || lane_where=office
 
   # Where the work lands: two choices, the kind names behind the curtain.
   # For a bundle the office can read, the default is the one place whose
@@ -5780,7 +6067,9 @@ cmd_start() {
         debug "where defaults to $where_default for this bundle: $where_why"
       fi
     fi
-    ask_where where project "$where_default" "$where_why" "$names" "$lane_project"
+    ask_where where project "$where_default" "$where_why" "$names" "$lane_where"
+    # Asked once, then kept (0.46.0): the answer becomes the folder's lane.
+    [ "${START_WHERE_ASKED:-0}" = 0 ] || keep_lane "$root" "desk/$name" "$([ "$where" = office ] && printf office || printf '%s' "$project")"
   fi
   start_check_place "$where" "$project" "$names"
   [ "$where" = project ] || about="$lane_project"
@@ -5835,7 +6124,7 @@ cmd_start() {
     fi
     # Which paths a session will change is the session's judgment, never
     # asked (0.22.0): with no lane paths and no --write, the whole repo.
-    [ "${#writes[@]}" -gt 0 ] || log "no forecast given: bale forecasts the whole of $project, so no other session there runs beside this one"
+    [ "${#writes[@]}" -gt 0 ] || detail "no forecast given: bale forecasts the whole of $project, so no other session there runs beside this one"
   fi
   # What rides with the project: shown on a terminal, where a declared
   # ride-along can stay home for this session; piped, everything rides
@@ -5887,7 +6176,7 @@ cmd_start() {
   elif [ "$tray_root_rc" != 0 ]; then warn "$MACHINE_FILE could not be read; using the default for out_tray"; tray_root="$HOME/out-tray"; fi
   case "$tray_root" in "~"|"~/"*) tray_root="$HOME${tray_root#\~}" ;; esac
 
-  log "$([ -n "$bundle" ] && printf 'opening the bundle %s' "$bundle" || printf 'packing') for desk/$name ($([ "$where" = office ] && printf 'in the office' || printf 'on %s' "$project"))"
+  detail "$([ -n "$bundle" ] && printf 'opening the bundle %s' "$bundle" || printf 'packing') for desk/$name ($([ "$where" = office ] && printf 'in the office' || printf 'on %s' "$project"))"
   out="$(reader start "$root" "desk/$name" "${args[@]}" --tray-root "$tray_root")" || exit 1
   # The session is out: a failure after this is not a start to retry.
   trap cleanup_tmp EXIT; START_OPENED=""
@@ -5922,18 +6211,12 @@ cmd_start() {
   fi
   printf 'Out tray: %s\n' "$tray"
   [ -z "$carried" ] || printf '%s\n' "$carried" | sed 's/^/  /'
-  printf '\nAttach every file in the out tray to a fresh chat, then paste the opener:\n\n'
-  if [ -z "$opener" ]; then
-    warn "bale printed no opener between its scissor lines; the session is open, and bale pack's own report (run it by hand) or bale status shows it"
-    return "$filed_rc"
-  fi
-  printf -- '--8<-- session opener --8<--\n%s\n--8<-- end session opener --8<--\n' "$opener"
+  hand_over_opener "$sid" "$tray" "$opener" || return "$filed_rc"
   if [ -n "$sitting" ]; then
     printf '\nA read-only sitting lands nothing; when it is over: office land %s ends it\n' "$sid"
   else
     printf '\nWhen the response comes back: office land %s\n' "$sid"
   fi
-  start_desktop "$tray" "$opener"
   # The sitting the bundle's brief succeeds (0.43.0): ended after the opener
   # is on the clipboard, so a refusal of the end never costs the pack.
   if [ -n "$bundle" ]; then
@@ -6066,16 +6349,38 @@ file_ratifications() {
 # clipboard and open the out tray in the file manager. On WSL they
 # default to clip.exe and explorer.exe, as desktop_tool finds them;
 # elsewhere they are off until machine.toml names a command.
+# hand_over_opener SID TRAY OPENER (0.46.0): what a start ends with once
+# the session is out: the opener kept beside the tray (office tray reads it
+# back), copied and the tray opened (start_desktop), one line saying what
+# to do next, the last of start's [office] lines, then the opener itself.
+# Returns 1 when bale printed no opener (said).
+hand_over_opener() {
+  local sid="$1" tray="$2" opener="$3"
+  if [ -z "$opener" ]; then
+    warn "bale printed no opener between its scissor lines; the session is open, and bale pack's own report (run it by hand) or bale status shows it"
+    return 1
+  fi
+  start_desktop "$tray" "$opener"
+  log "next: attach every file in the out tray ($tray) to a fresh chat, then paste the opener below (office tray $sid opens the tray and prints the opener again)"
+  printf -- '\n--8<-- session opener --8<--\n%s\n--8<-- end session opener --8<--\n' "$opener"
+  return 0
+}
+
 start_desktop() {
   local tray="$1" opener="$2" open
+  # The opener's copy beside the tray (0.46.0): TRAY.opener.txt, outside
+  # the tray so every file in it is still one to attach; office tray
+  # prints it again.
+  printf '%s\n' "$opener" > "$tray.opener.txt" 2>/dev/null \
+    || warn "the opener's copy could not be kept beside the tray ($tray.opener.txt), so office tray cannot print it again; copy it from the screen"
   # The opener's copy is the last the start makes (bale's pack copies it
   # too, before), and every outcome of it is said, piped included. The
   # in-tray's sort sent out ahead of a sitting (0.24.0) leaves the copy to
   # the sitting's opener, which comes after it.
   if [ "${START_NO_CLIPBOARD:-0}" = 1 ]; then
-    log "the sort's opener is not copied: the sitting's goes on the clipboard after it; copy this one from the screen above"
+    log "the sort's opener is not copied: the sitting's goes on the clipboard after it; copy this one from the screen below"
   else
-    to_clipboard "$opener" "the opener"
+    to_clipboard "$opener" "the opener" below
   fi
   [ -t 1 ] || return 0
   if on_wsl; then
@@ -6103,9 +6408,9 @@ start_desktop() {
 # Returns 0 when the clipboard reads back the text, 2 when the copy was made
 # and cannot be read back to confirm, and 1 when nothing true was copied.
 to_clipboard() {
-  local text="$1" what="$2" clip paste rc tmp err
+  local text="$1" what="$2" where="${3:-above}" clip paste rc tmp err
   if [ ! -t 1 ]; then
-    log "$what is not on the clipboard: off a terminal the office copies nothing; it is printed above"
+    log "$what is not on the clipboard: off a terminal the office copies nothing; it is printed $where"
     return 1
   fi
   if on_wsl; then
@@ -6114,17 +6419,17 @@ to_clipboard() {
     clip="$(machine_setting clipboard_command "")"
   fi
   if [ -z "$clip" ]; then
-    log "$what is not on the clipboard: this machine names no clipboard command (clipboard_command in $MACHINE_FILE); copy it from the screen above"
+    log "$what is not on the clipboard: this machine names no clipboard command (clipboard_command in $MACHINE_FILE); copy it from the screen $where"
     return 1
   fi
-  tmp="$(mktemp -d)" || { warn "$what is not on the clipboard: no temporary space to copy it through; copy it from the screen above"; return 1; }
+  tmp="$(mktemp -d)" || { warn "$what is not on the clipboard: no temporary space to copy it through; copy it from the screen $where"; return 1; }
   TMP_PATHS+=("$tmp")
   printf '%s\n' "$text" > "$tmp/text"
   if [ "$(basename "${clip%% *}")" = clip.exe ]; then
     python3 -B -P -S -c 'import sys
 data = open(sys.argv[1], "rb").read().decode("utf-8", "replace")
 open(sys.argv[2], "wb").write(data.encode("utf-16-le"))' "$tmp/text" "$tmp/feed" \
-      || { warn "$what is not on the clipboard: it could not be turned into the UTF-16 clip.exe reads; copy it from the screen above"; return 1; }
+      || { warn "$what is not on the clipboard: it could not be turned into the UTF-16 clip.exe reads; copy it from the screen $where"; return 1; }
   else
     cp -- "$tmp/text" "$tmp/feed"
   fi
@@ -6132,14 +6437,14 @@ open(sys.argv[2], "wb").write(data.encode("utf-16-le"))' "$tmp/text" "$tmp/feed"
   clipboard_copy; rc=$?
   if [ "$rc" != 0 ]; then
     err="$(tail -n 1 "$tmp/err" 2>/dev/null)"
-    warn "$what is NOT on the clipboard: $clip exited $rc${err:+ ($err)}; copy it from the screen above"
+    warn "$what is NOT on the clipboard: $clip exited $rc${err:+ ($err)}; copy it from the screen $where"
     return 1
   fi
   # The read-back: the machine's own reader, never asked for here.
   paste="$(helper paste-command "$MACHINE_FILE" 2>/dev/null)"; rc=$?
   if [ "$rc" = 3 ]; then paste="$(helper paste-command "$MACHINE_FILE" --candidate 2>/dev/null)" || paste=""; fi
   if [ -z "$paste" ]; then
-    log "$what went to the clipboard ($clip), unconfirmed: this machine has no way to read it back (paste_command in $MACHINE_FILE); if a paste shows anything else, copy it from the screen above"
+    log "$what went to the clipboard ($clip), unconfirmed: this machine has no way to read it back (paste_command in $MACHINE_FILE); if a paste shows anything else, copy it from the screen $where"
     return 2
   fi
   clipboard_reads_back() {
@@ -6157,10 +6462,10 @@ sys.exit(0 if norm(sys.argv[1]) == norm(sys.argv[2]) else 1)' "$tmp/text" "$tmp/
   fi
   case "$rc" in
     0) log "$what is on the clipboard ($clip; read back and checked)"; return 0 ;;
-    1) warn "$what is NOT on the clipboard as printed: $clip took it, but the clipboard reads back otherwise ($paste); copy it from the screen above"
+    1) warn "$what is NOT on the clipboard as printed: $clip took it, but the clipboard reads back otherwise ($paste); copy it from the screen $where"
        return 1 ;;
     *) err="$(tail -n 1 "$tmp/err" 2>/dev/null)"
-       log "$what went to the clipboard ($clip), unconfirmed: reading it back failed ($paste${err:+: $err}); if a paste shows anything else, copy it from the screen above"
+       log "$what went to the clipboard ($clip), unconfirmed: reading it back failed ($paste${err:+: $err}); if a paste shows anything else, copy it from the screen $where"
        return 2 ;;
   esac
 }
@@ -7484,8 +7789,14 @@ usage: office projects                       list the projects this office scope
                            [--audience REMOTE] [--author "Name <email>"] [--base BRANCH]
                            [--no-audience] [--no-author] [--no-base]
                            [--validates-on HOST] [--no-validates-on]
+                           [--branch-prefix PREFIX] [--no-branch-prefix]
                            [--ride PATH]... [--no-rides]            every session on it, and
                            [--after-land CMD]... [--no-after-land]  what runs after one lands
+       office projects set NAME --edit       walk every group: where it is, the audience
+                                             line, what rides, what runs after it lands
+       office projects set NAME --path PATH [--prepare]
+                                             point it at another clone, checked as add
+                                             checks one; the old clone is left as it is
        office projects set NAME --prepare    prepare its clone again (the exclude lines,
                                              bale.toml, bale's sandbox setting where its
                                              sandbox cannot run)
@@ -7608,8 +7919,15 @@ session office start packs for the project. An after-land action is a
 command run in the project's repo after one of its sessions lands: office
 land runs them in order once bale has applied it. All of it lives in this
 office's floor plan, never in the project's repo. --ride and --after-land
-replace the list they name; on a terminal, set asks for what it was not
-given.
+replace the list they name. Given flags, set changes the groups they
+name and asks nothing about any other (0.46.0); given none on a terminal,
+it asks group by group, keep or change, as --edit asks for. --path re-points
+a declared project at another clone: the path is checked as office projects
+add checks one (here, or on the project's host through its shell: a git
+repo bale runs in, or one --prepare prepares), the floor plan's path is
+rewritten, and the old clone is never touched or removed. --branch-prefix
+writes what goes before a delivery branch's short name (feature/), the one
+office deliver's branch rule reads; --no-branch-prefix clears it.
 Examples:
   office projects
   office projects add                          (asks for the path, where it is, the name, what rides)
@@ -7624,6 +7942,9 @@ Examples:
   office projects set api --audience origin --author "Pat Example <pat@example.org>" --base main
   office projects add beta ~/work/beta --audience origin --host me@workhost   (worked here; validates on workhost)
   office projects set office-src --after-land ./install.sh
+  office projects set api --path ~/work/api-2  (another clone; the old one stays where it is)
+  office projects set api --branch-prefix feature/
+  office projects set api --edit               (every group, keep or change)
   office projects set office-src --ride ~/nisaba-src/blueprints
   office projects --landed bin/office
 EOF
@@ -8048,9 +8369,13 @@ cmd_projects_set() {
   local name="" root facts rides=() afters=() set_r=0 set_a=0 args=() current keep line out
   local host="" shell="" connect="" set_h=0 hargs=() cur_host
   local audience="" author="" base="" set_aud=0 clear_aud=() gitfacts="" url="" cur_aud path k validates="" prepare=0
-  local paused="" others_given=0
+  local paused="" others_given=0 edit=0 new_path="" set_p=0 prefix="" walk=0
   while [ $# -gt 0 ]; do
     case "$1" in
+      --edit) edit=1; shift ;;
+      --path) [ $# -ge 2 ] || die "--path needs the clone's path"; new_path="$2"; set_p=1; shift 2 ;;
+      --branch-prefix) [ $# -ge 2 ] || die "--branch-prefix needs a prefix, such as feature/"; prefix="$2"; set_aud=1; shift 2 ;;
+      --no-branch-prefix) clear_aud+=(--no-branch-prefix); set_aud=1; shift ;;
       --paused|--unpaused) [ -z "$paused" ] || [ "$paused" = "$1" ] || die "--paused and --unpaused contradict each other"
                            paused="$1"; shift; continue ;;
       --prepare) prepare=1; shift ;;
@@ -8060,7 +8385,7 @@ cmd_projects_set() {
         [ $# -ge 2 ] || die "$1 needs a value"
         case "$1" in --audience) audience="$2" ;; --author) author="$2" ;; --base) base="$2" ;; esac
         set_aud=1; shift 2 ;;
-      --no-audience) clear_aud+=(--no-audience --no-author --no-base --no-validates-on); set_aud=1; shift ;;
+      --no-audience) clear_aud+=(--no-audience --no-author --no-base --no-validates-on --no-branch-prefix); set_aud=1; shift ;;
       --no-author) clear_aud+=(--no-author); set_aud=1; shift ;;
       --no-base) clear_aud+=(--no-base); set_aud=1; shift ;;
       --host) [ $# -ge 2 ] || die "--host needs an ssh target"; host="$2"; set_h=1; shift 2 ;;
@@ -8072,7 +8397,7 @@ cmd_projects_set() {
       --after-land) [ $# -ge 2 ] || die "--after-land needs a command"; afters+=("$2"); set_a=1; shift 2 ;;
       --no-after-land) set_a=2; shift ;;
       -h|--help) usage_projects; return 0 ;;
-      -*) usage_projects >&2; die "office projects set does not know $1; it takes a project's name, --prepare, --host, --shell, --connect, --on-this-machine, --audience, --author, --base, --validates-on, --no-audience, --no-author, --no-base, --no-validates-on, --ride, --no-rides, --after-land and --no-after-land" ;;
+      -*) usage_projects >&2; die "office projects set does not know $1; it takes a project's name, --edit, --path, --prepare, --host, --shell, --connect, --on-this-machine, --audience, --author, --base, --validates-on, --branch-prefix, --no-audience, --no-author, --no-base, --no-validates-on, --no-branch-prefix, --ride, --no-rides, --after-land and --no-after-land" ;;
       *) [ -z "$name" ] || die "office projects set takes one project"; name="$1"; shift; continue ;;
     esac
     others_given=1
@@ -8088,6 +8413,18 @@ cmd_projects_set() {
     commit_paths "$root" "office projects: set $name $paused" "$MANIFEST_REL" || true
     printf '%s\n' "$out"
     return 0
+  fi
+  # What it asks (0.46.0): given a flag for any group, only that group
+  # changes and no other is asked; given none on a terminal, every group in
+  # turn, keep or change, which --edit says explicitly.
+  if [ "$edit" = 1 ]; then
+    can_ask || die "--edit walks every group by asking, and piped input is never asked; give the flags for what changes"
+    walk=1
+  elif [ "$set_r" = 0 ] && [ "$set_a" = 0 ] && [ "$set_h" = 0 ] && [ "$set_aud" = 0 ] && [ "$set_p" = 0 ] && [ "$prepare" = 0 ] && can_ask; then
+    walk=1
+  fi
+  if [ -n "$prefix" ] && printf '%s\n' "${clear_aud[@]}" | grep -qx -- --no-branch-prefix; then
+    die "--branch-prefix and --no-branch-prefix contradict each other"
   fi
   [ "$set_r" != 2 ] || [ "${#rides[@]}" -eq 0 ] || die "--ride and --no-rides contradict each other"
   [ "$set_a" != 2 ] || [ "${#afters[@]}" -eq 0 ] || die "--after-land and --no-after-land contradict each other"
@@ -8108,13 +8445,13 @@ cmd_projects_set() {
   # --prepare alone (0.39.0): prepare re-run on the clone as declared, here
   # or through its host's shell, so a clone added before bale's sandbox
   # setting gets it without being added again; nothing is asked.
-  if [ "$prepare" = 1 ] && [ "$set_r" = 0 ] && [ "$set_a" = 0 ] && [ "$set_h" = 0 ] && [ "$set_aud" = 0 ]; then
+  if [ "$prepare" = 1 ] && [ "$set_r" = 0 ] && [ "$set_a" = 0 ] && [ "$set_h" = 0 ] && [ "$set_aud" = 0 ] && [ "$set_p" = 0 ]; then
     prepare_declared "$name" "$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "path" {print $2}')" "$cur_host" \
       "$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "shell" {print $2}')" \
       "$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "connect" {print $2}')" || exit 1
     return 0
   fi
-  if [ "$set_r" = 0 ] && [ "$set_a" = 0 ] && [ "$set_h" = 0 ] && [ "$set_aud" = 0 ] && ! can_ask; then
+  if [ "$set_r" = 0 ] && [ "$set_a" = 0 ] && [ "$set_h" = 0 ] && [ "$set_aud" = 0 ] && [ "$set_p" = 0 ] && ! can_ask; then
     # Nothing to set, piped: a project with an audience still gets its
     # push guard brought up to date (0.25.0), and nothing is asked.
     if printf '%s\n' "$facts" | grep -q '^audience'$'\t'; then
@@ -8123,7 +8460,7 @@ cmd_projects_set() {
       letterhead_arrives "$root"
       return 0
     fi
-    die "nothing to set for $name; give --host HOST (with --shell PREFIX and --connect TEXT) or --on-this-machine, --audience REMOTE (with --author and --base) or --no-audience, --ride PATH (repeatable) or --no-rides, and --after-land CMD (repeatable) or --no-after-land; piped input is never asked"
+    die "nothing to set for $name; give --path PATH, --host HOST (with --shell PREFIX and --connect TEXT) or --on-this-machine, --audience REMOTE (with --author, --base and --branch-prefix) or --no-audience, --ride PATH (repeatable) or --no-rides, and --after-land CMD (repeatable) or --no-after-land; piped input is never asked"
   fi
   path="$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "path" {print $2}')"
   cur_aud="$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "audience" {print $2}')"
@@ -8133,11 +8470,13 @@ cmd_projects_set() {
   { [ -z "$author" ] && [ -z "$base" ]; } || [ -n "$audience" ] || [ -n "$cur_aud" ] || die "$name has no audience; --author and --base go with --audience REMOTE"
   [ -z "$validates" ] || [ -n "$audience" ] || [ -n "$cur_aud" ] || die "$name has no audience; --validates-on names where a project with an audience validates"
   [ -z "$validates" ] || validates="$(helper check-audience-key validates_on "$validates")" || exit 1
+  [ -z "$prefix" ] || [ -n "$audience" ] || [ -n "$cur_aud" ] || die "$name has no audience; --branch-prefix names what goes before a delivery branch's name, so it goes with --audience REMOTE"
+  [ -z "$prefix" ] || prefix="$(helper check-audience-key branch_prefix "$prefix")" || exit 1
   if [ "$set_h" = 1 ] && [ -z "$host" ]; then
     [ -n "$cur_host" ] || die "$name is on this machine; --shell and --connect go with --host HOST"
     host="$cur_host"
   fi
-  if can_ask && [ "$set_h" = 0 ]; then
+  if [ "$walk" = 1 ] && [ "$set_h" = 0 ]; then
     # Where the project is: keep it, or ask the host questions again.
     if [ -n "$cur_host" ]; then
       ask keep "Keep $name on $cur_host, reached through: $(printf '%s\n' "$facts" | awk -F'\t' '$1 == "shell" {print $2}')? (y/n)" "y" 0 \
@@ -8154,7 +8493,7 @@ cmd_projects_set() {
     eff_host="$cur_host"; eff_shell="$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "shell" {print $2}')"
     eff_connect="$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "connect" {print $2}')"
   elif [ "$set_h" = 2 ]; then eff_host=""; eff_shell=""; eff_connect=""; fi
-  if can_ask && [ "$set_aud" = 0 ]; then
+  if [ "$walk" = 1 ] && [ "$set_aud" = 0 ]; then
     if [ -n "$cur_aud" ]; then
       local cur_author cur_base
       cur_author="$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "author" {print $2}')"
@@ -8179,7 +8518,7 @@ cmd_projects_set() {
     url="$(clone_fact "$gitfacts" remote "$audience")"
     [ -n "$url" ] || die "the clone at $path has no remote named $audience (it has: $(clone_fact "$gitfacts" remotes))"
   fi
-  if can_ask; then
+  if [ "$walk" = 1 ]; then
     for line in ride after-land; do
       if [ "$line" = ride ] && [ "$set_r" != 0 ]; then continue; fi
       if [ "$line" = after-land ] && [ "$set_a" != 0 ]; then continue; fi
@@ -8195,7 +8534,22 @@ cmd_projects_set() {
       if [ -z "$current" ] && [ "$line" = after-land ] && [ "$set_a" = 2 ]; then set_a=0; fi
     done
   fi
-  if [ "$set_r" = 0 ] && [ "$set_a" = 0 ] && [ "$set_h" = 0 ] && [ "$set_aud" = 0 ]; then
+  # Another clone (0.46.0): checked as office projects add checks one,
+  # where the project is (its host's shell when it has one); the old clone
+  # is never touched.
+  local old_path="$path" found_new=""
+  if [ "$set_p" = 1 ]; then
+    if [ -z "$eff_host" ]; then
+      case "$new_path" in "~") new_path="$HOME" ;; "~/"*) new_path="$HOME/${new_path#\~/}" ;; esac
+      [ ! -d "$new_path" ] || new_path="$(cd "$new_path" && pwd)"
+    fi
+    [ "$new_path" != "$path" ] || die "$name's clone is $path already; nothing was written"
+    check_project found_new "$new_path" "$eff_host" "$eff_shell" "$eff_connect" "$([ "$prepare" = 1 ] && printf yes || printf no)" \
+      || die "--path $new_path does not check (the line above says why); the floor plan still says $path"
+    prepare=0  # prepared by the check when --prepare asked for it
+    path="$new_path"
+  fi
+  if [ "$set_r" = 0 ] && [ "$set_a" = 0 ] && [ "$set_h" = 0 ] && [ "$set_aud" = 0 ] && [ "$set_p" = 0 ]; then
     log "nothing changed for $name"
     if [ -n "$cur_aud" ]; then deliver_py guard "$root" --project "$name" || true; letterhead_arrives "$root"; fi
     return 0
@@ -8208,9 +8562,12 @@ cmd_projects_set() {
   [ -z "$author" ] || args+=(--author "$author")
   [ -z "$base" ] || args+=(--base "$base")
   [ -z "$validates" ] || args+=(--validates-on "$validates")
+  [ -z "$prefix" ] || args+=(--branch-prefix "$prefix")
+  [ "$set_p" = 0 ] || args+=(--path "$new_path")
   args+=("${clear_aud[@]}")
   helper project-declare "$root/$MANIFEST_REL" "$name" "${args[@]}" || exit 1
   commit_paths "$root" "office projects: set $name" "$MANIFEST_REL" || true
+  [ "$set_p" = 0 ] || log "$name's clone is now $new_path$([ -n "$eff_host" ] && printf ' on %s' "$eff_host"); it was $old_path, which is left exactly as it is (nothing there is touched or removed)"
   [ "$prepare" = 0 ] || prepare_declared "$name" "$path" "$eff_host" "$eff_shell" "$eff_connect" || exit 1
   if [ -n "$audience" ]; then
     install_guard "$path" "$eff_host" "$eff_shell" "$eff_connect" "$audience" "$url" || true
@@ -8683,6 +9040,25 @@ cmd_deliver() {
   [ -z "$author" ] || author="$(helper check-audience-key author "$author")" || exit 1
   local day
   day="$(office_date "$(office_tz "$root")")"
+  # The project, asked once and kept (0.46.0): a folder whose lane names
+  # none of the office's projects (and is not the office's own) is asked by
+  # key on a terminal, and the answer becomes its lane; --on PROJECT wins
+  # for this run and writes nothing; piped, the plan's refusal names --on.
+  if [ -z "$project" ] && can_ask; then
+    local lane_now dnames dvals=() dn lane_line
+    lane_now="$(helper lane-project "$root/$space/$name/folder.md" 2>/dev/null)"
+    lane_line="$(helper folder-facts "$root/$space/$name/folder.md" 2>/dev/null | sed -n 's/^lane\t//p')"
+    dnames="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+    if [ -n "$dnames" ] && ! printf '%s\n' "$dnames" | grep -qxF -- "${lane_now:-}" \
+        && [ "$(printf '%s' "$lane_line" | tr '[:upper:]' '[:lower:]' | tr -s ' ' | sed 's/^ //; s/ $//')" != "the office" ]; then
+      while IFS= read -r dn; do [ -n "$dn" ] && dvals+=("$dn" "$dn"); done <<< "$dnames"
+      printf "This office's projects:\n" >&2
+      pick project "Which project $space/$name's work is on, by its key (--on PROJECT)" \
+        "The project whose audience the folder's landed work goes to. The folder's lane names none, so the office cannot tell; your answer becomes its lane, so it is asked once." \
+        "" 0 "${dvals[@]}"
+      keep_lane "$root" "$space/$name" "$project"
+    fi
+  fi
   log "planning the delivery of $space/$name: the audience's base, the landed work, the words, the letterhead check, the commits"
   # The plan, and the two facts only the occupant has, each asked once on a
   # terminal and the plan made again with the answer: the author, when the
@@ -9523,12 +9899,16 @@ cmd_probe() {
   # Where it runs: the folder's lane, --project, or asked.
   if [ -z "$project" ]; then
     project="$(probe_py lane "$root" "desk/$name")" || exit 1
-    if [ -n "$project" ]; then
+    if [ "$project" = office ]; then
+      log "from the folder: desk/$name's lane is the office, so the probe runs in the office root (--project says otherwise)"
+    elif [ -n "$project" ]; then
       log "desk/$name's lane names $project, so the probe runs where $project lives (--project says otherwise)"
     else
       names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
       can_ask || die "say where the probe runs: --project NAME ($(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')), or --project office for the office itself; desk/$name's lane names no project, and piped input is never asked"
       ask_probe_project project "$names"
+      # Asked once, then kept (0.46.0): the answer is the folder's lane.
+      keep_lane "$root" "desk/$name" "$project"
     fi
   fi
 
@@ -10013,6 +10393,7 @@ walk_in() {
 # folders, and responses and bundles are found in this machine's downloads.
 
 HOME_PY="$OFFICE_SRC/lib/office_home.py"
+MAP_PY="$OFFICE_SRC/lib/office_map.py"
 homex() { pylib "$HOME_PY" "$@"; }
 
 # read_key VAR PROMPT: one key, on a terminal, without a return. A return
@@ -10231,6 +10612,10 @@ usage: office [VERB [args]]
   office withdraw           close a session you sent out and will never run,
                             asked once
   office desk               every job on the desk, in order
+  office map [FOLDER]       every project and its folders on one page, or one
+                            folder's whole record
+  office folder N           a folder's lane, title, size or goal, changed
+  office tray [FOLDER]      a session's out tray opened again, with its opener
   office close [FOLDER]     a finished job, to the filing cabinet
   office deliver [FOLDER]   a job's landed work to its project's audience,
                             asked once before anything leaves
@@ -10272,6 +10657,9 @@ Walk in and look around
                             and the one command to type next
   office desk               in flight, ready in order, parked under what each waits
                             for, candidates, orphaned riders, pending desk moves
+  office map [PROJECT | FOLDER]
+                            every project with its facts, riders and folders, each
+                            folder's state; or one project, or one folder's record
   office week               this week's calendar and its gaps
   office sessions FOLDER    the sessions that worked on a job, and how each went
   office projects           the projects this office watches; --ledger, --landed PATH
@@ -10294,6 +10682,9 @@ Start a job, and finish one
   office close FOLDER       to the filing cabinet: done, or --into N, --split A,B,
                             --retired WHY
   office reopen FOLDER      a done folder back on the desk, history and all
+  office folder N           a folder's fields after open: --lane PROJECT or
+                            --in-office, --title, --size, --goal, --source, --class;
+                            alone, its fields and the line that changes each
 
 Plan work too big for one folder (the drafting table)
   office blueprint open SLUG
@@ -10352,6 +10743,9 @@ Bring one back
                             given a read-only sitting's id, ends the sitting;
                             a meeting's prep, ended, records the meeting held and
                             files what arose as drops (--arising FILE)
+  office tray [SID | FOLDER]
+                            a session's out tray opened again, its files listed and
+                            its opener printed again (the newest session's, alone)
   office withdraw [FOLDER]  closes a session sent out and never worked (no response,
                             no apply begun): bale unlock with reason abandoned where
                             it is open, asked once, and a line in the folder
@@ -10412,7 +10806,7 @@ EOF
 }
 
 # The verbs office help VERB explains, each through its own --help.
-HELP_VERBS=" init found survey status upgrade where default note slip drop meeting open desk week close reopen sessions projects start land withdraw tour version moves blueprint rider riders agenda rulings evidence watches digest deliver letterhead relay probe standing "
+HELP_VERBS=" init found survey status upgrade where default note slip drop meeting open desk week close reopen sessions projects start land withdraw tour version moves blueprint rider riders agenda rulings evidence watches digest deliver letterhead relay probe standing map folder tray "
 # The two-word verbs, as office help VERB WORD (or VERB-WORD, the key
 # share/verbs.toml gives them) explains them.
 HELP_PAIRS=" blueprint-open blueprint-ratify blueprint-close rider-add rider-carry rider-consumed agenda-add watches-check letterhead-check "
@@ -10500,6 +10894,9 @@ main() {
     probe) cmd_probe "$@" ;;
     standing) cmd_standing "$@" ;;
     withdraw) cmd_withdraw "$@" ;;
+    map) cmd_map "$@" ;;
+    folder) cmd_folder "$@" ;;
+    tray) cmd_tray "$@" ;;
     *) usage >&2; die "unknown verb: $verb" ;;
   esac
 }
