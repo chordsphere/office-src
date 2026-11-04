@@ -280,24 +280,28 @@ class TestTheHomeScreenOnATerminal(LandCase):
     def test_bare_start_offers_the_bundles_no_session_opened_by_key(self):
         downloads_set(self)
         bundle_file(self.downloads, "2026-10-15-src-pass", bundle_argv("src-pass"))
+        # Two wait, so the offer is by key (since 0.44.0 one alone is taken:
+        # tests/test_from_the_artifact.py); the other is a day older.
+        older = bundle_file(self.downloads, "2026-10-14-doc-pass", bundle_argv("doc-pass", write="docs"))
+        then = older.stat().st_mtime - 86400
+        os.utime(older, (then, then))
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start"], self.root, self.e.env, [
             (b"(--bundle FILE) [return skips]:", "1"),
             (b"Which job, by its key (office start FOLDER):", "1"),
         ])
         self.assertEqual(code, 0, seen)
         self.assertIn("[1] 2026-10-15-src-pass, saved just now: Do the src-pass work", seen)
+        self.assertIn("[2] 2026-10-14-doc-pass, saved yesterday: Do the doc-pass work", seen)
         self.assertRegex(seen, r"Packed \d{4}-\d{2}-\d{2}-src-pass-001 for desk/")
         self.assertNotIn("in your words (--goal)", seen, "a bundle carries its own goal")
-        # Opened now, by bale's records: offered no more, and start goes
-        # straight to the jobs on the desk.
+        # Opened now, by bale's records: offered no more; the one left is
+        # the downloads' one answer, taken and said.
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start"], self.root, self.e.env, [
             (b"Which job, by its key (office start FOLDER):", "1"),
-            (b"in your words (--goal):", "Fix the login"),
         ])
-        # The job's forecast meets the open session's, so the start stops
-        # there; what matters here is what it offered first.
-        self.assertNotIn("Planner's bundles in your downloads", seen)
         self.assertNotIn("[1] 2026-10-15-src-pass", seen)
+        self.assertIn("from the downloads: one bundle waits, 2026-10-14-doc-pass; starting it (a plain office start "
+                      "FOLDER starts a job instead)", " ".join(seen.split()))
 
 
 class TestTheHeldResponseByKeyOnATerminal(LandCase):

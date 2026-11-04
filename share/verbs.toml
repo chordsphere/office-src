@@ -52,11 +52,12 @@
 # kind with built = false is a registry entry, not a verb the command
 # has; it arrives by hand a few times before the command learns it.
 
+# office init lists the office it builds in machine.toml's offices (0.44.0).
 [verbs.init]
 kind = "script"
 built = true
 surface = "occupant"
-writes = ["the new office"]
+writes = ["the new office", "the per-machine list of offices (machine.toml's offices)"]
 lands = ["floor-plan/manifest.toml", "profile.md"]
 attended = true
 trigger = ["manual"]
@@ -113,11 +114,13 @@ lands = []
 attended = true
 trigger = ["manual"]
 
+# office default PATH also lists PATH in machine.toml's offices (0.44.0),
+# the per-machine list of the offices here, when it is not listed.
 [verbs.default]
 kind = "script"
 built = true
 surface = "plumbing"
-writes = ["the per-machine default office setting"]
+writes = ["the per-machine default office setting", "the per-machine list of offices (machine.toml's offices)"]
 lands = []
 attended = true
 trigger = ["manual"]
@@ -272,7 +275,13 @@ trigger = ["manual"]
 # --planner (0.24.0) it sends a read-only sitting from the occupant's words,
 # its brief and what rides the office's; before any sitting it offers the
 # in-tray's sort first; and a bundle whose brief carries a LANDS line goes
-# out without asking where it lands or which folder records it.
+# out without asking where it lands or which folder records it. Since
+# 0.44.0 an answer an artifact or a record gives is taken piped as on a
+# terminal, said in one line (from the brief, from the folder, from the
+# downloads); bare with one bundle waiting it takes that bundle; a brief's
+# RIDES lines name the riders it carries; a LANDS line naming a project
+# another office on this machine scopes names that office and starts
+# nothing here.
 [verbs.start]
 kind = "script"
 built = true
@@ -294,6 +303,9 @@ trigger = ["manual"]
 # applied landing it also closes the founding folder when the founding
 # session landed with the profile complete, and runs watches check
 # (without --record), printing any fired line.
+# Since 0.44.0 bare land with several out lands the one whose response is
+# in the downloads, said; every line it hands the occupant is an office
+# line, bale's verbs said in office words after bale's own output.
 # Nothing is guaranteed to exist after it: a HOLD lands nothing.
 [verbs.land]
 kind = "script"
@@ -402,7 +414,10 @@ trigger = ["manual"]
 # session's out tray on this machine (outside every office) and removed
 # where it ran; whatever the block itself prints is its own, and a block
 # that does not say it is read-only is refused. Nothing is guaranteed to
-# exist after it: a refused or declined probe writes nothing.
+# exist after it: a refused or declined probe writes nothing. Since 0.44.0
+# the block's run line (# office: probe FOLDER [--project NAME] [--sid SID])
+# says the rest when no folder is given, and a text holding a standing and
+# no probe block files the standing and runs nothing.
 [verbs.probe]
 kind = "script"
 built = true

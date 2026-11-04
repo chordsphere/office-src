@@ -65,3 +65,22 @@ Its BEGIN line names this session's id, as the request's manifest.json
 gives it (`session_id`); then `step N of M: words`; one `- [x]`, `- [>]`
 or `- [ ]` line per step, exactly one `[>]`, the Nth; last `waiting on
 you: words`, or `waiting on you: nothing` while the sitting is working.
+
+Every line the sitting hands the occupant to type is an office line (doctrine
+section 10): `office start`, `office land`, `office relay`, `office probe`,
+never `bale open` and never bale's verbs (bale retry, relay, unlock, handoff),
+which are bale's record and reach him through the office. A probe block it
+returns carries one more comment line in its purpose header, kept to the byte
+(doctrine section 4, continued; values illustrative):
+
+```
+# office: probe 21 --project alpha --sid 2026-10-26-walk-me-through-it-sitting-001
+```
+
+the folder as `office probe` takes it (its number, a unique part of its
+name), the two flags as `office probe`'s own, so bare `office probe` with the
+block on the clipboard runs it with no other word typed. And when a session it
+authors carries riders, its brief may name them, one RIDES line per ride,
+`--- RIDES PATH ---` (PATH as `office rider add --rides` takes it), or
+`--- RIDES none ---` for none, so `office start` carries exactly those, piped
+or not.

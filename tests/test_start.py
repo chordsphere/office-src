@@ -767,7 +767,9 @@ class TestStartInTheOffice(StartCase):
 class TestStartRefusals(StartCase):
     def test_piped_it_asks_nothing_and_names_the_flag(self):
         for args, words in (((), "office start FOLDER"),
-                            (("fix-login",), "--in-office, or --on PROJECT (alpha)"),
+                            # The folder's lane answers where since 0.44.0, so
+                            # piped the goal is what nothing answers.
+                            (("fix-login",), "give the session's goal: --goal TEXT"),
                             (("fix-login", "--on", "alpha"), "--goal TEXT"),
                             (("fix-login", "--on", "gamma", "--goal", "g"), "no such project"),
                             (("fix-login", "--in-office", "--on", "alpha"), "two places"),

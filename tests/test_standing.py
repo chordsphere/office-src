@@ -291,7 +291,9 @@ class TestTheHomeScreenOnATerminal(SittingCase):
     def test_the_item_says_where_it_stands_and_a_second_key_files_a_new_one(self):
         lines = self.screen()
         self.assertEqual(len([l for l in lines if "End the sitting" in l]), 1)
-        self.assertFalse([l for l in lines if "File where" in l])
+        # Since 0.44.0 the key shows from the sitting's first turn, before
+        # any standing is filed (tests/test_from_the_artifact.py, item 6).
+        self.assertEqual(len([l for l in lines if "File where" in l]), 1)
         self.file(standing(self.sit))
         lines = self.screen()
         item, = [l for l in lines if "End the sitting" in l]

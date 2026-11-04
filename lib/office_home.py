@@ -43,6 +43,10 @@ The command line:
         office withdraw --bundle STEM (0.41.0): every copy of the stem in
         the downloads renamed NAME.bale-bundle.declined, one line each;
         --check prints the stem and the copies, or refuses
+    office_home.py responses [--dir DIR]... [--sid SID]...
+        of the sessions named, those whose response-SID.tar.gz is in the
+        downloads (0.44.0): SID<tab>PATH, its newest copy; office land's
+        bare reading of which session lands
     office_home.py copies --name NAME [--dir DIR]... [--now ISO]
         every browser copy of one name in the downloads, newest first:
         PATH<tab>AGE (office land's choice after a HOLD)
@@ -438,6 +442,176 @@ def waiting_bundles(rd, office_root, directories, now):
     return [b for b in opened_from(rd, office_root, downloaded_bundles(directories, now)) if not b["opened"]]
 
 
+# --- the other offices on this machine (0.44.0) ------------------------------------------
+#
+# Two offices may share one occupant and one downloads directory, and a
+# bundle or a response for either lands there. machine.toml's offices lists
+# them (lib/office_helper.py OFFICES_KEY); each office's home screen and
+# walk-in show, after their own sections, what waits for each other office,
+# read from that office's bale registry (its own, and its projects') and
+# the downloads alone, never its desk, notepad or handbook, and a key runs
+# the verb there, as if typed there (OFFICE_ROOT=ROOT office VERB).
+
+ELSEWHERE = "elsewhere"
+
+
+def other_offices(office_root, machine_file):
+    """[(root, name)] of the offices machine.toml lists other than this
+    one, and the lines for listed roots that are no longer offices (said
+    under OFFICE_DEBUG by the caller, skipped)."""
+    if not machine_file:
+        return [], []
+    try:
+        found, skipped = oh.listed_offices(machine_file)
+    except oh.HelperError as exc:
+        return [], [str(exc)]
+    me = os.path.realpath(office_root)
+    return [(r, n) for r, n in found if r != me], skipped
+
+
+def scoped_by(root):
+    """The project names an office's floor plan scopes ([] when none, or
+    when it does not read)."""
+    import office_bale as ob
+    try:
+        return [p["name"] for p in ob.office_projects(root) or []]
+    except (OSError, oh.HelperError) as exc:
+        debug(f"{root}: its projects could not be read: {exc}")
+        return []
+
+
+def bundle_lands_project(path):
+    """The project a bundle's brief's LANDS line names, or None (no brief,
+    no LANDS line, or the office)."""
+    import office_bale as ob
+    text = ob.bundle_brief(path)
+    if text is None:
+        return None
+    mark, _ = oh.brief_lands(text)
+    if mark is None or mark["place"] == "office":
+        return None
+    return mark["place"]
+
+
+def cut_by_office(rd, office_root, bundles, others):
+    """(here, there, nowhere) of the bundles this office's own reading left
+    waiting (0.44.0): a bundle any other listed office's registry records
+    as opened leaves every offer; one whose LANDS line names a project this
+    office does not scope leaves this office's and goes, in there (root ->
+    [bundles]), to each listed office that scopes it, or, when none does,
+    to nowhere. The rest are here."""
+    for root, name in others:
+        left = [b for b in bundles if not b.get("opened")]
+        if not left:
+            break
+        copies = [dict(b) for b in left]
+        try:
+            opened_from(rd, root, copies)
+        except Exception as exc:  # one office that cannot be read never takes the screen down
+            debug(f"{name}: whether it opened a bundle could not be read: {exc}")
+            continue
+        for b, c in zip(left, copies):
+            if c.get("opened"):
+                b["opened"], b["opened_in"] = c["opened"], name
+    mine = set(scoped_by(office_root))
+    scopes = {root: set(scoped_by(root)) for root, _ in others}
+    here, there, nowhere = [], {}, []
+    for b in bundles:
+        if b.get("opened"):
+            continue
+        project = bundle_lands_project(b["path"])
+        if project is None or project in mine:
+            here.append(b)
+            continue
+        homes = [root for root, _ in others if project in scopes[root]]
+        b["lands_on"] = project
+        if not homes:
+            nowhere.append(b)
+        for root in homes:
+            there.setdefault(root, []).append(b)
+    return here, there, nowhere
+
+
+def nowhere_line(nowhere):
+    """The one line for the bundles that land on projects no office on
+    this machine scopes, or None."""
+    if not nowhere:
+        return None
+    stems = ", ".join(b["stem"] for b in nowhere)
+    return (f"{len(nowhere)} bundle(s) in your downloads land on projects no office on this machine scopes: "
+            f"{stems}; office withdraw --bundle {nowhere[0]['stem']} takes one out of the offer")
+
+
+def elsewhere_item(root, label, argv):
+    """A waiting item that runs its verb in another office: the menu's kind
+    elsewhere, the office's root its first word."""
+    return {"label": label, "argv": [root, *argv], "kind": ELSEWHERE}
+
+
+def elsewhere_line(it):
+    """An elsewhere item as the line to type, for the walk-in page."""
+    import shlex
+    root, *argv = it["argv"]
+    return f"OFFICE_ROOT={shlex.quote(root)} office " + " ".join(shlex.quote(w) for w in argv)
+
+
+def office_section(rd, root, name, directories, now, bundles):
+    """(heading, lines, items) for one other office: the responses in the
+    downloads for the sessions it or its projects have out, the bundles
+    cut to it, and the sittings out there, each a key that runs the verb
+    there. Read from its bale registries and the downloads alone; an
+    office that cannot be read is one line under its heading."""
+    import office_bale as ob
+    heading = f"{name} ({root})"
+    try:
+        found, bad = ob.repos(root, rendering=True)
+    except (OSError, oh.HelperError) as exc:
+        return heading, [f"cannot be read: {exc}"], []
+    items, lines, sittings = [], [], []
+    for line in bad:
+        debug(f"{name}: {line}")
+    for label, _, cwd in found:
+        try:
+            opened = rd.open_sessions(cwd)
+        except ob.BaleError as exc:
+            lines.append(f"{label if label != ob.OFFICE_LABEL else 'the office'}: cannot be read: {exc}")
+            continue
+        where = "the office" if label == ob.OFFICE_LABEL else label
+        for sid, read_only in opened:
+            if read_only:
+                sittings.append((sid, where))
+                continue
+            copies = ob.browser_copies(directories or [], f"response-{sid}.tar.gz")
+            if copies:
+                saved = age_words(dt.datetime.fromtimestamp(copies[0][1] / 1e9, dt.timezone.utc), now)
+                items.append(elsewhere_item(root, f"Land {slug_of(sid)} ({where}, in {name}): a response for it was "
+                                                  f"saved {saved} in your downloads", ["land", sid]))
+    for b in bundles:
+        items.append(elsewhere_item(root, f"Start the planner's bundle {b['stem']} in {name} (it lands on "
+                                          f"{b['lands_on']}; {saved_words(b, now)})", ["start", "--bundle", str(b["path"])]))
+    for sid, where in sittings:
+        items.append(elsewhere_item(root, f"End the sitting {slug_of(sid)} ({where}, in {name}), once it is over",
+                                    ["land", sid]))
+    if sittings:
+        items.append(elsewhere_item(root, f"Run the probe on the clipboard in {name}", ["probe"]))
+    return heading, lines, items
+
+
+def other_sections(rd, office_root, machine_file, directories, now, bundles=None):
+    """(sections, nowhere line, the bundles left here) for the home screen
+    and the walk-in: one (heading, lines, items) per other listed office,
+    in machine.toml's order. bundles are this office's waiting bundles,
+    cut by office (cut_by_office); None reads them from the downloads."""
+    others, skipped = other_offices(office_root, machine_file)
+    for why in skipped:
+        debug(why)
+    if bundles is None:
+        bundles = waiting_bundles(rd, office_root, directories, now) if directories else []
+    here, there, nowhere = cut_by_office(rd, office_root, bundles, others)
+    sections = [office_section(rd, root, name, directories, now, there.get(root, [])) for root, name in others]
+    return sections, nowhere_line(nowhere), here
+
+
 # --- what waits on him -----------------------------------------------------------------
 
 def item(label, argv, kind="office"):
@@ -600,6 +774,10 @@ FIXED_KEYS = (
     # Shown only while a session is out that was never worked (0.24.0), or a
     # bundle no session opened waits in the offer (0.41.0).
     ("w", "withdraw a session never worked, or a bundle", "office", ["withdraw"]),
+    # Shown only while a folder on the desk records a session open where
+    # probes run (0.44.0): the block on the clipboard, its run line saying
+    # the rest (office probe reads the block first when no folder is named).
+    ("r", "run the probe on the clipboard", "office", ["probe"]),
     ("n", "note a line", "note", []),
     ("d", "drop a message", "office", ["drop"]),
     ("k", "the whole desk", "office", ["desk"]),
@@ -630,11 +808,17 @@ def key_lines(keys, width=76):
     return [f"  {l}" for l in lines + ([line] if line else [])]
 
 
-def render_page(rows, items, out_count, desk_line=None, withdrawable=0):
+def render_page(rows, items, out_count, desk_line=None, withdrawable=0, probe_ready=False, others=(),
+                nowhere=None):
     """(lines, menu): the home screen below its heading lines, and the
     menu bin/office reads, one (key, kind, argv) per key. The l key shows
-    only while a session is out, and the w key only while one is out that
-    can be withdrawn (withdrawable, a count: no response, no apply begun)."""
+    only while a session is out, the w key only while one is out that can
+    be withdrawn (withdrawable, a count: no response, no apply begun), and
+    the r key (0.44.0) only while a folder on the desk records a session
+    open where probes run (probe_ready). others (0.44.0) are the other
+    offices on this machine, each (heading, lines, items), shown after
+    this office's own sections; their items share the numbered keys.
+    nowhere is the one line for the bundles no office scopes."""
     lines = ["Projects:"]
     width = max((len(label) for label, _ in rows), default=0)
     for label, words in rows:
@@ -652,11 +836,29 @@ def render_page(rows, items, out_count, desk_line=None, withdrawable=0):
         menu.append((str(n), it["kind"], it["argv"]))
     if len(items) > MAX_ITEMS:
         lines.append(f"  and {len(items) - MAX_ITEMS} more: office desk lists the drops and the folders")
+    if nowhere:
+        lines.append(f"  {nowhere}")
+    n = len(shown)
+    for heading, said, theirs in others:
+        lines += ["", f"{heading}:"]
+        lines += [f"  {l}" for l in said]
+        room = max(0, MAX_ITEMS - n)
+        for it in theirs[:room]:
+            n += 1
+            lines.append(f"  [{n}] {it['label']}")
+            menu.append((str(n), it["kind"], it["argv"]))
+        if len(theirs) > room:
+            lines.append(f"  and {len(theirs) - room} more there: {heading.split(' (', 1)[0]}'s own home screen "
+                         "lists them")
+        if not said and not theirs:
+            lines.append("  nothing waits on you there")
     keys = []
     for key, words, kind, argv in FIXED_KEYS:
         if key == "l" and not out_count:
             continue
         if key == "w" and not withdrawable:
+            continue
+        if key == "r" and not probe_ready:
             continue
         keys.append(f"[{key}] {words}")
         menu.append((key, kind, argv))
@@ -673,8 +875,10 @@ def write_menu(path, menu):
             f.write("\t".join([key, kind, *argv]) + "\n")
 
 
-def home(rd, office_root, today, since, skew, founded, tz_name, directories, now, menu_file):
-    """The home screen's lines, and its menu written to menu_file."""
+def home(rd, office_root, today, since, skew, founded, tz_name, directories, now, menu_file, machine_file=None):
+    """The home screen's lines, and its menu written to menu_file. With
+    machine_file (0.44.0), the other offices it lists get a section each
+    after this office's own, and the bundle offer is cut by office."""
     import office_bale as ob
     import office_meeting as om
     tz = zone(tz_name)
@@ -704,12 +908,14 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
         s["older"] = s["sid"] in older
         s["standing"] = ob.standing_words(office_root, s["folders"], s["sid"])
         # The key that files a new standing (0.43.0): the sitting's folder on
-        # the desk, by its number, offered beside the item once the folder
-        # has a standing; the first comes with a probe, or office standing.
+        # the desk, by its number, offered beside the item.
         desk = [names.folders[r] for r in s["folders"] if r.startswith("desk/") and r in names.folders]
-        s["standing_key"] = ob.folder_key(desk[0]) if desk and s["standing"] else None
+        # From the sitting's first turn (0.44.0), standing filed or not: a
+        # turn that ends in no probe has no other way to the office.
+        s["standing_key"] = ob.folder_key(desk[0]) if desk else None
     rows = project_rows(rd, office_root, names, now, tz, groups.get("reviews"))
     bundles = waiting_bundles(rd, office_root, directories, now) if directories else []
+    others, nowhere, bundles = other_sections(rd, office_root, machine_file, directories, now, bundles)
     try:
         meetings = om.near(office_root, tz or dt.timezone.utc, now)
     except (OSError, ValueError, oh.HelperError) as exc:
@@ -723,7 +929,11 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
     except ob.BaleError as exc:
         debug(f"which sessions could be withdrawn could not be read: {exc}")
         offered = []
-    lines, menu = render_page(rows, items, len(out), desk_words(groups), len(offered) + len(bundles))
+    # The r key (0.44.0): a folder on the desk records a session open where
+    # probes run (office_bale.probe_folders' rule, from the same reading).
+    probe_ready = any(r.startswith("desk/") for x in every for r in x["folders"])
+    lines, menu = render_page(rows, items, len(out), desk_words(groups), len(offered) + len(bundles), probe_ready,
+                              others, nowhere)
     if directories is None:
         lines.insert(lines.index("Waiting on you:") + 1,
                      "  (this machine's downloads are not set, so no response or bundle there is offered)")
@@ -779,8 +989,13 @@ def main(argv=None):
     p.add_argument("--dir", action="append", default=[], help="a downloads directory (repeatable)")
     p.add_argument("--no-downloads", action="store_true", help="machine.toml sets no downloads")
     p.add_argument("--now", help="an ISO timestamp to measure ages from (default: now)")
+    p.add_argument("--machine-file", help="machine.toml: its offices get a section each (0.44.0)")
+    p = sub.add_parser("elsewhere", help="the walk-in's sections for the other offices machine.toml lists (0.44.0)")
+    p.add_argument("office"); p.add_argument("--machine-file", required=True)
+    p.add_argument("--dir", action="append", default=[]); p.add_argument("--now")
     p = sub.add_parser("bundles", help="the bundles in the downloads no session opened: PATH, STEM, AGE, WORDS")
     p.add_argument("office"); p.add_argument("--dir", action="append", default=[]); p.add_argument("--now")
+    p.add_argument("--machine-file", help="machine.toml: the offer cut by office (0.44.0)")
     p = sub.add_parser("withdraw-bundle", help="office withdraw --bundle STEM: rename every copy of the stem in the "
                                                "downloads to NAME.bale-bundle.declined (--check: the stem and the "
                                                "copies, or the refusal)")
@@ -789,6 +1004,9 @@ def main(argv=None):
     p = sub.add_parser("copies", help="every browser copy of a name in the downloads, newest first: PATH, AGE")
     p.add_argument("--name", required=True); p.add_argument("--dir", action="append", default=[])
     p.add_argument("--now")
+    p = sub.add_parser("responses", help="of the sessions named, those whose response is in the downloads "
+                                         "(0.44.0): SID<tab>PATH, the newest copy")
+    p.add_argument("--dir", action="append", default=[]); p.add_argument("--sid", action="append", default=[])
     p = sub.add_parser("bundle-goal", help="a bundle's goal, from its stored pack line: the planner's words")
     p.add_argument("--bundle", required=True)
     p = sub.add_parser("words", help="office open's reading of the occupant's words: KEY<tab>VALUE")
@@ -809,14 +1027,48 @@ def main(argv=None):
                 return 1
             print(goal)
             return 0
+        if a.cmd == "responses":
+            for sid in a.sid:
+                copies = ob.browser_copies(a.dir, f"response-{sid}.tar.gz")
+                if copies:
+                    print(f"{sid}\t{copies[0][0]}")
+            return 0
         now = now_from(a)
         if a.cmd == "copies":
             for path, ns in ob.browser_copies(a.dir, a.name):
                 print(f"{path}\t{age_words(dt.datetime.fromtimestamp(ns / 1e9, dt.timezone.utc), now)}")
             return 0
         rd = ob.Reader()
+        if a.cmd == "elsewhere":
+            # Nothing to read when no other office is listed: the walk-in
+            # page reads no bundle of its own (the home screen does).
+            if not other_offices(a.office, a.machine_file)[0]:
+                return 0
+            dirs = a.dir or oh.machine_downloads(a.machine_file) or []
+            sections, nowhere, _ = other_sections(rd, a.office, a.machine_file, dirs, now)
+            if nowhere:
+                print(nowhere)
+            for heading, said, theirs in sections:
+                print(f"\n{heading}:")
+                for line in said:
+                    print(f"  {line}")
+                for it in theirs:
+                    print(f"  {it['label']}: {elsewhere_line(it)}")
+                if not said and not theirs:
+                    print("  nothing waits on you there")
+            return 0
         if a.cmd == "bundles":
-            for b in waiting_bundles(rd, a.office, a.dir, now):
+            waiting = waiting_bundles(rd, a.office, a.dir, now)
+            if a.machine_file:
+                # Cut by office (0.44.0): another office's, said on stderr.
+                sections, nowhere, waiting = other_sections(rd, a.office, a.machine_file, a.dir, now, waiting)
+                for heading, _, theirs in sections:
+                    for it in theirs:
+                        if it["argv"][1:2] == ["start"]:
+                            log(f"not offered here: {it['label']}: {elsewhere_line(it)}")
+                if nowhere:
+                    log(nowhere)
+            for b in waiting:
                 words = " ".join((b["goal"] or "").split())
                 age = age_words(b["at"], now) + (f"; {b['copies']} copies, the newest offered" if b["copies"] > 1 else "")
                 print(f"{b['path']}\t{b['stem']}\t{age}\t{oh.ascii_escape(words)[0]}")
@@ -837,7 +1089,7 @@ def main(argv=None):
         if a.since:
             dt.date.fromisoformat(a.since)
         lines = home(rd, a.office, a.today, a.since, a.skew, a.founded == "yes", a.tz,
-                     None if a.no_downloads else a.dir, now, a.menu_file)
+                     None if a.no_downloads else a.dir, now, a.menu_file, a.machine_file)
         print("\n".join(lines))
         return 0
     except oh.HelperError as exc:

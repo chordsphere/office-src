@@ -238,6 +238,22 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.44.0 (session 2026-11-03-answers-from-the-artifact-002): answers from
+  the artifact.
+  - a question start or land would ask is taken from a bundle's brief, a
+    response's file name or an office record when one answers it, said
+    (`from the brief:`, `from the folder:`, `from the downloads:`), piped
+    as on a terminal: the one bundle waiting, the one response here, the
+    lane's project; a brief's `--- RIDES PATH ---` lines name the riders.
+  - machine.toml's `offices` lists the offices here (init, default, the
+    home screen); each office's home screen and walk-in show what waits
+    for the others, a key running the verb there.
+  - every line the office hands you is an office line: `In office words:`
+    after bale's output at a landing, a clarification's `office relay`
+    line and tail; a bailout's line says there is no office line yet.
+  - a probe block's `# office: probe FOLDER ...` header line lets bare
+    `office probe` run it; `[r]` on the home screen; a standing alone on
+    the clipboard is filed; the standing key shows from the first turn.
 - 0.43.0 (session 2026-11-03-m10-standing-001): where a sitting stands.
   - a sitting's standing block is filed on its folder as standing.md by
     `office standing FOLDER` (new, plumbing), by office probe when it rides

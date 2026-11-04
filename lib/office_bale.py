@@ -2977,7 +2977,7 @@ def bundle_brief(bundle):
         return None
 
 
-def bundle_lands(office_root, bundle):
+def bundle_lands(office_root, bundle, machine_file=None):
     """Where a planner's bundle says its session lands, from the LANDS line
     its brief carries (0.24.0; office_helper.brief_lands): a dict with
     place (office, or a project's name), project (the name, or None for
@@ -2991,7 +2991,8 @@ def bundle_lands(office_root, bundle):
     brief carries no LANDS line and no BRANCH line at all, or the bundle
     cannot be read here."""
     out = {"absent": False, "place": None, "project": None, "folder": None, "folder_words": None,
-           "words": None, "said": [], "branch": None}
+           "words": None, "said": [], "branch": None, "rides": None, "elsewhere": [], "nowhere": False,
+           "lands_on": None}
     name = pathlib.Path(bundle).name
     text = bundle_brief(bundle)
     if text is None:
@@ -3002,10 +3003,14 @@ def bundle_lands(office_root, bundle):
     # bale is asked anything.
     out["branch"], branch_problems = oh.brief_branch(text)
     out["said"] += [f"the bundle {name}'s brief: {p}" for p in branch_problems]
+    # The riders the session carries (0.44.0, office_helper.brief_rides).
+    out["rides"], rides_problems = oh.brief_rides(text)
+    out["said"] += [f"the bundle {name}'s brief: {p}" for p in rides_problems]
     mark, problems = oh.brief_lands(text)
     out["said"] += [f"the bundle {name}'s brief: {p}" for p in problems]
     if mark is None:
-        out["absent"] = not problems and not branch_problems and out["branch"] is None
+        out["absent"] = not problems and not branch_problems and out["branch"] is None and out["rides"] is None \
+            and not rides_problems
         return out
     root = pathlib.Path(office_root)
     names = [p["name"] for p in office_projects(root) or []]
@@ -3013,6 +3018,15 @@ def bundle_lands(office_root, bundle):
         out["place"] = "office"
     elif mark["place"] in names:
         out["place"], out["project"] = "project", mark["place"]
+    elif machine_file is not None:
+        # Not a refusal (0.44.0): the office that scopes it is named, from
+        # machine.toml's offices and each one's floor plan, or that none on
+        # this machine does.
+        import office_home as hs
+        others, _ = hs.other_offices(root, machine_file)
+        out["lands_on"] = mark["place"]
+        out["elsewhere"] = [(r, n) for r, n in others if mark["place"] in hs.scoped_by(r)]
+        out["nowhere"] = not out["elsewhere"]
     else:
         out["said"].append(f"the bundle {name}'s brief says it lands on {mark['place']}, which this office does not "
                            f"scope (it scopes: {', '.join(names) or 'no project'}); where it lands is asked")
@@ -5546,6 +5560,77 @@ def accept_line(plan, named=(False, [])):
                                                        for w in accept_flags(checkpoint, paths)])
 
 
+def plan_repo_words(plan):
+    """Where a landing's session is open, for a line the occupant reads:
+    the repo, and through which host's shell for a hosted project."""
+    if plan.get("place"):
+        return f"{plan['place']['path']}, through {plan['place']['host']}'s shell"
+    return str(plan.get("repo") or "the session's repo")
+
+
+def plan_folder_key(plan):
+    """How an office line names the folder that records a landing's
+    session: its number on the desk, else its name; FOLDER when no folder
+    on the desk records it."""
+    for rel in plan.get("folders") or []:
+        if rel.startswith("desk/"):
+            return plan.get("folder_keys", {}).get(rel) or rel.split("/", 1)[1]
+    return "FOLDER"
+
+
+def relay_next_line(plan):
+    """A clarification's Next line (0.44.0): office relay, which carries the
+    planner's answer to bale relay where the session is open."""
+    return (f"office relay {plan['sid']} ANSWER-FILE, with the planner's answer saved here as ANSWER-FILE (office "
+            f"relay carries it to bale relay in {plan_repo_words(plan)})")
+
+
+def handoff_line(plan):
+    """A bailout's Next line (0.44.0). The office has no line yet that runs
+    bale handoff (office start --handoff is proposed, not built: item 4 of
+    the brief, the half this release left), so the line says so and names
+    bale's own, where to type it: the one place the occupant is still sent
+    to bale, said as such."""
+    tarball = shell_quote(str(plan.get("tarball") or "RESPONSE"))
+    return (f"no office line yet: type bale handoff {tarball} in {plan_repo_words(plan)}; it packs the fresh "
+            f"session the handoff asks for, and office sessions {plan_folder_key(plan)} SID records it in the "
+            "folder")
+
+
+# The bale verbs a landing's own output may name (0.44.0), in the order the
+# office says them, each with the office line that does it, or None when the
+# office has none (the words then say to type it in the repo).
+BALE_VERBS = ("retry", "relay", "revert", "unlock", "handoff", "amend-checkpoint")
+BALE_VERB_RE = oh.LazyPattern(r"\bbale (retry|relay|revert|unlock|handoff|amend-checkpoint)\b")
+
+
+def office_words(printed, plan):
+    """The `In office words:` list (0.44.0): for each bale verb bale's own
+    lines above named, in the order first named, `bale VERB -> ` the
+    office line that does it, or `no office line: type it in REPO`. []
+    when bale's lines named none: nothing is printed then."""
+    named = []
+    for line in printed:
+        for m in BALE_VERB_RE.finditer(line):
+            if m.group(1) not in named:
+                named.append(m.group(1))
+    sid = plan["sid"]
+    lines = []
+    for verb in sorted(named, key=BALE_VERBS.index):
+        if verb == "retry":
+            office = f"office land {sid} --response FILE"
+        elif verb == "relay":
+            office = f"office relay {sid} FILE"
+        elif verb == "unlock":
+            office = f"office withdraw {sid}, for a session never worked; office land {sid}, for a sitting"
+        elif verb == "handoff":
+            office = handoff_line(plan)
+        else:
+            office = f"no office line: type it in {plan_repo_words(plan)}"
+        lines.append(f"bale {verb} -> {office}")
+    return lines
+
+
 def outcome_words(plan, outcome, named=(False, [])):
     """(words, next line or None) for where a landing ended, in the
     office's words; bale's own lines above say the rest. named is what
@@ -5576,19 +5661,18 @@ def outcome_words(plan, outcome, named=(False, [])):
                 "printed its own line that accepts it above; the office line below passes the same accept to bale "
                 "when you type it, and the office never runs either for you.", accept_line(plan, named))
     if outcome == "clarification":
-        if plan.get("place"):
-            # The answer is a file here; bale relay reads it on stdin there.
-            line = printed_line(plan_place(plan), f"cd {ohost.shell_path(plan['place']['path'])} && bale relay {sid} -")
-            return (f"Questions: the worker asked before building; {nothing}. The block for the planner is below.",
-                    f"{line} < ANSWER-FILE, with the planner's answer saved here as ANSWER-FILE (bale relay "
-                    f"reads it from stdin on {plan['place']['host']})")
+        # The office's line (0.44.0), never bale's: office relay carries the
+        # answer to bale relay where the session is open.
         return (f"Questions: the worker asked before building; {nothing}. The block for the planner is below.",
-                f"(cd {plan['repo']} && bale relay {sid} ANSWER-FILE), with the planner's answer")
+                relay_next_line(plan))
     if outcome == "reverted":
         return (f"Reverted: bale's walkthrough discarded {sid}'s branch in {where}; nothing landed. bale's lines "
                 "above say what stays open.", None)
     if outcome == "bailout":
-        return f"Bailed: the worker handed {sid} off; nothing landed. bale printed the handoff step above.", None
+        # The office's line for the fresh session the handoff asks for
+        # (0.44.0): office start --handoff runs bale handoff there.
+        return (f"Bailed: the worker handed {sid} off; nothing landed. The line below says how the fresh session "
+                "the handoff asks for goes out.", handoff_line(plan))
     if outcome == "refused":
         words = f"Not landed: bale refused before it recorded an attempt for {sid}; its words are above."
         if plan.get("verb") == "retry" and not plan.get("accept_checkpoint_change"):
@@ -5644,10 +5728,14 @@ def land_outcome(rd, office_root, plan, code, capture, day):
             block = None
             log(f"bale relay could not re-emit the questions' block: {exc}")
         blocks = [("planner", block)] if block else []
+    # The office's lines name a folder by its number (0.44.0).
+    plan = dict(plan, folder_keys={f["rel"]: folder_key(f) for f in oh.read_folders(office_root)
+                                   if f["problem"] is None and f["rel"] in (plan.get("folders") or [])})
     words, nxt = outcome_words(plan, outcome, accepts_bale_names(printed))
     applied = outcome == "applied"
     told = put_record_back(office_root, plan, applied, day)
     return {"outcome": outcome, "applied": applied, "words": words, "next": nxt, "told": told,
+            "office_words": office_words(printed, plan),
             "relays": [{"to": to, "lines": lines} for to, lines in blocks],
             "after_land": plan["after_land"] if applied else [],
             "known_outcome": outcome in spec["outcomes"] + ["clarification", "refused"]}
@@ -6077,6 +6165,8 @@ def build_parser(only=None):
     p.add_argument("--where", choices=("office", "project"), required=True); p.add_argument("--project")
     p.add_argument("--include", action="append", default=[]); p.add_argument("--write", action="append", default=[])
     p.add_argument("--read-only", action="store_true"); p.add_argument("--bundle")
+    p.add_argument("--rides", action="append", default=[],
+                   help="a RIDES path from the bundle's brief (0.44.0): the riders it names, not the forecast's")
     p = add("install-lines", help="the walk-in's lines about the install: Install: BEHIND ... when this office "
                                              "scopes its source and the source moved past the install, Bytecode: ... "
                                              "when the install's bytecode cache is not level for this python3, "
@@ -6148,6 +6238,9 @@ def build_parser(only=None):
                                             "words<tab>LINE, branch<tab>NAME (its BRANCH line, 0.34.0), say<tab>WHY, "
                                             "or absent")
     p.add_argument("office"); p.add_argument("--bundle", required=True)
+    p.add_argument("--machine-file", help="machine.toml: a LANDS project this office does not scope is looked for "
+                                          "in the other offices it lists (0.44.0): elsewhere<tab>ROOT<tab>NAME, or "
+                                          "nowhere<tab>PROJECT")
     p = add("bundle-branch", help="check out the branch a bundle's brief names (its BRANCH line) in the project's "
                                              "clone, here or through its shell, before bale opens the bundle; the "
                                              "lines to say on stdout, a refusal on stderr with nothing changed")
@@ -6178,7 +6271,7 @@ def main(argv=None):
         ap, _ = build_parser()
     a = ap.parse_args(argv)
     if a.cmd == "bundle-lands":
-        got = bundle_lands(a.office, a.bundle)
+        got = bundle_lands(a.office, a.bundle, a.machine_file)
         if got["absent"]:
             print("absent")
             return 0
@@ -6192,6 +6285,14 @@ def main(argv=None):
             print(f"words\t{got['words']}")
         if got["branch"]:
             print(f"branch\t{got['branch']}")
+        if got["rides"] == []:
+            print("rides-none")
+        for path in got["rides"] or []:
+            print(f"rides\t{path}")
+        for root, name in got.get("elsewhere") or []:
+            print(f"elsewhere\t{root}\t{name}\t{got['lands_on']}")
+        if got.get("nowhere"):
+            print(f"nowhere\t{got['lands_on']}")
         for line in got["said"]:
             print(f"say\t{line}")
         return 0
@@ -6292,6 +6393,18 @@ def main(argv=None):
             print(f"over\t{line}")
         for line in checked["bale"]:
             print(f"bale\t{line}")
+        return 0
+    if a.cmd == "start-riders" and a.rides:
+        # The brief's RIDES lines (0.44.0) name the riders; the forecast
+        # does not choose them.
+        import office_drafting as od
+        try:
+            riders = od.riders_for_rides(a.office, a.rides, a.project if a.where == "project" else None)
+        except (oh.HelperError, OSError, ValueError) as exc:
+            log(f"warning: the riders the brief's RIDES lines name could not be read ({exc}); none is carried")
+            return 0
+        for r in riders:
+            print(f"{r['number']}\t{r['title']}\t{r['rides']}\t{', '.join(r['touched'])}")
         return 0
     if a.cmd == "start-riders":
         try:

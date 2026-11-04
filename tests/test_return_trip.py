@@ -161,11 +161,11 @@ class TestLandOnAHost(ReturnTripCase):
         self.assertIn("Questions: the worker asked before building", proc.stdout)
         self.assertIn(f"BALE EXCHANGE BEGIN {sid}\n", proc.stdout)
         self.assertIn("BALE EXCHANGE END\n", proc.stdout)
-        # The answer is carried there on stdin, by one line typed here.
+        # The answer is carried there by an office line typed here (0.44.0:
+        # office relay, through the host's shell; never bale's own line).
         nxt = re.search(r"^Next: (.*)$", proc.stdout, re.M).group(1)
-        self.assertTrue(nxt.startswith(f"ssh {HOST} bash -lc "), nxt)
-        self.assertIn(f"bale relay {sid} -", nxt)
-        self.assertIn("< ANSWER-FILE", nxt)
+        self.assertTrue(nxt.startswith(f"office relay {sid} ANSWER-FILE, "), nxt)
+        self.assertIn(f"through {HOST}'s shell)", nxt)
         (cwd, _, _), = self.fake.calls_of("relay")
         self.assertEqual(cwd, os.path.realpath(self.proj))
         self.assertTrue(self.fake.is_open(self.proj, sid))
@@ -180,7 +180,9 @@ class TestLandOnAHost(ReturnTripCase):
         self.assertEqual((cwd, argv), (os.path.realpath(self.proj), ["unlock", sid, "--json"]))
         self.assertIn(f"ended: {sid}", (self.root / self.folder / "folder.md").read_text())
         # A sitting carries nothing, so the downloads were never needed.
-        self.assertFalse(self.machine.exists())
+        # office init lists the office in machine.toml since 0.44.0; what
+        # land must not write is downloads.
+        self.assertNotIn("downloads", self.machine.read_text() if self.machine.exists() else "")
 
     def test_a_response_given_by_path_or_by_name(self):
         sid = self.start(self.name, "--on", "far", "--goal", "g", "--write", "src")
@@ -189,7 +191,9 @@ class TestLandOnAHost(ReturnTripCase):
         # A path needs no downloads setting.
         proc = self.run_office("land", str(path), check=0)
         self.assertIn(f"Landed: {sid}", proc.stdout)
-        self.assertFalse(self.machine.exists())
+        # office init lists the office in machine.toml since 0.44.0; what
+        # land must not write is downloads.
+        self.assertNotIn("downloads", self.machine.read_text() if self.machine.exists() else "")
         # A bare name: the current directory first, then the downloads.
         self.set_downloads()
         sid2 = self.start(self.name, "--on", "far", "--goal", "again", "--write", "docs")
@@ -347,7 +351,9 @@ class TestDownloadsOnALocalLand(LandCase):
         self.run_office("land", sid, check=0)
         (_, argv, _), = self.fake.calls_of("apply")
         self.assertEqual(argv, ["apply", f"response-{sid}.tar.gz"])
-        self.assertFalse((self.e.home / ".config/office-src/machine.toml").exists())
+        mf = self.e.home / ".config/office-src/machine.toml"
+        # office init lists the office there since 0.44.0; no downloads is.
+        self.assertNotIn("downloads", mf.read_text() if mf.exists() else "")
 
 
 class TestDownloadsOnStart(ReturnTripCase):

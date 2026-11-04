@@ -87,6 +87,16 @@ TEXT_SLUG_RE = oh.LazyPattern(r"PROBE BEGIN ([a-z0-9][a-z0-9-]*)")
 READ_ONLY_RE = oh.LazyPattern(r"\bread[- ]only\b", re.I)
 NOT_READ_ONLY_RE = oh.LazyPattern(r"\bnot\s+read[- ]only\b", re.I)
 EXIT_ASK_SID = 5
+# The run line (0.44.0): one more comment line a sitting may write in the
+# block's purpose header, pinned to the byte (doctrine section 4,
+# continued), so one copy of the block runs it with bare `office probe`:
+#   # office: probe FOLDER [--project NAME] [--sid SID]
+# FOLDER as office probe takes it (its name, a unique part, or a folder's
+# number), the two flags as office probe's own. It is a comment, shown with
+# the header and never run.
+RUN_LINE_PREFIX = "# office: probe "
+RUN_LINE_RE = oh.LazyPattern(r"^# office: probe (\S+)((?: --(?:project|sid) \S+)*)$")
+RUN_FLAG_RE = oh.LazyPattern(r" --(project|sid) (\S+)")
 # The helper a spanning block calls (0.34.0): `office-on PROJECT COMMAND...`
 # on a line that is not a comment names a project the block reaches.
 ON_HELPER = "office-on"
@@ -186,6 +196,30 @@ def read_block(text):
         m = TEXT_SLUG_RE.search("\n".join(lines))
         slug = m.group(1) if m else None
     return {"text": "\n".join(lines) + "\n", "header": header, "slug": slug, "reaches": reaches_of(lines)}
+
+
+def run_line(header):
+    """(line, {folder, project, sid}) from the block's purpose header: the
+    first `# office: probe FOLDER [--project NAME] [--sid SID]` line
+    (0.44.0), its parts as written (project and sid None when left out);
+    (None, None) when the header carries none. Raises ProbeError, naming
+    the line, for one that begins like it and does not read, or names a
+    flag twice, so the occupant is told rather than the line passed over."""
+    for line in header:
+        if not line.startswith(RUN_LINE_PREFIX.rstrip()):
+            continue
+        text = line.rstrip()
+        m = RUN_LINE_RE.match(text)
+        if not m:
+            raise ProbeError([f"the block's run line does not read: {text!r} is not `{RUN_LINE_PREFIX}FOLDER "
+                              "[--project NAME] [--sid SID]`; nothing ran (office probe FOLDER runs it by hand)"])
+        got = {"folder": m.group(1), "project": None, "sid": None}
+        for flag, value in RUN_FLAG_RE.findall(m.group(2)):
+            if got[flag] is not None:
+                raise ProbeError([f"the block's run line names --{flag} twice: {text!r}; nothing ran"])
+            got[flag] = value
+        return text, got
+    return None, None
 
 
 def reaches_of(lines):
@@ -474,7 +508,18 @@ def choose_session(candidates, sittings, slug, sid=None):
     raise AskSid(pool, sittings=[s for s in pool if s in sittings and s not in candidates])
 
 
-def plan(office_root, folder_rel, project, block_file, sid=None, rd=None):
+def soft_sid(sid, pool, name, words):
+    """The run line's --sid (0.44.0) when it is one of the sessions the
+    probe could be for, else None, said in one line: the office then reads
+    the session as it does without one."""
+    if sid is None or sid in pool:
+        return sid
+    log(f"the block's run line names --sid {sid}, which is not a session {name} records that is open {words} "
+        f"(open and recorded: {', '.join(pool) or 'none'}); the session is read as without it")
+    return None
+
+
+def plan(office_root, folder_rel, project, block_file, sid=None, rd=None, sid_soft=False):
     """Everything office probe settles before it asks: the block read, where
     it runs, and the session it is for. The session is the folder's
     recorded session open where the project lives (bale status there);
@@ -491,7 +536,7 @@ def plan(office_root, folder_rel, project, block_file, sid=None, rd=None):
     rd = rd or ob.Reader()
     block = read_block(pathlib.Path(block_file).read_text(encoding="utf-8", errors="replace"))
     if block["reaches"]:
-        return plan_spanning(office_root, folder_rel, project, block, sid, rd)
+        return plan_spanning(office_root, folder_rel, project, block, sid, rd, sid_soft)
     place, label, words = where_it_runs(office_root, project)
     md = pathlib.Path(office_root) / folder_rel / "folder.md"
     folder = oh.parse_folder(md.read_text(encoding="utf-8"))
@@ -543,6 +588,8 @@ def plan(office_root, folder_rel, project, block_file, sid=None, rd=None):
             raise ProbeError([f"the office: its open sittings could not be read, so the office cannot say whether "
                               f"this probe is for one of {name}'s: {exc}; nothing ran"])
     pool = candidates + [s for s in sittings if s not in candidates]
+    if sid_soft:
+        sid = soft_sid(sid, pool, name, words)
     if not pool and sid is None:
         raise ProbeError([f"{name} records no session open {words} (it records: {', '.join(recorded) or 'none'}; "
                           f"open there: {', '.join(open_here) or 'none'}; and no read-only sitting of its is open "
@@ -562,7 +609,7 @@ def plan(office_root, folder_rel, project, block_file, sid=None, rd=None):
             "reaches": {}}
 
 
-def plan_spanning(office_root, folder_rel, project, block, sid, rd):
+def plan_spanning(office_root, folder_rel, project, block, sid, rd, sid_soft=False):
     """The plan for a block that spans the office and the projects it
     names with office-on (0.34.0): it runs in the office root, so --project
     is office or not given; every project named must be one the office
@@ -613,6 +660,8 @@ def plan_spanning(office_root, folder_rel, project, block, sid, rd):
     sittings = newest_first([s for s, read_only in open_office if read_only and s in recorded], recorded)
     candidates = [s for s in recorded if s in open_in_projects or (s in office_sids and s not in sittings)]
     pool = candidates + [s for s in sittings if s not in candidates]
+    if sid_soft:
+        sid = soft_sid(sid, pool, name, f"in the office or in {', '.join(block['reaches'])}")
     if not pool and sid is None:
         raise ProbeError([f"{name} records no session open in the office or in {', '.join(block['reaches'])} (it records: "
                           f"{', '.join(recorded) or 'none'}; open: {', '.join(office_sids + open_in_projects) or 'none'}), "
@@ -837,6 +886,11 @@ def main(argv=None):
     q.add_argument("block")
     q = sub.add_parser("reaches", help="the projects a block reaches with office-on, one per line (0.34.0)")
     q.add_argument("block")
+    q = sub.add_parser("run-line", help="the block's run line (0.44.0): line, folder, project and sid, KEY<tab>VALUE; "
+                                        "nothing when it carries none")
+    q.add_argument("block")
+    q = sub.add_parser("has-block", help="exit 0 when the text holds a PROBE BEGIN line, 3 when it holds none")
+    q.add_argument("block")
     q = sub.add_parser("on", help="office-on PROJECT COMMAND...: one command where the project lives (0.34.0); "
                                   "its line is `on --plan FILE -- PROJECT COMMAND...`, read by on_main, not here")
     q = sub.add_parser("plan", help="the block read, where it runs and its session: one JSON line (exit 5: several "
@@ -844,6 +898,8 @@ def main(argv=None):
     q.add_argument("office"); q.add_argument("folder", help="desk/NAME")
     q.add_argument("--project", required=True, help="a project the office scopes, or office")
     q.add_argument("--block", required=True); q.add_argument("--sid")
+    q.add_argument("--sid-soft", action="store_true", help="--sid came from the block's run line: one that is not "
+                                                           "open is said and read past (0.44.0)")
     q = sub.add_parser("run", help="run the block as planned; the result as JSON into --result")
     q.add_argument("--plan", required=True); q.add_argument("--block", required=True)
     q.add_argument("--tray-root", required=True); q.add_argument("--result", required=True)
@@ -861,9 +917,19 @@ def main(argv=None):
                 print(name)
             return 0
 
+        if a.cmd == "run-line":
+            line, got = run_line(read_block(pathlib.Path(a.block).read_text(encoding="utf-8", errors="replace"))["header"])
+            if line is not None:
+                print(f"line\t{line}")
+                for key in ("folder", "project", "sid"):
+                    print(f"{key}\t{got[key] or ''}")
+            return 0
+        if a.cmd == "has-block":
+            text = pathlib.Path(a.block).read_text(encoding="utf-8", errors="replace")
+            return 0 if BEGIN_WORD in text else 3
         if a.cmd == "plan":
             try:
-                print(json.dumps(plan(a.office, a.folder, a.project, a.block, a.sid)))
+                print(json.dumps(plan(a.office, a.folder, a.project, a.block, a.sid, sid_soft=a.sid_soft)))
             except AskSid as exc:
                 # One per line: the id, a tab, and its words for the key.
                 for s in exc.candidates:

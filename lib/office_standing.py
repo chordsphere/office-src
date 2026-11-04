@@ -219,6 +219,22 @@ def split(text):
     return rest, standing
 
 
+def folder_of(office_root, text):
+    """The desk folder (its directory name) that records the sitting the
+    text's last standing block names (0.44.0): office probe given a text
+    that holds a standing and no probe block, and no folder, files it
+    there. Raises StandingError when the block does not read, or no folder
+    on the desk, or more than one, records its sitting."""
+    block = read_block(text)
+    rels = [r for r in oh.folders_recording(office_root, block["sid"]) if r.startswith("desk/")]
+    if not rels:
+        raise StandingError(f"the block is {block['sid']}'s, and no folder on the desk records it")
+    if len(rels) > 1:
+        raise StandingError(f"the block is {block['sid']}'s, and {len(rels)} folders on the desk record it "
+                            f"({', '.join(rels)}); name one")
+    return rels[0].split("/", 1)[1]
+
+
 def page_text(block, day, time):
     """standing.md for a block read_block returned, as of DAY TIME."""
     return "\n".join([HEADING, "", f"- as of: {day} {time}", f"- sitting: {block['sid']}", "", *block["lines"]]) + "\n"
@@ -301,6 +317,8 @@ def main(argv=None):
     p = sub.add_parser("write", help="file the text's last standing block as FOLDER/standing.md")
     p.add_argument("office"); p.add_argument("folder", help="desk/NAME")
     p.add_argument("--file", required=True); p.add_argument("--day", required=True); p.add_argument("--time", required=True)
+    p = sub.add_parser("folder-of", help="the desk folder that records the last standing block's sitting (0.44.0)")
+    p.add_argument("office"); p.add_argument("--file", required=True)
     p = sub.add_parser("show", help="a folder's standing in the screens' words, or nothing")
     p.add_argument("office"); p.add_argument("folder", help="desk/NAME")
     a = ap.parse_args(argv)
@@ -327,6 +345,9 @@ def main(argv=None):
             block = write(a.office, a.folder, read_text(a.file), a.day, a.time)
             print(f"sid\t{block['sid']}")
             print(f"words\t{words(dict(block, as_of=f'{a.day} {a.time}'))}")
+            return 0
+        if a.cmd == "folder-of":
+            print(folder_of(a.office, read_text(a.file)))
             return 0
         if a.cmd == "show":
             st = folder_standing(a.office, a.folder)

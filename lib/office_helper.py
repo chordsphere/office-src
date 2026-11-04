@@ -2140,6 +2140,57 @@ def brief_ends(text):
     return sid, problems
 
 
+# --- the riders a planner's session carries, named in its brief (0.44.0) ----------------
+#
+# office start carries every queued rider whose path glob the session's
+# forecast touches, on a terminal, and none piped (0.22.0). The planner who
+# cut the bundle knows which riders the session is for, so the brief names
+# them, as lines kept to the byte like the LANDS line and read where it is
+# read (doctrine section 4, continued; values illustrative):
+#
+#   --- RIDES none ---
+#   --- RIDES lib/alpha.py ---
+#   --- RIDES docs/* ---
+#
+# one RIDES line per ride, PATH as office rider add --rides takes it (a path
+# glob, its project first when it names one). With RIDES lines, office start
+# carries exactly the queued riders whose glob matches a RIDES path, piped
+# or not, and says so; --carry N and --carry none still win. `none` carries
+# none. A line that does not read is said; the lines that read are taken.
+
+RIDES_MARK_RE = LazyPattern(r"^--- RIDES (\S(?:.*\S)?) ---$")
+RIDES_MARK_PREFIX = "--- RIDES "
+RIDES_NONE = "none"
+
+
+def brief_rides(text):
+    """(rides, problems) from a brief's text: rides is None when the brief
+    carries no RIDES line that reads, [] for `--- RIDES none ---`, else the
+    PATHs of its `--- RIDES PATH ---` lines outside fenced blocks and
+    notepad pages, in order, each once; problems names every line that
+    begins like the marker and does not read as one, and a `none` beside
+    a path (the paths are taken)."""
+    paths, none, problems = [], False, []
+    for n, line in brief_marker_lines(text):
+        if not line.startswith(RIDES_MARK_PREFIX.rstrip()):
+            continue
+        m = RIDES_MARK_RE.match(line)
+        if not m:
+            problems.append(f"line {n}: not `--- RIDES PATH ---` or `--- RIDES none ---` (PATH a rider's path glob, as "
+                            f"office rider add --rides takes it): {line}")
+            continue
+        value = m.group(1)
+        if value == RIDES_NONE:
+            none = True
+        elif value not in paths:
+            paths.append(value)
+    if none and paths:
+        problems.append("the brief says RIDES none and names paths beside it; the paths are taken")
+    if paths:
+        return paths, problems
+    return ([] if none else None), problems
+
+
 def folders_recording(root, sid):
     """The folders (space/name) whose Sessions record sid, desk first."""
     out = []
@@ -3041,10 +3092,32 @@ def cmd_profile_check(a):
     return 3
 
 
+def offices_fact(machine_file):
+    """The survey's Machine offices fact (0.44.0): each office machine.toml
+    lists, `NAME (ROOT)`, joined by `; `; a root no longer an office is
+    left out (every reader skips it)."""
+    try:
+        if machine_offices(machine_file) is None:
+            return "none listed (machine.toml's offices is not set)"
+        found, _ = listed_offices(machine_file)
+    except HelperError as exc:
+        return f"machine.toml's offices does not read: {exc}"
+    return "; ".join(f"{name} ({root})" for root, name in found) or "none listed"
+
+
+def with_offices_fact(facts, machine_file):
+    """facts with the Machine offices fact after the last Machine fact."""
+    at = max((i for i, f in enumerate(facts) if f[0] == "Machine"), default=len(facts) - 1) + 1
+    return facts[:at] + [("Machine", "offices", offices_fact(machine_file))] + facts[at:]
+
+
 def cmd_survey_render(a):
     prev = pathlib.Path(a.previous)
     previous_text = prev.read_text(encoding="utf-8", errors="replace") if prev.is_file() else None
-    page, changes, first = render_survey(read_facts(a.facts), previous_text)
+    facts = read_facts(a.facts)
+    if a.machine_file:
+        facts = with_offices_fact(facts, a.machine_file)
+    page, changes, first = render_survey(facts, previous_text)
     pathlib.Path(a.out).write_text(page, encoding="ascii")
     if first:
         print("first survey of this office")
@@ -3781,6 +3854,125 @@ def machine_downloads(machine_file):
     return [os.path.expanduser(v) for v in value]
 
 
+# The offices on this machine (0.44.0): machine.toml's `offices`, a list of
+# office roots, the one home of the list (no office's floor plan names
+# another office). office init appends the office it builds, office default
+# PATH appends PATH, and the home screen appends the office it opens in when
+# it is not listed yet, said once; nothing else writes it. A root that is no
+# longer an office is said and skipped by every reader, and never removed by
+# the office: the occupant edits the file. The home screen and the walk-in
+# read another office through its bale registry (its own, and its
+# projects') and the downloads alone, never its pages.
+
+OFFICES_KEY = "offices"
+OFFICE_MANIFEST_REL = "floor-plan/manifest.toml"
+
+
+def machine_offices(machine_file):
+    """The office roots machine.toml's offices lists, ~ expanded, in order,
+    or None when the key is not set (the file may not exist yet). A value
+    that is not a list of strings is an error naming the key."""
+    path = pathlib.Path(machine_file)
+    if not path.is_file():
+        return None
+    data = read_toml(path)
+    if OFFICES_KEY not in data:
+        return None
+    value = data[OFFICES_KEY]
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise HelperError(f"{path}: {OFFICES_KEY} is a list of office roots, like "
+                          f'{OFFICES_KEY} = ["~/offices/home"], not {value!r}')
+    return [os.path.expanduser(v) for v in value]
+
+
+def listed_offices(machine_file):
+    """([(root, name)], skipped lines): each listed root that is an office
+    (its floor plan there), named by its floor plan's office.name, else
+    its directory's name; and one line for each root that is not, said by
+    the caller and skipped, never removed."""
+    out, skipped, seen = [], [], set()
+    for root in machine_offices(machine_file) or []:
+        real = os.path.realpath(root)
+        if real in seen:
+            continue
+        seen.add(real)
+        manifest = pathlib.Path(real) / OFFICE_MANIFEST_REL
+        if not manifest.is_file():
+            skipped.append(f"{root}, listed in {machine_file}'s {OFFICES_KEY}, is no longer an office (no "
+                           f"{OFFICE_MANIFEST_REL}); skipped (edit the file to take it out)")
+            continue
+        try:
+            name = ((read_toml(manifest).get("office") or {}).get("name") or "").strip()
+        except HelperError as exc:
+            skipped.append(f"{root}: its floor plan does not read ({exc}); skipped")
+            continue
+        out.append((real, name or pathlib.Path(real).name))
+    return out, skipped
+
+
+def add_machine_office(machine_file, root):
+    """Append root to machine.toml's offices (the key made, ahead of any
+    table, when missing; the file made with its directory), every other
+    line left as it is. Returns the line written, or None when root is
+    listed already. Refuses a root that is not an office, and a result
+    that would not read back with root last."""
+    import tomllib
+    path = pathlib.Path(machine_file)
+    real = os.path.realpath(root)
+    if not (pathlib.Path(real) / OFFICE_MANIFEST_REL).is_file():
+        raise HelperError(f"{root} is not an office (no {OFFICE_MANIFEST_REL}); {OFFICES_KEY} lists offices only")
+    listed = machine_offices(path)
+    if listed is not None and real in [os.path.realpath(r) for r in listed]:
+        return None
+    raw = list(read_toml(path).get(OFFICES_KEY) or []) if path.is_file() else []
+    value = raw + [real]
+    line = f"{OFFICES_KEY} = [" + ", ".join(toml_basic_string(v) for v in value) + "]"
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    lines = text.splitlines()
+    start = next((i for i, l in enumerate(lines) if re.match(rf"^\s*{OFFICES_KEY}\s*=", l)), None)
+    if start is not None:
+        # The key's whole value, to its closing bracket (an edited file may
+        # spread the list over lines), replaced by the one line.
+        end = start
+        while "]" not in lines[end].split("#", 1)[0] and end + 1 < len(lines):
+            end += 1
+        new = lines[:start] + [line] + lines[end + 1:]
+    else:
+        comment = "# The offices on this machine: the home screen shows each one's waiting items."
+        at = next((i for i, l in enumerate(lines) if re.match(r"^\s*\[", l)), len(lines))
+        new = lines[:at] + [comment, line] + ([""] if at < len(lines) else []) + lines[at:]
+    out = "\n".join(new) + "\n"
+    try:
+        back = tomllib.loads(out).get(OFFICES_KEY)
+    except tomllib.TOMLDecodeError as exc:
+        raise HelperError(f"{path} would not read as TOML with {OFFICES_KEY} in it ({exc}); nothing was written")
+    if back != value:
+        raise HelperError(f"{path}: {OFFICES_KEY} would read back as {back!r}; nothing was written")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(out, encoding="utf-8")
+    return line
+
+
+def cmd_offices(a):
+    """machine.toml's offices: ROOT<tab>NAME per office listed, a root that
+    is no longer an office said on stderr and skipped; --add ROOT appends
+    one (a line said when it was listed now, nothing when it was already).
+    Exit 3 when the key is not set."""
+    if a.add:
+        line = add_machine_office(a.machine_file, a.add)
+        if line is not None:
+            print(f"listed\t{os.path.realpath(a.add)}")
+        return 0
+    if machine_offices(a.machine_file) is None:
+        return 3
+    found, skipped = listed_offices(a.machine_file)
+    for why in skipped:
+        print(f"[office] {why}", file=sys.stderr)
+    for root, name in found:
+        print(f"{root}\t{name}")
+    return 0
+
+
 # The one directory the candidate scan reads outside HOME: where WSL
 # mounts the Windows users' homes. OFFICE_WINDOWS_USERS names another
 # (the suite points it into its own temporary tree, so no test depends on
@@ -4196,6 +4388,7 @@ def build_parser(only=None):
     p.set_defaults(fn=cmd_profile_check)
     p = add("survey-render"); p.add_argument("--facts", required=True)
     p.add_argument("--previous", required=True); p.add_argument("--out", required=True)
+    p.add_argument("--machine-file", help="machine.toml: the Machine section names its offices (0.44.0)")
     p.set_defaults(fn=cmd_survey_render)
     p = add("survey-age"); p.add_argument("page")
     p.add_argument("--install", help="the installed office-src version, to compare with the one the survey records")
@@ -4288,6 +4481,9 @@ def build_parser(only=None):
                                          "it; --candidates lists this machine's likely ones")
     p.add_argument("machine_file"); p.add_argument("--set", nargs="+"); p.add_argument("--candidates", action="store_true")
     p.set_defaults(fn=cmd_downloads)
+    p = add("offices", help="machine.toml's offices (0.44.0): ROOT<tab>NAME per office listed (exit 3: not set); "
+                             "--add ROOT appends one")
+    p.add_argument("machine_file"); p.add_argument("--add"); p.set_defaults(fn=cmd_offices)
     p = add("paste-command", help="machine.toml's paste_command (exit 3: not set); --set writes it; "
                                              "--candidate prints this machine's likely one (exit 3: none)")
     p.add_argument("machine_file"); p.add_argument("--set"); p.add_argument("--candidate", action="store_true")
