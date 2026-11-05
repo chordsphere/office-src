@@ -4,6 +4,67 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.48.0
+
+Additive: no migration, nothing to do in any office. The eleventh serial
+session of the plan begun on 2026-10-27: office ask, the quick path, item
+2 of the M10 report, and the editor's opt-out 0.33.0 proposed. What you
+see changes for `office ask`, which is new; for the home screen, the
+walk-in and `office status` while an ask is out; for `office tray`; and
+for every question that takes several lines when machine.toml names an
+editor. Everything else is as it was.
+
+The quick path. A question worth a chat and not a session, an urgent one
+above all, goes out through `office ask` (the home screen's `i` key): your
+words, as `office start new` takes a job's, and the project by key only
+when your words name none of the office's projects (`--words`, `--project
+NAME` and `--in-office` are the twins; words after the verb are the
+question too). The office writes one out tray, `~/out-tray/ask-DATE-SLUG`:
+a brief from templates/ask-brief.md (your words verbatim, the project, the
+rule that office context informs the answer and never lands in a project,
+the voice page's words when the project has an audience, the letterhead
+check line, and what to leave at the end), and beside it the project's
+handbook chapter, the letterhead's voice page and forbidden list, the
+profile and the doctrine. No project tree rides. On a terminal the tray
+opens and the opener goes on the clipboard, as start's do, and the
+opener's copy is kept beside the tray. No bale verb runs, no session id is
+minted, and nothing is written in the office.
+
+Filing what it learned. The chat ends with a LEARNED block (`--- LEARNED
+BEGIN ask-DATE-SLUG ---` to `--- LEARNED END ---`: `## Answer`, then, when
+there is something in them, `## Handbook` and `## Questions and answers`
+in the doctrine's own shapes). `office ask --learned` files it from the
+clipboard on a terminal, or from FILE or stdin (`-`); bare `office ask`
+with such a block on the clipboard, for an ask that is out, files it
+without asking, said in one line. The office writes the ask as a notepad
+page, `notepad/DATE-ask-SLUG.md` (your words, then the answer) and commits
+it with the facts, each at the end of its project's chapter as `- DATE:
+fact (ask-DATE-SLUG)` through office land's own filing; then it appends
+the questions and answers to the same page and commits that, each commit
+passing the notepad's append check; then the tray, the opener's copy and
+the ask's record beside them go. A block that does not read (no Answer, a
+section an ask has no business with, a project the office does not scope,
+a front sheet, a line off its shape) or that names no ask out from this
+office is refused by name, and nothing is written. `office ask --learned
+none ASK` ends an ask with its page alone. While an ask is out, the
+walk-in lists it under `Asks out`, `office status` says it in one `asks:`
+line, and the home screen offers a key that files its block (`File what
+ask-... learned`), naming `office tray ask-...`, which opens the tray again
+and prints its opener; bare `office tray` offers it when it is the newest.
+A fact the chat writes with the ask's name or slug behind it is filed
+bare, said, as a session's dressed facts are. The window since the last
+sitting (`office digest`) leaves an ask's page out.
+
+The editor's opt-out. machine.toml's `editor` decides where an answer of
+several lines is written: `editor = ""` keeps every answer at the prompt
+whatever `VISUAL` or `EDITOR` say, and `editor = "CMD"` takes it in CMD
+over both. With no key, nothing changes. The review's `?` and the line
+that opens the editor say so.
+
+Tests: tests/test_ask.py, one class per item; the fast tier's entry point
+for `office ask`. tests/test_folders_and_projects.py's bundle-screen test
+reads the session's day from the clock rather than from 2026-11-04.
+
 ## 0.47.0
 
 Additive: no migration, nothing to do in any office. The tenth serial

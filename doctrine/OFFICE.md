@@ -154,7 +154,7 @@ Three boundaries hold that line, each with a guard.
    carries the sitting's page, whether that session is an office session
    or a project session.
 3. A session is worth opening only when the job needs it (section 8).
-   Otherwise the occupant does the work and leaves a one-line trace.
+   Otherwise the occupant does it or asks (`office ask`), leaving a trace.
 4. What every session needs is hung. Hanging is a property of an item,
    not a place (section 6).
 5. A space earns its place through use. A space unused after a few weeks
@@ -1618,7 +1618,8 @@ Kinds:
 | desk | script: in flight, ready in order, parked under what each waits for, candidates | yes | occupant |
 | map | script, read-only (0.46.0): every project the office scopes with its facts, what rides with it and what runs after it lands, and every folder whose lane names it with its state in the desk's words, then the office's own folders; one project's section, or one folder's whole record ending with the lines that change it | yes | occupant |
 | folder | script (0.46.0): the one writer of a folder's fields after open (lane, title, size, goal, source, class): each a replaced line, off the provisional list, one re-scoped History line per field, the folder committed alone; never its status; alone, its fields and the line that changes each | yes | occupant |
-| tray | script, read-only (0.46.0): a session's out tray opened again as start opens it, its files listed and its opener printed again from the copy start keeps beside the tray | yes | occupant |
+| tray | script, read-only (0.46.0): a session's out tray opened again as start opens it, its files listed and its opener printed again from the copy start keeps beside the tray; an office ask's too, by its name or, bare, when it is the newest out (0.48.0) | yes | occupant |
+| ask | script (0.48.0): the quick path between office note and a session (section 8): a question in the occupant's words (--words, or the words after the verb), the project asked by key only when his words name none (--project NAME, --in-office the twins), sent as one out tray for a chat, a brief from the install's template with the office's context beside it, no bale verb run and no session id minted; with --learned, the chat's LEARNED block filed (from a file, stdin, or on a terminal the clipboard): a notepad page, the facts at the end of the handbook's chapters, the questions and answers on the page, each commit on its own, then the tray removed; a block that does not read, or that names no ask out from this office, refused by name; --learned none ends an ask with its page alone; bare on a terminal, a block on the clipboard naming an ask out is filed without a question | yes | occupant |
 | week | script: this week's calendar and its gaps, and a meeting whose prep is out | yes | plumbing |
 | close | script: move a folder to the filing cabinet, done, absorbed, split or retired | yes | occupant |
 | reopen | script: move a done folder back to the desk | yes | plumbing |
@@ -1697,7 +1698,11 @@ instead, as git takes a commit message: a scratch file seeded with the
 question and its explanation as comment lines, read back less them and
 less blank lines; he saw the whole there, so it is not shown back. An
 editor that fails, or comes back empty where an answer is needed, is said,
-and the answer is asked at the prompt.
+and the answer is asked at the prompt. The editor is this machine's to
+turn off (0.48.0): machine.toml's `editor = ""` keeps every answer at the
+prompt whatever VISUAL and EDITOR say, and `editor = "CMD"` takes it in
+CMD over them both; with no such key, VISUAL and EDITOR decide as before,
+and the line that opens the editor says which did.
 
 The verbs are on two surfaces, which the table above names and
 share/verbs.toml declares. The occupant's own (`occupant`) are the home
@@ -1826,9 +1831,80 @@ A session is worth opening when a job needs one of these:
 - drill-down into a system.
 
 Otherwise the occupant does the work and leaves a trace: office note for
-a conversation or decision, a commit for code. Cleanup reads notes and
-git logs, including commits no session made, and keeps folders and
-chapters current.
+a conversation or decision, a commit for code. Between the two shapes
+sits the ask (0.48.0): a question worth a chat but not a session, an
+urgent one most of all, goes out through `office ask`, with the office's
+context and its trace. Cleanup reads notes and git logs, including
+commits no session made, and keeps folders and chapters current.
+
+`office ask` takes the question in his words, as `office start new` takes
+a job's, and asks which project it is on, by key, only when his words name
+none of the office's projects (the office itself is an answer). It writes
+one out tray, OUT_TRAY/ask-DATE-SLUG (machine.toml's out_tray, as a
+session's tray is): a brief from the install's templates/ask-brief.md,
+with his words verbatim, the project, the rule of section 2 in its words
+(office context informs the answer but never lands in a project), the
+voice page's words when the project has an audience, the line that checks
+what leaves (`office letterhead check FILE`) and what to leave at the end;
+beside it the project's handbook chapter, the letterhead's voice page and
+forbidden list, the profile and this doctrine. No project tree rides: a
+quick answer is from what the office holds, and he attaches what else the
+chat needs. No bale verb runs and no session id is minted, since the
+office neither packs nor lands an ask; its name, ask-DATE-SLUG, is the
+office's own, DATE the office's day. On a terminal the tray opens and the
+opener goes on the clipboard, as a session's do, its copy kept beside the
+tray, and `office tray ask-DATE-SLUG` prints it again.
+
+The chat ends with one block, kept to the byte as the ARISING block is
+(values illustrative):
+
+  ```
+  --- LEARNED BEGIN ask-2026-10-26-picklist-endpoint ---
+
+  ## Answer
+
+  <the answer, in a paragraph, as he would keep it>
+
+  ## Handbook
+
+  ### alpha
+
+  - the picklist endpoint reads its options from the schema's enum
+
+  ## Questions and answers
+
+  - 2026-10-26 does the endpoint cache? no, every call reads the schema
+
+  --- LEARNED END ---
+  ```
+
+`## Answer` is needed; `## Handbook` and `## Questions and answers` are
+section 4's own shapes, each there only when it holds something, and the
+block holds nothing else: no Sort, and no front sheet, which is a
+session's to write. Of several blocks the last counts, and a fence around
+it, or inside the answer, is fine. `office ask --learned` files it, from a
+file, stdin, or on a terminal the clipboard; and bare `office ask` on a
+terminal, when the clipboard holds a block naming an ask that is out,
+files it instead of asking, said in one line. Filing writes the ask as a
+notepad page, notepad/DATE-ask-SLUG.md, his words and then the answer,
+written whole once and committed; files each fact at the end of its
+project's chapter as `- DATE: fact (ask-DATE-SLUG)`, the ask's name in a
+session's place, through the code `office land` files a session's facts
+with (the handbook arriving with the first fact, a fact written dressed
+with a date or the ask's name made bare and said); and appends the
+questions and answers to the same page, since an ask has no folder, in a
+commit of its own. Each commit passes the notepad's check (section 15). A
+block that does not read, or that names no ask out from this office, is
+refused by name before anything is written. Until its block is filed an
+ask is out: its tray is the office's record of that, with a small record
+beside it naming the office it came from, and the walk-in, the home
+screen (whose key for it files the block on the clipboard) and `office
+status` show it, one line each. `office ask --learned none ASK` ends one
+with its page alone. Filing removes the ask's tray, its opener's copy and
+that record, and nothing else; the office writes nothing in the downloads
+for an ask. An ask's page has a sitting's page's shape, and the window
+since the last sitting (`office digest`) leaves it out by the commit that
+filed it.
 
 That is the shape. Each profile sets its own threshold inside it: an
 office where every session costs a long round trip opens fewer; an office

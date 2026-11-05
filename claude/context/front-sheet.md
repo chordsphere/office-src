@@ -20,7 +20,9 @@ reaches it only through `office upgrade`. Every day: `office` to walk in
 waits on you, each with a key that runs it, so you never type a session id
 or a file name; off a terminal, the page, ending with a Next line naming
 the one command to type), `office note`
-to capture a line, `office slip` to drop a friction slip, `office drop`
+to capture a line, `office ask` for a quick question answered in a chat
+with the project's handbook chapter and voice page at hand (no session;
+`office ask --learned` files what the chat learned), `office slip` to drop a friction slip, `office drop`
 to drop a message or a thread in the in-tray (from the clipboard, a file
 or stdin, with the project in any words), `office start` to send a
 session out for a folder (with the folder's own goal and brief when it
@@ -238,6 +240,28 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.48.0 (session 2026-11-05-m10-ask-001): office ask, the quick path.
+  - `office ask` (bin/office cmd_ask, lib/office_ask.py): his words as
+    start new takes them, the project by key only when they name none; one
+    out tray OUT_TRAY/ask-DATE-SLUG (templates/ask-brief.md, the chapter,
+    the letterhead's two pages, the profile, the doctrine), the opener's
+    copy and a record, NAME.ask.json, beside it. No bale verb, no session
+    id. An ask is out while its tray is there and its record names this
+    office (`asks_out`): the walk-in, office status and the home screen's
+    item (`ask_items`; the `i` key asks) read it.
+  - `office ask --learned [FILE | - | none [ASK]]`: the LEARNED block
+    (`read_block`, refused by name) filed as notepad/DATE-ask-SLUG.md, the
+    facts through office_sort.file_handbook with the ask's name as the tag,
+    then the Q&A appended to the page, two commits, then the tray removed;
+    bare `office ask` files a block on the clipboard naming an ask out.
+  - bare_fact drops `(ask-DATE-SLUG)` and `(SLUG)` for that ask's filing;
+    office_watches.sitting_filings leaves an ask's page out (ASK_PAGE_RE
+    and the `office ask:` commit subject, office_helper).
+  - machine.toml's `editor` (office_helper EDITOR_KEY, `helper editor`):
+    `""` off, `"CMD"` over VISUAL and EDITOR; bin/office
+    answer_editor_settle reads it once per question.
+  - `office tray ask-DATE-SLUG`, and bare `office tray` offers an ask out.
+  - Additive: no migration. tests/test_ask.py holds the release's tests.
 - 0.47.0 (session 2026-11-04-deliver-fixes-003): deliver fixes.
   - the merge's materials carry the audience's copy of every file it
     changed since the sides parted (office_deliver._MATERIALS_SCRIPT,

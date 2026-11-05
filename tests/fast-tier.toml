@@ -67,6 +67,7 @@ standing = ["test_standing.TestOfficeStanding.test_a_block_is_filed_as_the_folde
 map = ["test_folders_and_projects.TestTheMap.test_a_name_that_is_neither_refuses_naming_the_projects"]
 folder = ["test_folders_and_projects.TestOfficeFolder.test_alone_it_prints_the_fields_and_the_lines_that_change_each"]
 tray = ["test_folders_and_projects.TestTheTray.test_what_it_refuses"]
+ask = ["test_ask.TestTheAskSent.test_piped_it_writes_the_tray_and_runs_no_bale"]
 
 [also]
 tests = [
