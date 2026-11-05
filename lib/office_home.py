@@ -771,6 +771,10 @@ def home_items(skew, founded, out, groups, projects, slips, behind, bundles, nam
 
 FIXED_KEYS = (
     ("o", "a new job, in your words", "office", ["start", "new"]),
+    # The quick path (0.48.0): a question in his words, answered in a chat
+    # with the office's context, no session; its block is filed by the
+    # item an ask out gets (office ask --learned).
+    ("i", "a quick question, in your words, answered in a chat", "office", ["ask"]),
     # The map (0.46.0): every project with its facts and its folders.
     ("a", "the map: every project and its folders", "office", ["map"]),
     # A planner sitting from his words (0.24.0): what he wants a planner
@@ -952,6 +956,9 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
     # The out trays to open again (0.46.0): one per session out whose
     # response is not in the downloads and whose tray is still there.
     items += tray_items(every, names, directories, tray_root_of(machine_file))
+    # Each ask out (0.48.0): its key files the LEARNED block on the
+    # clipboard, and its words name the verb that opens its tray again.
+    items += ask_items(office_root, tray_root_of(machine_file))
     # The sessions out that were never worked: the w key's (office withdraw).
     try:
         offered, _, _ = ob.withdraw_view(rd, office_root, directories)
@@ -1028,11 +1035,33 @@ def tray_items(every, names, directories, tray_root):
     return items
 
 
+def ask_items(office_root, tray_root):
+    """A home screen item per office ask out from this office (0.48.0):
+    its key runs office ask --learned, which reads the block from the
+    clipboard and files it for the ask it names."""
+    import office_ask as oa
+    try:
+        out = oa.asks_out(office_root, tray_root)
+    except (OSError, oh.HelperError) as exc:
+        debug(f"the asks out could not be read from {tray_root}: {exc}")
+        return []
+    return [item(oa.home_words(r), ["ask", "--learned"]) for r in out]
+
+
 def tray_reading(rd, office_root, tray_root, sid=None, folder=None):
-    """(sid, tray, opener copy or None) for office tray: the session named,
-    the newest a folder records, or the newest session out from this
-    office with a tray. Refuses (HelperError) when there is none."""
+    """(sid, tray, opener copy or None) for office tray: the session (or,
+    since 0.48.0, the office ask) named, the newest a folder records, or
+    the newest session or ask out from this office with a tray. Refuses
+    (HelperError) when there is none."""
     import office_bale as ob
+    if sid and oh.ASK_NAME_RE.match(sid):
+        # An office ask's tray (0.48.0): OUT_TRAY/ask-DATE-SLUG, its opener's
+        # copy beside it, as a session's is.
+        tray = pathlib.Path(tray_root) / sid
+        if not tray.is_dir():
+            raise oh.HelperError(f"no out tray for {sid} in {tray_root}: it was filed (its tray goes then), or "
+                                 "it was never sent from this machine")
+        return sid, tray, opener_copy(tray)
     if sid:
         tray = tray_dir(tray_root, sid)
         if tray is None:
@@ -1055,6 +1084,12 @@ def tray_reading(rd, office_root, tray_root, sid=None, folder=None):
         tray = tray_dir(tray_root, x["sid"])
         if tray is not None and (x["folders"] or x["label"] == ob.OFFICE_LABEL):
             found.append((tray.stat().st_mtime, x["sid"], tray))
+    # An office ask out from this office (0.48.0) is offered as a session's
+    # tray is, the newest of them all winning.
+    import office_ask as oa
+    for r in oa.asks_out(office_root, tray_root):
+        tray = pathlib.Path(r["tray"])
+        found.append((tray.stat().st_mtime, r["name"], tray))
     if not found:
         raise oh.HelperError(f"no session out from this office has an out tray in {tray_root} (office tray SID "
                              "opens an older session's)")

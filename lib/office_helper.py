@@ -702,6 +702,15 @@ def space_catalog_problems(catalog):
 # --- sessions in folders ----------------------------------------------------
 
 SID_RE = LazyPattern(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*-\d{3}$")
+# An office ask's name (0.48.0, office ask): ask-DATE-SLUG, the office's
+# own and never a session id (no bale verb runs for an ask, and no id is
+# minted). Its notepad page is notepad/DATE-ask-SLUG.md, added by a commit
+# whose subject starts ASK_COMMIT_PREFIX, which is how the sittings'
+# window (office_watches.sitting_filings) tells it from a sitting's page
+# of the same shape.
+ASK_NAME_RE = LazyPattern(r"^ask-(\d{4}-\d{2}-\d{2})-([a-z0-9]+(?:-[a-z0-9]+)*)$")
+ASK_PAGE_RE = LazyPattern(r"^notepad/(\d{4}-\d{2}-\d{2})-ask-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
+ASK_COMMIT_PREFIX = "office ask:"
 # bale's key contract for `bale pack --json` (the format_pack_json
 # docstring in bale's bin/bale_report.py) names the session id `sid`, a
 # stable key; share/bale-consumption.toml records the read.
@@ -3470,7 +3479,7 @@ BATCH_MODULES = {
     "drop": "office_drop", "sort": "office_sort", "watches": "office_watches",
     "digest": "office_digest", "door": "office_door", "deliver": "office_deliver",
     "home": "office_home", "meeting": "office_meeting", "planner": "office_planner",
-    "probe": "office_probe", "letterhead": "office_letterhead",
+    "probe": "office_probe", "letterhead": "office_letterhead", "ask": "office_ask",
 }
 BATCH_STDERR = {"-q": "quiet", "-m": "merge"}
 
@@ -4266,6 +4275,10 @@ def desktop_which(name, environ=None):
 # verb that needs it refuses and names the key. "" turns it off.
 
 PASTE_KEY = "paste_command"
+# The editor an answer of several lines is taken in (0.48.0): machine.toml's
+# editor, beside paste_command. "" turns the editor off; a command names
+# one over VISUAL and EDITOR; not set, VISUAL then EDITOR as before.
+EDITOR_KEY = "editor"
 # On WSL the Windows clipboard is read through PowerShell; its output is
 # made UTF-8 so a block's non-ASCII survives, and the CR of its CRLF
 # line ends is dropped by the reader (office_probe.read_block).
@@ -4349,6 +4362,16 @@ def cmd_paste_command(a):
         print(found)
         return 0
     value = machine_string(a.machine_file, PASTE_KEY)
+    if value is None:
+        return 3
+    print(value)
+    return 0
+
+
+def cmd_editor(a):
+    """machine.toml's editor (0.48.0): exit 3 when it is not set, else the
+    value (empty: the editor turned off)."""
+    value = machine_string(a.machine_file, EDITOR_KEY)
     if value is None:
         return 3
     print(value)
@@ -4653,6 +4676,8 @@ def build_parser(only=None):
     p = add("offices", help="machine.toml's offices (0.44.0): ROOT<tab>NAME per office listed (exit 3: not set); "
                              "--add ROOT appends one")
     p.add_argument("machine_file"); p.add_argument("--add"); p.set_defaults(fn=cmd_offices)
+    p = add("editor", help="machine.toml's editor (0.48.0; exit 3: not set): \"\" turns the editor off")
+    p.add_argument("machine_file"); p.set_defaults(fn=cmd_editor)
     p = add("paste-command", help="machine.toml's paste_command (exit 3: not set); --set writes it; "
                                              "--candidate prints this machine's likely one (exit 3: none)")
     p.add_argument("machine_file"); p.add_argument("--set"); p.add_argument("--candidate", action="store_true")

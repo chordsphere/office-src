@@ -298,8 +298,9 @@ def sitting_key(rel, pages=()):
 def sitting_filings(root):
     """[(when, page, commit, subject, sitting)] for every sitting's page
     in the notepad (notepad/DATE-SLUG.md, the shape office start files,
-    a day page notepad/DATE.md aside), by the commit that added it,
-    oldest first. None when the office is not a git repo."""
+    a day page notepad/DATE.md and an office ask's page aside), by the
+    commit that added it, oldest first. None when the office is not a git
+    repo."""
     import subprocess
     root = pathlib.Path(root)
     proc = subprocess.run(["git", "-C", str(root), "log", "--diff-filter=A", "--format=C%x09%H%x09%cI%x09%s",
@@ -314,6 +315,10 @@ def sitting_filings(root):
             commit = (dt.datetime.fromisoformat(when), sha, subject)
             continue
         if line.strip() and commit and oh.SITTING_PAGE_RE.match(line.strip()):
+            # An office ask's page (0.48.0) has a sitting's page's shape;
+            # the commit office ask files it with says it is an ask's.
+            if oh.ASK_PAGE_RE.match(line.strip()) and commit[2].startswith(oh.ASK_COMMIT_PREFIX):
+                continue
             out.append((commit[0], line.strip(), commit[1], commit[2]))
     # Keyed once every page is known, so a later page joins its first
     # whichever commit filed which.

@@ -163,7 +163,7 @@ class TestTheHomeScreenUnits(unittest.TestCase):
         self.assertFalse([l for l in lines if "more:" in l], lines)
         keys = [k for k, _, _ in menu]
         self.assertEqual(keys, [str(n) for n in range(1, 10)] + ["b", "c"]
-                         + ["o", "a", "p", "m", "s", "n", "d", "k", "h", "q"])
+                         + ["o", "i", "a", "p", "m", "s", "n", "d", "k", "h", "q"])
         self.assertNotIn("[l]", "\n".join(lines), "nothing is out, so there is nothing to bring back")
         self.assertTrue(all(len(l) <= 80 for l in lines if l.startswith("  [o]") or l.startswith("  [")))
         _, menu = hs.render_page([], [], 1)

@@ -507,14 +507,20 @@ def bare_fact(fact, sid=None):
     sid, that session's ask by name, its slug (`(fix-login)` for
     2026-10-14-fix-login-001). A date or an id inside the fact's own
     sentence stays, and so does a trailing parenthesis that is neither.
-    The empty string when nothing is left."""
+    The empty string when nothing is left.
+
+    An office ask files its facts as a session's (0.48.0): sid is then the
+    ask's name, ask-DATE-SLUG, and a trailing `(ask-DATE-SLUG)` of that
+    ask, or its SLUG alone, is dropped as a session's id or slug is."""
     text = " ".join(str(fact).split())
     ask = sid[11:-4] if sid and oh.SID_RE.match(sid) else None
+    asked = oh.ASK_NAME_RE.match(sid) if sid else None
+    own = {sid, asked.group(2)} if asked else set()
     while True:
         before = text
         text = FACT_LEADING_DATE_RE.sub("", text).strip()
         m = FACT_TRAILING_TAG_RE.search(text)
-        if m and (oh.SID_RE.match(m.group(1)) or (ask is not None and m.group(1) == ask)):
+        if m and (oh.SID_RE.match(m.group(1)) or (ask is not None and m.group(1) == ask) or m.group(1) in own):
             text = text[:m.start()].strip()
         if text == before:
             return text
@@ -583,6 +589,9 @@ def file_handbook(root, project, facts, front, sid, day):
     rel, changed, words = ensure_chapter(root, project)
     path = pathlib.Path(root) / rel
     wrote = bool(changed)
+    # Who adds the day and the tag, and what the tag is (0.48.0): office
+    # land and a session's id, or office ask and the ask's name.
+    by, tag = ("office ask", "the ask's name") if oh.ASK_NAME_RE.match(sid or "") else ("office land", "a session id")
     if facts:
         have = filed_facts(path)
         new, seen, already, twice, dressed, empty = [], set(have), 0, 0, 0, 0
@@ -611,10 +620,10 @@ def file_handbook(root, project, facts, front, sid, day):
         elif already:
             words.append(f"{rel}: all {already} fact(s) from {sid} already there, left as they are")
         if dressed:
-            words.append(f"{rel}: {dressed} fact(s) from {sid} came with a date or a session id of their own, "
-                         "dropped before filing, since office land adds both (write facts bare)")
+            words.append(f"{rel}: {dressed} fact(s) from {sid} came with a date or {tag} of their own, "
+                         f"dropped before filing, since {by} adds both (write facts bare)")
         if empty:
-            words.append(f"{rel}: {empty} fact(s) from {sid} held nothing but a date and a session id, so "
+            words.append(f"{rel}: {empty} fact(s) from {sid} held nothing but a date and {tag}, so "
                          "nothing of them is filed")
     if front:
         if front_sheet_body(path) == oh.ascii_escape("\n".join(trimmed(front)))[0].split("\n"):

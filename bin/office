@@ -647,11 +647,33 @@ rtrim() { local s="${1%$'\r'}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
 # parentheses ("--words", "--purpose").
 flag_of() { [[ "$1" =~ \(([^()]*)\)[[:space:]]*$ ]] && printf '%s' "${BASH_REMATCH[1]}"; return 0; }
 
-# answer_editor: the editor an answer is taken in, VISUAL then EDITOR, as
-# git reads them (VISUAL not on a dumb terminal); nothing when neither is set.
+# answer_editor: the editor an answer is taken in. machine.toml's editor
+# first (0.48.0): "" there turns the editor off, and a command there names
+# the editor over VISUAL and EDITOR; not set, VISUAL then EDITOR, as git
+# reads them (VISUAL not on a dumb terminal); nothing when none says one.
+# ANSWER_EDITOR_FROM says where the editor came from, for the log line.
+# answer_editor_settle reads machine.toml once per question (can_edit reads
+# answer_editor in a subshell, which keeps nothing), so a file that does
+# not read is said once.
+ANSWER_EDITOR_SETTLED=0; ANSWER_EDITOR=""; ANSWER_EDITOR_FROM=""
+answer_editor_settle() {
+  local out rc
+  ANSWER_EDITOR=""; ANSWER_EDITOR_FROM=""; ANSWER_EDITOR_SETTLED=1
+  if [ -f "$MACHINE_FILE" ]; then
+    out="$(helper editor "$MACHINE_FILE")"; rc=$?
+    case "$rc" in
+      0) ANSWER_EDITOR="$out"; ANSWER_EDITOR_FROM="machine.toml's editor"; return 0 ;;
+      3) ;;
+      *) warn "editor in $MACHINE_FILE does not read (the line above says why), so VISUAL and EDITOR say the editor" ;;
+    esac
+  fi
+  if [ -n "${VISUAL:-}" ] && [ "${TERM:-}" != dumb ]; then ANSWER_EDITOR="$VISUAL"; ANSWER_EDITOR_FROM="VISUAL"
+  elif [ -n "${EDITOR:-}" ]; then ANSWER_EDITOR="$EDITOR"; ANSWER_EDITOR_FROM="EDITOR"; fi
+  return 0
+}
 answer_editor() {
-  if [ -n "${VISUAL:-}" ] && [ "${TERM:-}" != dumb ]; then printf '%s' "$VISUAL"
-  elif [ -n "${EDITOR:-}" ]; then printf '%s' "$EDITOR"; fi
+  [ "$ANSWER_EDITOR_SETTLED" = 1 ] || answer_editor_settle
+  printf '%s' "$ANSWER_EDITOR"
 }
 
 # can_edit: is an answer taken in the editor? Only on his terminal: stdin
@@ -673,7 +695,7 @@ read_more_lines() {
   done
 }
 
-REVIEW_HELP="keep, or a plain return, takes the answer as shown above; nothing is written or sent before it is kept. redo asks the question again from its first line. more takes lines after the last one, a blank line ending them. A line's number shows that line and takes it again, and a blank line there takes it out. The question's flag twin gives the whole answer at once, and with VISUAL or EDITOR set the answer is taken in that editor instead, where every line can be changed."
+REVIEW_HELP="keep, or a plain return, takes the answer as shown above; nothing is written or sent before it is kept. redo asks the question again from its first line. more takes lines after the last one, a blank line ending them. A line's number shows that line and takes it again, and a blank line there takes it out. The question's flag twin gives the whole answer at once, and with VISUAL or EDITOR set the answer is taken in that editor instead, where every line can be changed. editor in this machine's machine.toml says otherwise: editor = \"\" keeps every answer here at the prompt, and editor = \"CMD\" takes it in CMD over VISUAL and EDITOR."
 
 # review_lines ARRAY PROMPT REQUIRED: the answer in ARRAY (its lines) shown
 # whole, numbered, then one question, its flag twin the question's own:
@@ -748,7 +770,7 @@ edit_answer() {
     printf '%s\n' "Your answer goes above these lines, as many lines as you like. Lines starting with # are left out, and blank lines too, since a blank line ends an answer typed at the prompt. $__e_empty Save the file and quit the editor to go on." \
       | fold -s -w 70 | sed 's/[[:space:]]*$//; s/^/# /'
   } > "$__e_file" || { warn "could not seed $__e_file for $__e_ed, so your answer is asked here"; return 1; }
-  log "taking your answer in $__e_ed (VISUAL or EDITOR); save and quit it to go on"
+  log "taking your answer in $__e_ed (${ANSWER_EDITOR_FROM:-VISUAL or EDITOR}; editor = \"\" in $MACHINE_FILE keeps it at the prompt); save and quit it to go on"
   # The editor draws on stderr's terminal: stdout may be a command
   # substitution's pipe (office start new reads the words inside one).
   sh -c "$__e_ed \"\$@\"" "$__e_ed" "$__e_file" >&2; __e_rc=$?
@@ -783,6 +805,7 @@ edit_answer() {
 # anything longer.
 ask_paragraph() {
   local __var="$1" prompt="$2" help="$3" line lines=()
+  answer_editor_settle
   if can_edit && edit_answer "$__var" "$prompt" "$help" 0; then return 0; fi
   while :; do
     while :; do
@@ -808,6 +831,7 @@ ask_paragraph() {
 # in his editor (edit_answer).
 ask_words() {
   local __var="$1" prompt="$2" help="$3" line lines=()
+  answer_editor_settle
   if can_edit && edit_answer "$__var" "$prompt" "$help" 1; then return 0; fi
   while :; do
     while :; do
@@ -1402,7 +1426,7 @@ cmd_status() {
   # then each line's read in the order the lines are printed. None writes,
   # and none depends on another's answer, so they go out together; what
   # each would have printed to stderr still goes there as it runs.
-  local name bytecode doctrine survey tz_named drift defects folders waiting structure filed drafting tray handbook bale letterhead
+  local name bytecode doctrine survey tz_named drift defects folders waiting structure filed drafting tray handbook bale letterhead asks
   local skewr calls=()
   batch_call calls skew-report "$root/$MANIFEST_REL" "$(install_version)" "$MIGRATIONS"
   batch_call calls get "$root/$MANIFEST_REL" office.name --default "(unnamed)"
@@ -1420,9 +1444,10 @@ cmd_status() {
   batch_call calls -q drafting:table-check "$root"
   batch_call calls -q drop:tray-check "$root"
   batch_call calls -q sort:handbook-check "$root"
+  batch_call calls -q ask:out-lines "$root" --machine-file "$MACHINE_FILE" --status
   batch_call calls bale:status-lines "$root"
   batch_call calls deliver:status-lines "$root"
-  batch_run skewr name bytecode doctrine profile survey tz_named drift defects folders waiting structure filed drafting tray handbook bale letterhead -- "${calls[@]}"
+  batch_run skewr name bytecode doctrine profile survey tz_named drift defects folders waiting structure filed drafting tray handbook asks bale letterhead -- "${calls[@]}"
   if [ "$skewr_rc" != 0 ]; then
     [ -n "$skewr" ] || die "cannot read the version stamp in $root/$MANIFEST_REL"
     die "cannot plan migrations from $MIGRATIONS"
@@ -1517,6 +1542,10 @@ cmd_status() {
   # chapter against the shape office land writes (0.20.0).
   [ -z "$handbook" ] || printf '%s\n' "$handbook"
   case $handbook_rc in 0|3) ;; *) printf 'handbook:   could not be checked\n' ;; esac
+  # The office asks out (0.48.0): one line when any is, read from their
+  # trays; nothing when none is.
+  [ "$asks_rc" = 0 ] || asks=""
+  [ -z "$asks" ] || printf '%s\n' "$asks"
   # The read side: which bale is installed against the version the
   # office's reads were written for, and whether each project in scope
   # can be read. Lines, never a refusal.
@@ -2654,18 +2683,20 @@ cmd_map() {
 
 usage_tray() {
   cat <<'USAGE'
-usage: office tray [SID | FOLDER]
+usage: office tray [SID | ASK | FOLDER]
 Opens a session's out tray again, as office start opens it (machine.toml's
 open_command; on WSL, Explorer), prints its path and the files in it, and
 prints the opener again from the copy office start keeps beside the tray
 (OUT_TRAY/SID.opener.txt), so a closed window or a lost clipboard costs
-one line. With no argument, the tray of the newest session out from this
-office; with a folder (its number or a part of its name), the tray of its
-newest session; with a session id, that session's. It writes nothing.
+one line. With no argument, the tray of the newest session or office ask
+out from this office; with a folder (its number or a part of its name),
+the tray of its newest session; with a session id, that session's; with an
+office ask's name (ask-DATE-SLUG), that ask's. It writes nothing.
 Examples:
   office tray
   office tray 12
   office tray 2026-11-04-fix-login-001
+  office tray ask-2026-11-05-does-the-endpoint-cache
 USAGE
 }
 
@@ -2683,7 +2714,8 @@ cmd_tray() {
   case "$tray_root" in "~"|"~/"*) tray_root="$HOME${tray_root#\~}" ;; esac
   if [ -z "$want" ]; then
     out="$(homex tray "$root" --tray-root "$tray_root")" || exit 1
-  elif [[ "$want" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-.+-[0-9]{3}$ ]]; then
+  elif [[ "$want" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-.+-[0-9]{3}$ ]] || [[ "$want" =~ ^ask-[0-9]{4}-[0-9]{2}-[0-9]{2}-.+$ ]]; then
+    # A session's id, or an office ask's name (0.48.0): its tray by name.
     out="$(homex tray "$root" --tray-root "$tray_root" --sid "$want")" || exit 1
   else
     rel="$(find_any_folder "$root" "$want")" || exit 1
@@ -2708,7 +2740,13 @@ cmd_tray() {
     return 0
   fi
   printf '\nAttach every file in the out tray to a fresh chat, then paste the opener:\n\n'
-  printf -- '--8<-- session opener --8<--\n%s\n--8<-- end session opener --8<--\n' "$(cat "$opener")"
+  if [[ "$sid" == ask-* ]]; then
+    # An office ask's opener (0.48.0): its chat ends with a LEARNED block.
+    printf -- '--8<-- ask opener --8<--\n%s\n--8<-- end ask opener --8<--\n' "$(cat "$opener")"
+    log "when the chat has answered, copy its LEARNED block and run office ask --learned"
+  else
+    printf -- '--8<-- session opener --8<--\n%s\n--8<-- end session opener --8<--\n' "$(cat "$opener")"
+  fi
   [ ! -t 1 ] || to_clipboard "$(cat "$opener")" "the opener"
   return 0
 }
@@ -9715,6 +9753,262 @@ cmd_standing() {
   file_standing "$root" "$name" "$text_file" "$via" 1
 }
 
+# --- office ask: the quick path (0.48.0) -------------------------------------------
+#
+# A question worth a chat and not a session (doctrine section 8): his
+# words, as office start new takes them, and one small out tray for a chat
+# with the office's context beside the brief; the chat ends with a LEARNED
+# block, and office ask --learned files it (lib/office_ask.py). No bale
+# verb runs, no session id is minted, nothing is packed or landed. An ask
+# is out while its tray is there.
+
+ASK_PY="$OFFICE_SRC/lib/office_ask.py"
+askx() { pylib "$ASK_PY" "$@"; }
+
+usage_ask() {
+  cat <<'USAGE'
+usage: office ask [WORDS... | --words TEXT] [--project NAME | --in-office]
+       office ask --learned [FILE | - | none [ASK]]
+A quick question, in your words, answered in a chat with the office's
+context at hand, and no session: no pack, no tarball, no land. The office
+writes one out tray, OUT_TRAY/ask-DATE-SLUG (machine.toml's out_tray, as
+a session's tray is): a brief with your words verbatim, the project, the
+rule that office context never lands in a project and what the chat leaves
+at the end, and beside it the project's handbook chapter, the letterhead's
+voice page and forbidden list, the profile and the doctrine. No project
+tree rides; attach what else the chat needs. On a terminal the tray opens
+and the opener goes on the clipboard, as office start's do. Your words are
+asked on a terminal, as office start new asks a job's, and the project only
+when your words name none of the office's projects; piped, give --words
+and, when your words name no project, --project NAME or --in-office.
+The chat ends with a LEARNED block (--- LEARNED BEGIN ask-DATE-SLUG --- to
+--- LEARNED END ---): the answer, facts for the handbook, questions and
+answers. office ask --learned files it, from FILE, stdin (-) or, with
+neither on a terminal, the clipboard: the ask as a notepad page,
+notepad/DATE-ask-SLUG.md (your words, then the answer), each fact at the
+end of its project's chapter as `- DATE: fact (ask-DATE-SLUG)`, and the
+questions and answers on the same page, each commit on its own; then the
+tray goes. A block that does not read, or that names no ask out from this
+office, is refused by name and nothing is written. --learned none [ASK]
+ends an ask with its page alone. Bare office ask on a terminal, with an ask
+out and its LEARNED block on the clipboard, files it instead of asking.
+office tray ask-DATE-SLUG opens an ask's tray again and prints its opener.
+  --words TEXT      the question, in your words (or as words after ask)
+  --project NAME    the project the question is on
+  --in-office       the question is on the office itself
+  --learned         file a LEARNED block (FILE, -, or the clipboard)
+Examples:
+  office ask
+  office ask does the picklist endpoint cache its options?
+  office ask --words "why does the nightly job skip Sundays?" --project alpha
+  office ask --learned
+  office ask --learned learned.txt
+  office ask --learned none ask-2026-11-05-why-does-the-nightly-job
+USAGE
+}
+
+# ask_tray_root: where out trays go, as office start reads it: machine.toml's
+# out_tray, ~ expanded, else ~/out-tray.
+ask_tray_root() {
+  local t
+  t="$(machine_setting out_tray "$HOME/out-tray")"
+  case "$t" in "~"|"~/"*) t="$HOME${t#\~}" ;; esac
+  printf '%s' "$t"
+}
+
+# ask_clipboard_quietly FILE: the clipboard's text into FILE without asking
+# anything: machine.toml's paste_command, else the machine's own reader.
+# Returns 1, said under OFFICE_DEBUG, when there is none or it fails; bare
+# office ask then asks its question as it would have.
+ask_clipboard_quietly() {
+  local file="$1" paste rc
+  paste="$(helper paste-command "$MACHINE_FILE" 2>/dev/null)"; rc=$?
+  if [ "$rc" = 3 ]; then paste="$(helper paste-command "$MACHINE_FILE" --candidate 2>/dev/null)" || paste=""; fi
+  if [ -z "$paste" ]; then debug "no way to read the clipboard here, so office ask asks its question"; return 1; fi
+  timeout 15 bash -c "$paste" < /dev/null > "$file" 2>/dev/null \
+    || { debug "the clipboard could not be read ($paste), so office ask asks its question"; return 1; }
+  return 0
+}
+
+# ask_file ROOT TRAY_ROOT FILE VIA: the last LEARNED block in FILE filed,
+# then the ask's tray removed, every step said.
+ask_file() {
+  local root="$1" tray_root="$2" file="$3" via="$4" tz day now out key val name="" page="" paths=() n why
+  require_current "$root"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"; now="$(office_time "$tz")"
+  out="$(askx file "$root" --tray-root "$tray_root" --file "$file" --day "$day" --time "$now")" \
+    || die "nothing was filed from $via (the line above says why); the ask stays out, and its tray is as it was"
+  while IFS=$'\t' read -r key val; do
+    case "$key" in
+      name) name="$val" ;; page) page="$val" ;; path) paths+=("$val") ;; say) log "$val" ;;
+    esac
+  done <<< "$out"
+  # The notepad is filed paper (doctrine section 15): the page is new, and
+  # it is checked as office note checks its page before each commit.
+  why="$(helper append-check "$root" "$page")"
+  case $? in
+    0) commit_paths "$root" "office ask: filed $name (its page and facts)" "${paths[@]}" || true ;;
+    3) die "$page differs from its committed bytes other than at its end ($why); it is on disk but not committed, and the ask stays out" ;;
+    *) die "could not check $page against its committed bytes; it is on disk but not committed, and the ask stays out" ;;
+  esac
+  out="$(askx qa "$root" --name "$name" --file "$file")" || die "the questions and answers were not added to $page (the line above says why); the ask stays out"
+  if [ "$out" != none ]; then
+    n="$(printf '%s\n' "$out" | sed -n 's/^count\t//p')"
+    why="$(helper append-check "$root" "$page")"
+    case $? in
+      0) commit_paths "$root" "office ask: $name's questions and answers" "$page" || true
+         log "$page: $n question(s) and answer(s), after the answer" ;;
+      *) die "$page changed other than at its end ($why); the questions and answers are on disk, not committed" ;;
+    esac
+  else
+    log "no Questions and answers section, so none is added to $page"
+  fi
+  askx close --tray-root "$tray_root" --name "$name" >/dev/null \
+    || warn "the out tray for $name could not be removed (the line above says why); it is filed, so remove $tray_root/$name by hand"
+  log "filed $name from $via as $page; its out tray is gone"
+}
+
+# ask_none ROOT TRAY_ROOT NAME: an ask ended with its notepad page alone.
+ask_none() {
+  local root="$1" tray_root="$2" want="$3" tz day now rows=() row vals=() page f=()
+  mapfile -t rows < <(askx out "$root" --tray-root "$tray_root")
+  [ "${#rows[@]}" -gt 0 ] || die "no ask is out from this office, so there is none to end"
+  if [ -z "$want" ]; then
+    if [ "${#rows[@]}" = 1 ]; then want="${rows[0]%%$'\t'*}"
+    else
+      can_ask || die "several asks are out ($(printf '%s\n' "${rows[@]}" | cut -f1 | paste -sd, - | sed 's/,/, /g')): name one, office ask --learned none ASK; piped input is never asked"
+      for row in "${rows[@]}"; do IFS=$'\t' read -r -a f <<< "$row"; vals+=("${f[0]}" "${f[0]} (${f[1]/#-/the office}, asked ${f[2]})"); done
+      printf 'The asks out:\n' >&2
+      pick want "Which ask to end with nothing filed, by its key (office ask --learned none ASK)" \
+        "The ask to end: its notepad page keeps your words and says nothing was filed, and its out tray goes." "" 0 "${vals[@]}"
+    fi
+  fi
+  require_current "$root"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"; now="$(office_time "$tz")"
+  page="$(askx none "$root" --tray-root "$tray_root" --name "$want" --day "$day" --time "$now" | sed -n 's/^page\t//p')"
+  [ -n "$page" ] || die "$want was not ended (the line above says why)"
+  commit_paths "$root" "office ask: ended $want with nothing filed" "$page" || true
+  askx close --tray-root "$tray_root" --name "$want" >/dev/null \
+    || warn "the out tray for $want could not be removed; remove $tray_root/$want by hand"
+  log "ended $want with nothing filed: $page keeps your words, and its out tray is gone"
+}
+
+cmd_ask() {
+  local words="" words_given=0 project="" in_office=0 learned=0 src="" none_name="" positional=() root tray_root
+  local tmp text_file via rc names reading name tray opener key val files=() tz day now slug out
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help) usage_ask; return 0 ;;
+      --words) [ $# -ge 2 ] || die "--words needs the question, in your words (office ask --help explains it)"
+               words="$2"; words_given=1; shift 2 ;;
+      --project) [ $# -ge 2 ] || die "--project needs the project's name (office projects lists them)"
+                 project="$2"; shift 2 ;;
+      --in-office) in_office=1; shift ;;
+      --learned) learned=1; shift
+                 if [ $# -gt 0 ] && { [ "$1" = - ] || [[ "$1" != -* ]]; }; then src="$1"; shift
+                   if [ "$src" = none ] && [ $# -gt 0 ] && [[ "$1" != -* ]]; then none_name="$1"; shift; fi
+                 fi ;;
+      -*) usage_ask >&2; die "office ask does not know $1; the flags above are what it takes" ;;
+      *) positional+=("$1"); shift ;;
+    esac
+  done
+  [ -z "$project" ] || [ "$in_office" = 0 ] || die "--project and --in-office are two answers to what the question is on; give one"
+  root="$(resolve_office)" || exit 1
+  tray_root="$(ask_tray_root)"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/office-ask.XXXXXXXX")" || die "no temporary directory for the ask"
+  TMP_PATHS+=("$tmp")
+  text_file="$tmp/text"
+
+  if [ "$learned" = 1 ]; then
+    [ "$words_given" = 0 ] && [ "${#positional[@]}" -eq 0 ] && [ -z "$project" ] && [ "$in_office" = 0 ] \
+      || die "--learned files what an ask learned, so it takes only where the block is: office ask --learned [FILE | - | none [ASK]]"
+    if [ "$src" = none ]; then ask_none "$root" "$tray_root" "$none_name"; return; fi
+    if [ "$src" = - ]; then
+      [ ! -t 0 ] || die "office ask --learned - reads the block from stdin, and stdin is this terminal: pipe it in, give it as a file, or leave it on the clipboard and give neither"
+      cat > "$text_file" || die "could not read the block from stdin"
+      via="stdin"
+    elif [ -n "$src" ]; then
+      [ -f "$src" ] || die "$src: no such file (the block is a file, - for stdin, or neither for the clipboard)"
+      cp -- "$src" "$text_file" || die "could not read $src"
+      via="file $(basename -- "$src")"
+    else
+      can_ask || die "office ask --learned reads the clipboard only on a terminal: give the block as a file (office ask --learned FILE) or on stdin (office ask --learned -); piped input is never asked"
+      paste_setting "office ask --learned reads the chat's block from the clipboard when it is given no file" \
+        "give the block as a file (office ask --learned FILE) or on stdin (office ask --learned -)"
+      log "reading the LEARNED block from the clipboard ($PASTE)"
+      timeout 15 bash -c "$PASTE" < /dev/null > "$text_file" 2> "$tmp/paste.err"; rc=$?
+      [ "$rc" = 0 ] || die "the clipboard could not be read: $PASTE exited $rc ($(tail -n 1 "$tmp/paste.err")); paste_command in $MACHINE_FILE"
+      via="the clipboard"
+    fi
+    ask_file "$root" "$tray_root" "$text_file" "$via"
+    return
+  fi
+
+  # Bare office ask on a terminal, with an ask out: a LEARNED block on the
+  # clipboard naming one of them is the whole instruction (as a probe
+  # block's is), said in one line; anything else, and the question is asked.
+  if [ "$words_given" = 0 ] && [ "${#positional[@]}" -eq 0 ] && [ -z "$project" ] && [ "$in_office" = 0 ] && can_ask \
+     && [ -n "$(askx out "$root" --tray-root "$tray_root" 2>/dev/null)" ] && ask_clipboard_quietly "$text_file"; then
+    name="$(askx name-of --file "$text_file" 2>/dev/null)"
+    if [ -n "$name" ] && askx out "$root" --tray-root "$tray_root" | cut -f1 | grep -qxF -- "$name"; then
+      log "the clipboard holds $name's LEARNED block, an ask out from this office: filing it (office ask --learned files a block by hand)"
+      ask_file "$root" "$tray_root" "$text_file" "the clipboard"
+      return
+    fi
+    debug "the clipboard holds no LEARNED block for an ask out, so office ask asks its question"
+  fi
+
+  warn_on_skew "$root"
+  warn_if_unfounded "$root"
+  if [ "${#positional[@]}" -gt 0 ]; then
+    [ "$words_given" = 0 ] || die "give the question once: as words after ask, or --words TEXT"
+    words="${positional[*]}"; words_given=1
+  fi
+  if [ "$words_given" = 1 ]; then
+    [ -n "${words//[[:space:]]/}" ] || die "--words is empty: the question, in your words"
+  else
+    can_ask || die "office ask takes the question in your words: --words TEXT (and --project NAME or --in-office when your words name no project); piped input is never asked"
+    ask_words words "Your question, in your own words (--words)" \
+      "What you want answered, as you would ask someone who knows the project: what happened, what you need, and anything you already know. It goes to the chat word for word, with the project's handbook chapter, the letterhead and the profile beside it; the first line names the ask."
+  fi
+  printf '%s\n' "$words" > "$tmp/words" || die "could not keep your words"
+  names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+  reading="$(homex words --text-file "$tmp/words" --projects "$names")" || die "your words could not be read (the line above says why)"
+  if [ -n "$project" ]; then
+    printf '%s\n' "$names" | grep -qxF -- "$project" \
+      || die "--project $project: none of this office's projects ($(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g'); office projects lists them)"
+  elif [ "$in_office" = 0 ]; then
+    project="$(printf '%s\n' "$reading" | sed -n 's/^project\t//p')"
+    if [ -n "$project" ]; then
+      log "your words name $project, one of this office's projects: the ask is on it (--project NAME or --in-office says otherwise)"
+    elif [ -z "$names" ]; then
+      log "from the floor plan: the ask is on the office itself: it scopes no project"
+    else
+      can_ask || die "say what the question is on: --project NAME ($(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')) or --in-office; your words name none of them, and piped input is never asked"
+      local pvals=() pn
+      while IFS= read -r pn; do [ -n "$pn" ] && pvals+=("$pn" "$pn: its handbook chapter rides with the question"); done <<< "$names"
+      pvals+=(office "the office itself: no project's chapter rides")
+      printf "This office's projects:\n" >&2
+      pick project "What the question is on, by its key (--project NAME or --in-office)" \
+        "The project whose handbook chapter and letterhead the chat reads, and whose chapter takes what it learned. The office itself: no chapter rides, and a fact the chat leaves still names a project." \
+        "" 0 "${pvals[@]}"
+      [ "$project" != office ] || project=""
+    fi
+  fi
+  slug="$(short_slug "$(printf '%s\n' "$reading" | sed -n 's/^slug-from\t//p')")"
+  tz="$(office_tz "$root")"; day="$(office_date "$tz")"; now="$(office_time "$tz")"
+  out="$(askx send "$root" --tray-root "$tray_root" --words-file "$tmp/words" --slug "$slug" --day "$day" --time "$now" \
+         ${project:+--project "$project"})" || die "the ask was not sent (the line above says why); nothing was written"
+  while IFS=$'\t' read -r key val; do
+    case "$key" in name) name="$val" ;; tray) tray="$val" ;; file) files+=("$val") ;; opener) opener="$val" ;; esac
+  done <<< "$out"
+  printf 'Out tray: %s\n' "$tray"
+  for val in "${files[@]}"; do printf '  %s\n' "$val"; done
+  start_desktop "$tray" "$opener"
+  log "next: attach every file in the out tray ($tray) to a fresh chat, then paste the opener below; when the chat has answered, copy its LEARNED block and run office ask --learned (office tray $name opens the tray and prints the opener again)"
+  printf -- '\n--8<-- ask opener --8<--\n%s\n--8<-- end ask opener --8<--\n' "$opener"
+}
+
 # ask_probe_project VAR NAMES: where the probe runs, office or one of the
 # projects (NAMES, one per line), asked on a terminal; the flag twin is
 # --project.
@@ -10358,6 +10652,10 @@ walk_in() {
   fi
   vars+=(notes)
   batch_call calls -q recent-notes "$root/notepad" 3
+  # The office asks out (0.48.0), from their trays: one line each.
+  local asks="" asks_rc=0
+  vars+=(asks)
+  batch_call calls -q ask:out-lines "$root" --machine-file "$MACHINE_FILE"
   # The other offices on this machine (0.44.0), read in the same process:
   # machine.toml's offices and downloads, each office's bale registries.
   local elsewhere="" elsewhere_rc=0
@@ -10370,6 +10668,8 @@ walk_in() {
     0|3) printf '%s\n' "$desk" ;;
     *) printf 'In flight:\n  could not be read (OFFICE_DEBUG=1 office for why)\n\nOn the desk:\n  could not be read; office desk says why\n' ;;
   esac
+  [ "$asks_rc" = 0 ] || asks=""
+  [ -z "$asks" ] || printf '\nAsks out (a quick question each, answered in a chat; office ask --learned files its block):\n%s\n' "$asks"
   next="$(head -n 1 "$next_file" 2>/dev/null)"
   [ -n "$next" ] || next="Next: office desk  (the next move could not be worked out; OFFICE_DEBUG=1 office says why)"
   record_walk_in "$root" "$today"
@@ -10616,6 +10916,9 @@ usage: office [VERB [args]]
   office slip TEXT          a friction slip in the suggestion box
   office start new          a new job, in your own words: its folder on the
                             desk and its session out, in one go
+  office ask                a quick question, in your own words, answered in a
+                            chat with the project's handbook and voice at hand,
+                            no session; office ask --learned files what it learned
   office start --planner    a planner sitting, in your own words: what rides
                             with it gathered for you, the sort offered first
   office meeting            a meeting, in your own words: when it is and what
@@ -10728,6 +11031,11 @@ Plan work too big for one folder (the drafting table)
                             the last sitting, watches, standing lines, desk, agenda
 
 Send a session out
+  office ask [WORDS]        no session at all: a quick question in your words, one out
+                            tray for a chat (the brief, the project's handbook chapter,
+                            the letterhead, the profile, the doctrine), and no pack or
+                            land; office ask --learned files the chat's LEARNED block:
+                            a notepad page, the handbook's facts, the answers
   office start new          a new job from your words (--words TEXT): its folder
                             minted, its session packed and recorded, the out tray
                             and the opener ready, in one motion
@@ -10821,7 +11129,7 @@ EOF
 }
 
 # The verbs office help VERB explains, each through its own --help.
-HELP_VERBS=" init found survey status upgrade where default note slip drop meeting open desk week close reopen sessions projects start land withdraw tour version moves blueprint rider riders agenda rulings evidence watches digest deliver letterhead relay probe standing map folder tray "
+HELP_VERBS=" init found survey status upgrade where default note slip drop meeting open desk week close reopen sessions projects start land withdraw tour version moves blueprint rider riders agenda rulings evidence watches digest deliver letterhead relay probe standing map folder tray ask "
 # The two-word verbs, as office help VERB WORD (or VERB-WORD, the key
 # share/verbs.toml gives them) explains them.
 HELP_PAIRS=" blueprint-open blueprint-ratify blueprint-close rider-add rider-carry rider-consumed agenda-add watches-check letterhead-check "
@@ -10912,6 +11220,7 @@ main() {
     map) cmd_map "$@" ;;
     folder) cmd_folder "$@" ;;
     tray) cmd_tray "$@" ;;
+    ask) cmd_ask "$@" ;;
     *) usage >&2; die "unknown verb: $verb" ;;
   esac
 }

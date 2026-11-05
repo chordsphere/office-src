@@ -31,6 +31,7 @@ run in the serial lane. Run with the rest of the suite:
     tests/run.sh test_folders_and_projects
 """
 
+import datetime as dt
 import os
 import pathlib
 import re
@@ -277,10 +278,12 @@ class TestStartsScreenOnATerminal(FoldersCase):
         said = [l for l in before.splitlines() if l.startswith("[office] ")]
         self.assertLessEqual(len(said), 12, "\n".join(said))
         self.assertTrue(said[-1].startswith("[office] next: attach every file in the out tray ("), said[-1])
-        self.assertIn("(office tray 2026-11-04-screen-pass-001 opens the tray and prints the opener again)", said[-1])
+        # The session's day is bale's (the fake's: the UTC day), not the bundle's name's.
+        day = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+        self.assertIn(f"(office tray {day}-screen-pass-001 opens the tray and prints the opener again)", said[-1])
         self.assertTrue(any(l.startswith("[office] from the downloads: ") for l in said))
         self.assertFalse([l for l in said if l.startswith("[office] out tray: ")])
-        self.assertRegex(before, r"\nOut tray: \S+2026-11-04-screen-pass-001\n")
+        self.assertRegex(before, rf"\nOut tray: \S+{day}-screen-pass-001\n")
         self.assertEqual(len(re.findall(r"session opener --8<--", seen)), 2, "the opener is printed once")
 
     def test_the_offer_shows_the_newest_nine_and_one_line_for_the_rest(self):

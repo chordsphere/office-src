@@ -232,6 +232,21 @@ lands = []
 attended = true
 trigger = ["manual"]
 
+# The quick path (0.48.0): a question in the occupant's words answered in a
+# chat with the office's context beside its brief, in one out tray outside
+# the office, and no session: no bale verb runs, nothing is packed or
+# landed. Filing the chat's LEARNED block writes the ask's notepad page and
+# its facts at the end of the handbook's chapters, as office land files a
+# session's; sending the ask writes nothing in the office.
+[verbs.ask]
+kind = "script"
+built = true
+surface = "occupant"
+writes = ["notepad", "handbook"]
+lands = ["notepad", "handbook"]
+attended = true
+trigger = ["manual"]
+
 [verbs.week]
 kind = "script"
 built = true
