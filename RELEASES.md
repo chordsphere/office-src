@@ -4,6 +4,56 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.47.0
+
+Additive: no migration, nothing to do in any office. The tenth serial
+session of the plan begun on 2026-10-27: deliver fixes, three things met
+delivering and merging on 2026-11-04, and one proposal of 0.46.0's. What
+you see changes for a merge job's materials and its brief, for a
+delivery.md whose Review has a title and no body, and for deliver's
+question when a folder's lane names no project. Everything else is as it
+was.
+
+The audience's side whole. When bringing the audience into the workbench
+conflicts, `merge/audience/` now holds the audience's copy of every file
+it changed since the two sides parted, not only the conflicting ones, so
+the merge session resolving one file can see what the audience did in the
+files beside it. `parted/` and `workbench/` stay the conflicting files'.
+The job's page lists the conflicting files on its `- file:` lines as
+before and, under them, every other file the audience changed on a
+`- changed: PATH` line, ` (added)` or ` (deleted)` after the path when it
+was (a deleted file has no copy); the merge brief names them too. The
+merge commit office land makes is unchanged: the session ships the
+conflicting files it resolves, and git's merge carries the rest.
+
+The merge brief's sentence. The brief said to ship every file in the
+list, and land takes a file left out as the workbench's, so a conflicting
+file whose right resolution is the workbench's version went out as a
+change that changes nothing, which bale refuses. It now says: ship every
+file whose resolution differs from the workbench's; a file you leave out
+keeps the workbench's version, and that is right when the workbench's
+version is the resolution (bale admits no file shipped unchanged).
+
+A Review with a title and no body refuses. office deliver refuses the
+delivery before anything is made, naming the page and the title's line:
+`desk/NAME/delivery.md:LINE: the Review has a title and no body; the body
+is what the review's readers see, so write it under the title (a blank
+line between)`. `office letterhead check --delivery FILE` says the same
+and exits 1, and land's review says it right after it files the page. A
+filled pull-request template's own `## ` headings in the Review are still
+its words. A build session that keeps such a heading at its own level in
+notes.md ends the Delivery section there, so the page land files has a
+title and nothing else; templates/delivery.md now says to write them one
+level down there, as every heading is.
+
+deliver's question. On a terminal, a folder whose lane names no project
+is offered only the projects with an audience, each with its audience
+named (`[1] api (audience origin)`); with none, deliver says so and names
+`office projects set NAME --audience REMOTE`.
+
+Tests: tests/test_deliver_fixes.py, one class per item;
+tests/test_deliver_merges.py's brief test reads the new words.
+
 ## 0.46.0
 
 Additive: no migration, nothing to do in any office. The ninth serial

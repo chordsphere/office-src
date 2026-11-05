@@ -322,6 +322,9 @@ History line, and the folder is committed alone. Alone it prints the
 fields and the line that changes each. When `office start`, `office
 deliver` or `office probe` has to ask which project a folder's work is on,
 your answer becomes its lane that way and is said, so it is asked once.
+`office deliver` offers only the projects with an audience, each with its
+audience named (0.47.0), and with none it says so and names `office
+projects set NAME --audience REMOTE`.
 
 A folder is named by the date and a slug, and can be named by any unique
 part of that name or by its number, `folder 12`; asked for one, a verb
@@ -1643,7 +1646,11 @@ session applied in that project. In order, each step logged:
   reviewer, and, beside it, `- branch: NAME` when the session names the
   branch (0.38.0; the install's templates/delivery.md says the shape; a build
   session writes it and `office land` files it). Missing, deliver stops
-  and says what to write where.
+  and says what to write where. A Review with a title and no body refuses
+  before anything is made (0.47.0), naming the page and the title's line
+  (`desk/14-health-route/delivery.md:12: the Review has a title and no
+  body; ...`), since the body is what the review's readers see; `office
+  letterhead check --delivery` and land's review say the same.
 - In a temporary worktree at the audience's tip, what bale's own commits
   changed is taken out first (0.36.0): the commits bale makes for itself
   with no session's work in them, its housekeeping `bale: ignore .bale/`
@@ -1771,10 +1778,15 @@ never resolves a conflict itself, and never sends you into the clone to
 do it. When bringing the base into the workbench conflicts, deliver
 writes the merge's materials into the folder, under `merge/`: each
 conflicting file at its path in three versions, `parted/` (where the two
-sides parted), `workbench/` and `audience/`, and `log.txt`, the
-audience's commits since they parted, with `merge.md`, the job's page,
-all committed in the office (so they ride with the folder, and `office
-close` moves them with it). Its last line sends the session:
+sides parted), `workbench/` and `audience/`; in `audience/` too, since
+0.47.0, the audience's copy of every other file it changed since they
+parted, listed on the page as `- changed: PATH` lines under the
+conflicting files' `- file:` lines (` (added)` or ` (deleted)` after the
+path when it was; a deleted file has no copy), so the session sees what
+the audience did beside the conflict; and `log.txt`, the audience's
+commits since they parted, with `merge.md`, the job's page, all committed
+in the office (so they ride with the folder, and `office close` moves
+them with it). Its last line sends the session:
 
     office start 14 --merge          # the merge session: goal, forecast, brief and project from the job
 
@@ -1782,9 +1794,12 @@ The session is a bale session on the folder's project with both sides in
 context: its goal names the side and the files, its forecast is the
 conflicting files, its brief comes from the install's
 `templates/merge-brief.md`, and the job's page names the session sent.
-Its response ships each conflicting file as it should read after the
-merge and nothing else, and writes no Walkthrough, Delivery or Structure
-(the folder's pages are the work's). When it lands, `office land` makes
+Its response ships every conflicting file whose resolution differs from
+the workbench's, as it should read after the merge, and nothing else (a
+file it leaves out keeps the workbench's version, which is right when
+that is the resolution: bale admits no file shipped unchanged, 0.47.0),
+and writes no Walkthrough, Delivery or Structure (the folder's pages are
+the work's). When it lands, `office land` makes
 the merge real before anything reads the workbench: a merge commit in the
 clone, as the project's author (`Bring origin/main into the workbench,
 resolved by SID (office land)`), whose first parent is the landed tip and
@@ -2262,7 +2277,7 @@ matches the floor plan.
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
 | lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives; since 0.45.0 a reach is read from a call alone, `calls_of`, and `run_on` quotes the call's words); since 0.38.0 the mask over what it hands back, a credential in a URL and a GitHub token (`mask_text`, `MaskedScreen`), and since 0.43.0 over its stderr too |
 | lib/office_standing.py | where a sitting stands (0.43.0): the standing block read to its shape (`read_block`, the last block in a text counting), taken out of a probe's text (`split`), filed as a folder's standing.md (`write`) and said on the screens (`folder_standing`, `words`) |
-| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so; since 0.36.0 what bale's own commits changed taken out before the squash, own_commits and take_out_own; since 0.38.0 the lines the squash adds checked rather than its files whole, the branch rule and the rule that chose it, `branch_why`, a branch another folder delivered to continued and work it delivered refused twice, `other_deliveries`), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review; since 0.35.0 a folder's delivery.md read as the letterhead reads it at deliver and at land's review alike, the words that leave and nothing of the office's (delivery_words); since 0.40.0 the merge session's job, its materials and the merge commit made from its landed resolution, the content test of a delivery a review merged as a squash, and a continued delivery's range squash |
+| lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so; since 0.36.0 what bale's own commits changed taken out before the squash, own_commits and take_out_own; since 0.38.0 the lines the squash adds checked rather than its files whole, the branch rule and the rule that chose it, `branch_why`, a branch another folder delivered to continued and work it delivered refused twice, `other_deliveries`), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review; since 0.35.0 a folder's delivery.md read as the letterhead reads it at deliver and at land's review alike, the words that leave and nothing of the office's (delivery_words); since 0.40.0 the merge session's job, its materials and the merge commit made from its landed resolution, the content test of a delivery a review merged as a squash, and a continued delivery's range squash; since 0.47.0 the merge's materials carry the audience's side whole, every file it changed since the sides parted |
 | lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin); the characters an office's letterhead refuses and lifts, and a repository's pull-request templates; since 0.38.0 the lines a diff adds read rather than its files whole (`--added`), and the words-only lists (`WORDS_ONLY_SECTIONS`) |
 | lib/office_review.py | pull requests through gh (0.42.0), the office's one door to a git host's API: gh found through `gh_program` (the PATH, or `OFFICE_GH_PATH`), the review deliver offers and opens on the occupant's yes and the `review` History line it leaves, the base of the pull request open on a branch, and the review state the walk-in, office desk, the home screen and the digest render, read-only and kept nowhere; since 0.43.0 the `reviews:` lines of land's tail (`tail_lines`) |
 | share/letterhead.toml | what the letterhead refuses: names, phrasing and bale's marks (its commit subjects, tags, branches, session ids and, since 0.36.0, its paths), one list for office letterhead check and the suite's text rules; and the characters an office with a letterhead refuses by default; since 0.38.0 `[cleanup]`, the names of a cleanup, read in words and commit messages only |

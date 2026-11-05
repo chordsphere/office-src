@@ -291,9 +291,14 @@ class TestTheMergeSessionGoesOut(MergeCase):
             got = odl.merge_start(self.root, self.name, out)
         text = " ".join(out.read_text().split())
         self.assertEqual(got["writes"], ["src/a.py"])
+        # 0.47.0: parted/ and workbench/ hold the conflicting files, audience/
+        # the audience's side whole, and the response ships each conflicting
+        # file whose resolution differs from the workbench's
+        # (tests/test_deliver_fixes.py pins the words).
         for words in ("This is a merge session on proj, and nothing else.", "- src/a.py",
-                      f"{self.folder}/merge/ holds everything", "parted/, workbench/ and audience/",
-                      "The response ships each conflicting file as it should read after the merge, and nothing else",
+                      f"{self.folder}/merge/ holds everything", "- parted/ and workbench/: each conflicting file",
+                      "The response ships each conflicting file whose resolution differs from the workbench's, as it "
+                      "should read after the merge, and nothing else",
                       "A merge session writes no Walkthrough, Delivery or Structure section",
                       "its parents are the landed session's commit and origin/main's tip"):
             self.assertIn(words, text)

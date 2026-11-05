@@ -9044,17 +9044,23 @@ cmd_deliver() {
   # none of the office's projects (and is not the office's own) is asked by
   # key on a terminal, and the answer becomes its lane; --on PROJECT wins
   # for this run and writes nothing; piped, the plan's refusal names --on.
+  # Since 0.47.0 only the projects with an audience are offered, each with
+  # its audience named: deliver carries work to an audience, and a project
+  # with none would be refused one step later. None with one is said, with
+  # the line that gives a project its audience.
   if [ -z "$project" ] && can_ask; then
-    local lane_now dnames dvals=() dn lane_line
+    local lane_now dnames anames dvals=() dn da lane_line
     lane_now="$(helper lane-project "$root/$space/$name/folder.md" 2>/dev/null)"
     lane_line="$(helper folder-facts "$root/$space/$name/folder.md" 2>/dev/null | sed -n 's/^lane\t//p')"
     dnames="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
     if [ -n "$dnames" ] && ! printf '%s\n' "$dnames" | grep -qxF -- "${lane_now:-}" \
         && [ "$(printf '%s' "$lane_line" | tr '[:upper:]' '[:lower:]' | tr -s ' ' | sed 's/^ //; s/ $//')" != "the office" ]; then
-      while IFS= read -r dn; do [ -n "$dn" ] && dvals+=("$dn" "$dn"); done <<< "$dnames"
-      printf "This office's projects:\n" >&2
+      anames="$(helper project-names "$root/$MANIFEST_REL" --with-audience 2>/dev/null)"
+      [ -n "$anames" ] || die "none of this office's projects has an audience, so $space/$name's work has nowhere to be delivered: office projects set NAME --audience REMOTE gives project NAME one (REMOTE, the remote in its clone that points at the audience's git host)"
+      while IFS=$'\t' read -r dn da; do [ -n "$dn" ] && dvals+=("$dn" "$dn (audience $da)"); done <<< "$anames"
+      printf "This office's projects with an audience:\n" >&2
       pick project "Which project $space/$name's work is on, by its key (--on PROJECT)" \
-        "The project whose audience the folder's landed work goes to. The folder's lane names none, so the office cannot tell; your answer becomes its lane, so it is asked once." \
+        "The project whose audience the folder's landed work goes to. The folder's lane names none, so the office cannot tell; your answer becomes its lane, so it is asked once. Only the projects with an audience are offered, since deliver carries work to an audience (office projects set NAME --audience REMOTE gives another one)." \
         "" 0 "${dvals[@]}"
       keep_lane "$root" "$space/$name" "$project"
     fi
@@ -9284,7 +9290,9 @@ delivery.md as office deliver reads it: its to: line and its Commit and
 Review sections, the words that leave, and not the page's heading or
 office land's filing note (which, on a page filed before 0.35.0, names a
 session), so a hand check agrees with deliver; use it for a delivery's
-words, and --words for any other text. In a git repo, a line of the words that is a
+words, and --words for any other text. A page deliver refuses as written
+(since 0.47.0: a Review with a title and no body, say) is named as
+deliver names it, FILE:LINE: what, and exits 1. In a git repo, a line of the words that is a
 line of the repo's own pull-request template, as HEAD holds it, is not
 held to the phrasing rule or the three characters (names, bale's marks
 and the forbidden list still read it). --added (since 0.38.0) reads the
@@ -9308,7 +9316,7 @@ USAGE
 }
 
 cmd_letterhead_check() {
-  local path="" project="" args=() root="" forbidden=() w added=0 deliveries=() words_json=""
+  local path="" project="" args=() root="" forbidden=() w added=0 deliveries=() words_json="" rc
   while [ $# -gt 0 ]; do
     case "$1" in
       --delivery) [ $# -ge 2 ] || die "--delivery needs a delivery.md"; [ -f "$2" ] || die "--delivery $2: no such file"
@@ -9328,8 +9336,15 @@ cmd_letterhead_check() {
   # it (office_deliver.delivery_words: its to: line and its Commit and
   # Review sections, the page's heading and filing note left in the
   # office), so a hand check agrees with deliver; --words reads a file whole.
+  # A page deliver refuses as written (0.47.0: a Review with a title and no
+  # body) is said as deliver says it, PAGE:LINE: words, and is a hit (exit 1).
   if [ "${#deliveries[@]}" -gt 0 ]; then
-    words_json="$(deliver_py delivery-words "${deliveries[@]}")" || exit 2
+    words_json="$(deliver_py delivery-words "${deliveries[@]}")"; rc=$?
+    case "$rc" in
+      0) ;;
+      1) printf '%s\n' "$words_json"; return 1 ;;
+      *) exit 2 ;;
+    esac
     args+=(--words-json "$words_json")
   fi
   # The office's letterhead rides when there is an office here: its
