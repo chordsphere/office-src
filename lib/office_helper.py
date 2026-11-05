@@ -57,6 +57,23 @@ class HelperError(Exception):
     """A problem the caller should see as one clear line."""
 
 
+class PageLineError(HelperError):
+    """A HelperError that knows the line of the page it is about (0.47.0):
+    line is 1-based, and the caller, which knows the page's name, says
+    `PAGE:LINE: words` (page_line_words)."""
+
+    def __init__(self, line, words):
+        super().__init__(words)
+        self.line = line
+
+
+def page_line_words(page, exc):
+    """How a refusal about a page is said: `PAGE:LINE: words` when it knows
+    its line, `PAGE: words` when not."""
+    line = getattr(exc, "line", None)
+    return f"{page}:{line}: {exc}" if line else f"{page}: {exc}"
+
+
 def log(msg):
     print(f"[office] {msg}", file=sys.stderr)
 
@@ -2488,7 +2505,10 @@ def parse_delivery(text):
     paragraph is the title, the rest the body. A `to:` line, before the
     first section, names the reviewer. Since 0.35.0 a section runs to the
     next Commit or Review heading (delivery_sections), so a pull-request
-    template's own `## ` headings filled into the Review stay in its body."""
+    template's own `## ` headings filled into the Review stay in its body.
+    Since 0.47.0 a Review with a title and no body refuses, as a
+    PageLineError naming the title's line: the body is what the review's
+    readers see, and before, a Review cut short went out empty."""
     lines = text.splitlines()
     first, spans = delivery_sections(lines)
     to, branch = None, None
@@ -2503,7 +2523,7 @@ def parse_delivery(text):
             except HelperError:
                 raise HelperError(f"the branch: line names {m.group(1)!r}, which is not a branch name as git takes "
                                   "one (a short name like results-view; the project's prefix goes before it)")
-    sections = [(lines[s][3:].strip(), lines[s + 1:e]) for s, e in spans]
+    sections = [(lines[s][3:].strip(), lines[s + 1:e], s) for s, e in spans]
 
     def paragraphs(body):
         out, cur = [], []
@@ -2517,8 +2537,8 @@ def parse_delivery(text):
             out.append(cur)
         return out
 
-    commits, review = [], None
-    for heading, body in sections:
+    commits, review, review_title_at = [], None, None
+    for heading, body, at in sections:
         if heading.lower() == "commit":
             paths = None
             if body and PATHS_LINE_RE.match((body[0] if body[0].strip() else "").strip()):
@@ -2553,6 +2573,9 @@ def parse_delivery(text):
                 raise HelperError("the Review section's first paragraph is the title, one line; put a blank line "
                                   "between it and the body")
             review = {"title": paras[0][0].strip(), "body": "\n\n".join("\n".join(x) for x in paras[1:])}
+            # The title's line on the page, 1-based: the first line under
+            # the heading that holds words.
+            review_title_at = next(at + 1 + n for n, l in enumerate(body) if l.strip()) + 1
     if not commits:
         raise HelperError("delivery.md has no Commit section (## Commit: the subject, a blank line, the body)")
     if review is None:
@@ -2563,6 +2586,11 @@ def parse_delivery(text):
                               "starts with a paths: line naming what it takes")
     if commits[-1]["paths"]:
         raise HelperError("the last Commit section takes everything the others left, so it names no paths")
+    if not review["body"].strip():
+        # Read last, so a page that is wrong in its Commit sections says that
+        # first, as before.
+        raise PageLineError(review_title_at, "the Review has a title and no body; the body is what the review's "
+                                             "readers see, so write it under the title (a blank line between)")
     return {"to": to, "branch": branch, "commits": commits, "review": review}
 
 
@@ -2624,7 +2652,11 @@ def delivery_leaving_text(text):
 def cmd_delivery_words(a):
     import json
     text = pathlib.Path(a.delivery_md).read_text(encoding="utf-8")
-    print(json.dumps(parse_delivery(text)))
+    try:
+        words = parse_delivery(text)
+    except PageLineError as exc:
+        raise HelperError(page_line_words(a.delivery_md, exc))
+    print(json.dumps(words))
 
 
 def delivered_records(folder_md):
@@ -4381,9 +4413,14 @@ def cmd_append_check(a):
 
 def cmd_project_names(a):
     """One project name per line, in the floor plan's order; nothing when
-    the office scopes none."""
+    the office scopes none. --with-audience (0.47.0, office deliver's
+    question): only the projects that declare an audience, each as
+    NAME<TAB>AUDIENCE."""
     for p in read_projects(read_toml(a.manifest)) or []:
-        print(p["name"])
+        if not a.with_audience:
+            print(p["name"])
+        elif p.get("audience"):
+            print(f"{p['name']}\t{p['audience']}")
 
 
 def cmd_ascii_escape(a):
@@ -4639,7 +4676,9 @@ def build_parser(only=None):
     p.add_argument("--insertion", action="store_true",
                    help="one run of bytes inserted anywhere, for a live page whose foot stays last")
     p.set_defaults(fn=cmd_append_check)
-    p = add("project-names"); p.add_argument("manifest"); p.set_defaults(fn=cmd_project_names)
+    p = add("project-names"); p.add_argument("manifest")
+    p.add_argument("--with-audience", action="store_true", help="only the projects with an audience, NAME<TAB>AUDIENCE")
+    p.set_defaults(fn=cmd_project_names)
     p = add("ascii-escape"); p.set_defaults(fn=cmd_ascii_escape)
     p = add("file-sitting-pages"); p.add_argument("root")
     g = p.add_mutually_exclusive_group(required=True)

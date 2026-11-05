@@ -238,6 +238,21 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.47.0 (session 2026-11-04-deliver-fixes-003): deliver fixes.
+  - the merge's materials carry the audience's copy of every file it
+    changed since the sides parted (office_deliver._MATERIALS_SCRIPT,
+    changed.list, read_changed_list); merge.md lists the others as
+    `- changed: PATH` lines under the `- file:` lines, read back apart by
+    read_merge_job (job["changed"]).
+  - templates/merge-brief.md: ship every file whose resolution differs
+    from the workbench's (bale admits no file shipped unchanged).
+  - a Review with a title and no body refuses, PAGE:LINE
+    (office_helper.PageLineError, page_line_words), at deliver, at
+    `office letterhead check --delivery` and in land's review.
+  - deliver's question offers the projects with an audience alone
+    (office_helper project-names --with-audience).
+  - Additive: no migration. tests/test_deliver_fixes.py holds the
+    release's tests.
 - 0.46.0 (session 2026-11-04-folders-and-projects-002): folders and
   projects.
   - `office map [PROJECT | FOLDER]` (lib/office_map.py): every project with

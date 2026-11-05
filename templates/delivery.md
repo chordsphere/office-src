@@ -17,7 +17,11 @@ em dash, en dash or ellipsis character unless the letterhead lifts one.
 A Review that fills the repository's own pull-request template keeps the
 template's lines as the repository holds them: those lines are not held
 to the letterhead's phrasing rule, and every line written into or
-around them is.
+around them is. In notes.md the template's own headings go one level
+down too (its `## Summary` written `### Summary`), and office land puts
+them back: a `## ` heading there ends the Delivery section, and what
+follows it never reaches this page. A Review with a title and no body
+refuses the delivery, naming this page and the title's line.
 
 - to: {{to}}
 

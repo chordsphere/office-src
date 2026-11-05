@@ -915,7 +915,13 @@ def merged_text(audience, base, merged, sid=None):
 MERGE_DIR = "merge"
 MERGE_PAGE = "merge.md"
 MERGE_SIDES = ("parted", "workbench", "audience")
-MERGE_FIELD_RE = oh.LazyPattern(r"^- (project|audience|kind|branch|tip|workbench|parted|day|file|session): (.+?)\s*$")
+MERGE_FIELD_RE = oh.LazyPattern(r"^- (project|audience|kind|branch|tip|workbench|parted|day|file|changed|session): "
+                                r"(.+?)\s*$")
+# A `- changed: PATH` line (0.47.0) says how the audience changed it after the
+# path, ` (added)` or ` (deleted)`; a plain change says nothing more, unless
+# the path itself ends as such words would, when ` (changed)` is written too,
+# so the reader takes exactly one such ending off and every path reads back.
+CHANGED_HOW_RE = oh.LazyPattern(r"^(.*) \((added|changed|deleted)\)$")
 MERGE_KINDS = ("base", "branch")
 RESOLVED_MESSAGE = "Bring {audience}/{branch} into the workbench, resolved by {sid} (office {verb})"
 
@@ -936,18 +942,24 @@ def merge_page_path(folder_dir):
 def read_merge_job(folder_dir):
     """The merge job a folder holds (merge/merge.md), as a dict: project,
     audience, kind (base or branch), branch, tip, workbench, parted, day,
-    files (a list) and session (or None); None when the folder holds none.
-    A page that does not read as a job raises DeliverError naming it."""
+    files (a list: the conflicting files), changed (since 0.47.0, [(path,
+    how)]: every other file the audience changed since the sides parted,
+    how added, changed or deleted; [] on a page written before) and
+    session (or None); None when the folder holds none. A page that does
+    not read as a job raises DeliverError naming it."""
     path = merge_page_path(folder_dir)
     if not path.is_file():
         return None
-    job = {"files": [], "session": None}
+    job = {"files": [], "changed": [], "session": None}
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         m = MERGE_FIELD_RE.match(line)
         if not m:
             continue
         if m.group(1) == "file":
             job["files"].append(m.group(2))
+        elif m.group(1) == "changed":
+            how = CHANGED_HOW_RE.match(m.group(2))
+            job["changed"].append((how.group(1), how.group(2)) if how else (m.group(2), "changed"))
         else:
             job[m.group(1)] = m.group(2)
     missing = [k for k in ("project", "audience", "kind", "branch", "tip", "workbench") if not job.get(k)]
@@ -958,21 +970,34 @@ def read_merge_job(folder_dir):
     return job
 
 
+def changed_line(path, how):
+    """A `- changed:` line of the page (CHANGED_HOW_RE says its shape)."""
+    if how != "changed" or CHANGED_HOW_RE.match(path):
+        return f"- changed: {path} ({how})"
+    return f"- changed: {path}"
+
+
 def merge_page_text(job):
     """merge/merge.md: what the job is, in words, then its field lines (read
-    back by read_merge_job)."""
+    back by read_merge_job): a `- file:` line for each conflicting file,
+    then (0.47.0) a `- changed:` line for every other file the audience
+    changed since the sides parted."""
     side = f"{job['audience']}/{job['branch']}"
+    changed = job.get("changed") or []
     lines = [f"# Merge: {side} into the workbench", "",
              f"office deliver wrote this page on {job['day']} when bringing {side} into the workbench conflicted in "
-             f"{len(job['files'])} file(s). Beside it are each file's three versions, at its path: parted/ (where the "
-             "two sides parted), workbench/ (the workbench's) and audience/ (the audience's), and log.txt, the "
-             "audience's commits since they parted. `office start N --merge` sends the merge session that resolves "
-             "them, and `office land` makes its resolution a merge commit in the workbench; the office never "
-             "resolves a conflict itself.", ""]
+             f"{len(job['files'])} file(s), the `- file:` lines below. Beside it are each conflicting file's three "
+             "versions, at its path: parted/ (where the two sides parted), workbench/ (the workbench's) and "
+             "audience/ (the audience's); audience/ holds too the audience's copy of every other file it changed "
+             f"since they parted, the `- changed:` lines below ({len(changed)}; one it deleted has no copy), which "
+             "git's merge carries as they are; and log.txt, the audience's commits since they parted. `office start "
+             "N --merge` sends the merge session that resolves the conflicting files, and `office land` makes its "
+             "resolution a merge commit in the workbench; the office never resolves a conflict itself.", ""]
     for key in ("project", "audience", "kind", "branch", "tip", "workbench", "parted", "day"):
         if job.get(key):
             lines.append(f"- {key}: {job[key]}")
     lines += [f"- file: {f}" for f in job["files"]]
+    lines += [changed_line(path, how) for path, how in changed]
     if job.get("session"):
         lines.append(f"- session: {job['session']}")
     return "\n".join(lines) + "\n"
@@ -984,6 +1009,22 @@ def merge_page_text(job):
 # that does not have the file has no copy of it), and the audience's log
 # since the parting point. "-" for the parted commit is the merge base of the
 # other two; the commits it read are said on stderr.
+#
+# Since 0.47.0 the audience's side travels whole: every path the audience
+# changed since the sides parted (git diff --name-status, renames as a
+# deletion and an addition, NUL-separated so no name is quoted or cut) goes
+# into the stream as changed.list, and the audience's copy of each one it
+# still holds as a file goes into audience/ beside the conflicting ones, so
+# the session resolving one file can see what the audience did in the files
+# beside it. A deleted path, or one that is no file (a submodule), has no copy;
+# the page names it all the same. The copies are written through xargs -0,
+# which hands every name over as it is; the copier holds no single quote, so
+# it rides in single quotes as it is.
+_AUDIENCE_COPY = (
+    'a="$1"; o="$2"; shift 2; for f; do '
+    '[ "$(git cat-file -t "$a:$f" 2>/dev/null)" = blob ] || continue; '
+    'mkdir -p "$o/$(dirname -- "$f")" && git cat-file blob "$a:$f" > "$o/$f" || exit 1; done'
+)
 _MATERIALS_SCRIPT = (
     'w=$(git rev-parse --verify -q "$2^{commit}") || exit 4; a=$(git rev-parse --verify -q "$3^{commit}") || exit 4; '
     'p="$1"; [ "$p" != - ] || p=$(git merge-base "$w" "$a") || exit 5; l="$4"; [ "$l" != - ] || l="$p"; shift 4; '
@@ -993,17 +1034,53 @@ _MATERIALS_SCRIPT = (
     'for f; do if git cat-file -e "$c:$f" 2>/dev/null; then '
     'mkdir -p "$d/$n/$(dirname -- "$f")" && git cat-file blob "$c:$f" > "$d/$n/$f" || { rm -rf "$d"; exit 2; }; '
     'fi; done; done; '
+    'git diff -z --no-renames --no-ext-diff --name-status "$p" "$a" -- > "$d/changed.list" || { rm -rf "$d"; exit 6; }; '
+    'git diff -z --no-renames --no-ext-diff --name-only --diff-filter=d "$p" "$a" -- > "$d/.copy" '
+    '|| { rm -rf "$d"; exit 6; }; '
+    "xargs -0 sh -c '" + _AUDIENCE_COPY + "' office-copy " + '"$a" "$d/audience" < "$d/.copy" '
+    '|| { rm -rf "$d"; exit 7; }; rm -f "$d/.copy"; '
     'git log --format="%h %ad %an: %s" --date=short "$l..$a" > "$d/log.txt" || { rm -rf "$d"; exit 3; }; '
     'tar -cf - -C "$d" .; rc=$?; rm -rf "$d"; exit $rc'
 )
+# The list's name in the stream; it is read into the page, never kept.
+MATERIALS_CHANGED = "changed.list"
+# git's status letters in the words the page uses (a type change, a file
+# become a link or back, is a change).
+CHANGED_HOW = {"A": "added", "M": "changed", "T": "changed", "D": "deleted"}
+
+
+def read_changed_list(data):
+    """[(path, how)] from changed.list's bytes (git diff -z --name-status:
+    a status, then its path, each ended by a NUL), how one of added,
+    changed or deleted. A status git did not write here (none other is
+    made with --no-renames) refuses, naming it."""
+    parts = data.split(b"\0")
+    if parts and parts[-1] == b"":
+        parts.pop()
+    if len(parts) % 2:
+        raise DeliverError([f"the audience's changed files did not read as git's name-status list "
+                            f"({len(parts)} field(s), not pairs)"])
+    out = []
+    for status, path in zip(parts[0::2], parts[1::2]):
+        how = CHANGED_HOW.get(status.decode("ascii", "replace")[:1])
+        if how is None:
+            raise DeliverError([f"the audience's changed files hold a status the office does not read: "
+                                f"{status.decode('ascii', 'replace')!r} for {path.decode('utf-8', 'replace')}"])
+        out.append((path.decode("utf-8", "replace"), how))
+    return out
 
 
 def carry_materials(where, commits, files, dest):
     """The merge's materials into dest (made anew): commits is (parted or
     "-", workbench, audience, log from or "-"), read in where, a Place (a
-    clone, here or on its host) or a repo on this machine. Returns the
-    parted and workbench commits as the script resolved them. A tar member
-    outside the three sides and log.txt refuses, and nothing is written."""
+    clone, here or on its host) or a repo on this machine; files, the
+    conflicting ones, each in its three versions. Returns (parted,
+    workbench, changed): the parted and workbench commits as the script
+    resolved them, and [(path, how)] for every path the audience changed
+    since the sides parted (0.47.0; the conflicting ones among them), each
+    one it holds as a file copied into audience/. A tar member outside the
+    three sides, log.txt and the changed list refuses, and nothing is
+    written."""
     import shlex
     import shutil
     import subprocess
@@ -1040,21 +1117,27 @@ def carry_materials(where, commits, files, dest):
                     if not parts:
                         continue
                     if m.name.startswith("/") or ".." in parts or not (m.isdir() or m.isfile()) \
-                            or not (parts[0] in MERGE_SIDES or parts == ["log.txt"]):
+                            or not (parts[0] in MERGE_SIDES or parts in (["log.txt"], [MATERIALS_CHANGED])):
                         raise DeliverError([f"the merge's materials from {place} hold {m.name!r}, outside the three "
-                                            "sides and log.txt; nothing was written"])
+                                            f"sides, log.txt and {MATERIALS_CHANGED}; nothing was written"])
                 if hasattr(tarfile, "data_filter"):
                     t.extractall(out, filter="data")
                 else:
                     t.extractall(out)
         except (tarfile.TarError, OSError) as exc:
             raise DeliverError([f"the merge's materials from {place} did not arrive as a readable archive: {exc}"])
+        listed = out / MATERIALS_CHANGED
+        if not listed.is_file():
+            raise DeliverError([f"the merge's materials from {place} carry no {MATERIALS_CHANGED} (the audience's "
+                                "changed files); nothing was written"])
+        changed = read_changed_list(listed.read_bytes())
+        listed.unlink()
         dest = pathlib.Path(dest)
         if dest.exists():
             shutil.rmtree(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(out), str(dest))
-    return said.get("parted", ""), said.get("workbench", "")
+    return said.get("parted", ""), said.get("workbench", ""), changed
 
 
 def commit_folder_paths(office_root, message, *rels):
@@ -1095,11 +1178,21 @@ def merge_job_lines(office_root, rel, folder, project, where, kind, audience, si
                 f"materials) and has not landed: office land {old['session']} brings it back and makes its "
                 f"resolution the merge commit, then office deliver {folder} delivers; nothing was pushed"]
     try:
-        parted, workbench_read = carry_materials(where, (parted, workbench, tip, log_from), conflicts,
-                                                 folder_dir / MERGE_DIR)
+        parted, workbench_read, changed = carry_materials(where, (parted, workbench, tip, log_from), conflicts,
+                                                          folder_dir / MERGE_DIR)
+        # The page's two lists apart (0.47.0): the conflicting files, which the
+        # session resolves, and every other file the audience changed, which
+        # git's merge carries. A name that would break the page's line (a
+        # newline in it) keeps its copy and is said, not listed.
+        conflicting = set(conflicts)
+        others = [(p, how) for p, how in changed if p not in conflicting]
+        for p, _ in [x for x in others if "\n" in x[0] or "\r" in x[0]]:
+            log(f"warning: {audience} changed {p!r}, whose name holds a line break, so merge.md does not list it; "
+                "its copy is in audience/ all the same")
+        others = [x for x in others if "\n" not in x[0] and "\r" not in x[0]]
         job = {"project": project, "audience": audience, "kind": kind, "branch": side, "tip": tip,
                "workbench": workbench_read or workbench, "parted": parted, "day": day or time.strftime("%Y-%m-%d"),
-               "files": list(conflicts), "session": None}
+               "files": list(conflicts), "changed": others, "session": None}
         merge_page_path(folder_dir).write_text(merge_page_text(job), encoding="utf-8")
         commit_folder_paths(office_root, f"office deliver: the merge's materials for {folder}", f"{rel}/{MERGE_DIR}")
     except (DeliverError, ohost.HostError, ob.LandError, OSError) as exc:
@@ -1107,9 +1200,11 @@ def merge_job_lines(office_root, rel, folder, project, where, kind, audience, si
         return [f"the merge's materials could not be written into {rel}/{MERGE_DIR}/ ({why}): office deliver "
                 f"{folder} tries again; nothing was pushed"]
     log(f"wrote the merge's materials into {rel}/{MERGE_DIR}/: {len(conflicts)} file(s) in three versions "
-        f"(parted, workbench, {audience}) and {audience}'s log since they parted, committed in the office")
-    return [f"the merge's materials are in {rel}/{MERGE_DIR}/ (each file as the two sides parted, the workbench's "
-            f"and {side_name}'s, and {audience}'s log since they parted)",
+        f"(parted, workbench, {audience}), {audience}'s side of the {len(job['changed'])} other file(s) it changed "
+        f"since they parted, and {audience}'s log since then, committed in the office")
+    return [f"the merge's materials are in {rel}/{MERGE_DIR}/ (each conflicting file as the two sides parted, the "
+            f"workbench's and {side_name}'s; {side_name}'s copy of every other file it changed since they parted, "
+            f"{len(job['changed'])} listed on merge.md; and {audience}'s log since they parted)",
             f"office start {folder} --merge sends the merge session that resolves them, a bale session on {project} "
             "with both sides in context; office land makes its resolution a merge commit in the workbench, and "
             f"office deliver {folder} then delivers the folder's own work; nothing was pushed"]
@@ -1311,7 +1406,11 @@ def merge_start(office_root, folder, brief_out):
               "where": ("the audience's base branch" if job["kind"] == "base"
                         else "the branch this folder's work is delivered on, which moved on the audience since "
                              "the last delivery"),
-              "files": "\n".join(f"- {f}" for f in files), "materials": f"{rel}/{MERGE_DIR}/"}
+              "files": "\n".join(f"- {f}" for f in files), "materials": f"{rel}/{MERGE_DIR}/",
+              # The audience's other changes since the sides parted (0.47.0),
+              # as the page lists them, so the brief names them too.
+              "changed": "\n".join("- " + changed_line(p, how)[len("- changed: "):]
+                                   for p, how in job.get("changed") or []) or "- none"}
     pathlib.Path(brief_out).write_text(oh.render_template(template, values), encoding="utf-8")
     return {"project": job["project"], "goal": goal, "writes": writes, "said": said, "rel": rel}
 
@@ -1408,7 +1507,8 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
     try:
         words = oh.parse_delivery(delivery_md.read_text(encoding="utf-8"))
     except oh.HelperError as exc:
-        raise DeliverError([f"{rel}/delivery.md: {exc}"])
+        # Since 0.47.0 a refusal that knows its line names it: PAGE:LINE.
+        raise DeliverError([oh.page_line_words(f"{rel}/delivery.md", exc)])
     # 3. The clone, where it is: the reach, its remotes, identity and guard;
     # and since 0.39.0 its view of the audience (its remote-tracking
     # branches, and where the checked-out branch stands against the base),
@@ -2336,13 +2436,21 @@ def land_review(office_root, project, sid, folder_rel=None):
     entry = next((p for p in ob.office_projects(root) or [] if p["name"] == project), None)
     if entry is None or not entry.get("audience") or entry["problem"]:
         return []
-    words_text = []
+    words_text, refused = [], []
     if folder_rel:
         md = root / folder_rel / oh.PAGE_FILES["delivery"]
         if md.is_file():
             # Read as deliver reads it (0.35.0): what of the page leaves.
             label_text, _ = delivery_words(md, label=f"{folder_rel}/{md.name}")
             words_text.append(label_text)
+            # And whether deliver takes the page as filed (0.47.0): a Review
+            # with a title and no body is said here, right after the page was
+            # filed from the notes, as deliver will refuse it.
+            try:
+                oh.parse_delivery(md.read_text(encoding="utf-8", errors="replace"))
+            except oh.HelperError as exc:
+                refused.append(f"delivery: office deliver refuses the words as filed: "
+                               f"{oh.page_line_words(label_text[0], exc)}")
     template_rev = f"refs/remotes/{entry['audience']}/{entry['base']}" if entry.get("base") \
         else f"refs/remotes/{entry['audience']}/HEAD"
     tag = f"applied/{sid}"
@@ -2351,13 +2459,14 @@ def land_review(office_root, project, sid, folder_rel=None):
                                         never=NEVER_DELIVERED, words_text=words_text, template_rev=template_rev,
                                         added=True)
     except DeliverError as exc:
-        return [f"letterhead: the review of {sid}'s landing could not run: {'; '.join(exc.lines)}"]
+        return [f"letterhead: the review of {sid}'s landing could not run: {'; '.join(exc.lines)}"] + refused
     what = "the change it landed" + (" and the delivery words" if words_text else " (no delivery words filed yet)")
     if rc == 0:
-        return [f"letterhead: {sid}'s landing is clean for delivery: {what}, as office deliver reads them"]
+        return [f"letterhead: {sid}'s landing is clean for delivery: {what}, as office deliver reads them"] + refused
     if rc != 1:
         last = [l for l in (err or "").splitlines() if l.strip()]
-        return [f"letterhead: the review of {sid}'s landing could not run: {last[-1] if last else f'exit {rc}'}"]
+        return [f"letterhead: the review of {sid}'s landing could not run: {last[-1] if last else f'exit {rc}'}"] \
+            + refused
     hits = [l for l in out.splitlines() if l.strip()]
     lines = [f"letterhead: office deliver would refuse {len(hits)} line(s) of {sid}'s landing ({what}); nothing is "
              f"refused at land, and a fix can ride the next session on {project}:"]
@@ -2365,7 +2474,7 @@ def land_review(office_root, project, sid, folder_rel=None):
     if len(hits) > REVIEW_SHOWN:
         lines.append(f"  ... and {len(hits) - REVIEW_SHOWN} more: office letterhead check --on {project} --range "
                      f"{tag}^1..{tag} shows them all")
-    return lines
+    return lines + refused
 
 
 # --- command line ------------------------------------------------------------------------------
@@ -2402,7 +2511,8 @@ def main(argv=None):
     p.add_argument("--added", action="store_true", help="the lines the range (or the index) adds, not its files whole")
     p.add_argument("--words-json", help="[[label, text], ...]: words that travel as one argument (--delivery's)")
     p = sub.add_parser("delivery-words", help="office letterhead check --delivery: each delivery.md as deliver reads "
-                                              "it, as one JSON [[label, text], ...] on stdout (0.42.0)")
+                                              "it, as one JSON [[label, text], ...] on stdout (0.42.0); a page "
+                                              "deliver refuses is said instead, PAGE:LINE: words, and exits 1 (0.47.0)")
     p.add_argument("pages", nargs="+")
     p = sub.add_parser("declare-author", help="declare a project's author and commit the floor plan")
     p.add_argument("office"); p.add_argument("--project", required=True); p.add_argument("--author", required=True)
@@ -2457,12 +2567,25 @@ def main(argv=None):
             print(url or "")
             return 0
         if a.cmd == "delivery-words":
-            pairs = []
+            pairs, refused = [], []
             for page in a.pages:
                 (label, text), unread = delivery_words(page)
                 if unread:
                     log(unread_line(label, unread))
                 pairs.append([label, text])
+                # The page read as deliver reads it (0.47.0): a page deliver
+                # refuses (a Review with a title and no body, say) is said
+                # here the same way, PAGE:LINE: words, so the check agrees.
+                try:
+                    oh.parse_delivery(pathlib.Path(page).read_text(encoding="utf-8", errors="replace"))
+                except oh.HelperError as exc:
+                    refused.append(oh.page_line_words(label, exc))
+            if refused:
+                for line in refused:
+                    print(line)
+                log(f"office deliver refuses {len(refused)} of the {len(a.pages)} delivery page(s) as written, so "
+                    "the letterhead did not read their words; write what each line above says, then check again")
+                return 1
             print(json.dumps(pairs))
             return 0
         if a.cmd == "check":
