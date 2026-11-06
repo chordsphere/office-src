@@ -2740,6 +2740,127 @@ def ride_plan(path):
     return ("pack", top, str(p.relative_to(top)))
 
 
+# --- what rides from a project's host, and the clone's branch (0.50.0) ----------
+
+# The clone's checked-out branch, read where the clone is: the short name,
+# or nothing (exit 1) on a detached HEAD.
+BRANCH_ARGV = ["git", "symbolic-ref", "--short", "-q", "HEAD"]
+
+
+def clone_branch_line(project, where, run):
+    """The line start's screen says for every project session, before the
+    pack: the branch the session builds on (deliver squashes what the
+    clone's branch holds since it left the base). None when the read
+    failed for a reason other than a detached HEAD, said by the caller."""
+    if run.returncode == 0 and run.stdout.strip():
+        return f"{project}'s clone at {where} is on {run.stdout.strip()}"
+    if run.returncode == 1 and not run.stdout.strip():
+        return f"{project}'s clone at {where} is on a detached HEAD"
+    return None
+
+
+def say_clone_branch(project, where, run):
+    """Say the clone's branch (log, so start's screen shows it), or why it
+    could not be read: never a silent skip, never a refusal."""
+    line = clone_branch_line(project, where, run)
+    if line is None:
+        line = (f"{project}'s clone at {where}: its branch could not be read (git symbolic-ref exited "
+                f"{run.returncode}: {ohost._last_words(run.stderr)})")
+    log(line)
+    return line
+
+
+def read_host_rides(place, host_rides, run):
+    """The facts of each host ride, from the round's run, as (stored,
+    fact) pairs; a ride gone from the host stops the start here, before
+    anything is written, as one gone from this machine does."""
+    try:
+        rows = ohost.read_ride_facts(run, [oh.host_ride_path(r) for r in host_rides], place)
+    except ohost.HostError as exc:
+        raise StartError([f"{place.name or place.host}: {exc}; nothing was written"])
+    gone = [r for r, f in zip(host_rides, rows) if f["kind"] == "gone"]
+    if gone:
+        raise StartError([f"a declared ride-along is not on {place.host}: {g} (office projects set changes what "
+                          "rides); nothing was written" for g in gone])
+    return list(zip(host_rides, rows))
+
+
+def pack_host_rides(rd, tray, place, rows, project):
+    """Pack what rides from the project's host there, with the host's own
+    bale (bale pack --context, so bale's filters keep secrets and junk
+    out), and carry each tarball back into the tray as the request is
+    carried: a path inside a repo there from the repo's top with
+    --include (one pack per repo, as here), a directory outside git from
+    a scratch copy there (removed in the connection that fetches its
+    tarball, and on any failure), a file outside git fetched as it is.
+    Every pack travels in one connection. Returns the carried lines."""
+    import tempfile
+    plans = [(stored, ohost.ride_plan_there(fact)) for stored, fact in rows]
+    grouped, scratches, copies = {}, [], []
+    for stored, (kind, where, inc) in plans:
+        if kind == "pack":
+            grouped.setdefault(where, []).append((stored, inc))
+        elif kind == "scratch":
+            scratches.append((stored, where))
+        else:
+            copies.append((stored, where))
+    argvs = [ohost.bale_in_argv(top, rd.consumption.argv("context", includes=(None if any(i is None for _, i in got)
+                                                                               else [i for _, i in got])))
+             for top, got in grouped.items()]
+    argvs += [ohost.ride_scratch_argv(d, rd.consumption.argv("context", includes=None)) for _, d in scratches]
+    made = []  # the scratches made there, removed whatever happens
+    carried = []
+    try:
+        runs = rd.through_shell(place, argvs, PACK_TIMEOUT) if argvs else []
+        made += [m for m in (ohost.scratch_said(r) for r in runs[len(grouped):]) if m]
+        reports = []
+        for run, what in zip(runs, [*[g for g in grouped], *[d for _, d in scratches]]):
+            shown = "bale " + " ".join(rd.consumption.argv("context"))
+            if run.returncode != 0:
+                raise BaleError("refused", f"{shown} refused for {what} on {place.host} (exit {run.returncode}): "
+                                           f"{ohost._last_words(run.stderr)}")
+            reports.append(rd.parse("context", run, shown, f"{what} on {place.host}"))
+        with tempfile.TemporaryDirectory(prefix="office-rides-") as tmp:
+            for i, (top, got) in enumerate(grouped.items()):
+                report = reports[i]
+                name = f"context-{rd.key(report, 'context', 'tree_name')}.tar.gz"
+                here = pathlib.Path(tmp) / f"{i}-{name}"
+                ohost.fetch_file(place, rd.key(report, "context", "tarball"), str(here))
+                carried.append(f"{tray.take(here, name)}: rides with {project} "
+                               f"({', '.join(r for r, _ in got)}, packed on {place.host})")
+            for j, (stored, d) in enumerate(scratches):
+                report = reports[len(grouped) + j]
+                name = f"context-{rd.key(report, 'context', 'tree_name')}.tar.gz"
+                here = pathlib.Path(tmp) / f"s{j}-{name}"
+                scratch = ohost.scratch_said(runs[len(grouped) + j])
+                gone = ohost.Scratch(place)
+                gone._path = scratch
+                ohost.fetch_file(place, rd.key(report, "context", "tarball"), str(here),
+                                 after=gone.removal_words() if scratch else None)
+                if scratch in made:
+                    made.remove(scratch)
+                carried.append(f"{tray.take(here, name)}: rides with {project} ({stored}, packed on {place.host} "
+                               "from a copy there)")
+            for k, (stored, f) in enumerate(copies):
+                name = posix_name(f)
+                here = pathlib.Path(tmp) / f"c{k}-{name}"
+                ohost.fetch_file(place, f, str(here))
+                carried.append(f"{tray.take(here, name)}: rides with {project} ({stored}, carried from "
+                               f"{place.host} as it is)")
+    finally:
+        for left in made:
+            try:
+                ohost.remove_scratch(place, left)
+            except ohost.HostError as exc:
+                log(f"warning: the temporary directory {left} on {place.host} was left behind: {exc}")
+    return carried
+
+
+def posix_name(path):
+    """The last part of a path as a host's shell sees it."""
+    return pathlib.PurePosixPath(path).name
+
+
 class Tray:
     """The out tray being filled: a staging directory beside its final
     place, renamed to the session id once the session is packed."""
@@ -2817,7 +2938,9 @@ def ride_choice(entry, project, leave_out):
     """(rides, left out) for a session: the project's declared ride-alongs
     minus the ones named to stay home this once. A name matches a
     declaration as declared or by the path it resolves to; a name that
-    matches none refuses, naming what is declared."""
+    matches none refuses, naming what is declared. A ride on the project's
+    host (host:PATH, 0.50.0) resolves nowhere here, so it matches as
+    declared (a trailing slash aside), never by a path on this machine."""
     declared = list(entry["rides"]) if entry is not None else []
     if not leave_out:
         return declared, []
@@ -2827,11 +2950,12 @@ def ride_choice(entry, project, leave_out):
     left = []
     for want in leave_out:
         try:
-            want_path = pathlib.Path(os.path.expanduser(want)).resolve()
+            want_path = None if oh.is_host_ride(want) else pathlib.Path(os.path.expanduser(want)).resolve()
         except (OSError, RuntimeError):
             want_path = None
-        hit = [r for r in declared if r == want.rstrip("/")
-               or (want_path is not None and oh.expand_project_path(r).resolve() == want_path)]
+        hit = [r for r in declared if r == (want.rstrip("/") or "/")
+               or (want_path is not None and not oh.is_host_ride(r)
+                   and oh.expand_project_path(r).resolve() == want_path)]
         if not hit:
             raise StartError([f"--leave-out {want}: not one of what rides with {project} "
                               f"({', '.join(declared)}); office projects {project} lists them"])
@@ -3325,10 +3449,56 @@ def digest_before_pack(office_root):
         log(f"warning: the digest before the pack exited {proc.returncode}; the sitting reads the page as it was")
 
 
-def checkout_branch(rd, office_root, where, project, branch, checked=False):
+# How a local branch stands against its remote-tracking ref (0.50.0), read
+# in the same connection as the rest of the checkout's reads: $1 the
+# branch. Its upstream is the one git records for it, else the one remote
+# that has a branch of the name; with neither, or no local branch, nothing
+# is printed. Else upstream=, local= and remote= (the two tips) and
+# whether the local tip is an ancestor of the remote one (behind, or
+# level) and the remote one of the local (ahead, or level).
+_UPSTREAM_SCRIPT = (
+    'b="$1"; git rev-parse --verify -q "refs/heads/$b" >/dev/null || exit 0; '
+    'u=$(git for-each-ref --format="%(upstream)" "refs/heads/$b"); '
+    'case "$u" in refs/remotes/*) git rev-parse --verify -q "$u" >/dev/null || u="" ;; *) u="" ;; esac; '
+    'if [ -z "$u" ]; then set -- $(git for-each-ref --format="%(refname)" "refs/remotes/*/$b"); '
+    '[ $# -eq 1 ] && u="$1"; fi; [ -n "$u" ] || exit 0; '
+    'echo "upstream=$u"; echo "local=$(git rev-parse "refs/heads/$b")"; echo "remote=$(git rev-parse "$u")"; '
+    'git merge-base --is-ancestor "refs/heads/$b" "$u" && echo "behind=yes" || echo "behind=no"; '
+    'git merge-base --is-ancestor "$u" "refs/heads/$b" && echo "ahead=yes" || echo "ahead=no"'
+)
+
+
+def read_upstream(run):
+    """_UPSTREAM_SCRIPT's answer: None (no upstream to compare with), or
+    {upstream (short), local, remote, state} with state one of level,
+    behind (the local tip an ancestor of the remote one: fast-forwardable),
+    ahead and diverged."""
+    if run.returncode != 0:
+        return None
+    facts = dict(l.split("=", 1) for l in run.stdout.splitlines() if "=" in l)
+    if not facts.get("upstream") or not facts.get("local") or not facts.get("remote"):
+        return None
+    if facts["local"] == facts["remote"]:
+        state = "level"
+    elif facts.get("behind") == "yes":
+        state = "behind"
+    elif facts.get("ahead") == "yes":
+        state = "ahead"
+    else:
+        state = "diverged"
+    return {"upstream": facts["upstream"][len("refs/remotes/"):], "local": facts["local"],
+            "remote": facts["remote"], "state": state}
+
+
+def tip(sha):
+    return sha[:12]
+
+
+def checkout_branch(rd, office_root, where, project, branch, checked=False, source="bundle"):
     """Check out the branch a planner's bundle names in its brief (0.34.0,
-    `--- BRANCH NAME ---`) in the project's clone, here or through its
-    shell on a host, before bale opens the bundle: bale packs the session
+    `--- BRANCH NAME ---`), or office start's --branch NAME names (0.50.0,
+    source "flag"), in the project's clone, here or through its shell on a
+    host, before bale packs or opens the session: bale packs the session
     on the branch the clone has checked out, and a session that answers a
     review builds on the review's own branch. Returns the lines to say.
 
@@ -3339,32 +3509,54 @@ def checkout_branch(rd, office_root, where, project, branch, checked=False):
     checked out there, so moving the clone under it is refused), or no
     branch of that name is in the clone, locally or as one remote's
     tracking branch (the office fetches nothing: the clone's credentials
-    are not its own, and the line that fetches is named). A clone already
-    on the branch is said, and nothing moves."""
+    are not its own, and the line that fetches is named).
+
+    A local branch behind its remote-tracking ref (0.50.0; the refresh
+    moves the remote-tracking ref, never the local branch) is
+    fast-forwarded to it once checked out, when the clone is clean and the
+    local tip is an ancestor of the remote one, and the line names both
+    tips; one that has diverged from it, or is ahead, is checked out as it
+    is, and said so. A clone already on the branch is said; behind, it is
+    fast-forwarded under the same conditions, and otherwise nothing
+    moves."""
+    names = (f"the bundle's brief names the branch {branch}" if source == "bundle"
+             else f"--branch {branch} names the branch")
+    said = ("the branch the bundle's brief names (its BRANCH line)" if source == "bundle"
+            else "the branch --branch names")
     if where == "office":
-        raise StartError([f"the bundle's brief names the branch {branch} for its session to build on, and the "
-                          "session lands in the office, which works on one branch: a BRANCH line is for a "
-                          "project's bundle; nothing was written"])
+        raise StartError([f"{names} for its session to build on, and the session lands in the office, which "
+                          "works on one branch: " + ("a BRANCH line is for a project's bundle" if source == "bundle"
+                                                     else "--branch is for a project's session")
+                          + "; nothing was written"])
     place = pack_place(office_root, where, project, rd, checked)
     where_words = str(place)  # a Place names its host; a path on this machine is the path
     argvs = [["git", "symbolic-ref", "--short", "-q", "HEAD"],
              ["git", "status", "--porcelain=v1", "-uno"],
              ["git", "rev-parse", "--verify", "-q", f"refs/heads/{branch}"],
-             ["git", "for-each-ref", "--format=%(refname)", f"refs/remotes/*/{branch}"]]
+             ["git", "for-each-ref", "--format=%(refname)", f"refs/remotes/*/{branch}"],
+             ["sh", "-c", _UPSTREAM_SCRIPT, "office-upstream", branch]]
     try:
-        head, dirty, local, tracking = ohost.run_many(place, argvs, timeout=ohost.RUN_TIMEOUT)
+        head, dirty, local, tracking, upstream = ohost.run_many(place, argvs, timeout=ohost.RUN_TIMEOUT)
     except ohost.HostError as exc:
         raise StartError([f"{project}: the clone could not be read for its branch: {exc}; nothing was written"])
     current = head.stdout.strip() if head.returncode == 0 else None
-    if current == branch:
-        return [f"{project}'s clone at {where_words} is on {branch}, the branch the bundle's brief names (its BRANCH "
-                "line); nothing to check out"]
+    up = read_upstream(upstream) if local.returncode == 0 and local.stdout.strip() else None
     changed = [l for l in dirty.stdout.splitlines() if l.strip()]
+    if current == branch and (up is None or up["state"] != "behind"):
+        return [f"{project}'s clone at {where_words} is on {branch}, {said}; nothing to check out"
+                + (stand_words(up) if up else "")]
     if dirty.returncode != 0:
         raise StartError([f"{project}: git status in {where_words} failed: {ohost._last_words(dirty.stderr)}; nothing "
                           "was written"])
+    if changed and current == branch:
+        # On the branch already, behind its remote-tracking ref, with
+        # changes a fast-forward could touch: nothing moves, and no refusal
+        # either, since nothing needs checking out.
+        return [f"{project}'s clone at {where_words} is on {branch}, {said}, at {tip(up['local'])}, behind "
+                f"{up['upstream']} at {tip(up['remote'])}; it is not fast-forwarded over uncommitted changes "
+                f"({len(changed)} path(s)), so the session builds on {tip(up['local'])}"]
     if changed:
-        raise StartError([f"the bundle's brief names the branch {branch}, and {project}'s clone at {where_words} has "
+        raise StartError([f"{names}, and {project}'s clone at {where_words} has "
                           f"uncommitted changes ({len(changed)} path(s): {', '.join(l[3:] for l in changed[:6])}"
                           + (", ..." if len(changed) > 6 else "") + f"), so {branch} is not checked out over them",
                           "commit or stash them there, then start again; nothing was written"])
@@ -3373,14 +3565,20 @@ def checkout_branch(rd, office_root, where, project, branch, checked=False):
         open_there = [sid for sid, _ in rd.open_sessions(place)] if _bale_registry_at(place, rd) else []
     except BaleError as exc:
         raise StartError([f"{project}: the sessions open in its clone could not be read: {exc}; nothing was written"])
+    if open_there and current == branch:
+        return [f"{project}'s clone at {where_words} is on {branch}, {said}, at {tip(up['local'])}, behind "
+                f"{up['upstream']} at {tip(up['remote'])}; it is not fast-forwarded under the {len(open_there)} "
+                f"session(s) open in it ({', '.join(open_there)}), so the session builds on {tip(up['local'])}"]
     if open_there:
-        raise StartError([f"the bundle's brief names the branch {branch}, and {project}'s clone at {where_words} is on "
+        raise StartError([f"{names}, and {project}'s clone at {where_words} is on "
                           f"{current or 'a detached HEAD'} with {len(open_there)} session(s) open in it "
                           f"({', '.join(open_there)}), which bale lands on the branch checked out there; it is not "
                           "moved under them",
                           "land or withdraw them first, then start again; nothing was written"])
     remotes = [r for r in tracking.stdout.split() if r.startswith("refs/remotes/")]
-    if local.returncode == 0 and local.stdout.strip():
+    if current == branch:
+        argv, how = None, "already checked out"
+    elif local.returncode == 0 and local.stdout.strip():
         argv = ["git", "checkout", "-q", branch]
         how = "its local branch"
     elif len(remotes) == 1:
@@ -3388,25 +3586,55 @@ def checkout_branch(rd, office_root, where, project, branch, checked=False):
         argv = ["git", "checkout", "-q", "-b", branch, "--track", short]
         how = f"a new local branch tracking {short}"
     elif remotes:
-        raise StartError([f"the bundle's brief names the branch {branch}, which {project}'s clone at {where_words} has "
+        raise StartError([f"{names}, which {project}'s clone at {where_words} has "
                           f"on {len(remotes)} remotes and not locally ({', '.join(r[len('refs/remotes/'):] for r in remotes)}); "
                           f"make the local branch there from the right one (git checkout -b {branch} --track REMOTE/{branch}), "
                           "then start again; nothing was written"])
     else:
-        raise StartError([f"the bundle's brief names the branch {branch}, and {project}'s clone at {where_words} has no "
+        raise StartError([f"{names}, and {project}'s clone at {where_words} has no "
                           f"such branch, locally or on a remote it has fetched (it is on {current or 'a detached HEAD'})",
                           f"fetch it there first (git fetch REMOTE {branch}, with the clone's own credentials; the "
                           "office fetches nothing), then start again; nothing was written"])
+    ff = up is not None and up["state"] == "behind"
+    steps = ([argv] if argv else []) + ([["git", "merge", "--ff-only", "-q", up["remote"]]] if ff else [])
     try:
-        run = ohost.run_many(place, [argv, ["git", "symbolic-ref", "--short", "-q", "HEAD"]], timeout=ohost.RUN_TIMEOUT)
+        run = ohost.run_many(place, [*steps, ["git", "symbolic-ref", "--short", "-q", "HEAD"],
+                                     ["git", "rev-parse", "-q", "--verify", "HEAD"]], timeout=ohost.RUN_TIMEOUT)
     except ohost.HostError as exc:
         raise StartError([f"{project}: {branch} could not be checked out in {where_words}: {exc}"])
-    if run[0].returncode != 0 or run[1].stdout.strip() != branch:
-        raise StartError([f"{project}: git checkout {branch} in {where_words} failed (exit {run[0].returncode}): "
-                          f"{ohost._last_words(run[0].stderr) or run[1].stdout.strip() or 'no words'}; the clone is "
-                          "as git left it, and nothing else was written"])
+    failed = next((i for i, r in enumerate(run[:len(steps)]) if r.returncode != 0), None)
+    if failed is not None or run[len(steps)].stdout.strip() != branch:
+        first = run[failed if failed is not None else 0]
+        what = f"git checkout {branch}" if argv and failed in (0, None) else f"git merge --ff-only {up['upstream']}"
+        raise StartError([f"{project}: {what} in {where_words} failed (exit {first.returncode}): "
+                          f"{ohost._last_words(first.stderr) or run[len(steps)].stdout.strip() or 'no words'}; the "
+                          "clone is as git left it, and nothing else was written"])
+    now = run[len(steps) + 1].stdout.strip()
+    if ff:
+        moved = (f"fast-forwarded from {tip(up['local'])} to {tip(now)}, the tip of {up['upstream']}"
+                 if now == up["remote"] else
+                 f"fast-forwarded from {tip(up['local'])} to {tip(now)} ({up['upstream']} is at {tip(up['remote'])})")
+        if argv is None:
+            return [f"{project}'s clone at {where_words} is on {branch}, {said}: {moved}"]
+        return [f"checked out {branch} in {project}'s clone at {where_words} ({how}, {moved}; it was on "
+                f"{current or 'a detached HEAD'}), {said}, so bale "
+                + ("opens the bundle on it" if source == "bundle" else "packs the session on it")]
     return [f"checked out {branch} in {project}'s clone at {where_words} ({how}; it was on {current or 'a detached HEAD'}), "
-            "the branch the bundle's brief names (its BRANCH line), so bale opens the bundle on it"]
+            f"{said}, so bale " + ("opens the bundle on it" if source == "bundle" else "packs the session on it")
+            + (stand_words(up) if up else "")]
+
+
+def stand_words(up):
+    """Where a checked-out branch stands against its remote-tracking ref,
+    when it is not level: words to append to the checkout's line."""
+    if up["state"] == "diverged":
+        return (f"; it has diverged from {up['upstream']} ({tip(up['local'])} here, {tip(up['remote'])} there), so "
+                "it is checked out as it is: nothing is forced")
+    if up["state"] == "ahead":
+        return f"; it is ahead of {up['upstream']} ({tip(up['local'])} here, {tip(up['remote'])} there)"
+    if up["state"] == "behind":
+        return f"; it is behind {up['upstream']} ({tip(up['local'])} here, {tip(up['remote'])} there)"
+    return ""
 
 
 def _bale_registry_at(place, rd):
@@ -4168,6 +4396,17 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             # so before anything is written; this is the backstop).
             raise StartError([oh.paused_line(project)])
     rides, left = ride_choice(entry, project, leave_out)
+    # What rides from the project's host (0.50.0): checked in the round
+    # start makes there anyway, and packed there by the host's bale.
+    host_rides = [r for r in rides if oh.is_host_ride(r)]
+    rides = [r for r in rides if not oh.is_host_ride(r)]
+    ride_place, ride_rows = None, None
+    if host_rides:
+        if entry is None or not hosted_project(entry):
+            # read_projects reports it as a declaration problem, refused
+            # above; this is the backstop.
+            raise StartError([f"{project}: {', '.join(host_rides)} rides from its host, and it has none"])
+        ride_place = ohost.place_of(entry)
     rd.bale()
     # The project's handbook chapter rides with every session whose lane
     # names the project (0.20.0): in the office's context for a project
@@ -4211,13 +4450,35 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             except ValueError:
                 b_inc, b_wr = [], []
             named = [*b_inc, *b_wr]
-        hosted_round(rd, pack_dir, named, doctrine=True, version=bool(bundle))
+        # The clone's branch (0.50.0) and what rides from the host ride
+        # the same connection, after the reads the pack needs.
+        extra = [BRANCH_ARGV] + ([ohost.ride_facts_argv([oh.host_ride_path(r) for r in host_rides])]
+                                 if host_rides else [])
+        runs = hosted_round(rd, pack_dir, named, doctrine=True, version=bool(bundle), extra=extra)
+        say_clone_branch(project, pack_dir, runs[0])
+        if host_rides:
+            ride_rows = read_host_rides(ride_place, host_rides, runs[1])
     else:
         pack_dir = entry["resolved"]
         ok, why = oh.check_project_dir(pack_dir)
         if not ok:
             raise StartError([f"{project} cannot be packed: {why}"])
         forecast = [] if read_only else (list(writes) or list(includes) or None)
+        try:
+            say_clone_branch(project, pack_dir, ohost.run_in(ohost.Place(str(pack_dir)), BRANCH_ARGV))
+        except ohost.HostError as exc:
+            log(f"{project}'s clone at {pack_dir}: its branch could not be read ({exc})")
+    if host_rides and ride_rows is None:
+        # An office session about a hosted project (--about): no round is
+        # made on the host for the pack, so the rides' check is one of its
+        # own, before anything is written.
+        try:
+            run = ohost.run_many(ride_place, [ohost.ride_facts_argv([oh.host_ride_path(r) for r in host_rides])],
+                                 chdir=False)[0]
+        except ohost.HostError as exc:
+            raise StartError([f"{project}: what rides from {entry['host']} could not be checked: {exc}; nothing "
+                              "was written"])
+        ride_rows = read_host_rides(ride_place, host_rides, run)
     hosted = rd.hosted(pack_dir)
     bundle_supersedes, argv = None, None
     if bundle:
@@ -4466,6 +4727,9 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                 carried.append(context_into_tray(rd, tray, place, None if whole else incs,
                                                   f"rides with {project} ({place}"
                                                   + ("" if whole else ": " + ", ".join(incs)) + ")"))
+            if ride_rows:
+                stage = f"what rides from {ride_place.host}"
+                carried += pack_host_rides(rd, tray, ride_place, ride_rows, project)
         # The session itself, last.
         if bundle:
             stage = "the bundle's open"
@@ -6279,6 +6543,8 @@ def build_parser(only=None):
     p.add_argument("--project"); p.add_argument("--branch", required=True)
     p.add_argument("--checked", action="store_true",
                    help="bin/office has checked the project's host this start (start-check)")
+    p.add_argument("--from-flag", action="store_true",
+                   help="the branch is office start's --branch NAME (0.50.0), not a bundle's BRANCH line: said so")
     p = add("bundle-sitting", help="whether a bundle's pack line sends out a sitting: yes, no or unknown")
     p.add_argument("--bundle", required=True)
     p = add("withdraw-list", help="the sessions out that can be withdrawn: SID<tab>LABEL<tab>FOLDERS<tab>"
@@ -6329,7 +6595,8 @@ def main(argv=None):
         return 0
     if a.cmd == "bundle-branch":
         try:
-            for line in checkout_branch(Reader(), a.office, a.where, a.project, a.branch, a.checked):
+            for line in checkout_branch(Reader(), a.office, a.where, a.project, a.branch, a.checked,
+                                        source="flag" if a.from_flag else "bundle"):
                 print(line)
         except StartError as exc:
             for line in exc.lines:

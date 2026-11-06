@@ -260,7 +260,9 @@ def project_row(p):
         aud = "none"
     said = []
     if p.get("rides"):
-        said.append("rides: " + ", ".join(p["rides"]))
+        # A ride on the project's host (0.50.0) as stored, marked as the
+        # host's: the map reaches no host for it.
+        said.append("rides: " + ", ".join(oh.ride_words(r, p.get("host")) for r in p["rides"]))
     if p.get("after_land"):
         said.append("after: " + "; ".join(p["after_land"]))
     said += [f"declaration problem: {x}" for x in p.get("declaration_problems") or []]
