@@ -376,11 +376,15 @@ def open_pull_for(remote_url, branch, environ=None):
 
 def remote_url_of(entry):
     """The audience remote's URL for a project on this machine, read from
-    its clone (git remote get-url, no network); None for a project on a
-    host, which is not reached for a rendering."""
+    its clone (git remote get-url, no network); for a project on a host,
+    which is not reached for a rendering, the URL the floor plan keeps for
+    it (audience_url, 0.50.0: written by office projects set --audience
+    from the clone's remote, or --audience-url), else None."""
     import office_host as ohost
-    if entry.get("host") or entry.get("problem") or not entry.get("audience"):
+    if entry.get("problem") or not entry.get("audience"):
         return None
+    if entry.get("host"):
+        return entry.get("audience_url") or None
     path = entry.get("resolved")
     if not path or not pathlib.Path(path).is_dir():
         return None
@@ -442,7 +446,8 @@ def project_reviews(entry, folders, now=None, environ=None):
             return None  # not a GitHub host: there is no review state gh can read
         repo = got[1]
     else:
-        # A project on a host: the repository a recorded review names.
+        # A project on a host with no audience_url kept (0.50.0 keeps one):
+        # the repository a recorded review names.
         for fs in branches.values():
             for f in fs:
                 for _, rec in review_records(f["path"]):
@@ -453,7 +458,8 @@ def project_reviews(entry, folders, now=None, environ=None):
             # known here until a review is recorded: the clone is not read
             # through its shell for a rendering, so there is nothing to say.
             debug(f"{entry['name']}: its audience's repository is not known on this machine (its clone is on a "
-                  "host, and no review recorded names it), so its review state is not read")
+                  "host, no audience_url is kept for it and no review recorded names it), so its review state is "
+                  f"not read; office projects set {entry['name']} --audience {entry['audience']} keeps it")
             return None
     program = gh_program(environ)
     if program is None:

@@ -4,6 +4,68 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.50.0
+
+Additive: no migration, nothing to do in any office. The thirteenth serial
+session of the plan begun on 2026-10-27: items 3 and 9 of the friction
+report of 2026-10-27, 0.39.0's first proposal and 0.42.0's third. What
+you see changes for `office projects set`, `office projects`, the map and
+`office start`; what is stored gains one spelling and one key, each read as
+absent on an older floor plan.
+
+A ride from the project's host. `office projects set NAME --ride
+host:PATH` declares a ride on a hosted project's host, PATH as that host's
+shell sees it (absolute or `~/`), stored as typed in the same `rides` list:
+one spelling in the floor plan, `office projects`, the map's cell, start's
+screen and `--leave-out`. It is checked where it lives, through the
+project's shell in one connection: a path not there (`no such path on
+HOST: PATH`) or a host that does not answer (its connect line) declares
+nothing, and a `host:` ride on a project with no host is refused by name.
+The listing and the map show it as stored, `rides: host:~/x (on HOST)`, and
+reach no host for it. At `office start` it is checked in the round start
+already makes on the host, and one gone from the host stops the start
+before anything is written. It is packed there by the host's own bale,
+`bale pack --context` (never a plain tar): from the repo's top with
+`--include` inside a repo there, from a scratch copy there for a directory
+outside git (removed in the connection that fetches its tarball), fetched
+as it is for a file outside git; every pack rides one connection, and each
+tarball comes back into the tray as the request does, named as the same
+ride would be from here and said, `context-notes.tar.gz: rides with far
+(host:~/notes/blueprints, packed on HOST)`. An office session about the
+project (`--about`) rides it the same way. The in-tray's drops, the
+doctrine and the office's context are still made here.
+
+The branch on start's screen. Every project session, here or on a host,
+bundle or not, says before the pack `PROJECT's clone at WHERE is on
+BRANCH` (or `is on a detached HEAD`), read in the round start already makes
+there: no connection is added for it.
+
+`office start --branch NAME`. On `--on`, `new` and `--drop` sessions the
+flag checks NAME out in the project's clone before the pack, through the
+same step a bundle's BRANCH line runs, with the same refusals (a dirty
+clone, a session open there, no such branch, several remotes) and words
+(`--branch NAME names the branch, and ...`); `--in-office` refuses it as a
+BRANCH line refuses there. Over a bundle whose brief names another branch,
+the flag stands and is said in one line. And the checkout, whoever asks
+for it, fast-forwards a local branch behind its remote-tracking ref (the
+clone clean, the local tip an ancestor of the remote one), naming both
+tips; one that has diverged, or is ahead, is checked out as it is and said
+so. Nothing is forced, and the office still fetches nothing.
+
+The audience URL kept. The audience line has a sixth key, `audience_url`,
+for a project on a host only: written when `office projects set` (or
+`add`) sets the audience, from the clone's remote as it is read through the
+shell at that moment, or by `--audience-url URL` (`--no-audience-url`
+clears it; `--no-audience` and `--on-this-machine` clear it too).
+Review state reads from it before a hosted project's first review is
+recorded; `office projects` shows it. A project on this machine keeps none.
+Each hosted project with an audience gets its URL by running, once:
+
+    office projects set NAME --audience REMOTE
+
+Tests: tests/test_host_rides.py, one class per item, the host the fake ssh
+and review state FakeGh.
+
 ## 0.49.0
 
 Additive: no migration, nothing to do in any office. The twelfth serial

@@ -476,7 +476,14 @@ local branch, or a new one tracking the one remote that has it; a clone
 with uncommitted changes, with a session open in it, or with no such
 branch locally or on a remote it has fetched stops the start with nothing
 written and says what to do there (the office fetches nothing), and a
-clone already on the branch is said. One whose brief names the sitting it
+clone already on the branch is said. A local branch behind its
+remote-tracking ref (0.50.0: the refresh moves that ref, never the local
+branch) is fast-forwarded to it when the clone is clean and the local tip
+is an ancestor of the remote one, the line naming both tips; one that has
+diverged is checked out as it is, and said so. `office start --branch
+NAME` (0.50.0) does the same for any project session (`--on`, `new`,
+`--drop`), with the same refusals, and stands over a BRANCH line naming
+another branch, said in one line. One whose brief names the sitting it
 succeeds (`--- ENDS SID ---`, 0.43.0) has start end that sitting, once
 bale has opened the new session and the opener is on the clipboard, as
 `office land` ends one: asked once on a terminal, default yes
@@ -1002,6 +1009,7 @@ the agenda are checked against their committed bytes before the commit
     office start plan-wave --in-office --read-only --goal "Plan the next wave"
     office start fix-login --on office-src 2026-10-05-fix-login.bale-bundle   # a planner's bundle
     office start fix-login --on office-src --goal "Fix it" --no-rides         # nothing declared rides this time
+    office start fix-login --on api --goal "Answer it" --branch review-fixes  # check the branch out first (0.50.0)
     office start fix-login --on office-src --goal "Fix it" --carry 3          # rider 3 rides in the folder
     office start new --on office-src 2026-10-05-fix-login.bale-bundle         # a new folder for a planner's bundle
     office start fix-api --on api --goal "Wire the health route" --write src  # api is on a host: packed there
@@ -1017,11 +1025,20 @@ session but never lands in this project.", and the office's context
 with each path the project declares (`office projects set`). In the
 office, it is packed from the office, forecasting the folder and the
 notepad, and the project the folder's lane names rides beside it with
-its declarations. On a terminal it lists what the project declares to
-ride, with sizes, and asks which ride this time: a plain return rides
-them all; `none`, or the numbers to leave out, keep them home for this
-session only (`--leave-out PATH`, `--no-rides`; piped, everything
-declared rides). The doctrine rides once: a project whose own tree
+its declarations. What rides is declared once, for good, and which of it
+a session needs is not asked (0.22.0): on a terminal start says what the
+project declares to ride, in one line, and it all rides;
+`--leave-out PATH` keeps one home for this session only and `--no-rides`
+keeps them all home (piped, everything declared rides). A ride is a path
+here (`--ride PATH`) or, for a project on a host, a path there (`--ride
+host:PATH`, 0.50.0): that one is checked in the round start makes on the
+host, packed there by the host's bale and carried back into the tray
+(`rides with PROJECT (host:PATH, packed on HOST)`), and `--leave-out
+host:PATH` names it as declared. Before the pack, start's screen names the
+branch the session builds on (`PROJECT's clone at WHERE is on BRANCH`,
+or a detached HEAD; 0.50.0), and `--branch NAME` checks NAME out in the
+clone first, as a bundle's BRANCH line is checked out (above). The
+doctrine rides once: a project whose own tree
 carries the same `doctrine/` (office-src's) ships it there, and one
 whose `doctrine/` differs gets the install's beside it, named as the
 install's. Before it packs, start surveys the machine again and commits
@@ -1154,7 +1171,12 @@ input; piped, nothing ever asks. One start reaches the host once (the
 reach is carried from one step to the next) and the reads it needs there
 share a connection: a pack makes about four connections, five with a
 brief, eight for a bundle (0.15.0 made seven, ten and eighteen in the
-suite's count).
+suite's count). A ride declared on the host (`host:PATH`, 0.50.0) is
+checked in that round too, and the clone's branch is read there for the
+screen's branch line; what rides from the host is packed in one more
+connection, every pack in it, and each tarball fetched as the request is
+(a scratch copy there removed in the connection that fetches it), so the
+in-tray's drops, the doctrine and the office's context stay made here.
 
 The clone's view of the audience (0.39.0). For a project with an
 audience, start compares the clone's `AUDIENCE/BASE` (origin/main, say)
@@ -2115,6 +2137,8 @@ delivery's names none, since a session id is one of bale's marks and
     office projects set distributions-app --paused   # read nothing of it, send nothing to it (0.41.0)
     office projects set api --path ~/work/api-2      # another clone, checked as add checks one (0.46.0)
     office projects set api --branch-prefix feature/ # before a delivery branch's short name (0.46.0)
+    office projects set api --ride host:~/notes/plans  # a ride on api's host, packed there (0.50.0)
+    office projects set api --audience-url git@github.com:acme/api.git   # kept for a hosted project (0.50.0)
     office projects set api --edit                   # every group, keep or change, on a terminal
 
 What `office projects set` asks (0.46.0): given a project and any flag,
@@ -2283,6 +2307,16 @@ after one of its sessions lands (`--after-land CMD`, repeatable; `office
 land` runs them). `office
 projects set NAME` asks for both on a terminal, and `office projects`
 shows them. They live in the office, never in the project's repo.
+A project on a host may declare a ride on that host (0.50.0): `--ride
+host:PATH`, PATH as the host's shell sees it (absolute or `~/`), stored
+as typed. It is checked where it lives, through the project's shell in
+one connection when it is declared; a path not there, or a host that
+does not answer (its connect line), declares nothing, and a `host:` ride
+on a project with no host is refused by name. `office projects` and the
+map show it as stored, marked as the host's (`rides: host:~/notes (on
+HOST)`), and reach no host for it. The three forms, side by side:
+`--ride PATH` (here), `--ride host:PATH` (on the project's host) and
+`--audience-url URL` (below).
 A project with an audience declares three more, the audience line's
 (`office deliver` reads them): `--audience REMOTE`, the name of the
 remote in the workbench clone that points at the audience's git host
@@ -2297,7 +2331,16 @@ The audience line has a fifth key, `branch_prefix` (`feature/`, kept
 with one trailing slash), which `office deliver` reads from the floor
 plan and puts before a branch named by the words or the folder's slug
 (0.38.0); no verb sets it yet, so it is written into the floor plan by
-hand until its flag is built. On
+hand until its flag is built (0.46.0 built it: `--branch-prefix`). A
+sixth, `audience_url` (0.50.0), is kept for a project on a host only: the
+audience remote's URL, written when `--audience REMOTE` is set, read from
+the clone's remote through the shell then, or given with `--audience-url
+URL` (`--no-audience-url` clears it). A rendering never reaches a host,
+so it is what lets such a project's review state read before its first
+review is recorded; `office projects` shows it. An existing hosted
+project gets its URL by running `office projects set NAME --audience
+REMOTE` once. A project on this machine keeps none: its clone is read
+each time. On
 a terminal `add` and `set` ask the three after the host question,
 defaults read from the clone; `--no-audience` takes a project off the
 audience line, `--no-author` and `--no-base` clear one. Declaring an

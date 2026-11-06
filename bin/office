@@ -4580,12 +4580,13 @@ usage: office start new [--words TEXT] [--in-office | --on PROJECT] [--goal TEXT
        office start [FOLDER] [--in-office | --on PROJECT] [--goal TEXT] [--slug SLUG]
                     [--write PATH]... [--include PATH]... [--brief FILE] [--read-only]
                     [--leave-out PATH]... [--no-rides] [--carry N... | --carry none]
-                    [--refresh | --no-refresh]
+                    [--refresh | --no-refresh] [--branch NAME]
        office start [FOLDER] [--in-office | --on PROJECT] --bundle STEM [--leave-out PATH]... [--no-rides]
                     [--carry N... | --carry none] [--refresh | --no-refresh]
-                    [--end-predecessor | --keep-predecessor]
+                    [--end-predecessor | --keep-predecessor] [--branch NAME]
        office start --drop PAGE [--title TITLE] [--lane LANE] [--size SIZE] [--goal TEXT] [--slug SLUG]
                     [--write PATH]... [--include PATH]... [--leave-out PATH]... [--no-rides]
+                    [--branch NAME]
        office start --sort
        office start --prep [MEETING]
        office start FOLDER --merge [--leave-out PATH]... [--no-rides] [--carry N... | --carry none]
@@ -4701,6 +4702,14 @@ on the desk or in the filing cabinet, and says so.
                  a terminal, start shows what rides and asks; piped,
                  everything declared rides
   --no-rides     every ride-along stays home for this session
+  --branch NAME  check NAME out in the project's clone before the pack
+                 (a project session: --on, new, --drop), as a bundle's
+                 BRANCH line is checked out: refused over uncommitted
+                 changes, under a session open there, and for a branch the
+                 clone does not have; a local branch behind its
+                 remote-tracking ref is fast-forwarded to it. Over a
+                 bundle's BRANCH line naming another, the flag stands.
+                 Start's screen names the clone's branch either way
   --carry N      carry rider N into the folder before the pack, so it rides
                  in the request (repeatable); --carry none carries none.
                  On a terminal, start offers each queued rider on the
@@ -4812,6 +4821,7 @@ Examples:
   office start plan-wave --in-office --read-only --goal "Plan the next wave"
   office start fix-login --on office-src 2026-10-05-fix-login.bale-bundle
   office start fix-login --on office-src --goal "Fix it" --leave-out ~/nisaba-src/blueprints
+  office start fix-login --on api --goal "Answer the review" --branch review-fixes
   office start fix-login --on office-src --goal "Fix it" --carry 3
   office start --drop in-tray/2026-10-14-login-error.md
   office start --drop 2026-10-14-login-error --lane office-src --size medium
@@ -4932,7 +4942,12 @@ ask_where() {
 # refusal names office projects level-bale), and the repo there is one
 # bale runs in. Once per start: START_CHECKED_HOST remembers it.
 start_check_place() {
-  [ "$1" = project ] || return 0
+  if [ "$1" != project ]; then
+    # --branch on a session that, asked where, lands in the office (0.50.0).
+    [ -z "$START_BRANCH_FLAG" ] || [ "$1" != office ] \
+      || die "--branch $START_BRANCH_FLAG names the branch for its session to build on, and the session lands in the office, which works on one branch: --branch is for a project's session; nothing was written"
+    return 0
+  fi
   printf '%s\n' "$3" | grep -qxF -- "$2" \
     || die "--on $2: no such project in this office (it scopes: $(printf '%s' "$3" | paste -sd, - | sed 's/,/, /g'); office projects add adds one)"
   local on_host out
@@ -4951,6 +4966,24 @@ start_check_place() {
     log "$on_host answers, with bale ${out#*$'\t'}: the session is packed there and its request carried back to the out tray"
   fi
   start_offer_refresh "$root" "$2"
+  start_branch_checkout "$root" "$2"
+}
+
+# start_branch_checkout ROOT PROJECT (0.50.0): office start --branch NAME
+# on a session that is not a bundle's checks NAME out in the project's
+# clone, here or through its shell, after the refresh (so it is checked
+# out at its current tip) and before anything is written: the same reader
+# step, refusals and words as a bundle's BRANCH line (a bundle's start
+# runs it in check_start_bundle, before bale's rehearsal). Once per start.
+start_branch_checkout() {
+  local root="$1" project="$2" out line bargs
+  [ -n "$START_BRANCH_FLAG" ] && [ "$START_BRANCH_DONE" = 0 ] && [ -z "${bundle:-}" ] || return 0
+  bargs=(--where project --project "$project" --branch "$START_BRANCH_FLAG" --from-flag)
+  [ "${START_CHECKED_HOST:-}" != "$project" ] || bargs+=(--checked)
+  out="$(reader bundle-branch "$root" "${bargs[@]}")" \
+    || die "nothing was written: no folder, no survey, no out tray, no session (--branch names the branch $START_BRANCH_FLAG, and the lines above say why it is not checked out)"
+  [ -z "$out" ] || while IFS= read -r line; do [ -n "$line" ] && log "$line"; done <<< "$out"
+  START_BRANCH_DONE=1
 }
 
 # start_offer_refresh ROOT PROJECT (0.39.0): for a project with an
@@ -5023,10 +5056,11 @@ check_start_bundle() {
   # once per start, and nothing else is written before it either.
   if [ -n "$START_BRANCH" ] && [ "$START_BRANCH_DONE" = 0 ]; then
     local bargs=(--where "$where" --branch "$START_BRANCH")
+    [ -z "$START_BRANCH_FLAG" ] || bargs+=(--from-flag)
     [ "$where" != project ] || bargs+=(--project "$project")
     [ "$where" != project ] || [ "${START_CHECKED_HOST:-}" != "$project" ] || bargs+=(--checked)
     out="$(reader bundle-branch "$root" "${bargs[@]}")" \
-      || die "nothing was written: no folder, no survey, no out tray, no session (the bundle's brief names the branch $START_BRANCH, and the lines above say why it is not checked out)"
+      || die "nothing was written: no folder, no survey, no out tray, no session ($([ -n "$START_BRANCH_FLAG" ] && printf -- '--branch names' || printf "the bundle's brief names") the branch $START_BRANCH, and the lines above say why it is not checked out)"
     [ -z "$out" ] || while IFS= read -r line; do [ -n "$line" ] && log "$line"; done <<< "$out"
     START_BRANCH_DONE=1
   fi
@@ -5732,7 +5766,14 @@ bundle_lands_read() {
       place) lands_where="$a"; lands_project="$b" ;;
       folder) lands_folder="$a" ;;
       words) lands_words="$a" ;;
-      branch) START_BRANCH="$a" ;;
+      branch)
+        # --branch NAME given stands over the brief's BRANCH line (0.50.0),
+        # as --on stands over its LANDS line, and is said.
+        if [ -n "$START_BRANCH_FLAG" ]; then
+          [ "$a" = "$START_BRANCH_FLAG" ] || log "the bundle's brief names the branch $a (its BRANCH line); --branch $START_BRANCH_FLAG says otherwise, and stands"
+        else
+          START_BRANCH="$a"
+        fi ;;
       say) log "$a" ;;
     esac
   done <<< "$out"
@@ -5754,7 +5795,7 @@ bundle_lands_read() {
   fi
   # The branch the session builds on (0.34.0): checked out where the bundle
   # opens, before bale open --check (check_start_bundle).
-  [ -z "$START_BRANCH" ] || log "the bundle's brief names the branch its session builds on: $START_BRANCH (its BRANCH line); start checks it out in the project's clone before bale opens the bundle"
+  [ -z "$START_BRANCH" ] || [ -n "$START_BRANCH_FLAG" ] || log "the bundle's brief names the branch its session builds on: $START_BRANCH (its BRANCH line); start checks it out in the project's clone before bale opens the bundle"
   if [ -n "$lands_where" ]; then
     if [ -n "$where" ] && { [ "$where" != "$lands_where" ] || [ "$project" != "$lands_project" ]; }; then
       log "the bundle's brief says it lands $([ "$lands_where" = office ] && printf 'in the office' || printf 'on %s' "$lands_project"); $([ "$where" = office ] && printf -- '--in-office' || printf -- '--on %s' "$project") says otherwise, and stands"
@@ -5782,7 +5823,7 @@ cmd_start() {
   local planner=0 abouts=() sort_first="" in_office_given=0 prep=0 merge=0
   PREP_WANT=""
   START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_BUNDLE_FOUND=""; START_DROP_PAGE=""
-  START_BRANCH=""; START_BRANCH_DONE=0
+  START_BRANCH=""; START_BRANCH_DONE=0; START_BRANCH_FLAG=""
   START_REFRESH=""; START_REFRESH_DONE=0
   START_ENDS=""; START_RIDES=(); START_RIDES_NONE=0
   PLANNER_FILE=""; PLANNER_CONCERNS=(); PLANNER_WHY=""
@@ -5824,6 +5865,9 @@ cmd_start() {
       --leave-out) [ $# -ge 2 ] || die "--leave-out needs a path that rides with the project (office projects lists them)"
                    leave_out+=("$2"); shift 2 ;;
       --no-rides) no_rides=1; shift ;;
+      --branch) [ $# -ge 2 ] || die "--branch needs the branch to check out in the project's clone"
+                [ -z "$START_BRANCH_FLAG" ] || [ "$START_BRANCH_FLAG" = "$2" ] || die "office start takes one --branch"
+                START_BRANCH_FLAG="$2"; START_BRANCH="$2"; shift 2 ;;
       --end-predecessor|--keep-predecessor)
         [ -z "$START_ENDS" ] || [ "$START_ENDS" = "$1" ] || die "--end-predecessor and --keep-predecessor are two answers; give one"
         START_ENDS="$1"; shift ;;
@@ -5842,7 +5886,7 @@ cmd_start() {
     # are the office's own (0.20.0).
     [ -z "$want$where$drop$bundle$drop_title$drop_lane$drop_size$said_words$sort_first" ] && [ "${#packed_flags[@]}" -eq 0 ] \
       && [ "$no_rides" = 0 ] && [ "${#leave_out[@]}" -eq 0 ] && [ "${#carry[@]}" -eq 0 ] && [ "$carry_none" = 0 ] \
-      && [ "$planner" = 0 ] && [ "${#abouts[@]}" -eq 0 ] \
+      && [ "$planner" = 0 ] && [ "${#abouts[@]}" -eq 0 ] && [ -z "$START_BRANCH_FLAG" ] \
       || die "--sort sends the in-tray's own session, with the office's goal, forecast and brief, so it takes nothing else: office start --sort"
     root="$(resolve_office)" || exit 1
     require_current_founded "$root"
@@ -5856,7 +5900,7 @@ cmd_start() {
     # calendar and in no folder, so it takes nothing else.
     [ -z "$want$where$drop$bundle$drop_title$drop_lane$drop_size$said_words$sort_first" ] && [ "${#packed_flags[@]}" -eq 0 ] \
       && [ "$no_rides" = 0 ] && [ "${#leave_out[@]}" -eq 0 ] && [ "${#carry[@]}" -eq 0 ] && [ "$carry_none" = 0 ] \
-      && [ "$planner" = 0 ] && [ "${#abouts[@]}" -eq 0 ] && [ "$sort" = 0 ] \
+      && [ "$planner" = 0 ] && [ "${#abouts[@]}" -eq 0 ] && [ "$sort" = 0 ] && [ -z "$START_BRANCH_FLAG" ] \
       || die "--prep sends a meeting's prep, with the meeting's words as its goal and what rides gathered by the office, so it takes nothing but the meeting: office start --prep [MEETING]"
     root="$(resolve_office)" || exit 1
     require_current_founded "$root"
@@ -5876,6 +5920,11 @@ cmd_start() {
   [ "$read_only" = 0 ] || [ "$set_w" = 0 ] || die "--read-only forecasts nothing, so it takes no --write"
   [ "$no_rides" = 0 ] || [ "${#leave_out[@]}" -eq 0 ] || die "--no-rides leaves every ride-along out, so it takes no --leave-out"
   [ "$carry_none" = 0 ] || [ "${#carry[@]}" -eq 0 ] || die "--carry none carries no rider, so it takes no --carry N"
+  # --branch NAME (0.50.0) is a project session's: the office works on one
+  # branch, so it refuses there before anything is written, in the words a
+  # bundle's BRANCH line refuses with.
+  [ -z "$START_BRANCH_FLAG" ] || [ "$where" != office ] \
+    || die "--branch $START_BRANCH_FLAG names the branch for its session to build on, and the session lands in the office, which works on one branch: --branch is for a project's session; nothing was written"
   # --words is the one door's flag twin (0.23.0): a new job, in his words.
   if [ "$words_given" = 1 ]; then
     [ -n "${said_words//[[:space:]]/}" ] || die "--words is empty: the job, in your words"
@@ -5893,6 +5942,7 @@ cmd_start() {
     [ "$where" != project ] || die "a planner sitting is packed in the office and lands nothing; --about $project says what it concerns, and the office gathers what rides for it"
     [ "$set_w" = 0 ] || die "a planner sitting forecasts nothing (it is read-only), so it takes no --write"
     [ -z "$brief" ] || die "a planner sitting's brief is the office's, written from your words and what rides; it takes no --brief"
+    [ -z "$START_BRANCH_FLAG" ] || die "a planner sitting is packed in the office, which works on one branch; --branch is for a project's session"
     [ "${#abouts[@]}" -eq 0 ] || [ "$in_office_given" = 0 ] || die "--about PROJECT and --in-office are two answers to what the sitting concerns; give --about for each project, or --in-office for the office itself"
     read_only=1
   else
@@ -7874,7 +7924,9 @@ usage: office projects                       list the projects this office scope
                            [--no-audience] [--no-author] [--no-base]
                            [--validates-on HOST] [--no-validates-on]
                            [--branch-prefix PREFIX] [--no-branch-prefix]
-                           [--ride PATH]... [--no-rides]            every session on it, and
+                           [--audience-url URL] [--no-audience-url]
+                           [--ride PATH | --ride host:PATH]...      every session on it, and
+                           [--no-rides]
                            [--after-land CMD]... [--no-after-land]  what runs after one lands
        office projects set NAME --edit       walk every group: where it is, the audience
                                              line, what rides, what runs after it lands
@@ -7999,7 +8051,16 @@ given an audience brings the office its letterhead (letterhead/: the voice
 page, the forbidden list), from the install's templates.
 A ride-along is a path on this machine, absolute or ~/: a directory inside
 another repo, a whole repo, or a file. Its context rides beside every
-session office start packs for the project. An after-land action is a
+session office start packs for the project. For a project on a host,
+--ride host:PATH (0.50.0) declares one on that host, PATH as its shell sees
+it (absolute or ~/), checked there through the project's shell when it is
+declared (a host that does not answer refuses it, by its connect line) and
+again in the round office start makes there; office start packs it there
+with the host's bale (bale pack --context, from the repo's top with
+--include inside a repo, from a scratch copy there for a directory outside
+git, a file fetched as it is) and carries it back into the out tray as the
+request comes back. The listing and the map show it as stored, marked as
+the host's, and reach no host for it. An after-land action is a
 command run in the project's repo after one of its sessions lands: office
 land runs them in order once bale has applied it. All of it lives in this
 office's floor plan, never in the project's repo. --ride and --after-land
@@ -8012,6 +8073,11 @@ repo bale runs in, or one --prepare prepares), the floor plan's path is
 rewritten, and the old clone is never touched or removed. --branch-prefix
 writes what goes before a delivery branch's short name (feature/), the one
 office deliver's branch rule reads; --no-branch-prefix clears it.
+--audience-url URL (0.50.0) keeps the audience remote's URL for a project on
+a host, so its review state reads before a review is recorded (a rendering
+never reaches a host); set --audience REMOTE keeps it on its own, read from
+the clone's remote through the shell, and --no-audience-url clears it. A
+project on this machine keeps none: its clone is read each time.
 Examples:
   office projects
   office projects add                          (asks for the path, where it is, the name, what rides)
@@ -8030,6 +8096,8 @@ Examples:
   office projects set api --branch-prefix feature/
   office projects set api --edit               (every group, keep or change)
   office projects set office-src --ride ~/nisaba-src/blueprints
+  office projects set api --ride host:~/notes/plans    (a ride on api's host)
+  office projects set api --audience origin    (on a host: its audience URL kept too)
   office projects --landed bin/office
 EOF
 }
@@ -8040,10 +8108,12 @@ EOF
 # with the reason when it does not check.
 ask_declaration() {
   local -n __list="$1"
-  local name="$2" kind="$3" answer out q flag help n=0
+  local name="$2" kind="$3" on_host="${4:-}" answer out q flag help n=0 hargs=()
+  [ -z "$on_host" ] || hargs=(--host "$on_host")
   case "$kind" in
     ride) flag=--ride; q="A path whose context rides beside every $name session"
-          help="A path on this machine, absolute or ~/: a directory inside another repo (~/other-repo/docs), a whole repo, or a file. office start packs its context and puts it in the out tray beside every request for $name." ;;
+          help="A path on this machine, absolute or ~/: a directory inside another repo (~/other-repo/docs), a whole repo, or a file. office start packs its context and puts it in the out tray beside every request for $name."
+          [ -z "$on_host" ] || help+=" Or host:PATH, a path on $on_host as its shell sees it (absolute or ~/): checked there when the list is written, and packed there by its bale." ;;
     *) flag=--after-land; q="A command to run in $name's repo after one of its sessions lands"
        help="One line, run from the top of $name's repo once a session there has landed, e.g. ./install.sh. office land runs them in order after bale applies a session, and says loudly when one fails." ;;
   esac
@@ -8054,7 +8124,7 @@ ask_declaration() {
     answer="$(printf '%s' "$answer" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
     if [ "$answer" = "?" ]; then printf '%s\n' "$help" | fold -s -w 76 | sed 's/^/  /' >&2; continue; fi
     [ -n "$answer" ] || return 0
-    if out="$(helper check-declaration "$kind" -- "$answer" 2>&1)"; then
+    if out="$(helper check-declaration "$kind" "${hargs[@]}" --project "$name" -- "$answer" 2>&1)"; then
       __list+=("$out"); n=$((n + 1))
     else
       printf '  %s\n' "${out#\[office\] error: }" >&2
@@ -8391,7 +8461,7 @@ cmd_projects_add() {
           workbench_here
         fi
       fi
-      if [ "$set_r" = 0 ]; then ask_declaration rides "$name" ride; set_r=1; fi
+      if [ "$set_r" = 0 ]; then ask_declaration rides "$name" ride "$host"; set_r=1; fi
       if [ "$set_a" = 0 ]; then ask_declaration afters "$name" after-land; set_a=1; fi
     else
       [ -n "$name" ] || missing+=("--name NAME")
@@ -8414,7 +8484,9 @@ cmd_projects_add() {
   # Check the declarations before the table is touched, so a bad one
   # adds nothing.
   local v
-  for v in "${rides[@]}"; do helper check-declaration ride -- "$v" >/dev/null || exit 1; done
+  local rhost=()
+  [ -z "$host" ] || rhost=(--host "$host")
+  for v in "${rides[@]}"; do helper check-declaration ride "${rhost[@]}" --project "$name" -- "$v" >/dev/null || exit 1; done
   for v in "${afters[@]}"; do helper check-declaration after-land -- "$v" >/dev/null || exit 1; done
   # An audience given as a flag is a remote the clone has.
   if [ -n "$audience" ]; then
@@ -8428,6 +8500,9 @@ cmd_projects_add() {
   [ -z "$author" ] || args+=(--author "$author")
   [ -z "$base" ] || args+=(--base "$base")
   [ -z "$validates" ] || args+=(--validates-on "$validates")
+  # A project worked on a host keeps its audience's URL (0.50.0), read from
+  # the clone's remote just now, so review state reads without reaching it.
+  [ -z "$audience" ] || [ -z "$host" ] || [ -z "$url" ] || args+=(--audience-url "$url")
   if [ "${#rides[@]}" -gt 0 ] || [ "${#afters[@]}" -gt 0 ] || [ "${#args[@]}" -gt 0 ]; then
     declare_flags args ride "$([ "${#rides[@]}" -gt 0 ] && echo 1 || echo 0)" "${rides[@]}"
     declare_flags args after-land "$([ "${#afters[@]}" -gt 0 ] && echo 1 || echo 0)" "${afters[@]}"
@@ -8453,13 +8528,15 @@ cmd_projects_set() {
   local name="" root facts rides=() afters=() set_r=0 set_a=0 args=() current keep line out
   local host="" shell="" connect="" set_h=0 hargs=() cur_host
   local audience="" author="" base="" set_aud=0 clear_aud=() gitfacts="" url="" cur_aud path k validates="" prepare=0
-  local paused="" others_given=0 edit=0 new_path="" set_p=0 prefix="" walk=0
+  local paused="" others_given=0 edit=0 new_path="" set_p=0 prefix="" walk=0 aud_url=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --edit) edit=1; shift ;;
       --path) [ $# -ge 2 ] || die "--path needs the clone's path"; new_path="$2"; set_p=1; shift 2 ;;
       --branch-prefix) [ $# -ge 2 ] || die "--branch-prefix needs a prefix, such as feature/"; prefix="$2"; set_aud=1; shift 2 ;;
       --no-branch-prefix) clear_aud+=(--no-branch-prefix); set_aud=1; shift ;;
+      --audience-url) [ $# -ge 2 ] || die "--audience-url needs the audience remote's URL (git remote get-url)"; aud_url="$2"; set_aud=1; shift 2 ;;
+      --no-audience-url) clear_aud+=(--no-audience-url); set_aud=1; shift ;;
       --paused|--unpaused) [ -z "$paused" ] || [ "$paused" = "$1" ] || die "--paused and --unpaused contradict each other"
                            paused="$1"; shift; continue ;;
       --prepare) prepare=1; shift ;;
@@ -8469,7 +8546,7 @@ cmd_projects_set() {
         [ $# -ge 2 ] || die "$1 needs a value"
         case "$1" in --audience) audience="$2" ;; --author) author="$2" ;; --base) base="$2" ;; esac
         set_aud=1; shift 2 ;;
-      --no-audience) clear_aud+=(--no-audience --no-author --no-base --no-validates-on --no-branch-prefix); set_aud=1; shift ;;
+      --no-audience) clear_aud+=(--no-audience --no-author --no-base --no-validates-on --no-branch-prefix --no-audience-url); set_aud=1; shift ;;
       --no-author) clear_aud+=(--no-author); set_aud=1; shift ;;
       --no-base) clear_aud+=(--no-base); set_aud=1; shift ;;
       --host) [ $# -ge 2 ] || die "--host needs an ssh target"; host="$2"; set_h=1; shift 2 ;;
@@ -8481,7 +8558,7 @@ cmd_projects_set() {
       --after-land) [ $# -ge 2 ] || die "--after-land needs a command"; afters+=("$2"); set_a=1; shift 2 ;;
       --no-after-land) set_a=2; shift ;;
       -h|--help) usage_projects; return 0 ;;
-      -*) usage_projects >&2; die "office projects set does not know $1; it takes a project's name, --edit, --path, --prepare, --host, --shell, --connect, --on-this-machine, --audience, --author, --base, --validates-on, --branch-prefix, --no-audience, --no-author, --no-base, --no-validates-on, --no-branch-prefix, --ride, --no-rides, --after-land and --no-after-land" ;;
+      -*) usage_projects >&2; die "office projects set does not know $1; it takes a project's name, --edit, --path, --prepare, --host, --shell, --connect, --on-this-machine, --audience, --author, --base, --validates-on, --branch-prefix, --audience-url, --no-audience, --no-author, --no-base, --no-validates-on, --no-branch-prefix, --no-audience-url, --ride, --no-rides, --after-land and --no-after-land" ;;
       *) [ -z "$name" ] || die "office projects set takes one project"; name="$1"; shift; continue ;;
     esac
     others_given=1
@@ -8509,6 +8586,9 @@ cmd_projects_set() {
   fi
   if [ -n "$prefix" ] && printf '%s\n' "${clear_aud[@]}" | grep -qx -- --no-branch-prefix; then
     die "--branch-prefix and --no-branch-prefix contradict each other"
+  fi
+  if [ -n "$aud_url" ] && printf '%s\n' "${clear_aud[@]}" | grep -qx -- --no-audience-url; then
+    die "--audience-url and --no-audience-url contradict each other"
   fi
   [ "$set_r" != 2 ] || [ "${#rides[@]}" -eq 0 ] || die "--ride and --no-rides contradict each other"
   [ "$set_a" != 2 ] || [ "${#afters[@]}" -eq 0 ] || die "--after-land and --no-after-land contradict each other"
@@ -8556,6 +8636,8 @@ cmd_projects_set() {
   [ -z "$validates" ] || validates="$(helper check-audience-key validates_on "$validates")" || exit 1
   [ -z "$prefix" ] || [ -n "$audience" ] || [ -n "$cur_aud" ] || die "$name has no audience; --branch-prefix names what goes before a delivery branch's name, so it goes with --audience REMOTE"
   [ -z "$prefix" ] || prefix="$(helper check-audience-key branch_prefix "$prefix")" || exit 1
+  [ -z "$aud_url" ] || [ -n "$audience" ] || [ -n "$cur_aud" ] || die "$name has no audience; --audience-url keeps the audience remote's URL, so it goes with --audience REMOTE"
+  [ -z "$aud_url" ] || aud_url="$(helper check-audience-key audience_url "$aud_url")" || exit 1
   if [ "$set_h" = 1 ] && [ -z "$host" ]; then
     [ -n "$cur_host" ] || die "$name is on this machine; --shell and --connect go with --host HOST"
     host="$cur_host"
@@ -8593,7 +8675,7 @@ cmd_projects_set() {
       clone_facts gitfacts "$path" "$eff_host" "$eff_shell" "$eff_connect" || true
       ask_audience_keys audience author base "$name" "$gitfacts"
       set_aud=1
-      if [ -z "$audience" ]; then clear_aud=(--no-audience --no-author --no-base --no-validates-on)
+      if [ -z "$audience" ]; then clear_aud=(--no-audience --no-author --no-base --no-validates-on --no-audience-url)
       else [ -n "$author" ] || clear_aud+=(--no-author); [ -n "$base" ] || clear_aud+=(--no-base); fi ;;
     esac
   fi
@@ -8612,7 +8694,7 @@ cmd_projects_set() {
           "y keeps the list as it is; n asks for the new list, one per question, and a plain return at once clears it."
         case "$keep" in y|Y|yes) continue ;; esac
       fi
-      if [ "$line" = ride ]; then ask_declaration rides "$name" ride; set_r=$([ "${#rides[@]}" -gt 0 ] && echo 1 || echo 2)
+      if [ "$line" = ride ]; then ask_declaration rides "$name" ride "$eff_host"; set_r=$([ "${#rides[@]}" -gt 0 ] && echo 1 || echo 2)
       else ask_declaration afters "$name" after-land; set_a=$([ "${#afters[@]}" -gt 0 ] && echo 1 || echo 2); fi
       if [ -z "$current" ] && [ "$line" = ride ] && [ "$set_r" = 2 ]; then set_r=0; fi
       if [ -z "$current" ] && [ "$line" = after-land ] && [ "$set_a" = 2 ]; then set_a=0; fi
@@ -8647,6 +8729,11 @@ cmd_projects_set() {
   [ -z "$base" ] || args+=(--base "$base")
   [ -z "$validates" ] || args+=(--validates-on "$validates")
   [ -z "$prefix" ] || args+=(--branch-prefix "$prefix")
+  # The audience's URL for a project on a host (0.50.0): given, or read
+  # from the clone's remote through the shell just now (--audience); a
+  # project on this machine keeps none, its clone read each time.
+  if [ -n "$aud_url" ]; then args+=(--audience-url "$aud_url")
+  elif [ -n "$audience" ] && [ -n "$eff_host" ] && [ -n "$url" ]; then args+=(--audience-url "$url"); fi
   [ "$set_p" = 0 ] || args+=(--path "$new_path")
   args+=("${clear_aud[@]}")
   helper project-declare "$root/$MANIFEST_REL" "$name" "${args[@]}" || exit 1

@@ -189,16 +189,16 @@ A session is packed where it lands.
   directory: `bale pack --context` run on a copy of it, so the install is
   never written. bale's include groups only pull paths inside the repo
   being packed, and this doc lives in the install, not in the office.
-- Whatever a project declares rides too: each path in its `rides` (a
-  directory inside another repo, a whole repo, or a file) becomes a
-  context tarball beside every session on that project (section 10).
+- Whatever a project declares rides too: each path in its `rides` (here,
+  or `host:PATH` on its host; a directory in a repo, a repo, or a file)
+  becomes a context tarball beside every session on it (section 10).
 - A project on a host is packed on its host. bale is installed per
   machine, and the bale that packs a session is the one that will land
   it, beside the repo: bale's pack (or its open, for a bundle) runs
   there through the project's shell (section 10), and the request it
   makes is carried back to the out tray on the occupant's machine. The
-  office's context tarball, the doctrine and the ride-alongs are made on
-  the occupant's machine, as for any project, and ride beside it. A
+  office's context, the doctrine and the rides from here are made here;
+  a ride from the host is packed there by its bale and carried back. A
   brief or a bundle travels to the host first; whatever the office
   writes on a host outside the project's repo is removed again, whether
   the start succeeded or not. One start reaches the host once, and the
@@ -414,7 +414,19 @@ fetched each stop the start with nothing written and say what to do in
 the clone; the checkout fetches nothing, since the clone's credentials are
 not its own (a project with an audience is offered a refresh of the
 clone's view first, through the occupant's credentials: below). A clone
-already on the branch is said, and nothing moves. A
+already on the branch is said, and nothing moves. Since 0.50.0 a local
+branch behind its remote-tracking ref (the refresh moves that ref, never
+the local branch) is fast-forwarded to it, when the clone is clean and the
+local tip is an ancestor of the remote one, and the line names both tips;
+one that has diverged, or is ahead, is checked out as it is and said so.
+Nothing is forced, and the office still fetches nothing. `office start
+--branch NAME` (0.50.0) does the same for a session that is not a
+bundle's (`--on`, `new`, `--drop`), with the same refusals and words, and
+stands over a bundle's BRANCH line that names another branch, said in one
+line as `--on` stands over a LANDS line. Whatever checks it out, start's
+screen names the clone's branch before every project session's pack
+(`PROJECT's clone at WHERE is on BRANCH`, or a detached HEAD), read in
+the round start already makes there. A
 BRANCH line is for a project's bundle; one in a bundle that lands in the
 office is refused, since the office works on one branch. A line that does
 not read, or a second one, is said and the first taken. The planner
@@ -1629,8 +1641,8 @@ Kinds:
 | close | script: move a folder to the filing cabinet, done, absorbed, split or retired | yes | occupant |
 | reopen | script: move a done folder back to the desk | yes | plumbing |
 | sessions | script: list or record the sessions that worked on a folder, and the planner's ratification of one | yes | plumbing |
-| projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace, a clone here brought there with --from), declare where it is, what rides with it and what runs after it lands, bring a host's bale level with this machine's (level-bale), render what bale records about them; a project with an audience is worked from a guarded clone on this machine, a host declared for it recorded as where it validates (validates_on), and the first one brings the letterhead; refresh a clone's view of its audience through this machine (refresh, 0.39.0); prepare a declared clone again (set --prepare), writing bale's sandbox setting only where bale's sandbox cannot run; mark a project paused (set --paused, --unpaused; 0.41.0), which the renderings read nothing of and start sends nothing to | yes | occupant |
-| start | script: the one door for new work: with new, a job from the occupant's words (--words the twin), its folder minted through open's code and its session sent out in one motion; bare on a terminal, offer the planner's bundles in the downloads no session has opened, by key, and send a bundle whose brief carries a LANDS line where it says, asking neither where nor which job, checking out the branch its BRANCH line names in the project's clone before bale opens it; for a project with an audience, offer a refresh of the clone's view when it is behind (--refresh, --no-refresh; 0.39.0); with --planner, a read-only planner sitting from the occupant's words (--words, --about PROJECT or --in-office the twins), its folder minted or picked by key, what rides gathered and said in its brief; before any sitting, the in-tray's sort offered first when drops wait (--sort-first, --no-sort-first); pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; with --sort, send the standalone sort; with --prep, a meeting's prep, recorded in the calendar and in no folder; with --merge, the merge session office deliver wrote for a folder, its goal, forecast and brief the folder's merge job's (0.40.0); send a folder out with its goal and brief.md when it has them; record it in the folder, file the sitting's page and the planner's ratifications its brief carries, gather what to attach in one out tray, and put the opener on the clipboard last; then, for a bundle whose brief names the sitting it succeeds (--- ENDS SID ---, 0.43.0), end that sitting as land ends one, asked once (--end-predecessor, --keep-predecessor) | yes | occupant |
+| projects | script: list the projects this office scopes, add one (here, or on a host, prepared for bale without a trace, a clone here brought there with --from), declare where it is, what rides with it and what runs after it lands, bring a host's bale level with this machine's (level-bale), render what bale records about them; a project with an audience is worked from a guarded clone on this machine, a host declared for it recorded as where it validates (validates_on), and the first one brings the letterhead; refresh a clone's view of its audience through this machine (refresh, 0.39.0); prepare a declared clone again (set --prepare), writing bale's sandbox setting only where bale's sandbox cannot run; mark a project paused (set --paused, --unpaused; 0.41.0), which the renderings read nothing of and start sends nothing to; declare a ride on a hosted project's host (--ride host:PATH, checked there; 0.50.0) and keep a hosted project's audience URL (--audience-url, or read with --audience; 0.50.0) | yes | occupant |
+| start | script: the one door for new work: with new, a job from the occupant's words (--words the twin), its folder minted through open's code and its session sent out in one motion; bare on a terminal, offer the planner's bundles in the downloads no session has opened, by key, and send a bundle whose brief carries a LANDS line where it says, asking neither where nor which job, checking out the branch its BRANCH line names in the project's clone before bale opens it; for a project with an audience, offer a refresh of the clone's view when it is behind (--refresh, --no-refresh; 0.39.0); with --planner, a read-only planner sitting from the occupant's words (--words, --about PROJECT or --in-office the twins), its folder minted or picked by key, what rides gathered and said in its brief; before any sitting, the in-tray's sort offered first when drops wait (--sort-first, --no-sort-first); pack a session for a folder, in the office or on a project (on its host, when it has one, the request carried back, and what rides from the host packed there and carried back too; 0.50.0), naming the clone's branch on its screen before the pack and checking one out with --branch NAME (0.50.0), or open a planner's bundle (asking bale open --check first, before anything is written); carry the riders its forecast touches into the folder; carry the in-tray's unsorted drops with every session it sends out; with --drop, send a dropped message straight out as a project session, its folder minted through open's code; with --sort, send the standalone sort; with --prep, a meeting's prep, recorded in the calendar and in no folder; with --merge, the merge session office deliver wrote for a folder, its goal, forecast and brief the folder's merge job's (0.40.0); send a folder out with its goal and brief.md when it has them; record it in the folder, file the sitting's page and the planner's ratifications its brief carries, gather what to attach in one out tray, and put the opener on the clipboard last; then, for a bundle whose brief names the sitting it succeeds (--- ENDS SID ---, 0.43.0), end that sitting as land ends one, asked once (--end-predecessor, --keep-predecessor) | yes | occupant |
 | land | script: bring a session back: bale's apply in its repo, how it ended, a merge session's resolution made a merge commit in the workbench (0.40.0), the folder's walkthrough and delivery pages filed from the response, then its Sort on each drop's page, its questions and answers in the folder, its facts in the handbook and its Structure over the folder's provisional fields, and office moves when a drop was sorted, on a project with an audience the letterhead's review of what landed (what deliver would refuse, said, nothing refused), the project's after-land actions, the folder closed when its one session landed (on a project with an audience, left on the desk for delivery to close, 0.41.0) and the founding folder when the founding has, the watches that fired, what became of each action, and last the relay to carry on the clipboard, each block for the planner with the office's tail after bale's END marker (the folder, its state, the deliver line, the letterhead's review), then deliver's Next line on a project with an audience (0.41.0); piped, the planner's block printed whole with the tail under one marked line, the tail carrying the review state of the folder's branches read through gh (0.43.0); it asks nothing about ratification; or end a read-only sitting the office sent out, and for a meeting's prep record the meeting held and file what arose as drops (--arising FILE) | yes | occupant |
 | withdraw | script: close a session the office sent out and that was never worked (no response in the downloads, no apply begun), named by its folder and asked once (--yes the twin): bale's unlock with reason abandoned where it is open, and a withdrawn line in its folder's History; a folder that recorded it alone is said with the line that closes it; with --bundle STEM, take a planner's bundle out of the offer by renaming every copy NAME.bale-bundle.declined, asked once, a bundle a session opened refused (0.41.0) | yes | occupant |
 | relay | script: carry a planner's answer to a clarification back to the repo the session is open in (bale relay there, the answer piped through the project's shell for a hosted one), and hand over the block bale prints | yes | plumbing |
@@ -2074,6 +2086,29 @@ the project's own repo: what rides is office context, and a project's
 audience must not see the office's choices. A table without them is
 valid.
 
+A ride is a path on the occupant's machine (absolute or `~/`), or, for a
+project on a host, a path on that host (0.50.0), declared `host:PATH`
+with PATH as the host's shell sees it, absolute or `~/`, and stored as
+typed: one spelling in the floor plan, `office projects`, the map, start's
+screen and `--leave-out`. A ride lives where it is declared and is checked
+there: one here must exist here, and one on the host is checked through
+the project's shell when it is declared, in one connection, a host that
+does not answer refusing the declaration by its connect line; a `host:`
+ride on a project with no host is refused by name. No rendering reaches a
+host for one: the listing and the map show it as stored, marked as the
+host's. `office start` checks it in the round it makes on the host anyway,
+and one gone from the host stops the start before anything is written. It
+is packed there by the host's bale, the bale that packs the request, with
+`bale pack --context`, so bale's own filters keep secrets and junk out:
+from the repo's top with `--include` when the path is inside a repo
+there, from a scratch copy there when it is a directory outside git (the
+copy removed in the connection that fetches its tarball), and fetched as
+it is when it is a file outside git. Each comes back into the out tray as
+the request does, named as the same ride would be from here, and said
+(`rides with PROJECT (host:PATH, packed on HOST)`). An office session
+about the project rides it the same way. The in-tray's drops, the
+doctrine and the office's context are made on the occupant's machine.
+
 A project with an audience declares three more things, the audience
 line's (`office projects add` and `set`, the same wizard with flag
 twins): `audience`, the name of the remote in the workbench clone that
@@ -2098,7 +2133,16 @@ audience is, once the project has an audience, where it validates, and
 the wizard asks the clone's path here; working it on the host is chosen
 by key, never had by answering in order. Projects already declared
 on a host keep working as they did, and nothing validates on a host yet
-(bale's remote validation runner is S3's).
+(bale's remote validation runner is S3's). A sixth key, `audience_url`
+(0.50.0), is kept for a project on a host only: the audience remote's
+URL, read from the clone's remote through the project's shell when
+`office projects set` (or `add`) names the audience, or given with
+`--audience-url URL` (`--no-audience-url` clears it). A rendering never
+reaches a host, so this is what lets a hosted project's review state read
+before its first review is recorded; a project on this machine keeps none,
+its clone read each time. The key is additive: a floor plan without it
+reads as before, and an existing hosted project gets its URL by running
+`office projects set NAME --audience REMOTE` once.
 Declaring an audience installs the push guard in the clone's .git/hooks,
 outside what git tracks: a pre-push hook that lets nothing reach the
 audience from the clone but the one delivery branch `office deliver`

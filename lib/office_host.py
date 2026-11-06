@@ -47,6 +47,7 @@ shell call shows under OFFICE_DEBUG=1, as every bale call does.
 
 import os
 import pathlib
+import posixpath
 import re
 import sys
 
@@ -825,10 +826,13 @@ def send_file(place, local, remote):
     return want
 
 
-def fetch_file(place, remote, local):
+def fetch_file(place, remote, local, after=None):
     """Copy a file from where the place is to this machine, and hold the
     copy to the sha256 the far side reports for it. The sum travels on
-    stderr, so stdout is the file's bytes and nothing else."""
+    stderr, so stdout is the file's bytes and nothing else. after (a
+    hosted place, 0.50.0) is shell words that ride the same connection
+    once the file is read, whatever the read said (a scratch's removal,
+    Scratch.removal_words); the read's own exit code is kept."""
     import shlex
     import shutil
     place = as_place(place)
@@ -836,8 +840,11 @@ def fetch_file(place, remote, local):
         shutil.copyfile(remote, local)
         return sha256_of(local)
     q = shlex.quote(remote)
+    command = f"sha256sum {q} >&2 && cat -- {q}"
+    if after:
+        command = f"{{ {command}; }}; rc=$?; {after}; exit $rc"
     with open(local, "wb") as fh:
-        rc, _, err = _raw(place, f"sha256sum {q} >&2 && cat -- {q}", stdout=fh)
+        rc, _, err = _raw(place, command, stdout=fh)
     if rc != 0:
         raise HostError("refused", f"could not read {remote} on {place.host} (exit {rc}): {_last_words(err)}")
     sums = [m.group(1) for m in map(_SHA_RE.match, err.splitlines()) if m]
@@ -848,6 +855,113 @@ def fetch_file(place, remote, local):
                                   "shell print on stdout?)")
     debug(f"fetched {remote} from {place.host} to {local} ({got[:12]})")
     return got
+
+
+# --- what rides from a project's host (0.50.0) --------------------------------------
+#
+# A ride declared host:PATH is a path as the host's shell sees it. One
+# script answers, for each path given, what office start needs to pack it
+# there and what office projects set needs to declare it: whether it is
+# there, a file or a directory, the top of the git work tree holding it
+# (none outside git) and its physical path, tab-separated, one line per
+# path, in order. It takes the paths as arguments, so it runs wherever the
+# shell lands (chdir=False) or after any directory a round has entered.
+_RIDE_FACTS_SCRIPT = (
+    'for o; do d="$o"; case "$d" in "~"|"~/"*) d="$HOME${d#"~"}" ;; esac; '
+    'if [ ! -e "$d" ]; then printf "gone\\t%s\\t\\t\\n" "$o"; continue; fi; '
+    'if [ -d "$d" ]; then k=dir; w="$d"; n=""; else k=file; w=$(dirname -- "$d"); n="/$(basename -- "$d")"; fi; '
+    'real=$(cd "$w" 2>/dev/null && pwd -P) || real=""; '
+    'top=$(cd "$w" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || top=""; '
+    'printf "%s\\t%s\\t%s\\t%s\\n" "$k" "$o" "$top" "$real$n"; done'
+)
+
+
+def ride_facts_argv(paths):
+    """The ride facts script as one argv, for a round that carries it."""
+    return ["sh", "-c", _RIDE_FACTS_SCRIPT, "office-rides", *paths]
+
+
+def read_ride_facts(run, paths, place=None):
+    """The script's answer as one dict per path, in order: path (as
+    given), kind (gone, file or dir), top (the git work tree's top, or
+    None) and real (the physical path; for a file, its directory's
+    physical path and its name). A script that failed, or answered for
+    other paths, is a HostError: never read as a ride that is not there."""
+    where = f" on {place.host}" if place is not None and place.hosted else ""
+    if run.returncode != 0:
+        raise HostError("refused", f"what rides{where} could not be read (exit {run.returncode}): "
+                                   f"{_last_words(run.stderr)}")
+    rows = []
+    for line in run.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 4 and parts[0] in ("gone", "file", "dir"):
+            rows.append({"path": parts[1], "kind": parts[0], "top": parts[2] or None, "real": parts[3] or None})
+    if [r["path"] for r in rows] != list(paths):
+        raise HostError("output", f"what rides{where} did not read back: {len(rows)} answer(s) for "
+                                  f"{len(paths)} path(s)")
+    return rows
+
+
+def ride_facts(place, paths):
+    """read_ride_facts for paths where a hosted place is, in one
+    connection of their own (office projects set, declaring them)."""
+    place = as_place(place)
+    paths = list(paths)
+    if not paths:
+        return []
+    run = run_many(place, [ride_facts_argv(paths)], chdir=False)[0]
+    return read_ride_facts(run, paths, place)
+
+
+def ride_plan_there(fact):
+    """How one ride on the host is packed there, from its facts, as
+    office_bale.ride_plan says one here: ("pack", top, include or None)
+    inside a repo, ("scratch", directory, None) for a directory outside
+    git, ("copy", file, None) for a file outside git."""
+    real, top = fact["real"], fact["top"]
+    if top is None:
+        return ("copy" if fact["kind"] == "file" else "scratch", real, None)
+    if real == top:
+        return ("pack", top, None)
+    rel = posixpath.relpath(real, top)
+    if rel.startswith(".."):
+        # A path git says is inside the tree but is not below its top
+        # (a symlinked directory): packed whole, rather than guessed at.
+        return ("pack", top, None)
+    return ("pack", top, rel)
+
+
+# A directory outside git, copied into a new scratch on the host and
+# packed there by the host's bale, in one connection (0.50.0): $1 the
+# directory (as the host's shell sees it), $2 the scratch's name prefix,
+# then bale's argv. The scratch's path goes to stderr first (scratch=...),
+# so the office can remove it whatever happened; the copy leaves bale's
+# .bale/ and __pycache__/ behind, as office_bale.scratch_context's does.
+_RIDE_SCRATCH_SCRIPT = (
+    's="$1"; shift; p="$1"; shift; case "$s" in "~"|"~/"*) s="$HOME${s#"~"}" ;; esac; '
+    'd=$(mktemp -d "${TMPDIR:-/tmp}/${p}XXXXXXXX") || exit 1; echo "scratch=$d" >&2; '
+    'n=$(basename -- "$s"); cp -R -- "$s" "$d/$n" || exit 1; rm -rf -- "$d/$n/.bale"; '
+    'find "$d/$n" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null; '
+    'cd "$d/$n" && exec bale "$@"'
+)
+
+
+def ride_scratch_argv(directory, bale_argv):
+    """The scratch-and-pack script as one argv, for a batch."""
+    return ["sh", "-c", _RIDE_SCRATCH_SCRIPT, "office-ride-scratch", directory, SCRATCH_PREFIX, *bale_argv]
+
+
+def scratch_said(run):
+    """The scratch _RIDE_SCRATCH_SCRIPT made, from its stderr, or None."""
+    made = [l[len("scratch="):].strip() for l in (run.stderr or "").splitlines() if l.startswith("scratch=")]
+    return made[-1] if made and made[-1].startswith("/") else None
+
+
+def bale_in_argv(directory, bale_argv):
+    """bale's argv run in another directory than the round's, as one argv:
+    a pack of a ride inside a repo on the host, in that repo's top."""
+    return ["sh", "-c", 'd="$1"; shift; case "$d" in "~"|"~/"*) d="$HOME${d#"~"}" ;; esac; cd "$d" && exec bale "$@"',
+            "office-ride-pack", directory, *bale_argv]
 
 
 # The paths (arguments, relative to where the shell stands) that are not

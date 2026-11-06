@@ -240,6 +240,20 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.50.0 (session 2026-11-06-m10-host-rides-002): rides from a project's
+  host, the clone's branch named and set at start, an audience URL kept.
+  - `host:PATH` rides (office_helper HOST_RIDE, is_host_ride, check_ride with
+    the project's host, ride_words): checked by set_declarations through
+    office_host.ride_facts (one connection); at start, read in hosted_round's
+    extras (read_host_rides) and packed by office_bale.pack_host_rides (one
+    batch of `bale pack --context`, then fetch_file per tarball, a scratch's
+    removal riding its fetch through fetch_file's `after`).
+  - office_bale BRANCH_ARGV/say_clone_branch: the branch line, in the hosted
+    round or run here. checkout_branch takes source "flag" (`reader
+    bundle-branch --from-flag`, bin/office start_branch_checkout) and
+    fast-forwards a behind local branch (_UPSTREAM_SCRIPT, read_upstream).
+  - `audience_url`, the audience line's sixth key, hosted projects only;
+    office_review.remote_url_of returns it. Additive: no migration.
 - 0.49.0 (session 2026-11-06-desk-readability-001): the desk made readable.
   - `office map` (lib/office_map.py `page`): two tables through `table`
     (a header row, aligned, the last column unpadded), `project_row` and

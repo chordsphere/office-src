@@ -835,6 +835,7 @@ def read_projects(manifest):
                 "rides": [], "after_land": [], "declaration_problems": [],
                 "host": None, "shell": None, "connect": None,
                 "audience": None, "author": None, "base": None, "validates_on": None, "branch_prefix": None,
+                "audience_url": None,
                 # 0.41.0: a project marked paused (office projects set NAME
                 # --paused); the renderings read nothing of it.
                 "paused": False}
@@ -897,6 +898,17 @@ def read_projects(manifest):
                 item["paused"] = True
             elif value not in (None, False):
                 item["declaration_problems"].append(f"{PAUSED_KEY} is true or false, not {value!r}")
+            # A ride on the project's host (0.50.0) is read as stored and
+            # never resolved here; on a project with no host, or with a
+            # path its host's shell would not take, it is a problem
+            # reported beside the project, as any declaration's is.
+            for ride in item["rides"] if item["problem"] is None else []:
+                if not is_host_ride(ride):
+                    continue
+                try:
+                    check_host_ride(ride, item["host"], name)
+                except HelperError as exc:
+                    item["declaration_problems"].append(f"rides: {exc}")
         out.append(item)
     return out
 
@@ -908,9 +920,11 @@ def read_projects(manifest):
 # the project's own repo: what rides is office context, and a project's
 # audience must not see the office's choices.
 #
-#   rides       paths on this machine whose context rides beside every
-#               session on the project: a directory inside another repo,
-#               a whole repo, or a file; absolute or ~/
+#   rides       paths whose context rides beside every session on the
+#               project: a directory inside another repo, a whole repo, or
+#               a file; on this machine, absolute or ~/, or (0.50.0) on the
+#               project's host, host:PATH with PATH as the host's shell
+#               sees it (absolute or ~/), packed there by the host's bale
 #   after_land  commands run in the project's repo after one of its
 #               sessions lands (office land runs them, in order, once bale
 #               has applied the session; never after a HOLD)
@@ -942,8 +956,17 @@ HOST_KEYS = ("host", "shell", "connect")
 #             slash (`feature/`): before the name delivery.md's branch line
 #             gives and before the folder's slug, never before a --branch
 #             name, the clone's own branch or a name that holds a slash.
-#             Unset, none. Read and checked here; no verb sets it yet.
-AUDIENCE_KEYS = ("audience", "author", "base", "validates_on", "branch_prefix")
+#             Unset, none. Read and checked here; office projects set
+#             --branch-prefix sets it.
+#   audience_url
+#             (0.50.0) the audience remote's URL, kept for a project on a
+#             host only: read from the clone's remote through the host's
+#             shell when office projects set (or add) names the audience,
+#             or given with --audience-url. A rendering never reaches a
+#             host, so this is how review state reads before a review is
+#             recorded. Never written for a project on this machine, whose
+#             clone is read live.
+AUDIENCE_KEYS = ("audience", "author", "base", "validates_on", "branch_prefix", "audience_url")
 # A project marked paused (the gaps of 2026-10-28, A7; 0.41.0): `paused =
 # true` on its entry, written by office projects set NAME --paused and
 # removed by --unpaused. Every rendering that reads a project's repo reads
@@ -1042,21 +1065,80 @@ def prefixed_branch(name, prefix):
     return check_base(prefix + name), True
 
 
+def check_audience_url(text):
+    """The audience remote's URL as kept (0.50.0): one word, as git
+    remote get-url prints it."""
+    value = (text or "").strip()
+    if not value:
+        raise HelperError("an audience URL is the audience remote's URL (git remote get-url), and is empty")
+    if any(c.isspace() for c in value) or not value.isprintable():
+        raise HelperError(f"an audience URL is one word, as git remote get-url prints it, not {value!r}")
+    return value
+
+
 AUDIENCE_CHECKS = {"audience": check_audience, "author": check_author, "base": check_base,
-                   "validates_on": check_validates_on, "branch_prefix": check_branch_prefix}
+                   "validates_on": check_validates_on, "branch_prefix": check_branch_prefix,
+                   "audience_url": check_audience_url}
+
+# A ride on the project's host (0.50.0): `host:PATH`, stored as typed (a
+# trailing slash dropped), PATH as the host's shell sees it. The prefix is
+# the word host, never the host's name, so the declaration survives the
+# host being renamed in the floor plan.
+HOST_RIDE = "host:"
 
 
-def check_ride(path):
+def is_host_ride(stored):
+    """Whether a ride as stored is on the project's host."""
+    return isinstance(stored, str) and stored.startswith(HOST_RIDE)
+
+
+def host_ride_path(stored):
+    """PATH in host:PATH, as the host's shell sees it."""
+    return stored[len(HOST_RIDE):]
+
+
+def check_host_ride(text, host, project=None):
+    """host:PATH as stored, for a project whose host is host (None: it
+    has none, which refuses by name). PATH is absolute or ~/ (~ alone
+    too), as a hosted project's own path is; nothing is resolved here."""
+    path = text.strip()[len(HOST_RIDE):].strip()
+    who = project or "the project"
+    if not host:
+        raise HelperError(f"{text.strip()} rides from the project's host, and {who} has none (it is on this "
+                          "machine, so a ride is a path here: absolute or ~/)")
+    if not path:
+        raise HelperError(f"{text.strip()}: a path on the host comes after host:, and there is none")
+    stored = path.rstrip("/") or "/"
+    if not (stored.startswith("/") or stored == "~" or stored.startswith("~/")):
+        raise HelperError(f"a path on {who}'s host is absolute or starts with ~/, not {path!r} (host:~/notes, say)")
+    if "\n" in stored or "\r" in stored:
+        raise HelperError(f"a path on {who}'s host is one line, not {path!r}")
+    return HOST_RIDE + stored
+
+
+def check_ride(path, host=None, project=None):
     """(stored, resolved) for a path that rides with a project: absolute
-    or ~/, and on this machine now."""
+    or ~/, and on this machine now; or (0.50.0) host:PATH for a project
+    with a host, whose resolved is None (where it is checked is the host:
+    office_host.ride_facts, through the project's shell)."""
     text = path.strip()
     if not text:
         raise HelperError("a path that rides is empty")
+    if is_host_ride(text):
+        return check_host_ride(text, host, project), None
     stored = text.rstrip("/") or "/"
     resolved = expand_project_path(stored)
     if not resolved.exists():
         raise HelperError(f"no such path on this machine: {stored}")
     return stored, resolved
+
+
+def ride_words(stored, host=None):
+    """A ride as the renderings say it (0.50.0): as stored, a host ride
+    marked as the host's. Nothing is reached for it."""
+    if is_host_ride(stored):
+        return f"{stored} (on {host})" if host else f"{stored} (on the project's host, and it has none)"
+    return stored
 
 
 def check_after_land(command):
@@ -1109,17 +1191,40 @@ def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys
     projects add's check); the old clone is never touched. Returns the
     project's entry as it reads back. Refuses
     a project the table does not list, a key written over several lines
-    (not the shape this writes), and a value that does not check."""
+    (not the shape this writes), and a value that does not check.
+
+    A ride on the project's host (host:PATH, 0.50.0) is checked where it
+    lives: every host ride in the new list through the project's shell,
+    in one connection (office_host.ride_facts), and a host that does not
+    answer refuses the declaration by its connect line, as a path missing
+    here is refused. The project's host is the one host_keys gives, else
+    the one it has; taken off its host (--on-this-machine), a project
+    whose rides keep a host ride refuses, naming it, and its kept
+    audience_url goes (a project on this machine keeps none)."""
     if not PROJECT_NAME_RE.match(name):
         raise HelperError(f"a project name must be letters, digits, dash or underscore: {name!r}")
+    path = pathlib.Path(manifest_path)
+    current = next((p for p in read_projects(read_toml(path)) or [] if p["name"] == name), None)
+    if host_keys is not None:
+        eff = {key: host_keys.get(key) for key in HOST_KEYS}
+    else:
+        eff = {key: (current or {}).get(key) for key in HOST_KEYS}
     want = {}
+    host_rides = []
     if rides is not None:
         seen = []
         for r in rides:
-            stored, _ = check_ride(r)
+            stored, _ = check_ride(r, eff["host"], name)
             if stored not in seen:
                 seen.append(stored)
         want["rides"] = seen
+        host_rides = [r for r in seen if is_host_ride(r)]
+    elif host_keys is not None and not eff["host"] and current is not None:
+        kept = [r for r in current.get("rides") or [] if is_host_ride(r)]
+        if kept:
+            raise HelperError(f"{name} rides {', '.join(kept)} from its host, so it is not taken off it with them "
+                              f"declared; --no-rides, or --ride PATH for each that rides from this machine, goes "
+                              "with --on-this-machine")
     if after_land is not None:
         want["after_land"] = [check_after_land(c) for c in after_land]
     if host_keys is not None:
@@ -1129,13 +1234,18 @@ def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys
         if key not in AUDIENCE_KEYS:
             raise HelperError(f"{key!r} is not one of the audience line's keys ({', '.join(AUDIENCE_KEYS)})")
         want[key] = AUDIENCE_CHECKS[key](value) if value is not None else None
+    if want.get("audience_url") and not eff["host"]:
+        raise HelperError(f"{name} is on this machine, whose clone is read for its audience's URL each time; "
+                          "an audience URL is kept for a project on a host only")
+    if host_keys is not None and not eff["host"] and (current or {}).get("audience_url") \
+            and "audience_url" not in want:
+        want["audience_url"] = None
     if paused is not None:
         want[PAUSED_KEY] = True if paused else None
     if new_path is not None:
         if not str(new_path).strip() or "\n" in str(new_path):
             raise HelperError(f"a project's path is one line, not {new_path!r}")
         want["path"] = str(new_path).strip()
-    path = pathlib.Path(manifest_path)
     text = path.read_text(encoding="ascii")
     lines = text.splitlines()
     span = table_span(lines, name)
@@ -1144,6 +1254,18 @@ def set_declarations(manifest_path, name, rides=None, after_land=None, host_keys
         raise HelperError(f"no project named {name} in this office's [projects] "
                           f"(it lists: {', '.join(p['name'] for p in projects) or 'none'}); "
                           "office projects add NAME PATH adds one")
+    if host_rides:
+        import office_host as ohost
+        place = ohost.Place((current or {}).get("path") or "~", eff["host"], eff["shell"], eff["connect"], name)
+        try:
+            facts = ohost.ride_facts(place, [host_ride_path(r) for r in host_rides])
+        except ohost.HostError as exc:
+            raise HelperError(f"{name}: what rides from {eff['host']} could not be checked there, so nothing was "
+                              f"declared: {exc}")
+        gone = [HOST_RIDE + f["path"] for f in facts if f["kind"] == "gone"]
+        if gone:
+            raise HelperError(f"no such path on {eff['host']}: {', '.join(host_ride_path(g) for g in gone)} "
+                              f"(checked through {name}'s shell; nothing was declared)")
     start, end = span
     body = lines[start + 1:end]
     for key, value in want.items():
@@ -1209,14 +1331,25 @@ def describe_audience(entry):
     if entry.get("branch_prefix"):
         out.append(f"branch prefix: {entry['branch_prefix']} (before a delivery branch's short name: delivery.md's "
                    "branch line, or the folder's slug)")
+    if entry.get("host"):
+        # 0.50.0: kept for a project on a host, which no rendering reaches.
+        out.append(f"audience URL: {entry['audience_url']} (kept from the clone's remote, so review state reads "
+                   "without reaching the host)" if entry.get("audience_url")
+                   else f"audience URL: not kept, so review state waits for a recorded review (office projects set "
+                        f"{entry['name']} --audience {entry['audience']} reads it from the clone)")
     return out
 
 
 def describe_declarations(entry):
     """Lines for office projects: what rides and what runs after landing,
-    each ride-along checked on this machine."""
+    each ride-along on this machine checked here; one on the project's
+    host (0.50.0) said as stored and marked as the host's, never reached
+    for a rendering."""
     out = describe_host(entry) + describe_audience(entry)
     for r in entry["rides"]:
+        if is_host_ride(r):
+            out.append("rides: " + ride_words(r, entry.get("host")))
+            continue
         try:
             resolved = expand_project_path(r)
             where = "" if resolved.exists() else "  (NOT ON THIS MACHINE)"
@@ -3858,7 +3991,7 @@ def cmd_check_declaration(a):
     """A ride-along path or an after-land action as it would be stored,
     or a refusal saying why, for the wizard to ask again."""
     if a.kind == "ride":
-        print(check_ride(a.value)[0])
+        print(check_ride(a.value, a.host, a.project)[0])
     else:
         print(check_after_land(a.value))
 
@@ -3884,7 +4017,9 @@ def cmd_project_facts(a):
     if entry.get("paused"):
         print(f"{PAUSED_KEY}\tyes")
     for r in entry["rides"]:
-        print(f"rides\t{r}\t{expand_project_path(r)}")
+        # A ride on the project's host (0.50.0) resolves nowhere here: its
+        # third field is empty, and the reader packs it there.
+        print(f"rides\t{r}\t{'' if is_host_ride(r) else expand_project_path(r)}")
     for c in entry["after_land"]:
         print(f"after_land\t{c}")
 
@@ -4731,7 +4866,11 @@ def build_parser(only=None):
     p = add("check-project-dir"); p.add_argument("path"); p.set_defaults(fn=cmd_check_project_dir)
     p = add("project-spec"); p.add_argument("specs", nargs="+"); p.set_defaults(fn=cmd_project_spec)
     p = add("check-declaration"); p.add_argument("kind", choices=("ride", "after-land"))
-    p.add_argument("value"); p.set_defaults(fn=cmd_check_declaration)
+    p.add_argument("value")
+    p.add_argument("--host", help="the project's host, which a host:PATH ride needs (0.50.0); only its form is "
+                                  "checked here, its path through the shell when it is declared")
+    p.add_argument("--project", help="the project's name, for the words")
+    p.set_defaults(fn=cmd_check_declaration)
     p = add("project-facts"); p.add_argument("manifest"); p.add_argument("name")
     p.set_defaults(fn=cmd_project_facts)
     p = add("record-session"); p.add_argument("folder_md"); p.add_argument("sid")
