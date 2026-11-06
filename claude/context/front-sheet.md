@@ -240,6 +240,17 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.51.0 (session 2026-11-06-undo-bale-003): bale's own change taken out
+  of the workbench through an undo session, never by hand.
+  - office_deliver take_out_own raises UndoConflict (every refusing path);
+    plan writes undo_job_lines (undo/undo.md, read_undo_job, folder_job);
+    office start --undo-bale runs undo-start/undo-sent; office land runs
+    land-undo (close_landed_undo, never under an open session; deliver
+    closes it too), writing the `undone` History verb that undone_records
+    reads back into take_out_own's `undone`. Offers: office_bale job_flag,
+    job_waiting_words, beside the merge job's.
+  - MATERIALS_CAP (200) caps the merge job's audience copy; the fake bale
+    lands an empty changes[] tagged.
 - 0.50.0 (session 2026-11-06-m10-host-rides-002): rides from a project's
   host, the clone's branch named and set at start, an audience URL kept.
   - `host:PATH` rides (office_helper HOST_RIDE, is_host_ride, check_ride with

@@ -2639,7 +2639,7 @@ it and what runs after it lands in one cell. Then the folders, one row
 each: folder N, the project its lane names (the office for the office's
 own), its title, its size and its state in a few words (in flight 3 days,
 sitting out, landed, not delivered, delivered BRANCH, review #N STATE, a
-merge job waiting, open, ready, done). Rows are grouped by project, the
+merge or undo job waiting, open, ready, done). Rows are grouped by project, the
 office's own last, open folders before closed ones, newest number first;
 of a project's closed folders the newest three show and the rest fold
 into one line, and --all shows every one. On a terminal the page is cut to
@@ -4591,6 +4591,8 @@ usage: office start new [--words TEXT] [--in-office | --on PROJECT] [--goal TEXT
        office start --prep [MEETING]
        office start FOLDER --merge [--leave-out PATH]... [--no-rides] [--carry N... | --carry none]
                     [--refresh | --no-refresh]
+       office start FOLDER --undo-bale [--leave-out PATH]... [--no-rides] [--carry N... | --carry none]
+                    [--refresh | --no-refresh]
 A planner sitting from your words (office start --planner, the home
 screen's p key): you say what you want a planner for, and a read-only
 sitting goes out, recorded in a folder (one on the desk, by key, or new,
@@ -4746,6 +4748,9 @@ on the desk or in the filing cabinet, and says so.
   --planner      a read-only planner sitting from your words (above)
   --merge        the merge session office deliver wrote for the folder
                  (0.40.0, above); refused for a folder that holds none
+  --undo-bale    the undo session office deliver wrote for the folder
+                 (0.51.0, above): it takes bale's own change out of the
+                 workbench; refused for a folder that holds none
   --prep [MEETING]
                  a meeting's prep (0.26.0): a read-only sitting from the
                  office, its goal the meeting's words, no folder (the
@@ -4807,6 +4812,18 @@ materials ride in the folder, and the job's page names the session sent.
 Its response ships each conflicting file as it should read after the
 merge, and office land makes that resolution a merge commit in the
 workbench. It takes the folder and what rides, nothing else.
+The undo session (0.51.0): when office deliver could not take one of
+bale's own commits out of the delivery (the workbench's later work touches
+the same lines, and the commit did more there than add lines), it writes
+the undo's materials into the folder (undo/: each such file before bale's
+commit, as bale's commit left it and as the workbench holds it, and the
+commit's diff) and names this line. office start FOLDER --undo-bale sends
+a bale session on the folder's project that writes each file as the
+work needs it with bale's change taken out: its goal, its forecast (the
+files) and its brief (the install's templates/undo-brief.md) are the undo
+job's, and the job's page names the session sent. When it lands, office
+land closes the job, and the next deliver takes those files as the
+workbench holds them. It takes the folder and what rides, nothing else.
 When start opened the folder itself (new) and its session does not go out,
 the folder stays and start's last line is the one line that retries it.
 When the response comes back, office land brings it in.
@@ -4827,6 +4844,7 @@ Examples:
   office start --drop 2026-10-14-login-error --lane office-src --size medium
   office start --sort
   office start 14 --merge                      (the merge session office deliver 14 wrote)
+  office start 14 --undo-bale                  (the undo session office deliver 14 wrote)
   office start --planner                       (asks what you want a planner for, and the folder by key)
   office start new --planner --words "Plan the alpha release" --sort-first
   office start --prep                          (the meeting near now: its prep)
@@ -5821,6 +5839,10 @@ cmd_start() {
   local root name md status lane lane_project lane_paths names cls ans tz day out sid tray tray_root rel about="" args=() v
   local packed_flags=() drop="" drop_title="" drop_lane="" drop_size="" drop_title_given="" sort=0 others=() said_words="" words_given=0
   local planner=0 abouts=() sort_first="" in_office_given=0 prep=0 merge=0
+  # A job session (0.51.0): merge=1 for either kind of folder job, which the
+  # office writes and sends alike; job_kind says which (merge, or undo for
+  # --undo-bale), job_flag the flag that asked for it.
+  local job_kind="" job_flag=""
   PREP_WANT=""
   START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_BUNDLE_FOUND=""; START_DROP_PAGE=""
   START_BRANCH=""; START_BRANCH_DONE=0; START_BRANCH_FLAG=""
@@ -5846,7 +5868,10 @@ cmd_start() {
               # words that name one near now; none, the one near.
               if [ $# -ge 2 ] && [[ "$2" != -* ]]; then PREP_WANT="$2"; shift 2; else shift; fi ;;
       --planner) planner=1; shift ;;
-      --merge) merge=1; shift ;;
+      --merge|--undo-bale)
+        [ -z "$job_flag" ] || [ "$job_flag" = "$1" ] \
+          || die "--merge and --undo-bale send two different sessions, each for the job office deliver wrote for a folder; give one"
+        merge=1; job_flag="$1"; job_kind=merge; [ "$1" = --merge ] || job_kind=undo; shift ;;
       --about) [ $# -ge 2 ] || die "--about needs the project the sitting concerns (office projects lists them)"
                abouts+=("$2"); shift 2 ;;
       --sort-first) [ "$sort_first" != no ] || die "--sort-first and --no-sort-first are two answers; give one"; sort_first=yes; shift ;;
@@ -5912,10 +5937,12 @@ cmd_start() {
     # The merge session (0.40.0): its goal, forecast, brief and project are
     # the folder's merge job's, written by office deliver when bringing the
     # audience into the workbench conflicted; the folder is all it takes,
-    # with what rides and the refresh's answer.
+    # with what rides and the refresh's answer. The undo session (0.51.0,
+    # --undo-bale) is the same door for the folder's undo job, written by
+    # office deliver when bale's own commit could not be taken out.
     [ -z "$drop$bundle$said_words$sort_first" ] && [ "${#packed_flags[@]}" -eq 0 ] && [ "$planner" = 0 ] \
       && [ "${#abouts[@]}" -eq 0 ] && [ "$where" != office ] && [ "$want" != new ] \
-      || die "--merge sends the merge session office deliver wrote for a folder, its goal, forecast, brief and project the folder's merge job's, so it takes the folder alone: office start FOLDER --merge"
+      || die "$job_flag sends the $job_kind session office deliver wrote for a folder, its goal, forecast, brief and project the folder's $job_kind job's, so it takes the folder alone: office start FOLDER $job_flag"
   fi
   [ "$read_only" = 0 ] || [ "$set_w" = 0 ] || die "--read-only forecasts nothing, so it takes no --write"
   [ "$no_rides" = 0 ] || [ "${#leave_out[@]}" -eq 0 ] || die "--no-rides leaves every ride-along out, so it takes no --leave-out"
@@ -6105,13 +6132,14 @@ cmd_start() {
   status="$(fact_of "$facts" status)"
   case "$status" in done|absorbed|split|retired) die "desk/$name says status $status, which belongs in the filing cabinet; office status names what disagrees" ;; esac
   if [ "$merge" = 1 ]; then
-    # What the merge job says (lib/office_deliver.py merge-start): the
-    # project it lands on, the goal, the forecast and the brief, from the
-    # install's templates/merge-brief.md.
+    # What the job says (lib/office_deliver.py merge-start, or undo-start
+    # for the undo job, 0.51.0): the project it lands on, the goal, the
+    # forecast and the brief, from the install's templates/merge-brief.md
+    # or templates/undo-brief.md.
     local mout mkey mval mbrief merge_project=""
-    mbrief="$(mktemp)" || die "no temporary file for the merge session's brief"
+    mbrief="$(mktemp)" || die "no temporary file for the $job_kind session's brief"
     TMP_PATHS+=("$mbrief")
-    mout="$(deliver_py merge-start "$root" "$name" --brief-out "$mbrief")" || exit 1
+    mout="$(deliver_py "$job_kind-start" "$root" "$name" --brief-out "$mbrief")" || exit 1
     while IFS=$'\t' read -r mkey mval; do
       case "$mkey" in
         project) merge_project="$mval" ;;
@@ -6121,11 +6149,11 @@ cmd_start() {
       esac
     done <<< "$mout"
     [ -z "$project" ] || [ "$project" = "$merge_project" ] \
-      || die "desk/$name's merge job is on $merge_project, not $project: office start $name --merge sends it there"
+      || die "desk/$name's $job_kind job is on $merge_project, not $project: office start $name $job_flag sends it there"
     where=project; project="$merge_project"; brief="$mbrief"; set_w=1
-    [ -n "$slug" ] || slug="$(short_slug "${name#[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-}" | cut -c1-34)-merge"
-    [ "${#writes[@]}" -gt 0 ] || log "the merge's files are not all in the workbench, so bale forecasts the whole of $project"
-    log "the merge session for desk/$name: $goal (its brief from the install's templates/merge-brief.md; the materials ride in the folder)"
+    [ -n "$slug" ] || slug="$(short_slug "${name#[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-}" | cut -c1-34)-$job_kind"
+    [ "${#writes[@]}" -gt 0 ] || log "the $job_kind's files are not all in the workbench, so bale forecasts the whole of $project"
+    log "the $job_kind session for desk/$name: $goal (its brief from the install's templates/$job_kind-brief.md; the materials ride in the folder)"
   fi
   # A planner sitting recorded in a folder already on the desk keeps his
   # words in its Asked section, as the folder minted for one does.
@@ -6161,7 +6189,7 @@ cmd_start() {
     elif [ -n "$bundle" ]; then
       log "desk/$name/brief.md rides in the folder, not as the brief: a bundle carries its own brief, and the office adds nothing to it"
     elif [ "$merge" = 1 ]; then
-      log "desk/$name/brief.md rides in the folder, not as the brief: a merge session's brief is the office's, from the folder's merge job"
+      log "desk/$name/brief.md rides in the folder, not as the brief: a $job_kind session's brief is the office's, from the folder's $job_kind job"
     elif [ -z "$brief" ]; then
       brief="$root/desk/$name/brief.md"
       log "the session's brief is desk/$name/brief.md, the folder's own (--brief FILE sends another)"
@@ -6331,9 +6359,15 @@ cmd_start() {
   file_ratifications "$root" "$request" "$sid" "$day"
   # The merge session sent (0.40.0): named on the folder's merge job, so
   # office land knows to make its resolution the merge commit.
-  if [ "$merge" = 1 ] && [ -z "$second_desk" ]; then
+  if [ "$merge" = 1 ] && [ -z "$second_desk" ] && [ "$job_kind" = merge ]; then
     deliver_py merge-sent "$root" "desk/$name" --sid "$sid" \
       || warn "the session is out, but desk/$name/merge/merge.md does not name it (the line above says why): office start $name --merge sends another, and office land makes the merge commit for the one it names"
+  fi
+  # The undo session sent (0.51.0): named on the folder's undo job, so
+  # office land knows to close the job when it lands.
+  if [ "$merge" = 1 ] && [ -z "$second_desk" ] && [ "$job_kind" = undo ]; then
+    deliver_py undo-sent "$root" "desk/$name" --sid "$sid" \
+      || warn "the session is out, but desk/$name/undo/undo.md does not name it (the line above says why): office start $name --undo-bale sends another, and office land closes the job for the one it names"
   fi
 
   if [ -n "$second_desk" ]; then
@@ -6687,6 +6721,13 @@ the project's author; anything else is aborted and checked, and said with
 the line that makes it later (office deliver N). The folder's History
 gains a dated merged line and the job's materials leave the folder; the
 folder's two pages are left as the work's.
+When the session is the one a folder's undo job names (office start N
+--undo-bale, 0.51.0), its landed commit is the undo, the work's own, and
+land closes the job: the folder's History gains a dated undone line
+(bale's commit, the files the session took it out of, the session) and
+the job's materials leave the folder; the folder's two pages are left as
+the work's, and land's last line is office deliver N. Never under another
+session open in the clone: then office deliver N closes it.
 On a project with an audience, land then reviews what the session landed
 against the letterhead, as office deliver will read it (the files its
 landing changed, bale's own aside, and the folder's delivery.md words),
@@ -7307,6 +7348,14 @@ cmd_land() {
     LAND_MERGE="$(deliver_py land-merge "$root" --project "$project" --sid "$sid" --folder "$folders" --day "$day")" \
       || warn "the merge session's step could not run (the lines above say why); office deliver ${folders#*/} makes its merge commit"
   fi
+  # An undo session (office start N --undo-bale, 0.51.0): its landed commit
+  # is the undo, so the job is closed (a dated undone line, the materials
+  # gone), and the folder's two pages are left as the work's, as a merge
+  # session's are. LAND_MERGE is then `undo`.
+  if [ -n "$project" ] && [ -n "$folders" ] && [ -z "$LAND_MERGE" ] && [ -f "$root/$folders/undo/undo.md" ]; then
+    LAND_MERGE="$(deliver_py land-undo "$root" --project "$project" --sid "$sid" --folder "$folders" --day "$day")" \
+      || warn "the undo session's step could not run (the lines above say why); office deliver ${folders#*/} closes its job"
+  fi
   land_files "$root" "$folders" "$sid" "$response_here" "$project"
   land_moves "$root" "$sid"
   # On a project with an audience, the letterhead's review of what landed
@@ -7382,6 +7431,8 @@ cmd_land() {
       deliver_next="office deliver $(folder_cite_key "$root/$where_now/folder.md" "${where_now#*/}")"
       if [ "$LAND_MERGE" = merge ]; then
         deliver_why="the merge session landed; deliver makes the merge commit in the workbench and carries the folder's own work"
+      elif [ "$LAND_MERGE" = undo ]; then
+        deliver_why="the undo session landed; deliver takes bale's own change out with it and carries the folder's own work"
       else
         deliver_why="the work landed on $project and is not delivered yet; deliver carries it to $LAND_AUDIENCE"
       fi
@@ -7551,7 +7602,9 @@ land_files() {
     log "the response's notes were not filed (the walkthrough and delivery pages, the Sort, answers and facts): bale found the response in its own search directories, which the office cannot list; $line files them from the response"
     return 0
   fi
-  if [ -n "$project" ] && [ -n "$folder" ] && [ -n "${LAND_MERGE:-}" ]; then
+  if [ -n "$project" ] && [ -n "$folder" ] && [ "${LAND_MERGE:-}" = undo ]; then
+    log "the folder's pages: left as they are (an undo session writes neither: the walkthrough and the delivery words are the work's, and an undo changes nothing the audience reads but bale's own lines)"
+  elif [ -n "$project" ] && [ -n "$folder" ] && [ -n "${LAND_MERGE:-}" ]; then
     log "the folder's pages: left as they are (a merge session writes neither: the walkthrough and the delivery words are the work's, and a merge changes nothing the audience reads)"
   elif [ -n "$project" ] && [ -n "$folder" ]; then
     FILED_PAGES=""
@@ -8924,8 +8977,16 @@ come from delivery.md (missing, deliver stops and says what to write
 where); what bale's own commits in that work changed (its housekeeping
 commits, `bale: ignore .bale/`, and its sweeps; never a session's work)
 is taken out before the squash and each is named, so no bale commit
-leaves in content any more than in name, and one that cannot be taken
-out refuses the delivery by name (0.36.0); the lines the squash adds
+leaves in content any more than in name (0.36.0); one that cannot be
+taken out (later work touches the same lines, and the commit did more
+there than add lines) refuses the delivery with nothing pushed, writes
+the undo's materials into the folder, under undo/ (each such file before
+bale's commit, as the commit left it and as the workbench holds it, and
+the commit's diff, committed in the office), and its last line is the one
+that sends the undo session, office start FOLDER --undo-bale (0.51.0);
+once that session lands and office land closes the job, the next deliver
+takes those files as the workbench holds them; several such commits are
+met one at a time, newest first; the lines the squash adds
 and the words go through the letterhead check (a line a file already
 had is told under the verdict, never refused; the words, and only they,
 are also refused for naming a cleanup made to keep the letterhead; the

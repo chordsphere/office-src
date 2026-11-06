@@ -216,7 +216,13 @@ class TestDeliverTakesBalesOwnOut(AudienceCase):
         self.assertIn(f"what bale's own commit {sha[:12]} ({HOUSEKEEPING}) changed in .gitignore cannot be taken out of "
                       "the delivery: the workbench branch's later work touches the same lines, and that commit did more "
                       "there than add lines", proc.stderr)
-        self.assertIn("undo its change to .gitignore by hand on the workbench branch", proc.stderr)
+        # 0.51.0: the undo job and its one office line, never the clone.
+        err = " ".join(proc.stderr.split())
+        self.assertIn(f"office start {self.name} --undo-bale sends the session that takes bale's own change out of the "
+                      "workbench", err)
+        self.assertNotIn("by hand", err)
+        self.assertTrue((self.root / self.folder / "undo" / "undo.md").is_file())
+        self.assertEqual(git(self.root, "status", "--porcelain", env=self.e.env), "")
         self.assertIn("nothing was pushed", proc.stderr)
         self.assertEqual(self.audience_refs(), before)
         self.assertNotIn("delivered:", self.folder_md())

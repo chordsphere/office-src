@@ -272,8 +272,16 @@ def main(cfg, argv):
             dst = pathlib.Path(cwd) / c["path"]
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
-        git("add", "--", *paths)
-        git("commit", "-q", "-m", "[bale " + sid + "] " + m["summary"], "--", *paths)
+        if paths:
+            git("add", "--", *paths)
+            git("commit", "-q", "-m", "[bale " + sid + "] " + m["summary"], "--", *paths)
+        else:
+            # An empty changes[] lands as bale 0.4.56 lands it (0.51.0, the
+            # probe empty-landing of 2026-11-06): its apply makes the session
+            # commit and the merge with plumbing (commit-tree), which never
+            # refuses an unchanged tree, and tags applied/SID with no check
+            # on the change; here, one commit with no change, tagged.
+            git("commit", "-q", "--allow-empty", "-m", "[bale " + sid + "] " + m["summary"])
         git("tag", "applied/" + sid)
         attempt(sid, verb, "applied", paths, "PASS")
         say(lines[at:])

@@ -1610,10 +1610,17 @@ STATUSES = DESK_STATUSES + CABINET_STATUSES
 # branch, the audience and project as the delivered line names them, the
 # pull request's number and URL; lib/office_review.py reads it); it changes
 # no status.
+# `undone` is the line office land (or office deliver, when land could not)
+# writes when an undo session's landing closes the folder's undo job,
+# `- DATE undone: bale's own commit 1ee6bc7 (bale: ignore .bale/) taken out
+# of .gitignore by SID` (0.51.0: the commit, its subject, the paths the
+# session took it out of on the workbench, the session; office_deliver
+# undone_records reads it, and the next delivery takes those paths as the
+# workbench holds them); it changes no status.
 HISTORY_VERBS = ("candidate", "queued", "opened", "ratified", "gated", "cleared", "grown",
                  "re-scoped", "corrected", "ruled", "carried", "consumed", "done",
                  "absorbed", "split", "retired", "reopened", "note", "ended", "delivered", "probe",
-                 "dropped", "withdrawn", "merged", "review")
+                 "dropped", "withdrawn", "merged", "review", "undone")
 # The state-changing verbs and the status each leaves the folder in:
 # candidate -> queued -> open -> done; any desk status -> absorbed,
 # split or retired; done -> reopened -> open.

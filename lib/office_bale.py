@@ -1362,9 +1362,7 @@ def open_words(f, groups):
     or that no session is in flight for it."""
     m = (groups.get("merge_by_rel") or {}).get(f["rel"])
     if m is not None and not m["landed"]:
-        job = m["job"]
-        return (f"merge job waiting: {job['audience']}/{job['branch']} conflicts with the workbench in "
-                f"{len(job['files'])} file(s); office start {folder_key(f)} --merge")
+        return f"{job_waiting_words(m['job'])}; office start {folder_key(f)} {job_flag(m['job'])}"
     u = (groups.get("undelivered_by_rel") or {}).get(f["rel"])
     if u is not None:
         return f"landed {u['sid']} on {u['day']}, not delivered; office deliver {folder_key(f)}"
@@ -1714,8 +1712,12 @@ def delivery_move(groups):
     deliver N)."""
     waiting = [m for m in groups.get("merges") or [] if not m["landed"]]
     if waiting:
-        f = waiting[0]["folder"]
+        f, job = waiting[0]["folder"], waiting[0]["job"]
         more = f"; {len(waiting) - 1} more wait" if len(waiting) > 1 else ""
+        if odl_is_undo(job):
+            return (f"office start {folder_key(f)} --undo-bale",
+                    f"{oh.cite(f)}'s undo job waits; start --undo-bale sends the session that takes bale's own change "
+                    f"out of the workbench{more}")
         return (f"office start {folder_key(f)} --merge",
                 f"{oh.cite(f)}'s merge job waits; start --merge sends the session that resolves it{more}")
     undelivered = groups.get("undelivered") or []
@@ -2312,14 +2314,36 @@ def office_zone(office_root):
 
 
 def folder_merge_job(folder):
-    """The folder's merge job (office deliver's merge/merge.md) or None;
-    a page that does not read is said under OFFICE_DEBUG and is None."""
+    """The folder's job or None: its merge job (office deliver's
+    merge/merge.md) or, since 0.51.0, its undo job (undo/undo.md), one at a
+    time (odl_is_undo tells them apart); a page that does not read is said
+    under OFFICE_DEBUG and is None."""
     import office_deliver as odl
     try:
-        return odl.read_merge_job(pathlib.Path(folder["path"]).parent)
+        return odl.folder_job(pathlib.Path(folder["path"]).parent)
     except (odl.DeliverError, OSError) as exc:
-        debug(f"{folder['rel']}: its merge job does not read ({'; '.join(getattr(exc, 'lines', [str(exc)]))})")
+        debug(f"{folder['rel']}: its job does not read ({'; '.join(getattr(exc, 'lines', [str(exc)]))})")
         return None
+
+
+def odl_is_undo(job):
+    """Whether a folder's job is an undo job (0.51.0), not a merge job."""
+    import office_deliver as odl
+    return odl.is_undo(job)
+
+
+def job_flag(job):
+    """office start's flag that sends a folder's job's session."""
+    return "--undo-bale" if odl_is_undo(job) else "--merge"
+
+
+def job_waiting_words(job):
+    """A waiting job in a desk line's words (before its office line)."""
+    if odl_is_undo(job):
+        return (f"undo job waiting: bale's own commit {job['commit'][:7]} conflicts with the workbench in "
+                f"{len(job['files'])} file(s)")
+    return (f"merge job waiting: {job['audience']}/{job['branch']} conflicts with the workbench in "
+            f"{len(job['files'])} file(s)")
 
 
 def waiting_on_delivery(office_root, folders=None, projects=None):
@@ -2421,11 +2445,13 @@ def probe_folders(rd, office_root):
 
 
 def merge_job_words(m):
-    """A waiting merge job in the home screen's words (after `for folder N,
-    TITLE`): AUDIENCE/BRANCH, the files, the day deliver wrote it."""
+    """A waiting job in the home screen's words (after `for folder N,
+    TITLE`): AUDIENCE/BRANCH (or, 0.51.0, bale's own commit), the files,
+    the day deliver wrote it."""
     job = m["job"]
     k = len(job["files"])
-    return (f"{job['audience']}/{job['branch']} conflicts with the workbench in {k} file(s) (office deliver wrote "
+    side = (f"bale's own commit {job['commit'][:7]}" if odl_is_undo(job) else f"{job['audience']}/{job['branch']}")
+    return (f"{side} conflicts with the workbench in {k} file(s) (office deliver wrote "
             f"the job on {job.get('day') or 'a day it did not say'})")
 
 
@@ -2444,7 +2470,8 @@ def deliver_item_words(u):
 
 def merge_item_words(m):
     f = m["folder"]
-    return f"Send the merge session for {oh.cite(f)}, {folder_title(f)}: {merge_job_words(m)}"
+    kind = "undo" if odl_is_undo(m["job"]) else "merge"
+    return f"Send the {kind} session for {oh.cite(f)}, {folder_title(f)}: {merge_job_words(m)}"
 
 
 def folder_key(f):
@@ -2461,7 +2488,14 @@ def waiting_lines(office_root):
     for m in merges:
         f, job = m["folder"], m["job"]
         n = folder_key(f)
-        if m["landed"]:
+        if odl_is_undo(job):
+            # 0.51.0: the undo job, beside the merge job.
+            if m["landed"]:
+                lines.append(f"{oh.cite(f)}: undo session {m['landed']} landed; office deliver {n} closes the undo job")
+            else:
+                lines.append(f"{oh.cite(f)}: undo job waiting, bale's own commit {job['commit'][:7]} out of the "
+                             f"workbench, {len(job['files'])} file(s); office start {n} --undo-bale sends the session")
+        elif m["landed"]:
             lines.append(f"{oh.cite(f)}: merge session {m['landed']} landed; office deliver {n} makes the merge commit")
         else:
             lines.append(f"{oh.cite(f)}: merge job waiting, {job['audience']}/{job['branch']} into the workbench, "

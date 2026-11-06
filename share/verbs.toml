@@ -376,7 +376,8 @@ writes = ["the repo the session belongs to, through bale's apply (or, for a read
           "desk/{folder}/walkthrough.md", "desk/{folder}/delivery.md",
           "filing-cabinet/{folder}", "in-tray", "desk", "handbook", "floor-plan/manifest.toml", "bale.toml", "calendar/record.md",
           "drafting-table/moves.md", "what office moves writes", "what the project's after-land actions write",
-          "desk/{folder}/merge", "a merge session's resolution as a merge commit on the clone's workbench branch (0.40.0)"]
+          "desk/{folder}/merge", "a merge session's resolution as a merge commit on the clone's workbench branch (0.40.0)",
+          "desk/{folder}/undo, removed when an undo session's landing closes the job (0.51.0)"]
 lands = []
 attended = true
 trigger = ["manual"]
@@ -415,7 +416,11 @@ trigger = ["manual"]
 # session's resolution that office land could not make a merge commit is
 # made one here. Since 0.42.0 it opens the review through gh when the
 # occupant says so (a pull request on the audience's git host, its number
-# and URL in a dated review line in the folder's History).
+# and URL in a dated review line in the folder's History). Since 0.51.0 one
+# of bale's own commits that cannot be taken out of the delivery writes the
+# undo's materials into the folder (undo/), for the undo session office
+# start --undo-bale sends, and an undo job whose session landed that
+# office land could not close is closed here.
 [verbs.deliver]
 kind = "script"
 built = true
@@ -425,6 +430,7 @@ writes = ["desk/{folder}/folder.md", "filing-cabinet/{folder}/folder.md", "a del
           "the clone's remote-tracking refs and base branch, when the occupant says to refresh them (0.39.0)",
           "a merge commit of the audience's base on the clone's workbench branch, when that merge is clean (0.39.0)",
           "desk/{folder}/merge", "a merge session's resolution as a merge commit on the clone's workbench branch (0.40.0)",
+          "desk/{folder}/undo (0.51.0)",
           "filing-cabinet/{folder}, when its work is delivered (0.41.0)",
           "a pull request on the project's audience, through gh, when the occupant says to open the review (0.42.0)"]
 lands = []
@@ -704,6 +710,27 @@ trigger = ["manual"]
 kind = "project-session"
 built = true
 ships = ["desk/{folder}", "desk/{folder}/merge, the merge's materials", "templates/merge-brief.md, as the brief",
+         "letterhead, when the project has an audience"]
+writes = ["{project}"]
+lands = []
+attended = true
+trigger = ["manual"]
+
+# The undo session (0.51.0), packed by office start N --undo-bale on the
+# folder's project when office deliver could not take one of bale's own
+# commits out of the delivery (the workbench's later work touches the same
+# lines, and the commit did more there than add lines): its goal, forecast
+# (the files) and brief (templates/undo-brief.md) are the folder's undo
+# job's, and the job's materials (undo/: each file before bale's commit, as
+# the commit left it and the workbench's, and the commit's diff) ride in
+# the folder. Its response ships each file whose result differs from the
+# workbench's, with bale's change taken out, and nothing else; it writes no
+# Walkthrough, Delivery or Structure, and office land closes the job.
+# Nothing of the office's is guaranteed to exist after it.
+[verbs.undo]
+kind = "project-session"
+built = true
+ships = ["desk/{folder}", "desk/{folder}/undo, the undo's materials", "templates/undo-brief.md, as the brief",
          "letterhead, when the project has an audience"]
 writes = ["{project}"]
 lands = []

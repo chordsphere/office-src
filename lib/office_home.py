@@ -720,7 +720,7 @@ def home_items(skew, founded, out, groups, projects, slips, behind, bundles, nam
     # A merge job waiting for its session, then the folders whose work landed
     # and is not delivered, newest landing first (0.41.0): read once, by
     # render_desk, into the desk's groups.
-    items += [item(ob.merge_item_words(m), ["start", ob.folder_key(m["folder"]), "--merge"])
+    items += [item(ob.merge_item_words(m), ["start", ob.folder_key(m["folder"]), ob.job_flag(m["job"])])
               for m in groups.get("merges") or [] if not m["landed"]]
     items += [item(ob.deliver_item_words(u), ["deliver", ob.folder_key(u["folder"])])
               for u in groups.get("undelivered") or []]
