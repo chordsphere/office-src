@@ -4,6 +4,72 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.51.0
+
+Additive: no migration, nothing to do in any office. The fourteenth serial
+session of the plan begun on 2026-10-27: 0.40.0's first proposal, as
+0.42.0 wrote it up, and 0.47.0's second and third. A folder's merge/ page
+is read as before (a `- changed:` line may now say `not copied`); an undo
+job, its page and the `undone` History line are new.
+
+No ordinary refusal of a delivery sends you into the clone. When one of
+bale's own commits cannot be taken out of a delivery (the workbench's
+later work touches the same lines, and the commit did more there than add
+lines), `office deliver` pushes nothing, leaves the clone clean, and
+writes an undo job into the folder, under undo/: every path the take-out
+could not undo (all of them; before, only the first was named), each
+before bale's commit, as the commit left it and as the workbench holds it
+(before/, bale/, workbench/), bale.diff, the commit's own change to them,
+and undo.md, the job's page, committed in the office. Its last line is
+`office start N --undo-bale sends the session that takes bale's own change
+out of the workbench`; the `by hand on the workbench branch` remedy is
+gone from the code, the README and the doctrine.
+
+`office start N --undo-bale` sends that session on the job's project, the
+merge session's model: the folder alone (anything else refused, and
+`--merge` beside it), the job's paths as the forecast, the goal `Take
+bale's own commit SHA7 (SUBJECT) out of the workbench of folder N, in
+PATHS`, the brief from the new templates/undo-brief.md, and the session
+named on the page, committed alone. Its response ships each path whose
+result differs from the workbench's, with bale's change taken out, a `##
+Undo` section in its notes and no Walkthrough, Delivery or Structure.
+
+When it lands, `office land` closes the job: a dated `undone` History line
+(`bale's own commit SHA7 (SUBJECT) taken out of PATHS by SID`), the
+materials removed, both committed in the office, and land's last line is
+`office deliver N`. The session's landed commit is the undo; land makes no
+commit of its own. Never under another session open in the clone: then
+deliver closes it before it plans, and while the session is out deliver
+names `office land SID`. The next delivery reads the `undone` line and
+takes each of those paths as the workbench holds it when it reverts that
+commit (`nothing left to undo: the undo session SID took it out of PATHS
+on the workbench`), so the squash leaves without bale's change; later work
+on bale's lines in another of its paths writes the job again for those,
+naming the session that landed. A folder holds one job at a time, of
+either kind, the second refused naming the first; several refusing
+commits are met one at a time, newest first. The waiting job is offered
+by key wherever a merge job is: the home screen, the Next line, the desk's
+line, `office status`'s waiting lines and `office map` (`undo job
+waiting: bale's own commit SHA7 conflicts with the workbench in K
+file(s); office start N --undo-bale`).
+
+0.47.0's two. A merge job's copy of the audience's other changed files is
+capped at MATERIALS_CAP (200) copies, the conflicting files always copied
+whole and never counted; every path is still listed on merge.md, those
+past the cap marked `(changed, not copied)`, and the page and the brief
+say how many were left and that `git show TIP:PATH` in the clone reads
+them. An empty response lands: bale 0.4.56 makes the session commit and
+the merge with plumbing and tags applied/SID with no check on the change
+(the probe empty-landing), the suite's fake bale now lands `changes: []`
+the same way, and a merge session whose every resolution is the
+workbench's ends in the merge commit through `office land`; the merge
+brief says so. make_resolved_merge's exit 13 still names no line.
+
+Tests: tests/test_undo_bale.py (the job, the session, the whole loop
+through the office's commands, a host, the offers, the cap, the empty
+landing and the record); tests/test_bale_own_commits.py's refusal test
+now pins the job's words and every "nothing moved" check.
+
 ## 0.50.0
 
 Additive: no migration, nothing to do in any office. The thirteenth serial

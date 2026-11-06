@@ -181,6 +181,7 @@ walk-in and never written down. In the order they win:
 | has a session out | `office land SID` (when its response is in your downloads, land finds it; bare `office land` with several out lands the one whose response is there, 0.44.0) |
 | has desk moves a sitting decided, or sorted drops waiting in the in-tray, not yet run | `office moves` (until they run, the desk is not in the order the sitting decided) |
 | has a folder whose merge job waits for its session (0.41.0) | `office start N --merge` (start --merge sends the session that resolves it) |
+| has a folder whose undo job waits for its session (0.51.0) | `office start N --undo-bale` (start --undo-bale sends the session that takes bale's own change out of the workbench) |
 | has a folder whose work landed on a project with an audience and is not delivered (0.41.0) | `office deliver N` for the newest landing (deliver carries it to the audience; the others are counted) |
 | has an unsorted drop in the in-tray | `office start --drop in-tray/PAGE` for the oldest whose project is one of the office's and has no session in flight on its lane; for the oldest whose project is none of them, the same with `--lane LANE` to fill (an office with no projects skips this) |
 | has an unsorted drop whose project is none of the office's and a session has gone out since it was dropped, or three or more unsorted drops and nothing ready | `office start --sort`, the standalone sort |
@@ -1341,6 +1342,16 @@ of the folder; a merge it cannot make is said with the line that makes it
 later, `office deliver N`. A merge session's notes carry no Walkthrough or
 Delivery, and the folder's two pages are left as the work's.
 
+An undo session (`office start N --undo-bale`, 0.51.0) closes its job:
+when the folder's undo job names the session that landed, its landed
+commit is the undo (the work's own, so land makes no commit of its own),
+and land records an `undone` line in the folder's History (bale's
+commit, the files the session took it out of, the session) and takes the
+job's materials out of the folder; under another session open in the
+clone it closes nothing, and `office deliver N` closes it later. Its notes
+carry no Walkthrough or Delivery either, and land's last line is `office
+deliver N`.
+
 After an applied landing, before the after-land actions, land files what
 the session's notes.md says (0.20.0), when it found the response on this
 machine, each section in a line: a project session's Walkthrough and
@@ -1747,8 +1758,9 @@ session applied in that project. In order, each step logged:
   (.gitignore)`). A line of bale's that later work already took out is
   simply gone; where later work touches the same lines and adding lines
   was all bale did there, bale's lines are taken out one by one and the
-  plan says so; anything else refuses by name, with the remedy (undo
-  bale's change by hand on the workbench branch, and deliver again).
+  plan says so; anything else refuses the delivery with nothing pushed
+  and writes an undo job into the folder (0.51.0, the undo session below),
+  whose session takes bale's change out of the workbench for you.
   Before 0.36.0 the whole range was squashed and only bale's names left
   the index, so `.bale/` in `.gitignore` rode in a delivery
   (found 2026-10-28, delivering a work office's folder 6). Then the landed
@@ -1869,7 +1881,10 @@ sides parted), `workbench/` and `audience/`; in `audience/` too, since
 parted, listed on the page as `- changed: PATH` lines under the
 conflicting files' `- file:` lines (` (added)` or ` (deleted)` after the
 path when it was; a deleted file has no copy), so the session sees what
-the audience did beside the conflict; and `log.txt`, the audience's
+the audience did beside the conflict, up to a cap of 200 copies (0.51.0:
+past it a path is still listed, marked ` (changed, not copied)`, and the
+page and the brief say how many and that `git show TIP:PATH` in the clone
+reads them; the conflicting files are always copied); and `log.txt`, the audience's
 commits since they parted, with `merge.md`, the job's page, all committed
 in the office (so they ride with the folder, and `office close` moves
 them with it). Its last line sends the session:
@@ -1899,7 +1914,45 @@ not. The folder's History gains `- DATE merged: origin/main 3f1a9c2 into
 the workbench, 7c1e2d3, resolved by SID`, the materials leave the
 folder, and the workbench and the base now part at that tip, so the next
 delivery squashes the folder's own work. Asked again while the session is
-out, deliver names `office land SID` instead.
+out, deliver names `office land SID` instead. When the workbench's
+version is the resolution of every file, the response ships no file at
+all (`changes: []`); bale lands it and tags it applied all the same, and
+land makes the merge commit from the workbench's versions (0.51.0).
+
+The undo session (0.51.0). No ordinary refusal of a delivery sends you
+into the clone. When one of bale's own commits cannot be taken out of a
+delivery (the workbench's later work touches the same lines, and the
+commit did more there than add lines, so the office will not guess which
+lines are bale's), deliver pushes nothing, leaves the clone clean, and
+writes an undo job into the folder, under `undo/`: every path the
+take-out could not undo (all of them, not the first), each at its path in
+three versions, `before/` (before bale's commit), `bale/` (as the commit
+left it; it holds every file the commit changed) and `workbench/`; and
+`bale.diff`, the commit's own change to those paths, with `undo.md`, the
+job's page, all committed in the office. Its last line sends the session:
+
+    office start 14 --undo-bale      # the undo session: goal, forecast, brief and project from the job
+
+The session is a bale session on the folder's project: its goal names
+bale's commit and the paths (`Take bale's own commit 1ee6bc7 (bale:
+ignore .bale/) out of the workbench of folder 14, in .gitignore`), its
+forecast is the paths, its brief comes from the install's
+`templates/undo-brief.md`, and the job's page names the session sent. Its
+response writes each path as the work needs it with bale's change taken
+out, ships each whose result differs from the workbench's and nothing
+else, and writes no Walkthrough, Delivery or Structure, with a `## Undo`
+section instead. When it lands, `office land` closes the job (above), and
+the next `office deliver N` takes each of those paths as the workbench
+then holds it when it takes bale's commit out (`nothing left to undo: the
+undo session SID took it out of .gitignore on the workbench`), so the
+squash carries the folder's work without bale's change. Asked while the
+session is out, deliver names `office land SID`. When later work touches
+bale's lines in another of the commit's paths, the next delivery writes
+the job again for those, naming the session that landed. Several of
+bale's own commits that each refuse are met one at a time, newest first,
+each delivery writing the next job. A folder holds one job at a time, of
+either kind: a merge job waiting stops an undo job from being written,
+and the other way round, each naming the one waiting.
 
 A continued delivery is squashed from its range (0.40.0). A delivery onto
 a branch (its own, another folder's, adopted) takes the range's net

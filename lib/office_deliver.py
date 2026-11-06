@@ -478,7 +478,7 @@ def lines_added_only(worktree, sha, path):
     return (added, created) if added else None
 
 
-def take_out_own(worktree, own, author):
+def take_out_own(worktree, own, author, undone=None):
     """In a worktree at the workbench's tip, undo what each of bale's own
     commits changed (0.36.0): git revert, newest first, each in a
     temporary commit of its own that never leaves (so the next is undone
@@ -489,16 +489,23 @@ def take_out_own(worktree, own, author):
     conflicts; when all bale's commit did to that file was add lines,
     those lines are taken out of the workbench's version one by one
     (lines_added_only), and the file is deleted when nothing is left of
-    one bale created; anything else refuses by name, since what bale's
-    own commits changed must stay out and the office does not guess
-    around a conflict. Returns (the cleaned tip's sha, what was taken
+    one bale created; anything else raises UndoConflict naming the commit
+    and every path that refused (0.51.0: deliver writes the undo job from
+    it), since what bale's own commits changed must stay out and the
+    office does not guess around a conflict. undone (0.51.0,
+    undone_records of the folder's History): the paths an undo session
+    already took a commit out of on the workbench, each taken as the
+    workbench holds it. Returns (the cleaned tip's sha, what was taken
     out: one dict per commit with its sha, subject, files and how)."""
     cfg, env = identity_of(author)
     taken = []
     for sha, subject in own:
         files = g(worktree, "diff-tree", "--root", "-r", "--no-commit-id", "--name-only", sha).stdout.split()
-        how = "undone"
+        # The newest undo session that took this commit out of paths here.
+        record = ((undone or {}).get(sha[:7]) or [None])[-1]
+        by_session = [p for p in record["paths"] if p in files] if record else []
         reverted = g(worktree, "revert", "--no-commit", sha, check=False, env=env)
+        conflicted = []
         if reverted.returncode != 0:
             conflicted = g(worktree, "diff", "--name-only", "--diff-filter=U", check=False).stdout.split()
             if not conflicted:
@@ -506,36 +513,49 @@ def take_out_own(worktree, own, author):
                 raise DeliverError([f"what bale's own commit {sha[:12]} ({subject}) changed could not be undone for the "
                                     f"delivery: git revert exit {reverted.returncode}: {ohost._last_words(reverted.stderr)}",
                                     "nothing was pushed, and the delivery was not made"])
-            by_line = []
-            for path in conflicted:
-                pure = lines_added_only(worktree, sha, path)
-                if pure is None:
-                    g(worktree, "revert", "--abort", check=False)
-                    raise DeliverError([f"what bale's own commit {sha[:12]} ({subject}) changed in {path} cannot be taken "
-                                        "out of the delivery: the workbench branch's later work touches the same lines, "
-                                        "and that commit did more there than add lines, so the office will not guess "
-                                        "which lines are bale's",
-                                        f"undo its change to {path} by hand on the workbench branch (a commit of your "
-                                        "own, which the next delivery reads as the work's), and deliver again; nothing "
-                                        "was pushed"])
-                added, created = pure
-                current = g(worktree, "show", f"HEAD:{path}").stdout
-                kept = current.splitlines()
-                for line in added:
-                    if line in kept:
-                        del kept[len(kept) - 1 - kept[::-1].index(line)]
-                if not kept and created:
-                    g(worktree, "rm", "-q", "-f", "--", path)
-                else:
-                    text = "\n".join(kept) + ("\n" if kept and current.endswith("\n") else "")
-                    (pathlib.Path(worktree) / path).write_text(text, encoding="utf-8")
-                    g(worktree, "add", "--", path)
-                by_line.append(path)
+        # A path the undo session took the commit out of is the work's as
+        # the workbench holds it: taken as it is, conflicting or not.
+        for path in by_session:
+            if g(worktree, "cat-file", "-e", f"HEAD:{path}", check=False).returncode == 0:
+                g(worktree, "checkout", "-q", "HEAD", "--", path)
+            else:
+                g(worktree, "rm", "-q", "-f", "--ignore-unmatch", "--", path)
+        conflicted = [p for p in conflicted if p not in by_session]
+        pure = {path: lines_added_only(worktree, sha, path) for path in conflicted}
+        refused = [path for path in conflicted if pure[path] is None]
+        if refused:
+            g(worktree, "revert", "--abort", check=False)
+            raise UndoConflict([f"what bale's own commit {sha[:12]} ({subject}) changed in {', '.join(refused)} cannot "
+                                "be taken out of the delivery: the workbench branch's later work touches the same "
+                                "lines, and that commit did more there than add lines, so the office will not guess "
+                                "which lines are bale's"], sha, subject, refused)
+        for path in conflicted:
+            added, created = pure[path]
+            current = g(worktree, "show", f"HEAD:{path}").stdout
+            kept = current.splitlines()
+            for line in added:
+                if line in kept:
+                    del kept[len(kept) - 1 - kept[::-1].index(line)]
+            if not kept and created:
+                g(worktree, "rm", "-q", "-f", "--", path)
+            else:
+                text = "\n".join(kept) + ("\n" if kept and current.endswith("\n") else "")
+                (pathlib.Path(worktree) / path).write_text(text, encoding="utf-8")
+                g(worktree, "add", "--", path)
+        if reverted.returncode != 0:
             g(worktree, "revert", "--quit", check=False)
-            how = (f"its lines taken out of {', '.join(by_line)} one by one, since later work on the workbench "
-                   "touches the same place")
+        hows = []
+        if conflicted:
+            hows.append(f"its lines taken out of {', '.join(conflicted)} one by one, since later work on the "
+                        "workbench touches the same place")
+        if by_session:
+            hows.append(f"{', '.join(by_session)} as the undo session {record['sid']} left "
+                        f"{'it' if len(by_session) == 1 else 'them'} on the workbench")
+        how = "; ".join(hows) or "undone"
         if g(worktree, "diff", "--cached", "--quiet", "HEAD", check=False).returncode == 0:
-            how = "nothing left to undo: later work on the workbench had already taken it out"
+            how = "nothing left to undo: " + (f"the undo session {record['sid']} took it out of "
+                                              f"{', '.join(by_session)} on the workbench" if by_session
+                                              else "later work on the workbench had already taken it out")
         else:
             g(worktree, *cfg, "commit", "-q", "-m", f"office deliver: what {sha[:12]} changed, taken out", env=env)
         taken.append({"sha": sha, "subject": subject, "files": files, "how": how})
@@ -921,7 +941,10 @@ MERGE_FIELD_RE = oh.LazyPattern(r"^- (project|audience|kind|branch|tip|workbench
 # path, ` (added)` or ` (deleted)`; a plain change says nothing more, unless
 # the path itself ends as such words would, when ` (changed)` is written too,
 # so the reader takes exactly one such ending off and every path reads back.
-CHANGED_HOW_RE = oh.LazyPattern(r"^(.*) \((added|changed|deleted)\)$")
+# Since 0.51.0 a path past the cap (MATERIALS_CAP) is marked inside the same
+# brackets, ` (changed, not copied)`: listed, its copy not in audience/.
+CHANGED_HOW_RE = oh.LazyPattern(r"^(.*) \((added|changed|deleted)(, not copied)?\)$")
+NOT_COPIED = ", not copied"
 MERGE_KINDS = ("base", "branch")
 RESOLVED_MESSAGE = "Bring {audience}/{branch} into the workbench, resolved by {sid} (office {verb})"
 
@@ -944,13 +967,15 @@ def read_merge_job(folder_dir):
     audience, kind (base or branch), branch, tip, workbench, parted, day,
     files (a list: the conflicting files), changed (since 0.47.0, [(path,
     how)]: every other file the audience changed since the sides parted,
-    how added, changed or deleted; [] on a page written before) and
-    session (or None); None when the folder holds none. A page that does
-    not read as a job raises DeliverError naming it."""
+    how added, changed or deleted; [] on a page written before),
+    uncopied (since 0.51.0, the changed paths past the cap, whose copy
+    audience/ does not hold) and session (or None); None when the folder
+    holds none. A page that does not read as a job raises DeliverError
+    naming it."""
     path = merge_page_path(folder_dir)
     if not path.is_file():
         return None
-    job = {"files": [], "changed": [], "session": None}
+    job = {"files": [], "changed": [], "uncopied": [], "session": None}
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         m = MERGE_FIELD_RE.match(line)
         if not m:
@@ -960,6 +985,8 @@ def read_merge_job(folder_dir):
         elif m.group(1) == "changed":
             how = CHANGED_HOW_RE.match(m.group(2))
             job["changed"].append((how.group(1), how.group(2)) if how else (m.group(2), "changed"))
+            if how and how.group(3):
+                job["uncopied"].append(how.group(1))
         else:
             job[m.group(1)] = m.group(2)
     missing = [k for k in ("project", "audience", "kind", "branch", "tip", "workbench") if not job.get(k)]
@@ -970,11 +997,24 @@ def read_merge_job(folder_dir):
     return job
 
 
-def changed_line(path, how):
-    """A `- changed:` line of the page (CHANGED_HOW_RE says its shape)."""
+def changed_line(path, how, copied=True):
+    """A `- changed:` line of the page (CHANGED_HOW_RE says its shape); a
+    path past the cap is marked not copied (0.51.0)."""
+    if not copied:
+        return f"- changed: {path} ({how}{NOT_COPIED})"
     if how != "changed" or CHANGED_HOW_RE.match(path):
         return f"- changed: {path} ({how})"
     return f"- changed: {path}"
+
+
+def uncopied_words(count, tip):
+    """The page's and the brief's sentence on the copies past the cap
+    (0.51.0), or "" when every copy is there."""
+    if not count:
+        return ""
+    return (f"{count} of them {'is' if count == 1 else 'are'} past the cap of {MATERIALS_CAP} copies and marked not "
+            f"copied: audience/ does not hold {'it' if count == 1 else 'them'}, and `git show {tip[:12]}:PATH` in "
+            "the clone reads each one.")
 
 
 def merge_page_text(job):
@@ -984,20 +1024,23 @@ def merge_page_text(job):
     changed since the sides parted."""
     side = f"{job['audience']}/{job['branch']}"
     changed = job.get("changed") or []
+    uncopied = set(job.get("uncopied") or [])
+    capped = uncopied_words(len(uncopied), job.get("tip") or "")
     lines = [f"# Merge: {side} into the workbench", "",
              f"office deliver wrote this page on {job['day']} when bringing {side} into the workbench conflicted in "
              f"{len(job['files'])} file(s), the `- file:` lines below. Beside it are each conflicting file's three "
              "versions, at its path: parted/ (where the two sides parted), workbench/ (the workbench's) and "
              "audience/ (the audience's); audience/ holds too the audience's copy of every other file it changed "
              f"since they parted, the `- changed:` lines below ({len(changed)}; one it deleted has no copy), which "
-             "git's merge carries as they are; and log.txt, the audience's commits since they parted. `office start "
+             "git's merge carries as they are; and log.txt, the audience's commits since they parted. "
+             + (capped + " " if capped else "") + "`office start "
              "N --merge` sends the merge session that resolves the conflicting files, and `office land` makes its "
              "resolution a merge commit in the workbench; the office never resolves a conflict itself.", ""]
     for key in ("project", "audience", "kind", "branch", "tip", "workbench", "parted", "day"):
         if job.get(key):
             lines.append(f"- {key}: {job[key]}")
     lines += [f"- file: {f}" for f in job["files"]]
-    lines += [changed_line(path, how) for path, how in changed]
+    lines += [changed_line(path, how, path not in uncopied) for path, how in changed]
     if job.get("session"):
         lines.append(f"- session: {job['session']}")
     return "\n".join(lines) + "\n"
@@ -1020,14 +1063,26 @@ def merge_page_text(job):
 # the page names it all the same. The copies are written through xargs -0,
 # which hands every name over as it is; the copier holds no single quote, so
 # it rides in single quotes as it is.
+#
+# Since 0.51.0 the copy is capped ("$5", MATERIALS_CAP): a file already in
+# audience/ (a conflicting one, copied whole with its three versions) is
+# passed over and never counted, and of the others at most the cap are
+# copied, in git's order; the rest stay listed on the page, marked not
+# copied (the page reads them back as such from what audience/ holds). The
+# count rides in a file beside the copies, since xargs may run the copier
+# more than once.
 _AUDIENCE_COPY = (
-    'a="$1"; o="$2"; shift 2; for f; do '
+    'a="$1"; o="$2"; m="$3"; c="$4"; shift 4; n=$(cat "$c" 2>/dev/null) || n=0; for f; do '
+    '[ ! -e "$o/$f" ] || continue; '
     '[ "$(git cat-file -t "$a:$f" 2>/dev/null)" = blob ] || continue; '
-    'mkdir -p "$o/$(dirname -- "$f")" && git cat-file blob "$a:$f" > "$o/$f" || exit 1; done'
+    '[ "$n" -lt "$m" ] || continue; '
+    'mkdir -p "$o/$(dirname -- "$f")" && git cat-file blob "$a:$f" > "$o/$f" || exit 1; n=$((n + 1)); done; '
+    'echo "$n" > "$c"'
 )
 _MATERIALS_SCRIPT = (
     'w=$(git rev-parse --verify -q "$2^{commit}") || exit 4; a=$(git rev-parse --verify -q "$3^{commit}") || exit 4; '
-    'p="$1"; [ "$p" != - ] || p=$(git merge-base "$w" "$a") || exit 5; l="$4"; [ "$l" != - ] || l="$p"; shift 4; '
+    'p="$1"; [ "$p" != - ] || p=$(git merge-base "$w" "$a") || exit 5; l="$4"; [ "$l" != - ] || l="$p"; m="$5"; '
+    'shift 5; '
     'echo "workbench=$w" >&2; echo "parted=$p" >&2; '
     'd=$(mktemp -d "${TMPDIR:-/tmp}/' + ohost.SCRATCH_PREFIX + 'merge-XXXXXXXX") || exit 1; '
     'for s in "parted $p" "workbench $w" "audience $a"; do n=${s%% *}; c=${s#* }; '
@@ -1037,13 +1092,19 @@ _MATERIALS_SCRIPT = (
     'git diff -z --no-renames --no-ext-diff --name-status "$p" "$a" -- > "$d/changed.list" || { rm -rf "$d"; exit 6; }; '
     'git diff -z --no-renames --no-ext-diff --name-only --diff-filter=d "$p" "$a" -- > "$d/.copy" '
     '|| { rm -rf "$d"; exit 6; }; '
-    "xargs -0 sh -c '" + _AUDIENCE_COPY + "' office-copy " + '"$a" "$d/audience" < "$d/.copy" '
-    '|| { rm -rf "$d"; exit 7; }; rm -f "$d/.copy"; '
+    "xargs -0 sh -c '" + _AUDIENCE_COPY + "' office-copy " + '"$a" "$d/audience" "$m" "$d/.n" < "$d/.copy" '
+    '|| { rm -rf "$d"; exit 7; }; rm -f "$d/.copy" "$d/.n"; '
     'git log --format="%h %ad %an: %s" --date=short "$l..$a" > "$d/log.txt" || { rm -rf "$d"; exit 3; }; '
     'tar -cf - -C "$d" .; rc=$?; rm -rf "$d"; exit $rc'
 )
 # The list's name in the stream; it is read into the page, never kept.
 MATERIALS_CHANGED = "changed.list"
+# How many of the audience's other changed files a merge job copies
+# (0.51.0): a busy base can change thousands of files while a workbench is
+# parted from it, and each copy is committed in the office until the merge
+# lands. Every path is still listed on the page; past the cap a path is
+# marked not copied, and git show AUDIENCE_TIP:PATH reads it in the clone.
+MATERIALS_CAP = 200
 # git's status letters in the words the page uses (a type change, a file
 # become a link or back, is a change).
 CHANGED_HOW = {"A": "added", "M": "changed", "T": "changed", "D": "deleted"}
@@ -1070,24 +1131,25 @@ def read_changed_list(data):
     return out
 
 
-def carry_materials(where, commits, files, dest):
+def carry_materials(where, commits, files, dest, cap=MATERIALS_CAP):
     """The merge's materials into dest (made anew): commits is (parted or
     "-", workbench, audience, log from or "-"), read in where, a Place (a
     clone, here or on its host) or a repo on this machine; files, the
     conflicting ones, each in its three versions. Returns (parted,
-    workbench, changed): the parted and workbench commits as the script
-    resolved them, and [(path, how)] for every path the audience changed
+    workbench, changed, uncopied): the parted and workbench commits as the
+    script resolved them, [(path, how)] for every path the audience changed
     since the sides parted (0.47.0; the conflicting ones among them), each
-    one it holds as a file copied into audience/. A tar member outside the
-    three sides, log.txt and the changed list refuses, and nothing is
-    written."""
+    one it holds as a file copied into audience/ up to the cap (0.51.0:
+    the conflicting ones always), and the paths it holds as a file that
+    were not copied, past the cap. A tar member outside the three sides,
+    log.txt and the changed list refuses, and nothing is written."""
     import shlex
     import shutil
     import subprocess
     import tarfile
     import tempfile
     place = where if isinstance(where, ohost.Place) else ohost.Place(str(where))
-    args = [*commits, *files]
+    args = [*commits, str(int(cap)), *files]
     with tempfile.TemporaryDirectory(prefix="office-deliver-merge-") as tmp:
         tar = pathlib.Path(tmp) / "materials.tar"
         with open(tar, "wb") as fh:
@@ -1132,12 +1194,16 @@ def carry_materials(where, commits, files, dest):
                                 "changed files); nothing was written"])
         changed = read_changed_list(listed.read_bytes())
         listed.unlink()
+        # What the copier passed over: a path the audience did not delete
+        # with no copy in audience/ (past the cap; or no file, a submodule,
+        # which is no copy either way).
+        uncopied = [path for path, how in changed if how != "deleted" and not (out / "audience" / path).is_file()]
         dest = pathlib.Path(dest)
         if dest.exists():
             shutil.rmtree(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(out), str(dest))
-    return said.get("parted", ""), said.get("workbench", ""), changed
+    return said.get("parted", ""), said.get("workbench", ""), changed, uncopied
 
 
 def commit_folder_paths(office_root, message, *rels):
@@ -1168,6 +1234,11 @@ def merge_job_lines(office_root, rel, folder, project, where, kind, audience, si
         return [f"{rel} is in the filing cabinet, where the merge's materials are not written: office reopen {folder} "
                 f"brings it back to the desk, and office deliver {folder} then writes them and names the merge "
                 "session; nothing was pushed"]
+    # One job a folder at a time, of either kind (0.51.0): an undo job
+    # waiting is named, and this one is written once it is closed.
+    waiting = waiting_undo_lines(folder_dir, rel, folder)
+    if waiting:
+        return waiting
     try:
         old = read_merge_job(folder_dir)
     except DeliverError:
@@ -1178,8 +1249,8 @@ def merge_job_lines(office_root, rel, folder, project, where, kind, audience, si
                 f"materials) and has not landed: office land {old['session']} brings it back and makes its "
                 f"resolution the merge commit, then office deliver {folder} delivers; nothing was pushed"]
     try:
-        parted, workbench_read, changed = carry_materials(where, (parted, workbench, tip, log_from), conflicts,
-                                                          folder_dir / MERGE_DIR)
+        parted, workbench_read, changed, uncopied = carry_materials(where, (parted, workbench, tip, log_from),
+                                                                    conflicts, folder_dir / MERGE_DIR)
         # The page's two lists apart (0.47.0): the conflicting files, which the
         # session resolves, and every other file the audience changed, which
         # git's merge carries. A name that would break the page's line (a
@@ -1192,19 +1263,24 @@ def merge_job_lines(office_root, rel, folder, project, where, kind, audience, si
         others = [x for x in others if "\n" not in x[0] and "\r" not in x[0]]
         job = {"project": project, "audience": audience, "kind": kind, "branch": side, "tip": tip,
                "workbench": workbench_read or workbench, "parted": parted, "day": day or time.strftime("%Y-%m-%d"),
-               "files": list(conflicts), "changed": others, "session": None}
+               "files": list(conflicts), "changed": others, "session": None,
+               "uncopied": [p for p in uncopied if p not in conflicting]}
         merge_page_path(folder_dir).write_text(merge_page_text(job), encoding="utf-8")
         commit_folder_paths(office_root, f"office deliver: the merge's materials for {folder}", f"{rel}/{MERGE_DIR}")
     except (DeliverError, ohost.HostError, ob.LandError, OSError) as exc:
         why = "; ".join(exc.lines) if isinstance(exc, DeliverError) else str(exc)
         return [f"the merge's materials could not be written into {rel}/{MERGE_DIR}/ ({why}): office deliver "
                 f"{folder} tries again; nothing was pushed"]
+    left = len(job["uncopied"])
     log(f"wrote the merge's materials into {rel}/{MERGE_DIR}/: {len(conflicts)} file(s) in three versions "
         f"(parted, workbench, {audience}), {audience}'s side of the {len(job['changed'])} other file(s) it changed "
-        f"since they parted, and {audience}'s log since then, committed in the office")
+        f"since they parted" + (f" ({left} past the cap of {MATERIALS_CAP} copies, listed and not copied)" if left
+                                else "") + f", and {audience}'s log since then, committed in the office")
     return [f"the merge's materials are in {rel}/{MERGE_DIR}/ (each conflicting file as the two sides parted, the "
             f"workbench's and {side_name}'s; {side_name}'s copy of every other file it changed since they parted, "
-            f"{len(job['changed'])} listed on merge.md; and {audience}'s log since they parted)",
+            f"{len(job['changed'])} listed on merge.md"
+            + (f", {left} of them past the cap of {MATERIALS_CAP} copies and not copied" if left else "")
+            + f"; and {audience}'s log since they parted)",
             f"office start {folder} --merge sends the merge session that resolves them, a bale session on {project} "
             "with both sides in context; office land makes its resolution a merge commit in the workbench, and "
             f"office deliver {folder} then delivers the folder's own work; nothing was pushed"]
@@ -1377,25 +1453,14 @@ def merge_start(office_root, folder, brief_out):
     number = (parsed["fields"].get("number") or [""])[0]
     title = parsed["title"] or folder
     side = f"{job['audience']}/{job['branch']}"
-    here = md.parent / MERGE_DIR
-    writes = []
-    for f in job["files"]:
-        if (here / "workbench" / f).is_file():
-            writes.append(f)
-        else:
-            parent = str(pathlib.PurePosixPath(f).parent)
-            if parent in (".", ""):
-                writes = []
-                break
-            writes.append(parent)
-    else:
-        writes = list(dict.fromkeys(writes))
+    writes = job_writes(job["files"], md.parent / MERGE_DIR / "workbench")
     if job.get("session"):
         said = [f"{rel}'s merge job named {job['session']} as its session; this one takes its place, and office land "
                 "makes the merge commit for this one"]
     else:
         said = []
     files = job["files"]
+    uncopied = set(job.get("uncopied") or [])
     goal = (f"Resolve the conflicts of bringing {side} {job['tip'][:7]} into the workbench of "
             + (f"folder {number}" if number else rel) + f", in {', '.join(files[:3])}"
             + (f" and {len(files) - 3} more" if len(files) > 3 else ""))
@@ -1409,8 +1474,11 @@ def merge_start(office_root, folder, brief_out):
               "files": "\n".join(f"- {f}" for f in files), "materials": f"{rel}/{MERGE_DIR}/",
               # The audience's other changes since the sides parted (0.47.0),
               # as the page lists them, so the brief names them too.
-              "changed": "\n".join("- " + changed_line(p, how)[len("- changed: "):]
-                                   for p, how in job.get("changed") or []) or "- none"}
+              "changed": "\n".join("- " + changed_line(p, how, p not in uncopied)[len("- changed: "):]
+                                   for p, how in job.get("changed") or []) or "- none",
+              # 0.51.0: how many of them are past the cap, said once.
+              "uncopied": (uncopied_words(len(uncopied), job["tip"])
+                           or "None of the files above is past it: each one is copied.")}
     pathlib.Path(brief_out).write_text(oh.render_template(template, values), encoding="utf-8")
     return {"project": job["project"], "goal": goal, "writes": writes, "said": said, "rel": rel}
 
@@ -1449,6 +1517,406 @@ def land_merge(office_root, project, sid, folder_rel, day):
     try:
         _, lines = resolve_landed_job(root, folder_rel, folder_rel.split("/")[-1], ohost.place_of(entry),
                                       entry["author"], day, "land", sid=sid)
+    except DeliverError as exc:
+        return True, [f"error: {l}" for l in exc.lines]
+    return True, lines
+
+
+# --- the undo session (0.51.0) -------------------------------------------------------------------
+#
+# When take_out_own cannot take one of bale's own commits out of a delivery
+# (the workbench's later work touches the same lines, and the commit did
+# more there than add lines), the office does not guess and does not send
+# the occupant into the clone. It leaves the clone clean, writes the undo's
+# materials into the folder, under undo/ (each path that refused in three
+# versions, before/ as it was before bale's commit, bale/ as bale's commit
+# left it and workbench/ as the workbench holds it now, at its path; and
+# bale.diff, the commit's own change to those paths), with a page,
+# undo/undo.md, that names the job; and its Next line is `office start N
+# --undo-bale`, which sends a bale session on the folder's project that
+# writes each path as the workbench's work needs it with bale's change
+# taken out (templates/undo-brief.md). The session's landed commit is the
+# undo, the work's own, so office land closes the job (a dated `undone`
+# History line, the materials removed); the next delivery takes each such
+# path as the workbench holds it when it undoes that commit (the History
+# line names the paths), so the squash carries the work without bale's
+# change. Several of bale's own commits that each refuse are met one at a
+# time, newest first, each delivery writing the next job. The page is the
+# job's whole state, as the merge job's is; a folder holds one job at a
+# time, of either kind.
+
+UNDO_DIR = "undo"
+UNDO_PAGE = "undo.md"
+UNDO_SIDES = ("before", "bale", "workbench")
+UNDO_DIFF = "bale.diff"
+UNDO_FIELD_RE = oh.LazyPattern(r"^- (project|commit|subject|workbench|parent|day|file|earlier|session): (.+?)\s*$")
+# The History line office land (or deliver) writes when it closes the job,
+# read back by the next delivery: which commit, and which paths the session
+# took it out of.
+UNDONE_RE = oh.LazyPattern(r"^bale's own commit (?P<sha>[0-9a-f]{7,40}) \((?P<subject>.*)\) taken out of "
+                           r"(?P<paths>.+) by (?P<sid>\S+)$")
+
+
+class UndoConflict(DeliverError):
+    """One of bale's own commits cannot be taken out of a delivery: the
+    commit, and every path that refused (lines say it)."""
+
+    def __init__(self, lines, sha, subject, paths):
+        super().__init__(lines)
+        self.sha, self.subject, self.paths = sha, subject, paths
+
+
+def undo_page_path(folder_dir):
+    return pathlib.Path(folder_dir) / UNDO_DIR / UNDO_PAGE
+
+
+def is_undo(job):
+    """Whether a folder's job (folder_job) is an undo job, not a merge job."""
+    return bool(job) and "commit" in job
+
+
+def read_undo_job(folder_dir):
+    """The undo job a folder holds (undo/undo.md), as a dict: project,
+    commit (bale's commit, whole), subject, workbench, parent, day, files
+    (the paths that refused), earlier (the undo session that landed for the
+    same commit before, or None) and session (or None); None when the
+    folder holds none. A page that does not read as a job raises
+    DeliverError naming it."""
+    path = undo_page_path(folder_dir)
+    if not path.is_file():
+        return None
+    job = {"files": [], "session": None, "earlier": None}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = UNDO_FIELD_RE.match(line)
+        if not m:
+            continue
+        if m.group(1) == "file":
+            job["files"].append(m.group(2))
+        else:
+            job[m.group(1)] = m.group(2)
+    missing = [k for k in ("project", "commit", "subject", "workbench") if not job.get(k)]
+    if missing or not job["files"]:
+        raise DeliverError([f"{path} does not read as an undo job (" + (f"no {', '.join(missing)} line" if missing
+                            else "no file line") + "); office deliver writes it again when bale's own commit still "
+                            "cannot be taken out"])
+    return job
+
+
+def folder_job(folder_dir):
+    """The job a folder holds, merge or undo (one at a time), or None; a
+    page that does not read raises DeliverError naming it, unless the
+    other kind's page reads (that job is the folder's)."""
+    try:
+        job = read_merge_job(folder_dir)
+    except DeliverError:
+        undo = read_undo_job(folder_dir)
+        if undo is None:
+            raise
+        return undo
+    return job if job is not None else read_undo_job(folder_dir)
+
+
+def undo_page_text(job):
+    """undo/undo.md: what the job is, in words, then its field lines (read
+    back by read_undo_job)."""
+    sha7 = job["commit"][:7]
+    lines = [f"# Undo: bale's own commit {sha7} out of the workbench", "",
+             f"office deliver wrote this page on {job['day']} when bale's own commit {sha7} ({job['subject']}) could "
+             f"not be taken out of the delivery in {len(job['files'])} file(s), the `- file:` lines below: the "
+             "workbench's later work touches the same lines, and the commit did more there than add lines. What "
+             "bale's own commits change is bale's housekeeping, never the work, and never leaves. Beside this page "
+             "are each file's three versions, at its path: before/ (before bale's commit), bale/ (as bale's commit "
+             "left it; bale/ holds every file the commit changed) and workbench/ (the workbench's); and bale.diff, "
+             "the commit's own change to those files."
+             + (f" The undo session {job['earlier']} landed for this commit before, and the delivery still could "
+                "not take it out of the files below." if job.get("earlier") else "")
+             + " `office start N --undo-bale` sends the undo session that writes each file as the workbench's work "
+             "needs it with bale's change taken out, and `office land` closes this job when it lands; the office "
+             "never guesses which lines are bale's.", ""]
+    for key in ("project", "commit", "subject", "workbench", "parent", "day", "earlier"):
+        if job.get(key):
+            lines.append(f"- {key}: {job[key]}")
+    lines += [f"- file: {f}" for f in job["files"]]
+    if job.get("session"):
+        lines.append(f"- session: {job['session']}")
+    return "\n".join(lines) + "\n"
+
+
+def undone_records(history):
+    """{sha7: [{paths, sid, day}]} from a folder's History (parse_folder's
+    [(day, verb, text)]): each undo session that took one of bale's own
+    commits out of paths on the workbench, oldest first."""
+    out = {}
+    for day, verb, text in history or []:
+        if verb != "undone":
+            continue
+        m = UNDONE_RE.match(text)
+        if m:
+            out.setdefault(m.group("sha")[:7], []).append(
+                {"paths": [x for x in m.group("paths").split(", ") if x], "sid": m.group("sid"), "day": day})
+    return out
+
+
+def undone_text(job, sid):
+    """The `undone` History line's text (UNDONE_RE reads it back)."""
+    return f"bale's own commit {job['commit'][:7]} ({job['subject']}) taken out of {', '.join(job['files'])} by {sid}"
+
+
+def waiting_merge_lines(folder_dir, rel, folder):
+    """When the folder holds a merge job, the line naming it (an undo job is
+    not written beside one); else []."""
+    try:
+        job = read_merge_job(folder_dir)
+    except DeliverError:
+        return []  # a page that does not read holds no job: the undo job is written
+    if job is None:
+        return []
+    side = f"{job['audience']}/{job['branch']}"
+    nxt = (f"office land {job['session']} brings its session back" if job.get("session")
+           else f"office start {folder} --merge sends its session")
+    return [f"{rel}'s merge job ({side} into the workbench) is waiting, and a folder holds one job at a time, so the "
+            f"undo job was not written: {nxt}, and office deliver {folder} then writes it; nothing was pushed"]
+
+
+def waiting_undo_lines(folder_dir, rel, folder):
+    """When the folder holds an undo job, the line naming it (a merge job is
+    not written beside one); else []."""
+    try:
+        job = read_undo_job(folder_dir)
+    except DeliverError:
+        return []  # a page that does not read holds no job: the merge job is written
+    if job is None:
+        return []
+    nxt = (f"office land {job['session']} brings its session back" if job.get("session")
+           else f"office start {folder} --undo-bale sends its session")
+    return [f"{rel}'s undo job (bale's own commit {job['commit'][:7]}) is waiting, and a folder holds one job at a "
+            f"time, so the merge's materials were not written: {nxt}, and office deliver {folder} then writes them; "
+            "nothing was pushed"]
+
+
+def undo_job_lines(office_root, rel, folder, project, repo, sha, subject, workbench, paths, day=None, history=None):
+    """What deliver says when one of bale's own commits cannot be taken out
+    of the delivery (0.51.0): the job written into the folder with its
+    materials, read in repo (the clone here, or the mirror a hosted
+    project's delivery is built in), and the one office line that sends
+    the undo session; or, when the same job already has a session out, the
+    line that lands it. The worktree's revert was aborted before this is
+    called. Returns the lines."""
+    import shutil
+    import time
+    folder_dir = pathlib.Path(office_root) / rel
+    if not rel.startswith("desk/"):
+        return [f"{rel} is in the filing cabinet, where the undo's materials are not written: office reopen {folder} "
+                f"brings it back to the desk, and office deliver {folder} then writes them and names the undo "
+                "session; nothing was pushed"]
+    waiting = waiting_merge_lines(folder_dir, rel, folder)
+    if waiting:
+        return waiting
+    try:
+        old = read_undo_job(folder_dir)
+    except DeliverError:
+        old = None
+    if old and old.get("session") and old["commit"] == sha and sorted(old["files"]) == sorted(paths):
+        return [f"the undo session {old['session']} was sent for this commit ({rel}/{UNDO_DIR}/ holds its "
+                f"materials) and has not landed: office land {old['session']} brings it back and closes the job, "
+                f"then office deliver {folder} delivers (office start {folder} --undo-bale sends another in its "
+                "place, if it was withdrawn); nothing was pushed"]
+    earlier = (undone_records(history).get(sha[:7]) or [None])[-1]
+    try:
+        parent = g(repo, "rev-parse", "--verify", "-q", f"{sha}^", check=False).stdout.strip()
+        if not parent:
+            raise DeliverError([f"bale's own commit {sha[:12]} has no parent in {repo}, so it has no version before it"])
+        dest = folder_dir / UNDO_DIR
+        carry_materials(repo, (parent, workbench, sha, parent), paths, dest)
+        # The merge's three sides, named for this job: parted is before
+        # bale's commit, audience is bale's commit, and the log (bale's one
+        # commit) is the diff below instead.
+        for side, name_ in (("parted", "before"), ("audience", "bale")):
+            if (dest / side).exists():
+                shutil.move(str(dest / side), str(dest / name_))
+        (dest / "log.txt").unlink(missing_ok=True)
+        diff = g(repo, "show", "--no-color", "--no-ext-diff", "--format=commit %H%nSubject: %s%n", sha, "--",
+                 *paths).stdout
+        (dest / UNDO_DIFF).write_text(diff, encoding="utf-8")
+        job = {"project": project, "commit": sha, "subject": subject, "workbench": workbench, "parent": parent,
+               "day": day or time.strftime("%Y-%m-%d"), "files": list(paths),
+               "earlier": earlier["sid"] if earlier else None, "session": None}
+        undo_page_path(folder_dir).write_text(undo_page_text(job), encoding="utf-8")
+        commit_folder_paths(office_root, f"office deliver: the undo's materials for {folder}", f"{rel}/{UNDO_DIR}")
+    except (DeliverError, ohost.HostError, ob.LandError, OSError) as exc:
+        why = "; ".join(exc.lines) if isinstance(exc, DeliverError) else str(exc)
+        return [f"the undo's materials could not be written into {rel}/{UNDO_DIR}/ ({why}): office deliver "
+                f"{folder} tries again; nothing was pushed"]
+    log(f"wrote the undo's materials into {rel}/{UNDO_DIR}/: {len(paths)} file(s) in three versions (before bale's "
+        f"commit {sha[:12]}, bale's, the workbench's) and the commit's diff of them, committed in the office")
+    lines = []
+    if earlier:
+        lines.append(f"the undo session {earlier['sid']} landed for this commit on {earlier['day']} and took it out "
+                     f"of {', '.join(earlier['paths'])}; the workbench's later work touches bale's lines in "
+                     f"{', '.join(paths)} too, so the job is written again for {'it' if len(paths) == 1 else 'them'}")
+    return lines + [
+        f"the undo's materials are in {rel}/{UNDO_DIR}/ (each file before bale's commit, as bale's commit left it, "
+        "and the workbench's, and bale.diff, the commit's change to them)",
+        f"office start {folder} --undo-bale sends the session that takes bale's own change out of the workbench, a "
+        f"bale session on {project} with the three versions in context; office land closes the job when it lands, "
+        f"and office deliver {folder} then delivers the folder's own work; nothing was pushed"]
+
+
+def job_writes(files, side_dir):
+    """A job session's forecast: each file the workbench holds (its copy
+    under side_dir), else its directory, else (a file at the top that the
+    workbench does not hold) [] for the whole repo."""
+    writes = []
+    for f in files:
+        if (pathlib.Path(side_dir) / f).is_file():
+            writes.append(f)
+        else:
+            parent = str(pathlib.PurePosixPath(f).parent)
+            if parent in (".", ""):
+                return []
+            writes.append(parent)
+    return list(dict.fromkeys(writes))
+
+
+def undo_start(office_root, folder, brief_out):
+    """What office start N --undo-bale sends (0.51.0): the folder's undo
+    job's project, the goal, the forecast (job_writes) and the brief,
+    written to brief_out from the install's templates/undo-brief.md.
+    Returns a dict: project, goal, writes, said (lines), rel."""
+    rel, md = find_folder(office_root, folder)
+    if not rel.startswith("desk/"):
+        raise DeliverError([f"{rel} is in the filing cabinet: office reopen {folder} brings it back to the desk, and "
+                            f"office start {folder} --undo-bale sends the undo session then"])
+    job = read_undo_job(md.parent)
+    if job is None:
+        raise DeliverError([f"{rel} holds no undo job waiting for a session ({rel}/{UNDO_DIR}/{UNDO_PAGE} is not "
+                            f"there): office deliver {folder} writes one when bale's own commit cannot be taken out "
+                            "of a delivery"])
+    parsed = oh.parse_folder(md.read_text(encoding="utf-8"))
+    number = (parsed["fields"].get("number") or [""])[0]
+    title = parsed["title"] or folder
+    here = md.parent / UNDO_DIR
+    said = ([f"{rel}'s undo job named {job['session']} as its session; this one takes its place, and office land "
+             "closes the job for this one"] if job.get("session") else [])
+    files = job["files"]
+    sha7 = job["commit"][:7]
+    where = f"folder {number}" if number else rel
+    goal = (f"Take bale's own commit {sha7} ({job['subject']}) out of the workbench of {where}, in "
+            f"{', '.join(files[:3])}" + (f" and {len(files) - 3} more" if len(files) > 3 else ""))
+    template = (TEMPLATES / "undo-brief.md").read_text(encoding="utf-8")
+    values = {"title": title, "folder": where, "rel": rel, "project": job["project"], "commit": job["commit"][:12],
+              "subject": job["subject"], "workbench": job["workbench"][:12],
+              "parent": (job.get("parent") or "")[:12] or "its parent",
+              "files": "\n".join(f"- {f}" for f in files), "materials": f"{rel}/{UNDO_DIR}/",
+              "earlier": (f"The undo session {job['earlier']} landed for this commit before, and the delivery still "
+                          "could not take it out of the files above: the workbench's later work touches bale's lines "
+                          "there too." if job.get("earlier") else "No undo session has landed for this commit yet.")}
+    pathlib.Path(brief_out).write_text(oh.render_template(template, values), encoding="utf-8")
+    return {"project": job["project"], "goal": goal, "writes": job_writes(files, here / "workbench"), "said": said,
+            "rel": rel}
+
+
+def undo_sent(office_root, rel, sid):
+    """The session office start --undo-bale sent, named on the job's page
+    and committed alone. Returns the line to say."""
+    folder_dir = pathlib.Path(office_root) / rel
+    job = read_undo_job(folder_dir)
+    if job is None:
+        raise DeliverError([f"{rel} holds no undo job, so {sid} was not named on one"])
+    job["session"] = sid
+    undo_page_path(folder_dir).write_text(undo_page_text(job), encoding="utf-8")
+    commit_folder_paths(office_root, f"office start: {sid} sent for the undo in {rel.split('/')[-1]}",
+                        f"{rel}/{UNDO_DIR}/{UNDO_PAGE}")
+    return f"{rel}/{UNDO_DIR}/{UNDO_PAGE} names {sid} as the undo session; office land {sid} closes the job"
+
+
+def applied_in(place, sid):
+    """Whether bale tagged the session applied in the clone (applied/SID)."""
+    run = ohost.run_in(place, ["git", "rev-parse", "-q", "--verify", f"refs/tags/applied/{sid}^{{commit}}"])
+    return run.returncode == 0
+
+
+def close_landed_undo(office_root, rel, folder, place, day, verb, sid=None, rd=None):
+    """A folder's undo job whose session has landed, closed (office land,
+    right after the landing; office deliver, before it plans, when land
+    could not): the dated `undone` History line written and the job's
+    materials removed, committed together. The session's landed commit is
+    the undo, so nothing is made in the clone. sid given: only the job that
+    session was sent for. Never under a session open in the clone. Returns
+    (the job closed or None, lines to say)."""
+    import shutil
+    import office_refresh as orf
+    folder_dir = pathlib.Path(office_root) / rel
+    try:
+        job = read_undo_job(folder_dir)
+    except DeliverError as exc:
+        for line in exc.lines:
+            log(f"warning: {line}")
+        return None, []
+    if job is None or not job.get("session") or (sid and job["session"] != sid):
+        return None, []
+    s = job["session"]
+    try:
+        sessions = orf.open_sessions(place, rd)
+    except ob.BaleError as exc:
+        return None, [f"the undo job for {s} was not closed: the sessions open in the clone could not be read "
+                      f"({exc}); office deliver {folder} closes it"]
+    if s in sessions:
+        debug(f"the undo session {s} is still open in the clone")
+        if verb != "deliver":
+            return None, []
+        return None, [f"the undo session {s} was sent for {rel}'s undo job ({rel}/{UNDO_DIR}/ holds its materials) "
+                      f"and has not landed: office land {s} brings it back and closes the job, then office deliver "
+                      f"{folder} delivers; nothing was pushed"]
+    if sessions:
+        return None, [f"the undo job for {s} was not closed: {len(sessions)} session(s) are open in the clone "
+                      f"({', '.join(sessions)}), and a job is never closed under them; office deliver {folder} "
+                      "closes it once they have landed"]
+    try:
+        landed = applied_in(place, s)
+    except ohost.HostError as exc:
+        return None, [f"the undo job for {s} was not closed: {exc}; office deliver {folder} closes it"]
+    if not landed:
+        debug(f"the undo session {s} has not landed in {place}: no applied/{s} there")
+        return None, []
+    text = undone_text(job, s)
+    told = [f"closed {rel}'s undo job: the undo session {s} took bale's own commit {job['commit'][:7]} out of "
+            f"{', '.join(job['files'])} on the workbench"]
+    try:
+        _, wrote = oh.folder_event(folder_dir / "folder.md", day, "undone", text)
+        if wrote:
+            told.append(f"{rel}/folder.md: History: {day} undone: {text}")
+    except (OSError, oh.HelperError) as exc:
+        told.append(f"{rel}/folder.md: the undo could not be recorded ({exc}); the next delivery takes bale's commit "
+                    f"out of {', '.join(job['files'])} only if it is")
+    shutil.rmtree(folder_dir / UNDO_DIR, ignore_errors=True)
+    try:
+        commit_folder_paths(office_root, f"office {verb}: bale's own commit {job['commit'][:7]} taken out of the "
+                            f"workbench for {folder} by {s}", f"{rel}/folder.md", f"{rel}/{UNDO_DIR}")
+    except (ob.LandError, OSError) as exc:
+        told.append(f"{rel}: the undo's record could not be committed ({exc}); git status in the office shows it")
+    return job, told
+
+
+def land_undo(office_root, project, sid, folder_rel, day):
+    """office land's step after an applied landing (0.51.0): when the
+    folder's undo job names this session, the job closed. Returns (is an
+    undo session, lines)."""
+    root = pathlib.Path(office_root)
+    folder = folder_rel.split("/")[-1]
+    try:
+        job = read_undo_job(root / folder_rel)
+    except DeliverError as exc:
+        return False, [f"warning: {l}" for l in exc.lines]
+    if job is None or job.get("session") != sid:
+        return False, []
+    entry = next((p for p in ob.office_projects(root) or [] if p["name"] == project), None)
+    if entry is None or entry["problem"]:
+        why = "no such project" if entry is None else entry["problem"]
+        return True, [f"the undo job for {sid} was not closed: {why}; office deliver {folder} closes it once that is "
+                      "put right"]
+    try:
+        _, lines = close_landed_undo(root, folder_rel, folder, ohost.place_of(entry), day, "land", sid=sid)
     except DeliverError as exc:
         return True, [f"error: {l}" for l in exc.lines]
     return True, lines
@@ -1692,6 +2160,16 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             # delivery waits for it, since what it would squash is not the
             # folder's own work alone.
             raise DeliverError(told_)
+        # 0.51.0: an undo session that landed, whose job office land could
+        # not close (a session open in the clone, a host that did not
+        # answer), is closed here, so the take-out below reads its History
+        # line; one still out stops the delivery, naming its landing.
+        closed, told_ = close_landed_undo(office_root, rel, folder, place, on, "deliver")
+        if told_ and closed is None:
+            raise DeliverError(told_)
+        view_told += told_
+        if closed is not None:
+            parsed = oh.parse_folder(md.read_text(encoding="utf-8"))
         if not continuing and view["remote"].get(base) == base_sha and view["branch"]:
             try:
                 base_merge, told_ = merge_base_in(place, view, name, audience, base, base_sha, author)
@@ -1919,7 +2397,15 @@ def plan(consumption, office_root, folder, branch=None, project_name=None, other
             log(f"taking what {len(own)} commit(s) of bale's own changed out of the delivery: "
                 + "; ".join(f"{sha[:12]} {subject}" for sha, subject in own))
             g(worktree, "checkout", "-q", "--detach", REF_WORKBENCH)
-            squashed, taken = take_out_own(worktree, own, author)
+            try:
+                squashed, taken = take_out_own(worktree, own, author, undone_records(parsed["history"]))
+            except UndoConflict as exc:
+                # 0.51.0: the undo job, written from what the take-out has in
+                # hand (the commit, every path that refused, the workbench's
+                # tip), and the line that sends its session; nothing pushed.
+                raise DeliverError(exc.lines + undo_job_lines(
+                    office_root, rel, folder, name, repo, exc.sha, exc.subject, workbench, exc.paths, day=on,
+                    history=parsed["history"]))
             g(worktree, "checkout", "-q", "--detach", start_sha)
         if continuing and since:
             # 0.40.0: a delivery onto a branch takes the range's net change
@@ -2541,10 +3027,20 @@ def main(argv=None):
                                           "prints `merge` on stdout when the session was one")
     p.add_argument("office"); p.add_argument("--project", required=True); p.add_argument("--sid", required=True)
     p.add_argument("--folder", required=True); p.add_argument("--day", required=True)
+    # The undo session (0.51.0).
+    p = sub.add_parser("undo-start", help="office start N --undo-bale: the folder's undo job as tab-separated lines "
+                                          "(project, goal, write, say), its brief written to --brief-out")
+    p.add_argument("office"); p.add_argument("folder"); p.add_argument("--brief-out", required=True)
+    p = sub.add_parser("undo-sent", help="name the session office start --undo-bale sent on the folder's undo job")
+    p.add_argument("office"); p.add_argument("folder", help="space/name"); p.add_argument("--sid", required=True)
+    p = sub.add_parser("land-undo", help="office land: a landed undo session's job closed; prints `undo` on stdout "
+                                         "when the session was one")
+    p.add_argument("office"); p.add_argument("--project", required=True); p.add_argument("--sid", required=True)
+    p.add_argument("--folder", required=True); p.add_argument("--day", required=True)
     a = ap.parse_args(argv)
     try:
-        if a.cmd == "merge-start":
-            got = merge_start(a.office, a.folder, a.brief_out)
+        if a.cmd in ("merge-start", "undo-start"):
+            got = (merge_start if a.cmd == "merge-start" else undo_start)(a.office, a.folder, a.brief_out)
             print(f"project\t{got['project']}")
             print(f"goal\t{got['goal']}")
             for w in got["writes"]:
@@ -2554,6 +3050,16 @@ def main(argv=None):
             return 0
         if a.cmd == "merge-sent":
             log(merge_sent(a.office, a.folder, a.sid))
+            return 0
+        if a.cmd == "undo-sent":
+            log(undo_sent(a.office, a.folder, a.sid))
+            return 0
+        if a.cmd == "land-undo":
+            was, lines = land_undo(a.office, a.project, a.sid, a.folder, a.day)
+            for line in lines:
+                log(line)
+            if was:
+                print("undo")
             return 0
         if a.cmd == "land-merge":
             was, lines = land_merge(a.office, a.project, a.sid, a.folder, a.day)

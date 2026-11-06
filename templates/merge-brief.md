@@ -33,7 +33,8 @@ everything the merge knows that the tree here does not:
   two sides parted and in the workbench's, at its path.
 - audience/: {{side}}'s copy of every file it changed since the two sides
   parted, at its path: each conflicting file, and each of the other files
-  above, so you can see what the audience did beside the conflict. A side
+  above, so you can see what the audience did beside the conflict: the
+  conflicting files always, the others up to a cap. {{uncopied}} A side
   that has no copy of a file deleted it, or never had it.
 - log.txt: the audience's commits since the two sides parted, one line
   each, so you can see what each change on that side was for.
@@ -64,7 +65,10 @@ workbench: its parents are the landed session's commit and {{side}}'s tip,
 conflict, with your version of each conflicting file. So ship every file
 whose resolution differs from the workbench's; a file you leave out keeps
 the workbench's version, and that is right when the workbench's version is
-the resolution (bale admits no file shipped unchanged). After it, `office
+the resolution (bale admits no file shipped unchanged). When it is the
+resolution of every file, the response ships no file at all (`changes:
+[]`): bale lands it and tags it applied all the same, and `office land`
+makes the merge commit from the workbench's versions. After it, `office
 deliver` delivers the folder's own work alone.
 
 ## What every session owes

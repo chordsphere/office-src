@@ -54,6 +54,12 @@ import office_helper as oh  # noqa: E402
 THE_OFFICE = "the office"
 
 
+def job_kind_word(job):
+    """merge or undo (0.51.0): which kind of job a folder's waiting job is."""
+    import office_bale as ob
+    return "undo" if ob.odl_is_undo(job) else "merge"
+
+
 def debug(msg):
     if os.environ.get("OFFICE_DEBUG") == "1":
         print(f"[office] debug: {msg}", file=sys.stderr)
@@ -154,7 +160,7 @@ class Reading:
         m = (self.groups.get("merge_by_rel") or {}).get(f["rel"])
         u = (self.groups.get("undelivered_by_rel") or {}).get(f["rel"])
         if m is not None and not m["landed"]:
-            said.append("merge job waiting")
+            said.append(f"{job_kind_word(m['job'])} job waiting")
         elif u is not None:
             said.append(f"landed {u['sid']} on {u['day']}, not delivered")
         if not said:
@@ -318,7 +324,7 @@ def short_state(reading, f):
     m = (reading.groups.get("merge_by_rel") or {}).get(f["rel"])
     u = (reading.groups.get("undelivered_by_rel") or {}).get(f["rel"])
     if m is not None and not m["landed"]:
-        said.append("merge job waiting")
+        said.append(f"{job_kind_word(m['job'])} job waiting")
     elif u is not None:
         said.append("landed, not delivered")
     if not said:
@@ -481,7 +487,8 @@ def next_lines(reading, f):
     m = (reading.groups.get("merge_by_rel") or {}).get(f["rel"])
     u = (reading.groups.get("undelivered_by_rel") or {}).get(f["rel"])
     if m is not None and not m["landed"]:
-        rows.append((f"office start {key} --merge", "sends the merge session office deliver wrote"))
+        kind = job_kind_word(m["job"])
+        rows.append((f"office start {key} {ob.job_flag(m['job'])}", f"sends the {kind} session office deliver wrote"))
     elif u is not None:
         rows.append((f"office deliver {key}", f"carries {u['sid']}'s work to {u['project']}'s audience"))
     if not rows:
