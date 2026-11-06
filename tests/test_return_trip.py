@@ -365,8 +365,10 @@ class TestDownloadsOnStart(ReturnTripCase):
         newer = newer.rename(self.downloads / "2026-10-08-fix-there (1).bale-bundle")
         proc = self.run_office("start", self.name, "--on", "far", "2026-10-08-fix-there.bale-bundle")
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn(f"took the newest, {newer.resolve()}", proc.stderr)
-        self.assertIn(f"is {newer.resolve()} on this machine; it travels to {HOST} for bale", proc.stderr)
+        # Since 0.49.0 office start finds every bare name before anything
+        # else (bin/office resolve_bundle), and says which copy it took.
+        self.assertIn(f"from the downloads: 2 copies of 2026-10-08-fix-there.bale-bundle are in the downloads; "
+                      f"took the newest, {newer.resolve()}", proc.stderr)
         opened = self.fake.calls_of("open")
         self.assertEqual(len(opened), 1)
         self.assertEqual(pathlib.Path(opened[0][1][-1]).name, newer.name)

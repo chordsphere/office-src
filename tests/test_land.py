@@ -355,6 +355,13 @@ class LandCase(unittest.TestCase):
     def run_office(self, *args, check=None, **kw):
         return self.e.run(*args, cwd=self.root, check=check, **kw)
 
+    def downloads_known(self):
+        """machine.toml's downloads, this world's: since 0.49.0 office start
+        finds a bundle named by its stem there itself."""
+        cfg = self.e.home / ".config/office-src"
+        cfg.mkdir(parents=True, exist_ok=True)
+        (cfg / "machine.toml").write_text(f'downloads = ["{self.downloads}"]\n')
+
     def start(self, *args):
         proc = self.run_office("start", *args, check=0)
         return re.search(r"^Packed (\S+) for ", proc.stdout, re.M).group(1)
@@ -1054,6 +1061,7 @@ class TestStartABundle(LandCase):
         the downloads, recorded in folder fix-login; its browser copy saved
         days later. Returns (sid, the copy's name)."""
         self.e.env["FAKE_BALE_VERSION"] = version
+        self.downloads_known()
         bundle_file(self.downloads, "2026-10-08-audience-line", self.argv(slug="audience-line"), brief_with_page())
         self.e.env["FAKE_BALE_DAY"] = "2026-10-08"
         sid, _ = self.started(self.run_office("start", "fix-login", "--on", "alpha",
@@ -1085,8 +1093,10 @@ class TestStartABundle(LandCase):
         self.assertIn(f"{sid}@desk-2", "\n".join(opener))
         self.assertIn(f"bale session {sid}.", opener[1])
         self.assertIn(f"When the response comes back: office land {sid}", proc.stdout)
-        (_, argv, _), = [c for c in self.fake.calls_of("open") if copy in c[1]]
-        self.assertEqual(argv, ["open", copy, "--json"])
+        # bale is handed the copy the office found in the downloads (0.49.0).
+        found = str((self.downloads / copy).resolve())
+        (_, argv, _), = [c for c in self.fake.calls_of("open") if found in c[1]]
+        self.assertEqual(argv, ["open", found, "--json"])
 
     def test_a_second_desk_whose_request_left_the_outbox_is_said(self):
         sid, copy, later = self.open_on_the_eighth()
@@ -1096,20 +1106,29 @@ class TestStartABundle(LandCase):
         self.assertIn("no request tarball for it in the outbox", proc.stderr)
         self.assertNotIn(f"- {sid}", (self.root / later / "folder.md").read_text())
 
-    def test_below_open_json_the_second_desk_is_named_as_the_likely_reason(self):
+    def test_below_open_json_the_open_session_is_named_before_bale_runs(self):
+        # Since 0.49.0 the copy is a file the office found, so the office
+        # reads its forecast and, below a bale whose rehearsal speaks
+        # --json (0.4.50), refuses the overlap in its own words, naming the
+        # open session, before bale opens anything; before, a bare name was
+        # bale's to find and the second desk was said after the fact.
         sid, copy, later = self.open_on_the_eighth(version="0.4.45")
         proc = self.run_office("start", later.split("/")[1], "--on", "alpha", copy, check=1)
-        self.assertIn("bale status names 0 newly open session(s) (none)", proc.stderr)
-        self.assertIn("joins it as a second desk instead of opening one (bale 0.4.44 on)", proc.stderr)
-        self.assertIn("needs bale 0.4.50", proc.stderr)
+        self.assertIn(f"{sid} is open in alpha ({self.folder}); its forecast (src) overlaps this one at src",
+                      proc.stderr)
+        self.assertIn(f"land it first (office land {sid})", proc.stderr)
         self.assertNotIn(f"- {sid}", (self.root / later / "folder.md").read_text())
         self.assertNotIn("Out tray:", proc.stdout)
+        self.assertEqual(len(self.fake.calls_of("open")), 1, "bale opened nothing the second time")
 
-    def test_a_bare_name_is_bales_to_find_and_the_page_files_once(self):
-        bundle_file(self.downloads, "2026-10-05-fix-from-bundle", self.argv(), brief_with_page())
+    def test_a_bare_name_is_found_in_the_downloads_and_the_page_files_once(self):
+        # Since 0.49.0 the office finds a bare name itself, in machine.toml's
+        # downloads, and hands bale the file (tests/test_desk_readability.py).
+        self.downloads_known()
+        path = bundle_file(self.downloads, "2026-10-05-fix-from-bundle", self.argv(), brief_with_page())
         self.run_office("start", "fix-login", "--on", "alpha", "2026-10-05-fix-from-bundle.bale-bundle", check=0)
         (_, argv, _), = self.fake.calls_of("open")
-        self.assertEqual(argv, ["open", "2026-10-05-fix-from-bundle.bale-bundle"])
+        self.assertEqual(argv, ["open", str(path.resolve())])
         head = self.e.git(self.root, "rev-parse", "HEAD")
         # The same page again: left as it is.
         bundle_file(self.downloads, "2026-10-05-again", self.argv("again", "docs"), brief_with_page())
@@ -1142,20 +1161,19 @@ class TestStartABundle(LandCase):
                                                       str(self.e.tmp / "b/none.bale-bundle"), check=1).stderr)
         self.assertEqual(self.fake.calls_of("open"), [])
 
-    def test_bales_refusal_reaches_the_occupant_and_nothing_is_recorded(self):
-        # Since 0.13.0 bale open --check finds out first, so the refusal
-        # comes before the survey, the tray or the session (the third trip).
+    def test_a_name_found_nowhere_is_refused_and_nothing_is_recorded(self):
+        # Since 0.13.0 bale open --check finds out first, so a refusal comes
+        # before the survey, the tray or the session (the third trip); since
+        # 0.49.0 a name found nowhere is the office's to refuse, by name,
+        # before bale runs at all.
         head = self.e.git(self.root, "rev-parse", "HEAD")
         proc = self.run_office("start", "fix-login", "--on", "alpha", "--bundle", "2026-01-01-none.bale-bundle",
                                check=1)
-        self.assertIn("bale cannot open the bundle 2026-01-01-none.bale-bundle on alpha", proc.stderr)
-        self.assertIn("start stopped before anything was written", proc.stderr)
-        self.assertIn("bundle not found: 2026-01-01-none.bale-bundle", proc.stderr)
-        self.assertIn(str(self.downloads), proc.stderr)
+        self.assertIn("no 2026-01-01-none.bale-bundle in your downloads", proc.stderr)
         self.assertNotIn("- status: open", (self.root / self.folder / "folder.md").read_text())
         self.assertEqual(self.e.git(self.root, "rev-parse", "HEAD"), head, "the survey was committed")
         self.assertEqual(self.fake.calls_of("open"), [])
-        self.assertEqual(len(self.fake.calls_of("open-check")), 1)
+        self.assertEqual(self.fake.calls_of("open-check"), [])
 
     def test_what_the_office_notices_and_does_not_add(self):
         bundle = bundle_file(self.e.tmp / "b", "2026-10-05-bare", self.argv(constraint=False))
@@ -1180,6 +1198,10 @@ class TestStartABundle(LandCase):
 # it was read-only, and left the digest alone.
 
 class TestABundledSittingOpensOnTheDigest(LandCase):
+    def setUp(self):
+        super().setUp()
+        self.downloads_known()
+
     def sitting_argv(self, slug="plan-wave", *extra):
         return ["Plan the next wave", "--slug", slug, "--read-only", *extra]
 
@@ -1193,14 +1215,13 @@ class TestABundledSittingOpensOnTheDigest(LandCase):
         self.assertIn("wrote the digest for the sitting (drafting-table/digest.md)", proc.stderr)
         self.assertTrue((self.root / "drafting-table" / "digest.md").is_file())
 
-    def test_named_by_a_bare_name_bales_search_finds(self):
+    def test_named_by_a_bare_name_found_in_the_downloads(self):
         bundle_file(self.downloads, "2026-10-13-plan-wave", self.sitting_argv(), brief_with_page())
         proc = self.run_office("start", "fix-login", "--in-office", "2026-10-13-plan-wave.bale-bundle", check=0)
-        # bale was asked by the name it was given, as before; the office read
-        # the pack line where bale's rehearsal found the bundle.
+        # Since 0.49.0 the office finds the bare name in the downloads and
+        # hands bale the file; the pack line is read there.
         (_, argv, _), = self.fake.calls_of("open")
-        self.assertEqual(argv, ["open", "2026-10-13-plan-wave.bale-bundle"])
-        self.assertIn(f"bale found it at {self.downloads / '2026-10-13-plan-wave.bale-bundle'}", proc.stderr)
+        self.assertEqual(argv, ["open", str((self.downloads / "2026-10-13-plan-wave.bale-bundle").resolve())])
         self.assertEqual(len(self.digest_commits()), 1, self.subjects(8))
         self.assertIn("wrote the digest for the sitting (drafting-table/digest.md)", proc.stderr)
         subjects = self.subjects(8)
@@ -1222,10 +1243,10 @@ class TestABundledSittingOpensOnTheDigest(LandCase):
         proc = self.run_office("start", "fix-login", "--in-office", "2026-10-13-plan-odd.bale-bundle", check=0)
         self.assertRegex(proc.stdout, r"^Packed \S+ for ", proc.stderr)
         lines = [l for l in proc.stderr.splitlines() if "it leaves drafting-table/digest.md" in l]
+        found = (self.downloads / "2026-10-13-plan-odd.bale-bundle").resolve()
         self.assertEqual(lines, [f"[office] the office cannot read the pack line of the bundle "
-                                 f"2026-10-13-plan-odd.bale-bundle (bale found it at "
-                                 f"{self.downloads / '2026-10-13-plan-odd.bale-bundle'}, and its pack line there "
-                                 f"does not read), so it cannot tell whether it sends out a sitting: it leaves "
+                                 f"2026-10-13-plan-odd.bale-bundle (bale found it at {found}, and its pack line "
+                                 f"there does not read), so it cannot tell whether it sends out a sitting: it leaves "
                                  f"drafting-table/digest.md as it was, written {written}; office digest writes it"])
         self.assertEqual(len(self.digest_commits()), before)
 

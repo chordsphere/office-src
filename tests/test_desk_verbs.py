@@ -564,9 +564,11 @@ class TestDesk(unittest.TestCase):
         old.mkdir()
         (old / "folder.md").write_text("# old\n\n## Next\n\n- Ship it.\n")
         out = self.desk()
-        self.assertIn(f"  folder 1  {pathlib.Path(folder).name}  next: (not written yet)  (sessions: 1)  "
-                      "[open, no session in flight]", self.section(out, "In flight"))
-        self.assertIn("  2026-01-01-old  next: Ship it.  (sessions: 0)", out)
+        # The line names the folder's project after its name (0.49.0): this
+        # office scopes none, so the work is the office's own.
+        self.assertIn(f"  folder 1  {pathlib.Path(folder).name} (the office)  next: (not written yet)  "
+                      "(sessions: 1)  [open, no session in flight]", self.section(out, "In flight"))
+        self.assertIn("  2026-01-01-old (the office)  next: Ship it.  (sessions: 0)", out)
 
     def test_the_walk_in_shows_in_flight_and_the_first_three_ready(self):
         for slug in ("a", "b", "c", "d"):
@@ -810,7 +812,7 @@ class TestAFolderFromBeforeNumbers(unittest.TestCase):
                                           + body + "- 2026-09-29 queued: office open\n")
         o.e.git(o.root, "add", "-A")
         o.e.git(o.root, "commit", "-qm", "a 0.4.0 folder")
-        self.assertIn("  2026-09-29-older  next: (not written yet)  (sessions: 0)",
+        self.assertIn("  2026-09-29-older (the office)  next: (not written yet)  (sessions: 0)",
                       o.run("desk").stdout.split("Ready:", 1)[1])
         new = o.open("newer")
         self.assertIn("- number: 1\n", o.text(new))

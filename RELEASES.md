@@ -4,6 +4,63 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.49.0
+
+Additive: no migration, nothing to do in any office. The twelfth serial
+session of the plan begun on 2026-10-27: the desk made readable, four
+things met at the terminal on 2026-11-05, and one proposal of 0.48.0's.
+What you see changes for `office map`, for every list of folders offered
+by key and the desk's folder line, for words past ASCII on every screen,
+and for `office start --bundle NAME`. Nothing stored changes.
+
+The map is two tables. `office map` prints the projects first, one row
+each under a header row (its name, where it is, its audience or none,
+whether it is paused, and what rides with it and what runs after it lands
+in one cell, `rides: a, b; after: x; y`), then the folders, one row each
+(folder N, its project, its title, its size and its state in a few words:
+`in flight 3 days`, `sitting out 2 days, step 8 of 14`, `landed, not
+delivered`, `delivered BRANCH`, `review #N STATE`, `open`, `ready`,
+`done`). Folders are grouped by project in the floor plan's order, the
+office's own last; open ones come before closed ones, newest number
+first; of a project's closed folders the newest three show and the rest
+fold into one line, `and N more closed: office map --all`, and `office map
+--all` shows every one. On a terminal the page is cut to its width, the
+titles giving way first, with `...`; piped, every cell is whole. `office
+map PROJECT` is that project's rows, nothing folded; `office map N` is the
+folder's whole record, as before, with the session's id and the riders.
+
+Every list names the project. Every list of folders offered by key reads
+`folder N, TITLE (PROJECT)`, `(the office)` for the office's own, `(no
+lane yet)` for one whose lane is still to be asked: start's jobs on the
+desk, `Folders in desk/`, the planner's folder, and probe's folders with a
+session open. The desk's line says it after the folder's name, `folder N
+NAME (PROJECT)  next: ...`.
+
+Your words as you wrote them. A title or words with a curly quote or an
+accent show as you typed them on the map, in the pickers, on the desk, the
+home screen, the walk-in, status, the bundle offer and a sitting's
+standing, where `\u201c` showed before. The pages keep their ASCII:
+folder.md, the notepad and the handbook are written as they always were.
+
+The bundle by its name. `office start --bundle NAME` works out the bundle
+before it asks anything or writes anything: a path is taken as before;
+else NAME and NAME.bale-bundle are tried here, then in your downloads
+(machine.toml's downloads), the newest browser copy taken. A name found
+nowhere is refused by name, `no NAME.bale-bundle in your downloads (DIRS)
+or here; save it there first, or office withdraw --bundle NAME takes it out
+of the offer`, instead of going on to "Jobs on the desk". The stem is the
+one spelling every line says (`office start --bundle STEM`, as withdraw's
+does); a word ending `.bale-bundle` still needs no flag.
+
+Tests: tests/test_desk_readability.py, one class per item. The map's own
+tests in tests/test_folders_and_projects.py moved with the shape, and the
+bare-name and probe-picker tests in test_land.py and
+test_home_screen_offers.py with the bundle's and the pickers'. The suite
+was swept for tests that name a session the fake bale mints by a literal
+day: one, in tests/test_standing.py, now dates its sittings from the one
+minted. tests/test_ask.py's record test, which pinned VERSION to 0.48.0, now
+holds it at 0.48.0 or later.
+
 ## 0.48.0
 
 Additive: no migration, nothing to do in any office. The eleventh serial

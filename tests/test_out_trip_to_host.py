@@ -724,13 +724,14 @@ class TestABundleOnAHost(HostedStartCase):
     def test_a_bare_name_needs_the_downloads_and_piped_names_the_key(self):
         """0.15.0 refused a bare name for a hosted project; since 0.16.0 it is
         found in this machine's downloads (tests/test_return_trip.py), and
-        piped with the setting unset, start refuses naming the key."""
+        piped with the setting unset, start refuses naming the key: since
+        0.49.0 for every bundle, by name, before anything else."""
         b = bundle_file(self.downloads, "2026-10-07-bare", ["Fix it", "--slug", "bare", "--write", "src"])
         before = self.e.git(self.root, "rev-parse", "HEAD")
         proc = self.run_office("start", self.name, "--on", "far", b.name)
         self.assertEqual(proc.returncode, 1)
-        self.assertIn(f"{b.name}, a bundle for far on {HOST}, is found on this machine by name", proc.stderr)
-        self.assertIn("set downloads in ", proc.stderr)
+        self.assertIn(f"no {b.name} in your downloads (none set: downloads in ", proc.stderr)
+        self.assertIn("machine.toml) or here", proc.stderr)
         self.assertEqual(self.e.git(self.root, "rev-parse", "HEAD"), before)
         self.assertEqual(self.fake.calls_of("open"), [])
 

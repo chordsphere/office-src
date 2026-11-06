@@ -264,6 +264,10 @@ class TestBaleChecked(unittest.TestCase):
 # --- 3. office start checks a bundle first, and names the retry -----------------------------------
 
 class TestStartChecksTheBundleFirst(LandCase):
+    def setUp(self):
+        super().setUp()
+        self.downloads_known()
+
     def argv(self, slug="fix-from-bundle", write="src"):
         return ["Fix it, from a bundle", "--slug", slug, "--write", write, "--constraint", ob.PROJECT_CONSTRAINT]
 
@@ -271,20 +275,24 @@ class TestStartChecksTheBundleFirst(LandCase):
         bundle_file(self.downloads, "2026-10-07-fix", self.argv())
         proc = self.run_office("start", "fix-login", "--on", "alpha", "2026-10-07-fix.bale-bundle", check=0)
         self.assertIn("bale open --check, which writes nothing", proc.stderr)
-        self.assertIn(f"bale found it at {self.downloads / '2026-10-07-fix.bale-bundle'}", proc.stderr)
+        # Since 0.49.0 the office finds the bare name in the downloads and
+        # asks bale about that file.
+        found = str((self.downloads / "2026-10-07-fix.bale-bundle").resolve())
         (ccwd, cargv, ctty), = self.fake.calls_of("open-check")
         (ocwd, oargv, _), = self.fake.calls_of("open")
-        self.assertEqual((ccwd, cargv, ctty), (os.path.realpath(self.proj),
-                                               ["open", "--check", "2026-10-07-fix.bale-bundle"], False))
+        self.assertEqual((ccwd, cargv, ctty), (os.path.realpath(self.proj), ["open", "--check", found], False))
         self.assertEqual(ocwd, ccwd)
-        self.assertEqual(oargv, ["open", "2026-10-07-fix.bale-bundle"])
+        self.assertEqual(oargv, ["open", found])
 
     def test_a_forecast_path_bale_cannot_find_stops_it_before_anything_is_written(self):
         bundle_file(self.downloads, "2026-10-07-gone", self.argv("gone", "nowhere"))
         head = self.e.git(self.root, "rev-parse", "HEAD")
         proc = self.run_office("start", "fix-login", "--on", "alpha", "2026-10-07-gone.bale-bundle", check=1)
-        self.assertIn("--write path does not exist: nowhere", proc.stderr)
-        self.assertIn("start stopped before anything was written", proc.stderr)
+        # Since 0.49.0 the bare name is a file the office found, so the office
+        # reads its forecast and says the missing path in its own words.
+        self.assertIn("the bundle 2026-10-07-gone.bale-bundle names paths that are not in alpha's tree", proc.stderr)
+        self.assertIn("nowhere exists in neither the office nor any project it scopes", proc.stderr)
+        self.assertIn("nothing else was written", proc.stderr)
         self.assertEqual(self.e.git(self.root, "rev-parse", "HEAD"), head)
         self.assertFalse((self.e.home / "out-tray").exists() and any((self.e.home / "out-tray").iterdir()))
         self.assertEqual(self.fake.calls_of("open"), [])
@@ -296,18 +304,21 @@ class TestStartNewOnATerminal(LandCase):
     def desk(self):
         return sorted(p.name for p in (self.root / "desk").iterdir() if p.is_dir())
 
-    def test_a_bundle_bale_cannot_find_stops_new_before_a_folder_or_a_question(self):
+    def test_a_bundle_found_nowhere_stops_new_before_a_folder_or_a_question(self):
+        # Since 0.49.0 the office looks for the name itself and refuses it
+        # by name before bale is asked anything (tests/test_desk_readability.py).
+        self.downloads_known()
         desk, head = self.desk(), self.e.git(self.root, "rev-parse", "HEAD")
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start", "new", "--on", "alpha",
                                           "2026-10-07-third-trip.bale-bundle"], self.root, self.e.env, [])
         self.assertEqual(code, 1, seen)
-        self.assertIn("bundle not found: 2026-10-07-third-trip.bale-bundle", seen)
-        self.assertIn(str(self.downloads), seen)
+        self.assertIn(f"no 2026-10-07-third-trip.bale-bundle in your downloads ({self.downloads}) or here", seen)
         self.assertNotIn("Title", seen)
         self.assertEqual(self.desk(), desk)
         self.assertEqual(self.e.git(self.root, "rev-parse", "HEAD"), head)
 
     def test_a_failed_start_names_the_folder_it_opened_and_one_line_retries_it(self):
+        self.downloads_known()
         bundle_file(self.downloads, "2026-10-07-third-trip", ["The third trip", "--slug", "third-trip", "--write",
                                                               "src", "--constraint", ob.PROJECT_CONSTRAINT])
         state = json.loads(self.fake.state.read_text()) if self.fake.state.is_file() else {"repos": {}, "fail": []}
