@@ -1859,18 +1859,13 @@ find_folder() {
 
 # On a terminal, a folder a verb was not given: the folders it could
 # mean, each with a key (0.22.0), then the question. Piped, the verb
-# refuses before this.
+# refuses before this. Each row names the folder's project (0.49.0):
+# `folder N, TITLE (PROJECT)`, `(the office)` for the office's own, the
+# title as he wrote it; one helper call reads them all (folder-rows).
 folder_choices() {
-  local root="$1" space="$2" d number title
-  for d in "$root/$space"/*/; do
-    [ -d "$d" ] || continue
-    number=""; title=""
-    if [ -f "$d/folder.md" ]; then
-      number="$(helper folder-facts "$d/folder.md" 2>/dev/null | sed -n 's/^number\t//p')"
-      title="$(head -n 1 "$d/folder.md" | sed -n 's/^# //p')"
-    fi
-    printf '%s\t%s\n' "$(basename "$d")" "${number:+folder $number, }${title:-$(basename "$d")}"
-  done
+  local root="$1" space="$2"
+  helper folder-rows "$root" "$space" \
+    || warn "the folders in $space/ could not all be read for the list (the line above says why)"
 }
 
 ask_folder() {
@@ -2636,46 +2631,53 @@ cmd_folder() {
 
 usage_map() {
   cat <<'USAGE'
-usage: office map [PROJECT | FOLDER]
-One page of every project this office scopes and its folders. Each project
-has a heading, its facts on one line (here or on its host, its audience
-line, paused when it is), what rides with it and what runs after it lands,
-one line each; then every folder whose lane names it, on the desk and in
-the filing cabinet, newest number first, one line each: folder N, its
-title, its size and its state in the desk's words (in flight, landed and
-not delivered, delivered, a review, a merge job waiting, closed), its
-riders under it by number. Then the office: the folders whose lane names
-no project. With PROJECT, that project's section alone; with FOLDER (its
+usage: office map [--all] [PROJECT | FOLDER]
+Every project this office scopes and its folders, as two tables (0.49.0).
+First the projects, one row each: its name, where it is (here or on its
+host), its audience (or none), whether it is paused, and what rides with
+it and what runs after it lands in one cell. Then the folders, one row
+each: folder N, the project its lane names (the office for the office's
+own), its title, its size and its state in a few words (in flight 3 days,
+sitting out, landed, not delivered, delivered BRANCH, review #N STATE, a
+merge job waiting, open, ready, done). Rows are grouped by project, the
+office's own last, open folders before closed ones, newest number first;
+of a project's closed folders the newest three show and the rest fold
+into one line, and --all shows every one. On a terminal the page is cut to
+its width (the titles give way first); piped, every cell is whole. With
+PROJECT, that project's rows alone, nothing folded; with FOLDER (its
 number or a part of its name), the folder's whole record: its fields, its
 sessions as office sessions shows them, its riders, its deliveries and
 reviews, its standing, the lines that act on it next, and the lines that
-change its fields. It writes nothing; off a terminal it prints the same.
+change its fields. It writes nothing.
 Examples:
   office map
+  office map --all
   office map alpha
   office map 12
 USAGE
 }
 
 cmd_map() {
-  local want="" root today names rel
+  local want="" all=() root today names rel
   while [ $# -gt 0 ]; do
     case "$1" in
+      --all) all=(--all); shift ;;
       -h|--help) usage_map; return 0 ;;
-      -*) usage_map >&2; die "office map does not know $1; it takes a project or a folder" ;;
+      -*) usage_map >&2; die "office map does not know $1; it takes --all, a project or a folder" ;;
       *) [ -z "$want" ] || die "office map takes one project or one folder"; want="$1"; shift ;;
     esac
   done
   root="$(resolve_office)" || exit 1
   require_current "$root"
   today="$(office_date "$(office_tz "$root")")"
-  if [ -z "$want" ]; then pylib "$MAP_PY" page "$root" --today "$today"; return $?; fi
+  if [ -z "$want" ]; then pylib "$MAP_PY" page "$root" --today "$today" "${all[@]}"; return $?; fi
   names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
   if printf '%s\n' "$names" | grep -qxF -- "$want"; then
     pylib "$MAP_PY" page "$root" --today "$today" --project "$want"; return $?
   fi
   rel="$(find_any_folder "$root" "$want")" \
     || die "office map $want: no project or folder by that name (projects: $(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g'))"
+  [ "${#all[@]}" -eq 0 ] || die "office map $want shows one folder's whole record, which folds nothing; --all goes with the map or a project"
   pylib "$MAP_PY" page "$root" --today "$today" --folder "$rel"
 }
 
@@ -4579,7 +4581,7 @@ usage: office start new [--words TEXT] [--in-office | --on PROJECT] [--goal TEXT
                     [--write PATH]... [--include PATH]... [--brief FILE] [--read-only]
                     [--leave-out PATH]... [--no-rides] [--carry N... | --carry none]
                     [--refresh | --no-refresh]
-       office start [FOLDER] [--in-office | --on PROJECT] --bundle FILE [--leave-out PATH]... [--no-rides]
+       office start [FOLDER] [--in-office | --on PROJECT] --bundle STEM [--leave-out PATH]... [--no-rides]
                     [--carry N... | --carry none] [--refresh | --no-refresh]
                     [--end-predecessor | --keep-predecessor]
        office start --drop PAGE [--title TITLE] [--lane LANE] [--size SIZE] [--goal TEXT] [--slug SLUG]
@@ -4754,18 +4756,22 @@ on the desk or in the filing cabinet, and says so.
                  projects your words name
   --sort-first, --no-sort-first
                  the answer to the sort's offer before a sitting
-  --bundle FILE  a planner's bundle (FILE.bale-bundle, a path or the bare
-                 name bale's search finds; given as a word, it needs no
-                 flag): bale open replays the bundle's own pack line, so
-                 the goal, the forecast and the brief are the bundle's,
-                 and the office adds nothing to it. Where defaults to the
-                 one place whose tree holds every path the bundle names,
-                 and a bundle whose paths no one place holds is refused
-                 before bale runs. bale open --check runs first, where
-                 the bundle opens and before start writes anything (a
-                 folder for new, the survey, the tray): a name bale's
-                 search cannot find, or a bundle bale would refuse, stops
-                 the start in bale's words with nothing written
+  --bundle STEM  a planner's bundle: its stem (the name before
+                 .bale-bundle, which may be given too), found here or in
+                 your downloads (machine.toml's downloads), the newest
+                 browser copy taken, or a path; a name found nowhere is
+                 refused by name before anything is asked or written, and
+                 a word ending .bale-bundle needs no flag. bale open
+                 replays the bundle's own pack line, so the goal, the
+                 forecast and the brief are the bundle's, and the office
+                 adds nothing to it. Where defaults to the one place
+                 whose tree holds every path the bundle names, and a
+                 bundle whose paths no one place holds is refused before
+                 bale runs. bale open --check runs first, where the
+                 bundle opens and before start writes anything (a folder
+                 for new, the survey, the tray): a bundle bale would
+                 refuse stops the start in bale's words with nothing
+                 written
 A project on a host (office projects add --host) is packed on its host:
 start first checks that the host answers (a host that does not stops the
 start there, with your connect line), that its bale is at the read side's
@@ -4775,11 +4781,10 @@ bale runs in. Then bale's pack, or bale open --check and bale open for a
 bundle, runs there through the project's shell, the brief or the bundle
 travelling there first, and the request bale makes is carried back into
 the out tray here; the office's context and the doctrine are made here,
-as for any project. A bundle for a hosted project is a file here: its
-path, or a bare name found in this machine's downloads (machine.toml's
-downloads, asked once on a terminal; of several browser copies of the
-name the newest is taken and named), since bale's own search would run
-on the host. The temporary directory start makes on the host is removed
+as for any project. A bundle for a hosted project is a file here, as
+every bundle is since 0.49.0: its path, or its stem found here or in this
+machine's downloads (machine.toml's downloads; of several browser copies
+of the name the newest is taken and named). The temporary directory start makes on the host is removed
 on success and on failure. One start reaches the host once, and the
 reads it needs there share a connection.
 The merge session (0.40.0): when office deliver could not bring the
@@ -4872,18 +4877,17 @@ offer_bundles() {
     IFS=$'\t' read -r path stem age words <<< "$row"
     [ -n "$path" ] || continue
     if [ "$shown" -ge "$OFFER_MAX" ]; then rest+=("$stem"); continue; fi
-    [ "${#words}" -le 60 ] || words="${words:0:57}..."
     vals+=("$path" "$stem, saved $age${words:+: $words}")
     shown=$((shown + 1))
   done
   printf "Planner's bundles in your downloads that no session has opened, newest first:\n" >&2
   local trailer=""
   if [ "${#rest[@]}" -gt 0 ]; then
-    trailer="  and ${#rest[@]} more, oldest first: office start --bundle FILE starts one by name, office withdraw --bundle STEM takes one out of the offer"
+    trailer="  and ${#rest[@]} more, oldest first: office start --bundle STEM starts one by name, office withdraw --bundle STEM takes one out of the offer"
     debug "not offered by key, newest first: ${rest[*]}"
   fi
-  PICK_TRAILER="$trailer" pick chosen "The bundle to start, by its key; a plain return goes on to the jobs on the desk (--bundle FILE)" \
-    "A planner's bundle carries a whole session: its goal, what it may change and its brief. Its key starts it, as office start --bundle FILE does. bale's records say which bundles a session was opened from; those are not offered. A plain return goes on to the jobs on the desk." \
+  PICK_TRAILER="$trailer" pick chosen "The bundle to start, by its key; a plain return goes on to the jobs on the desk (--bundle STEM)" \
+    "A planner's bundle carries a whole session: its goal, what it may change and its brief. Its key starts it, as office start --bundle STEM does. bale's records say which bundles a session was opened from; those are not offered. A plain return goes on to the jobs on the desk." \
     --skip 0 "${vals[@]}"
   [ -z "$chosen" ] || { bundle="$chosen"; log "starting the planner's bundle $(basename "$bundle")"; }
 }
@@ -5657,9 +5661,50 @@ offer_sort_first() {
   fi
 }
 
+# resolve_bundle NAME (0.49.0): the path office start --bundle NAME hands
+# bale, worked out before anything is asked or written. A file is taken by
+# its path. A name with a slash and no file refuses. A bare name is the
+# bundle's stem, its extension optional: NAME and NAME.bale-bundle are
+# tried as files here, then the downloads (machine.toml's downloads, asked
+# once on a terminal when this machine has not said, as the bundle offer
+# asks it) through find-download, the newest browser copy taken and said. None
+# found refuses, exit 1, naming the stem, where it looked, and the two
+# lines that help; nothing is left for bale's own search, so a name that
+# matches nothing never falls through to the jobs on the desk.
+resolve_bundle() {
+  local name="$1" stem file dl=() d dirs err rc found
+  if [ -f "$name" ]; then readlink -f "$name"; return 0; fi
+  [[ "$name" != */* ]] || die "--bundle $name: no such file"
+  stem="${name%.bale-bundle}"
+  for file in "$stem" "$stem.bale-bundle"; do
+    if [ -f "$file" ]; then readlink -f "$file"; return 0; fi
+  done
+  # Where downloads land, asked once on a terminal and kept, as the offer
+  # asks it; piped and unset, the refusal names the setting.
+  if downloads_known || { can_ask && downloads_setting "office start --bundle $stem looks for $stem.bale-bundle there"; }; then
+    while IFS= read -r d; do [ -n "$d" ] && dl+=(--dir "$d"); done <<< "$DOWNLOADS"
+    dirs="$(printf '%s' "$DOWNLOADS" | paste -sd, - | sed 's/,/, /g')"
+    err="$(mktemp)" || die "cannot make a temp file to look for the bundle $stem"
+    TMP_PATHS+=("$err")
+    found="$(reader find-download --name "$stem.bale-bundle" "${dl[@]}" 2>"$err")"; rc=$?
+    if [ "$rc" = 0 ] && [ -n "$found" ]; then
+      sed 's/^\[office\] /[office] from the downloads: /' "$err" >&2
+      printf '%s\n' "$found"
+      return 0
+    fi
+    # Two copies saved the same instant, or a directory that cannot be
+    # read: find-download's own words, then the refusal.
+    grep -vF "error: no $stem.bale-bundle in the downloads" "$err" >&2
+  else
+    dirs="none set: downloads in $MACHINE_FILE"
+  fi
+  die "no $stem.bale-bundle in your downloads ($dirs) or here; save it there first, or office withdraw --bundle $(qword "$stem") takes it out of the offer"
+}
+
 # bundle_lands_read ROOT: where a planner's bundle lands and the folder
 # that records it, from the LANDS line its brief carries (0.24.0), read
-# from the bundle here (or its copy in the downloads, for a bare name): each
+# from the bundle resolve_bundle found (a path since 0.49.0; the downloads
+# are still looked in for one that is not a file, as before): each
 # taken unless a flag or a folder given says otherwise, and said in one
 # line; a line that does not read, a place the office does not scope or a
 # folder it does not hold on the desk is said, and that question comes back
@@ -5773,7 +5818,7 @@ cmd_start() {
         [ $# -ge 2 ] || die "$1 needs a value (office start --help explains it)"
         case "$1" in --title) drop_title="$2"; drop_title_given=1 ;; --lane) drop_lane="$2" ;; --size) drop_size="$2" ;; esac
         shift 2 ;;
-      --bundle) [ $# -ge 2 ] || die "--bundle needs the bundle: a path, or the name bale's search finds"
+      --bundle) [ $# -ge 2 ] || die "--bundle needs the bundle: its stem (the name before .bale-bundle) in your downloads, or a path"
                 [ -z "$bundle" ] || die "office start takes one bundle"; bundle="$2"; shift 2 ;;
       --read-only) read_only=1; packed_flags+=("$1"); shift ;;
       --leave-out) [ $# -ge 2 ] || die "--leave-out needs a path that rides with the project (office projects lists them)"
@@ -5868,11 +5913,10 @@ cmd_start() {
   bundle_given="$bundle"
   if [ -n "$bundle" ]; then
     [ "${#packed_flags[@]}" -eq 0 ] || die "a bundle carries its own pack line (goal, forecast, brief), so it takes no ${packed_flags[*]}; give the folder and where the work lands, nothing else"
-    # A file here is handed to bale by its full path; a bare name is
-    # bale's to find, cwd first, then its search directories.
-    if [ -f "$bundle" ]; then bundle="$(readlink -f "$bundle")"
-    elif [[ "$bundle" == */* ]]; then die "--bundle $bundle: no such file"
-    fi
+    # The name resolved before anything is asked or written (0.49.0): a
+    # file is taken by its path, a stem or a name is found here or in the
+    # downloads, and none found refuses by name (resolve_bundle).
+    bundle="$(resolve_bundle "$bundle")" || exit 1
   fi
   root="$(resolve_office)" || exit 1
   # The skew, the profile and the project names in one helper call
@@ -6657,14 +6701,16 @@ USAGE
 
 # land_words ROOT SID WHERE FOLDERS: a session out, named the way the
 # occupant knows it (0.22.0): by the folder that records it, else by its
-# slug, and where it is out.
+# slug, and where it is out: the project, or `the office` (0.49.0, as every
+# list of folders says it), the title as he wrote it.
 land_words() {
   local root="$1" sid="$2" where="$3" folders="$4" rel md number title
   rel="${folders%%,*}"
+  [ "$where" != "this office" ] || where="the office"
   if [ -n "$rel" ] && [ -f "$root/$rel/folder.md" ]; then
     md="$root/$rel/folder.md"
     number="$(folder_fact "$md" number)"
-    title="$(head -n 1 "$md" | sed -n 's/^# //p')"
+    title="$(head -n 1 "$md" | sed -n 's/^# //p' | helper shown)"
     printf '%s%s (%s)' "${number:+folder $number, }" "${title:-${rel#*/}}" "$where"
   else
     printf '%s (%s)' "$(printf '%s' "$sid" | sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}-//; s/-[0-9]{3}$//')" "$where"
@@ -7796,7 +7842,7 @@ withdraw_name() {
   first="${folders%%, *}"
   if [ -n "$first" ] && [ -f "$root/$first/folder.md" ]; then
     number="$(folder_fact "$root/$first/folder.md" number 2>/dev/null)"
-    title="$(head -n 1 "$root/$first/folder.md" | sed -n 's/^# //p')"
+    title="$(head -n 1 "$root/$first/folder.md" | sed -n 's/^# //p' | helper shown)"
     printf '%s%s' "${number:+folder $number, }" "${title:-${first#*/}}"
   elif [ "${sid#*-in-tray-sort-}" != "$sid" ]; then
     printf "the in-tray's sort"
@@ -10153,16 +10199,16 @@ cmd_probe() {
   # several, those folders alone are offered by key, sittings first; with
   # none, every folder, as before.
   if [ -z "$want" ]; then
-    local frows=() frow fvals=() fname fsid fwords
+    local frows=() frow fvals=() fname fsid fwords flabel
     mapfile -t frows < <(reader probe-folders "$root" 2>/dev/null)
     for frow in "${frows[@]}"; do
       [ -n "$frow" ] || continue
-      IFS=$'\t' read -r fname fsid fwords <<< "$frow"
-      fvals+=("$fname" "desk/$fname: $fsid ($fwords)")
+      IFS=$'\t' read -r fname fsid fwords flabel <<< "$frow"
+      fvals+=("$fname" "${flabel:-desk/$fname}: $fsid, $fwords")
     done
     if [ "${#fvals[@]}" -eq 2 ]; then
       want="${fvals[0]}"
-      IFS=$'\t' read -r fname fsid fwords <<< "${frows[0]}"
+      IFS=$'\t' read -r fname fsid fwords flabel <<< "${frows[0]}"
       log "desk/$fname records the one session open, $fsid ($fwords), so the probe is its (office probe FOLDER names another)"
     elif [ "${#fvals[@]}" -gt 2 ]; then
       can_ask || die "$((${#fvals[@]} / 2)) folders on the desk record a session open where probes run ($(for ((i = 0; i < ${#fvals[@]}; i += 2)); do printf '%s ' "${fvals[$i]}"; done | sed 's/ $//; s/ /, /g')); name one: office probe FOLDER; piped input is never asked"

@@ -514,13 +514,17 @@ class TestTheEndsLine(SittingCase):
         self.assertIn(f"({new}, {self.sit}), and the block's slug names none", proc.stderr)
 
     def test_the_readers_as_units(self):
+        # The sitting the fake bale minted is dated by the UTC clock, so
+        # the later ones are dated from its day, never by a literal day
+        # (0.49.0: a literal passed only until that day came).
         md = self.root / "desk" / self.plan / "folder.md"
-        a, b = self.sit, "2026-11-04-plan-next-001"
+        later = (dt.date.fromisoformat(self.sit[:10]) + dt.timedelta(days=1)).isoformat()
+        a, b = self.sit, f"{later}-plan-next-001"
         oh.record_session(md, b, "sitting")
         rel = f"desk/{self.plan}"
         self.assertEqual(ob.older_sittings(self.root, [(b, [rel]), (a, [rel])]), {a})
         self.assertEqual(ob.older_sittings(self.root, [(a, [rel])]), set())
-        self.assertEqual(ob.older_sittings(self.root, [(a, ["desk/x"]), ("2026-11-05-y-001", ["desk/x"])]), {a})
+        self.assertEqual(ob.older_sittings(self.root, [(a, ["desk/x"]), (f"{later}-y-001", ["desk/x"])]), {a})
         self.assertEqual(op.newest_first([a, b], [a, b]), [b, a])
 
 

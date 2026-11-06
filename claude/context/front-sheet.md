@@ -240,6 +240,31 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.49.0 (session 2026-11-06-desk-readability-001): the desk made readable.
+  - `office map` (lib/office_map.py `page`): two tables through `table`
+    (a header row, aligned, the last column unpadded), `project_row` and
+    `folder_row`/`short_state`; a project's closed folders past
+    CLOSED_SHOWN (3) fold into FOLD_WORDS (`is_closed`: in the filing
+    cabinet with nothing out, merging or undelivered); `--all` unfolds;
+    `terminal_width` cuts on a terminal only (PROJECT_GIVE, FOLDER_GIVE:
+    the title first). `office map N` (folder_record) is unchanged.
+  - `office_helper.folder_project_words` and `folder_label` name a
+    folder's project in every list (`folder N, TITLE (PROJECT)`); `helper
+    folder-rows ROOT SPACE` feeds bin/office folder_choices, `reader
+    probe-folders` prints the label as its fourth field;
+    office_bale.folder_line adds ` (PROJECT)` (floor_plan_names, cached by
+    the floor plan's mtime).
+  - `office_helper.shown`, the inverse of ascii_escape, applied where a
+    line is printed: office_bale's main print loop (desk, walk-in,
+    status, sessions), office_home's page and elsewhere and the bundle
+    offer's words (cut there to OFFER_WORDS_MAX), office_map's table cells
+    and record, ob.folder_title, office_standing.words, and `helper shown`
+    for bin/office's land and withdraw titles.
+  - bin/office resolve_bundle: `--bundle NAME` to a path before anything
+    is asked or written (here, then the downloads through find-download),
+    or refused by name, exit 1.
+  - Additive: no migration. tests/test_desk_readability.py holds the
+    release's tests.
 - 0.48.0 (session 2026-11-05-m10-ask-001): office ask, the quick path.
   - `office ask` (bin/office cmd_ask, lib/office_ask.py): his words as
     start new takes them, the project by key only when they name none; one

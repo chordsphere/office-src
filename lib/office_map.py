@@ -4,21 +4,25 @@
 The occupant works with folders (one job each) and projects (a repo
 each), and before this page the two met nowhere: office desk names a
 folder's lane only inside its cite, and office projects names no folder.
-The map reads both, once, and puts each folder under the project its lane
-names:
+The map reads both, once, and puts each folder beside the project its lane
+names. Since 0.49.0 the page is two tables, read at a glance:
 
-    office_map.py page OFFICE --today DAY [--project NAME | --folder REL] [--now ISO]
-        the page on stdout. With no option: each project the office
-        scopes, one heading each, its facts on one line (where it is,
-        its audience line, paused), what rides with it and what runs
-        after it lands, one line each, then every folder whose lane
-        names it, on the desk and in the filing cabinet, newest number
-        first, one line each (`folder N  TITLE  (SIZE)  STATE`, STATE in
-        the desk's words), its riders under it by number; then "the
-        office", the folders whose lane names no project. With --project,
-        that project's section alone; with --folder (desk/NAME or
-        filing-cabinet/NAME), one folder's whole record, ending with the
-        lines that change its fields.
+    office_map.py page OFFICE --today DAY [--project NAME | --folder REL] [--all] [--now ISO]
+        the page on stdout. With no option, two tables under a header row
+        each, columns aligned: the projects, one row each (PROJECT, WHERE
+        it is, its AUDIENCE or none, PAUSED, and what RIDES with it and
+        what runs AFTER it lands in one cell, a declaration problem said in
+        that cell); then the folders, one row each (FOLDER, PROJECT, TITLE,
+        SIZE, STATE in a few words), grouped by project in the floor
+        plan's order and the office's own last, open folders before closed
+        ones, each newest number first. Of a project's closed folders the
+        newest CLOSED_SHOWN show and the rest fold into one line, `and N
+        more closed: office map --all`; --all shows every row. On a
+        terminal the page is cut to its width (the title column gives way
+        first, then the state, each cut with `...`); piped, every cell is
+        whole. With --project, that project's rows in both tables, nothing
+        folded; with --folder (desk/NAME or filing-cabinet/NAME), one
+        folder's whole record, ending with the lines that change its fields.
     office_map.py fields OFFICE REL
         office folder N with no flag: the folder's fields, then the line
         that changes each.
@@ -31,7 +35,8 @@ The map reads what the desk reads, once (office_bale.render_desk's
 groups: what is in flight, landed and not delivered, the merge jobs and
 the reviews), bale's records of the sessions open (one status per repo,
 cached by the reader), the floor plan and the folders' pages. It writes
-nothing, on a terminal or off one.
+nothing, on a terminal or off one. Every line it prints shows his words as
+he wrote them (office_helper.shown); the pages keep their ASCII.
 
 Standard library only. Logs on stderr with an [office] prefix; exits 0 on
 success, 1 on a refusal, 2 on an internal error.
@@ -56,40 +61,6 @@ def debug(msg):
 
 def log(msg):
     print(f"[office] {msg}", file=sys.stderr)
-
-
-# --- a project's facts ------------------------------------------------------------
-
-def project_facts_line(p):
-    """One line: where the project is (here, or on HOST), its audience line
-    when it has one (audience, author, base, branch_prefix when set), and
-    paused when it is."""
-    if p.get("problem"):
-        return f"cannot be read: {p['problem']}"
-    where = f"on {p['host']} ({p['path']})" if p.get("host") else f"here ({p['path']})"
-    parts = [where]
-    if p.get("audience"):
-        aud = f"audience {p['audience']}"
-        if p.get("author"):
-            aud += f", author {p['author']}"
-        aud += f", base {p['base'] or 'the audience HEAD'}"
-        if p.get("branch_prefix"):
-            aud += f", branch_prefix {p['branch_prefix']}"
-        parts.append(aud)
-    else:
-        parts.append("no audience")
-    if p.get("paused"):
-        parts.append(f"paused (office projects set {p['name']} --unpaused)")
-    return "; ".join(parts)
-
-
-def project_lines(p):
-    """What rides with the project and what runs after it lands, one line
-    each."""
-    out = [f"rides: {r}" for r in p.get("rides") or []]
-    out += [f"after it lands: {c}" for c in p.get("after_land") or []]
-    out += [f"declaration problem: {x}" for x in p.get("declaration_problems") or []]
-    return out
 
 
 # --- a folder's state, in the desk's words ---------------------------------------------
@@ -217,68 +188,243 @@ def folder_head(f):
     return f"{head}  {folder_title(f)}" + (f"  ({size})" if size else "")
 
 
-def folder_riders(f):
-    """The rider numbers the folder's Riders section carries."""
-    import office_drafting as od
-    try:
-        lines = pathlib.Path(f["path"]).read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError):
-        return []
-    s, e = oh.section_bounds(lines, "Riders")
-    if s is None:
-        return []
-    return [r["number"] for r in od.rider_blocks(lines, s + 1, e)]
-
-
 def newest_first(folders):
     return sorted(folders, key=lambda f: (-(f.get("number") or 0), f["rel"]))
 
 
-def folder_block(reading, f, indent="  "):
-    lines = [f"{indent}{folder_head(f)}  {reading.state(f)}"]
-    riders = folder_riders(f)
-    if riders:
-        lines.append(f"{indent}  riders: " + ", ".join(str(n) for n in riders))
-    return lines
+# --- the two tables (0.49.0) ------------------------------------------------------------
+
+# Of a project's closed folders, the newest this many show; the rest fold
+# into one line (office map --all shows them).
+CLOSED_SHOWN = 3
+FOLD_WORDS = "and {n} more closed: office map --all"
+CUT = "..."
+
+PROJECT_HEADER = ("PROJECT", "WHERE", "AUDIENCE", "PAUSED", "RIDES AND AFTER-LAND")
+FOLDER_HEADER = ("FOLDER", "PROJECT", "TITLE", "SIZE", "STATE")
+# On a terminal narrower than a table, the columns that give way, in order,
+# each no narrower than its floor: the folders' title first, then their
+# state; the projects' rides first, then the audience, then where.
+PROJECT_GIVE = ((4, 16), (2, 12), (1, 16))
+FOLDER_GIVE = ((2, 16), (4, 20), (1, 10))
 
 
-def project_section(reading, p):
-    lines = [f"{p['name']}", f"  {project_facts_line(p)}"]
-    lines += [f"  {l}" for l in project_lines(p)]
-    mine = [f for f in reading.folders if not f.get("problem") and folder_place(f, reading.names)[0] == p["name"]]
-    if not mine:
-        lines.append("  no folder")
-    for f in newest_first(mine):
-        lines += folder_block(reading, f)
-    return lines
+def cut(cell, width):
+    """cell, cut to width with `...` when it is longer."""
+    if len(cell) <= width:
+        return cell
+    return cell[:max(0, width - len(CUT))] + CUT if width > len(CUT) else cell[:width]
 
 
-def office_section(reading):
-    lines = [THE_OFFICE]
-    mine = [f for f in reading.folders if f.get("problem") or folder_place(f, reading.names)[0] is None]
-    if not mine:
-        lines.append("  no folder")
-    for f in newest_first(mine):
-        lines += folder_block(reading, f)
-        if not f.get("problem"):
-            _, odd = folder_place(f, reading.names)
-            if odd:
-                lines.append(f"    {odd}")
-    return lines
+def table(header, rows, width=None, give=(), under=0):
+    """Lines: the header row, then a row per entry, columns aligned two
+    spaces apart, the last column unpadded, every cell as he wrote it
+    (office_helper.shown, before anything is measured). width (the
+    terminal's, or None piped) cuts the columns give names, in order, each
+    to no less than its floor, until the table fits; what still does not
+    fit runs on. A row that is a str is a line of its own (the fold line),
+    set under column `under`, never cut."""
+    rows = [oh.shown(r) if isinstance(r, str) else [oh.shown(c) for c in r] for r in rows]
+    cells = [list(header)] + [list(r) for r in rows if not isinstance(r, str)]
+    widths = [max(len(c[i]) for c in cells) for i in range(len(header))]
+    if width:
+        over = sum(widths) + 2 * (len(widths) - 1) - width
+        for col, floor in give:
+            if over <= 0:
+                break
+            take = min(over, max(0, widths[col] - floor))
+            widths[col] -= take
+            over -= take
+
+    def line(r):
+        out = [cut(c, widths[i]).ljust(widths[i]) for i, c in enumerate(r[:-1])] + [cut(r[-1], widths[-1])]
+        return "  ".join(out).rstrip()
+    indent = " " * (sum(widths[:under]) + 2 * under)
+    return [line(list(header))] + [indent + r if isinstance(r, str) else line(r) for r in rows]
 
 
-def page(reading, project=None):
+def project_row(p):
+    """A project's row: its name, where it is, its audience, paused, and
+    what rides with it and runs after it lands in one cell."""
+    if p.get("problem"):
+        return [p["name"], f"cannot be read: {p['problem']}", "-", "-", "-"]
+    where = f"on {p['host']} ({p['path']})" if p.get("host") else f"here ({p['path']})"
+    if p.get("audience"):
+        aud = p["audience"]
+        if p.get("author"):
+            aud += f", author {p['author']}"
+        aud += f", base {p['base'] or 'the audience HEAD'}"
+        if p.get("branch_prefix"):
+            aud += f", branch_prefix {p['branch_prefix']}"
+    else:
+        aud = "none"
+    said = []
+    if p.get("rides"):
+        said.append("rides: " + ", ".join(p["rides"]))
+    if p.get("after_land"):
+        said.append("after: " + "; ".join(p["after_land"]))
+    said += [f"declaration problem: {x}" for x in p.get("declaration_problems") or []]
+    return [p["name"], where, aud, "yes" if p.get("paused") else "no", "; ".join(said) or "none"]
+
+
+def short_age(x, reading):
+    """How long a session has been out, in two words (`3 days`), or None
+    when bale's records do not say."""
+    import office_bale as ob
+    import office_home as hs
+    try:
+        d = reading.rd.dossier(x["place"], x["sid"])
+    except ob.BaleError as exc:
+        debug(f"{x['sid']}: its dossier could not be read for the map: {exc}")
+        return None
+    if d is None:
+        return None
+    v = ob.session_view(reading.rd, d)
+    if not v["created"]:
+        return None
+    words = hs.age_words(ob.parse_stamp(v["created"]), reading.now)
+    return {"yesterday": "1 day", "just now": "just now"}.get(words, words.removesuffix(" ago"))
+
+
+# The desk's group words (Reading.desk_group) said short.
+DESK_WORDS = {"open, no session in flight": "open"}
+
+
+def short_state(reading, f):
+    """The folder's state cell (0.49.0): a few words, the session's id left
+    to office map N. `sitting out 2 days, step 8 of 14`, `in flight 3
+    days`, `landed, not delivered`, `merge job waiting`, `delivered
+    BRANCH`, `review #N STATE`, `open`, `ready`, `done`, `retired`; `; and N
+    more open` when the folder records more than one session out."""
+    import office_review as orev
+    import office_standing as ostand
+    if f.get("problem"):
+        return f"cannot be read: {f['problem']}"
+    said = []
+    out = reading.out_on(f)
+    if out:
+        x = out[0]
+        age = short_age(x, reading)
+        words = ("sitting out" if x["read_only"] else "in flight") + (f" {age}" if age else "")
+        if x["read_only"]:
+            st = ostand.folder_standing(reading.root, f["rel"])
+            if st is not None:
+                words += f", step {st['step']} of {st['of']}"
+        if len(out) > 1:
+            words += f"; and {len(out) - 1} more open"
+        said.append(words)
+    m = (reading.groups.get("merge_by_rel") or {}).get(f["rel"])
+    u = (reading.groups.get("undelivered_by_rel") or {}).get(f["rel"])
+    if m is not None and not m["landed"]:
+        said.append("merge job waiting")
+    elif u is not None:
+        said.append("landed, not delivered")
+    if not said:
+        if f["space"] == "filing-cabinet":
+            said.append(f.get("status") or "no status line")
+        else:
+            group = reading.desk_group.get(f["rel"])
+            if group is None:
+                said.append(f.get("status") or "no status line")
+            elif group.startswith("parked"):
+                said.append("parked")
+            elif group == "on the desk with a closed status":
+                said.append(f"{f.get('status')} on the desk")
+            else:
+                said.append(DESK_WORDS.get(group, group))
+    try:
+        delivered = oh.delivered_records(f["path"])
+    except (OSError, UnicodeDecodeError) as exc:
+        debug(f"{f['rel']}: its deliveries could not be read: {exc}")
+        delivered = []
+    if delivered and u is None:
+        said.append(f"delivered {delivered[-1][1]['branch']}")
+    rows = (reading.groups.get("reviews_by_rel") or {}).get(f["rel"])
+    if rows:
+        said.append(orev.folder_words(rows))
+    if f["space"] == "filing-cabinet" and out:
+        said.append("in the filing cabinet")
+    return "; ".join(said)
+
+
+def is_closed(reading, f):
+    """Whether a folder folds with the closed ones: in the filing cabinet,
+    with no session out, no merge job and nothing landed and not delivered
+    (one that has is shown with the open folders, so the fold never hides
+    something waiting)."""
+    if f.get("problem") or f["space"] != "filing-cabinet":
+        return False
+    if reading.out_on(f):
+        return False
+    return f["rel"] not in (reading.groups.get("merge_by_rel") or {}) and \
+        f["rel"] not in (reading.groups.get("undelivered_by_rel") or {})
+
+
+def folder_row(reading, f):
+    lane = (f.get("fields", {}).get("lane") or [""])[0]
+    if f.get("problem"):
+        project = "-"
+    else:
+        project = oh.folder_project_words(lane, reading.names)
+    size = (f.get("fields", {}).get("size") or [None])[0] if not f.get("problem") else None
+    head = f"folder {f['number']}" if f.get("number") else f["name"]
+    return [head, project, folder_title(f), size or "-", short_state(reading, f)]
+
+
+def folder_rows(reading, folders, fold):
+    """A group's rows: its open folders, then its closed ones, each newest
+    number first; with fold, the closed beyond CLOSED_SHOWN as one line."""
+    live = [f for f in folders if not is_closed(reading, f)]
+    closed = [f for f in folders if is_closed(reading, f)]
+    rows = [folder_row(reading, f) for f in newest_first(live)]
+    closed = newest_first(closed)
+    shown_closed = closed[:CLOSED_SHOWN] if fold else closed
+    rows += [folder_row(reading, f) for f in shown_closed]
+    if len(closed) > len(shown_closed):
+        rows.append(FOLD_WORDS.format(n=len(closed) - len(shown_closed)))
+    return rows
+
+
+def terminal_width():
+    """The terminal's width when the page goes to one, else None (piped,
+    every cell is whole)."""
+    import shutil
+    try:
+        if not sys.stdout.isatty():
+            return None
+    except (AttributeError, ValueError):
+        return None
+    return shutil.get_terminal_size().columns or None
+
+
+def page(reading, project=None, fold=True, width=None):
+    """The map's page: the projects' table, then the folders' table, then
+    the footer line. project: that project's rows alone, nothing folded."""
     import office_bale as ob
     if project is not None:
-        chosen = ob.select(reading.projects, project)
-        return project_section(reading, chosen[0])
+        projects = ob.select(reading.projects, project)[:1]
+        fold = False
+    else:
+        projects = reading.projects
     lines = []
-    if not reading.projects:
-        lines += ["this office scopes no project yet (office projects add NAME PATH adds one)", ""]
-    for p in reading.projects:
-        lines += project_section(reading, p) + [""]
-    return lines + office_section(reading) + ["", "office map N shows one folder's whole record and the lines "
-                                                  "that change it."]
+    if projects:
+        lines += table(PROJECT_HEADER, [project_row(p) for p in projects], width, PROJECT_GIVE)
+    else:
+        lines.append("this office scopes no project yet (office projects add NAME PATH adds one)")
+    rows = []
+    readable = [f for f in reading.folders if not f.get("problem")]
+    for p in projects:
+        rows += folder_rows(reading, [f for f in readable if folder_place(f, reading.names)[0] == p["name"]], fold)
+    if project is None:
+        theirs = [f for f in reading.folders if f.get("problem") or folder_place(f, reading.names)[0] is None]
+        rows += folder_rows(reading, theirs, fold)
+    lines.append("")
+    if rows:
+        lines += table(FOLDER_HEADER, rows, width, FOLDER_GIVE, under=FOLDER_HEADER.index("TITLE"))
+    else:
+        lines.append("no folder" + (f" on {projects[0]['name']}" if project is not None else
+                                    " on the desk or in the filing cabinet"))
+    return lines + ["", "office map N shows one folder's whole record and the lines that change it."]
 
 
 # --- one folder ---------------------------------------------------------------------------
@@ -407,6 +553,7 @@ def main(argv=None):
     p = sub.add_parser("page", help="the map, or one project's section, or one folder's record")
     p.add_argument("office"); p.add_argument("--today", required=True)
     p.add_argument("--project"); p.add_argument("--folder"); p.add_argument("--now")
+    p.add_argument("--all", action="store_true", help="every closed folder, none folded")
     p = sub.add_parser("fields", help="a folder's fields and the line that changes each")
     p.add_argument("office"); p.add_argument("rel")
     p = sub.add_parser("open-for", help="the sessions open that a folder records: SID, WHERE")
@@ -422,14 +569,17 @@ def main(argv=None):
                     print(f"{x['sid']}\t{x['label']}")
             return 0
         if a.cmd == "fields":
-            print("\n".join(folders_fields(a.office, a.rel)))
+            print(oh.shown("\n".join(folders_fields(a.office, a.rel))))
             return 0
         dt.date.fromisoformat(a.today)
         if a.project and a.folder:
             raise oh.HelperError("the map shows a project or a folder, not both")
         now = ob.parse_stamp(a.now) if a.now else None
         reading = Reading(ob.Reader(), a.office, a.today, now)
-        lines = folder_record(reading, a.folder) if a.folder else page(reading, a.project)
+        if a.folder:
+            lines = [oh.shown(line) for line in folder_record(reading, a.folder)]
+        else:
+            lines = page(reading, a.project, fold=not a.all, width=terminal_width())
         print("\n".join(lines))
         return 0
     except (oh.HelperError, ob.BaleError) as exc:

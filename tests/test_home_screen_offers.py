@@ -342,7 +342,7 @@ class TestBareProbeOnATerminal(ProbeOffersCase):
         ])
         self.assertEqual(code, 0, seen)
         self.assertIn("Folders that record a session open where probes run:", seen)
-        self.assertIn(f"desk/{other.split('/')[1]}: {osid} (on alpha)", seen)
+        self.assertIn(f"folder 2, docs-job (alpha): {osid}, on alpha", seen)
         self.assertIn("not run: nothing was written", seen)
 
 

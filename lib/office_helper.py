@@ -1710,6 +1710,36 @@ def cite(folder):
     return f"folder {folder['number']}" if folder.get("number") else folder["name"]
 
 
+def folder_project_words(lane, names):
+    """What a folder's work is on, in the words every list of folders uses
+    (0.49.0): the project its lane names, `the office` for the office's own
+    (an office lane, or no lane in an office that scopes no project), `no
+    lane yet` for a folder whose lane is still to be asked, and `LANE, not
+    a project here` for a lane naming a project this office does not
+    scope. names: the floor plan's project names."""
+    if lane_is_office(lane):
+        return OFFICE_LANE
+    text = " ".join(str(lane or "").split())
+    if not text:
+        return OFFICE_LANE if not names else "no lane yet"
+    project = lane_project(text)
+    if project is not None and project in names:
+        return project
+    return f"{project or text}, not a project here"
+
+
+def folder_label(folder, names):
+    """A folder as a list offers it by key (0.49.0): `folder N, TITLE
+    (PROJECT)`, its directory name where it has no number or title, the
+    title as he wrote it (shown)."""
+    if folder.get("problem"):
+        return f"{folder['name']} ({folder['problem']})"
+    lane = (folder.get("fields", {}).get("lane") or [""])[0]
+    title = shown(folder.get("title") or folder["name"])
+    number = f"folder {folder['number']}, " if folder.get("number") else ""
+    return f"{number}{title} ({folder_project_words(lane, names)})"
+
+
 def next_number(root):
     """(one more than the highest number on the desk and in the filing
     cabinet, the folders skipped for having no number line). A number
@@ -2924,6 +2954,37 @@ def ascii_escape(text):
     return out, escaped
 
 
+# What ascii_escape writes for a character past ASCII (0.49.0): \xNN for
+# U+0080 to U+00FF, \uXXXX up to U+FFFF, \UXXXXXXXX past it.
+ESCAPE_RE = LazyPattern(r"\\(x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})")
+
+
+def shown(text):
+    """The occupant's words as he wrote them, for a screen (0.49.0): the
+    inverse of ascii_escape, each escape it could have written turned back
+    into its character. Stored pages keep their ASCII; this is applied only
+    where a line is printed. An escape ascii_escape never writes (one for
+    an ASCII character, a surrogate, a code point past U+10FFFF) is typed
+    text and stays as it is, so a literal backslash in a title survives. A
+    character the screen's encoding cannot carry (stdout in a locale that
+    is neither UTF-8 nor C) keeps its escape too, so a line is never lost
+    to an encoding error."""
+    if not text or "\\" not in text:
+        return text
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+
+    def back(m):
+        n = int(m.group(1)[1:], 16)
+        if n < 0x80 or 0xD800 <= n <= 0xDFFF or n > 0x10FFFF:
+            return m.group(0)
+        try:
+            chr(n).encode(encoding)
+        except (UnicodeEncodeError, LookupError):
+            return m.group(0)
+        return chr(n)
+    return ESCAPE_RE.sub(back, text)
+
+
 # --- a sitting's words, filed from the brief that carries them --------------
 #
 # A read-only sitting lands nothing itself. Its words reach the notepad
@@ -3929,6 +3990,42 @@ def cmd_folder_facts(a):
         log(f"warning: {a.folder_md}: {problem}")
 
 
+def office_project_names(root):
+    """The floor plan's project names, in its order; [] when it scopes
+    none or the floor plan cannot be read (said under OFFICE_DEBUG)."""
+    try:
+        return [p["name"] for p in read_projects(read_toml(pathlib.Path(root) / OFFICE_MANIFEST_REL)) or []]
+    except (OSError, HelperError, ValueError) as exc:
+        if os.environ.get("OFFICE_DEBUG") == "1":
+            log(f"debug: the floor plan's projects could not be read for a list of folders: {exc}")
+        return []
+
+
+def cmd_folder_rows(a):
+    """A picker's folders (0.49.0): NAME<tab>LABEL, one per folder in
+    SPACE, LABEL as folder_label says it (`folder N, TITLE (PROJECT)`)."""
+    names = office_project_names(a.root)
+    for f in read_folders(a.root):
+        if f["space"] == a.space:
+            print(f"{f['name']}\t{folder_label(f, names)}")
+
+
+def cmd_folder_label(a):
+    """One folder's label, as a picker names it (0.49.0): REL is
+    SPACE/NAME under ROOT."""
+    names = office_project_names(a.root)
+    f = next((x for x in read_folders(a.root) if x["rel"] == a.rel), None)
+    if f is None:
+        raise HelperError(f"no folder {a.rel} in {a.root}")
+    print(folder_label(f, names))
+
+
+def cmd_shown(a):
+    """stdin as a screen shows it (0.49.0): the escapes ascii_escape wrote
+    turned back into their characters (shown)."""
+    sys.stdout.write(shown(sys.stdin.read()))
+
+
 def cmd_folder_event(a):
     old, wrote = folder_event(a.folder_md, a.day, a.verb, a.text, a.status)
     if a.status is not None:
@@ -4651,6 +4748,9 @@ def build_parser(only=None):
     p = add("folder-by-number"); p.add_argument("root"); p.add_argument("ref")
     p.set_defaults(fn=cmd_folder_by_number)
     p = add("folder-facts"); p.add_argument("folder_md"); p.set_defaults(fn=cmd_folder_facts)
+    p = add("folder-rows"); p.add_argument("root"); p.add_argument("space"); p.set_defaults(fn=cmd_folder_rows)
+    p = add("folder-label"); p.add_argument("root"); p.add_argument("rel"); p.set_defaults(fn=cmd_folder_label)
+    p = add("shown"); p.set_defaults(fn=cmd_shown)
     p = add("folder-event"); p.add_argument("folder_md"); p.add_argument("--day", required=True)
     p.add_argument("--verb", required=True); p.add_argument("--text", required=True)
     p.add_argument("--status"); p.set_defaults(fn=cmd_folder_event)

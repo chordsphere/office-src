@@ -276,7 +276,8 @@ projects' documentation, as a planner's bundle you send or delete.
     office open house-hunt --thread < thread.txt     # ...seeded with the thread that started it
     office open fix-login --goal "Fix the login redirect"   # ...with the goal office start offers
     office desk                                      # in flight, ready in order, parked, candidates
-    office map                                       # every project, and its folders under it with their state
+    office map                                       # two tables: every project, then its folders with their state
+    office map --all                                 # ...every closed folder too, none folded
     office map 12                                    # one folder's whole record, and the lines that change it
     office folder 12 --lane alpha --size medium      # change a folder's fields (alone: they and their lines)
     office week                                      # this week's calendar and its gaps
@@ -305,18 +306,37 @@ flag sets is yours. A title another folder took today gets a name of its
 own. `office open` is the same code without the session: plumbing now,
 for a folder that should wait on the desk.
 
-`office map` (0.46.0, the `a` key) is folders and projects on one page:
-each project with its facts on one line (here or on its host, its
-audience line, paused), what rides with it and what runs after it lands,
-then every folder whose lane names it, on the desk and in the filing
-cabinet, newest first, `folder N  TITLE  (SIZE)  STATE` in the desk's
-words (in flight, landed and not delivered, delivered, a review, a merge
-job waiting, ready, parked, closed), its riders by number under it; then
-the office's own folders. `office map alpha` is one project's section,
-`office map 12` one folder's whole record: its fields, its sessions as
+`office map` (0.46.0, the `a` key) is folders and projects on one page,
+as two tables since 0.49.0, columns aligned under a header row. First the
+projects, one row each: its name, where it is (here or on its host), its
+audience (or none), whether it is paused, and what rides with it and what
+runs after it lands in one cell (`rides: a, b; after: x; y`), a
+declaration problem said there too. Then the folders, one row each:
+`folder N`, its project (`the office` for the office's own, `no lane yet`
+for one whose lane is still to be asked), its title, its size and its
+state in a few words (`in flight 3 days`, `sitting out 2 days, step 8 of
+14`, `landed, not delivered`, `merge job waiting`, `delivered BRANCH`,
+`review #N STATE`, `open`, `ready`, `parked`, `done`). Rows are grouped by
+project in the floor plan's order, the office's own last; open folders
+come before closed ones, each newest number first, and of a project's
+closed folders the newest three show while the rest fold into one line,
+`and N more closed: office map --all`; `office map --all` shows every row.
+On a terminal the page is cut to the terminal's width, the title column
+giving way first, cut with `...`; piped, every cell is whole. A title is
+shown as you wrote it, curly quotes and accents and all, though folder.md
+keeps it in ASCII. `office map alpha` is that project's rows in both
+tables, nothing folded; `office map 12` one folder's whole record, with
+the session's id and the riders the tables leave out: its fields, its sessions as
 `office sessions` shows them, its riders, deliveries, reviews and
 standing, the lines that act on it next, and the lines that change its
-fields. The map writes nothing. `office folder 12` changes those fields:
+fields. The map writes nothing. Every list of folders offered by key
+names the project the same way (0.49.0), `folder N, TITLE (PROJECT)`,
+`(the office)` for the office's own: start's jobs on the desk, `Folders in
+desk/`, the planner's folder and probe's folders with a session open; and
+`office desk`'s line says it after the folder's name, `folder N  NAME
+(PROJECT)  next: ...`. Your words show as you wrote them on every screen
+(the map, the pickers, the desk, the home screen, the walk-in, status,
+the bundle offer), while the pages keep their ASCII escapes. `office folder 12` changes those fields:
 `--lane PROJECT` (or `--in-office`, the work is the office's own),
 `--title`, `--size`, `--goal`, `--source`, `--class`; each replaces its
 line, takes the field off the provisional line, and adds a `re-scoped`
@@ -398,7 +418,7 @@ out; `office tray ask-DATE-SLUG` opens its tray again, and `office ask
 On a terminal, bare `office start` first offers the planner's bundles in
 your downloads that no session has opened, newest first, one key each (a
 plain return goes on): the newest nine, and one line for the rest, `and
-N more, oldest first: office start --bundle FILE starts one by name,
+N more, oldest first: office start --bundle STEM starts one by name,
 office withdraw --bundle STEM takes one out of the offer` (0.46.0). A
 bundle a paused project's session opened is read as opened too, and
 leaves the offer. Then it asks which job, by key, or a new one in your
@@ -476,7 +496,7 @@ may name the riders its session carries, `--- RIDES PATH ---` per ride or
 so; `--carry` and `--carry none` still win. A LANDS line naming a project
 another office on this machine scopes is no refusal: start names that
 office with the line that starts the bundle there,
-`OFFICE_ROOT=ROOT office start --bundle FILE`, or says no office here
+`OFFICE_ROOT=ROOT office start --bundle PATH`, or says no office here
 scopes it, and starts nothing. Deliver's question and the review's are
 never answered from an artifact.
 
@@ -743,7 +763,7 @@ rendering says bale is missing and the rest of the command works.
     office where               # the office a command here acts on
     office default [PATH]      # this machine's default office
     office version             # the installed version and where it came from
-    office map                 # every project with its facts, riders and folders, each folder's state
+    office map                 # two tables: the projects, then their folders and each one's state (--all: none folded)
     office projects set alpha --path ~/work/alpha-2   # point a project at another clone (the old one left as it is)
 
 A command acts on OFFICE_ROOT if set, else the office around the working
@@ -1010,9 +1030,9 @@ packs a sitting (`--read-only` in the office, or a bundle that forecasts
 nothing), it writes the digest again and commits it, and the drafting
 table rides inside the sitting's request; an open session holding the
 drafting table leaves the digest as it was and never stops the start. A
-bundle named by a bare name, which bale's search finds, is read where
-bale's rehearsal found it, so a sitting sent out that way gets its digest
-too (since 0.21.0); when start cannot read a bundle's pack line at all, it
+bundle named by its stem is read where start found it (here or in the
+downloads), so a sitting sent out that way gets its digest too (since
+0.21.0); when start cannot read a bundle's pack line at all, it
 cannot tell a sitting, and it says so in one line, with the time the
 digest it left was written. A scoped office session gets no digest. The forecast of a project session comes from the
 folder's lane, the work class from its class, the slug from its name;
@@ -1024,18 +1044,25 @@ notepad. Every question has a flag (`office start --help`); piped, it
 asks nothing and names the flag it needed.
 
 A planning sitting hands over the sessions it authors as bundles
-(`.bale-bundle` files). Give one to `office start`, as a path or as the
-bare name bale's own search finds (`--bundle FILE`, or the file as a
-word): it asks which job and where the work lands, as for a pack, then
-hands the bundle to `bale open` there. The bundle's pack line is the
+(`.bale-bundle` files). Give one to `office start` by its stem, the name
+before `.bale-bundle` (`--bundle STEM`; the extension may be given too, and
+a word ending `.bale-bundle` needs no flag), or by its path. Since 0.49.0
+start works the name out before it asks or writes anything: a path is
+taken as it is; else STEM and STEM.bale-bundle are tried here, then in
+your downloads (the `downloads` setting below; of several browser copies
+the newest is taken and named); a name found nowhere is refused, exit 1,
+`no STEM.bale-bundle in your downloads (DIRS) or here; save it there
+first, or office withdraw --bundle STEM takes it out of the offer`, and
+nothing is asked. Then it asks which job and where the work lands, as for
+a pack, and hands the bundle's path to `bale open` there. The bundle's pack line is the
 whole session, its goal, forecast and brief; the office adds nothing to
 it and says when it leaves out something the office would have carried.
 Before it writes anything (a folder for `new`, the survey, the tray),
 start asks bale whether it can open the bundle there, with `bale open
---check`, which finds a bare name through bale's own search, runs every
-gate bale runs before an open, and writes nothing: a name bale cannot
-find, a forecast path that is not there, or a forecast another open
-session holds stops the start in bale's words, with nothing written. For
+--check`, which runs every gate bale runs before an open, and writes
+nothing: a bundle bale refuses, a forecast path that is not there, or a
+forecast another open session holds stops the start in bale's words, with
+nothing written. For
 `new`, where the work lands is asked first and the bundle checked before
 the folder is opened (a bundle that lands in the office is checked once
 its folder exists, since its forecast may name the folder).
@@ -1114,10 +1141,9 @@ back into the tray (it stays in the repo's outbox there too); the
 office's context, the doctrine and the ride-alongs are made here, as for
 any project. A bundle travels to the host too, and `bale open --check`
 and `bale open` run there on that copy: a bundle for a hosted project is
-a file here, its path or a bare name found in this machine's downloads
-(the `downloads` setting below; of several browser copies of the name,
-`NAME (1).bale-bundle` and so on, the newest is taken and named), since
-bale's own search for a bare name would run on the host. Where a
+a file here, as every bundle is since 0.49.0, its path or its stem found
+here or in this machine's downloads (of several browser copies of the
+name, `NAME (1).bale-bundle` and so on, the newest is taken and named). Where a
 bundle's paths decide where it opens, a hosted project answers through
 its shell. The one temporary directory
 start makes on the host (under its TMPDIR, or /tmp) is removed whether

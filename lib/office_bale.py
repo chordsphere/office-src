@@ -1006,8 +1006,29 @@ def folder_line(f, next_first=None):
     if next_first:
         nxt = f"{next_first}; then {nxt}"
     head = f"folder {f['number']}  {f['name']}" if f.get("number") else f["name"]
+    lane = (f["fields"].get("lane") or [""])[0]
+    head += f" ({oh.folder_project_words(lane, floor_plan_names(f))})"
     size = (f["fields"].get("size") or [None])[0]
     return f"{head}  next: {nxt}  (sessions: {count})" + (f"  {size}" if size else "")
+
+
+_NAMES_BY_ROOT = {}
+
+
+def floor_plan_names(f):
+    """The project names of the office a folder sits in (its folder.md is
+    ROOT/SPACE/NAME/folder.md), read once per office per process while
+    its floor plan is unchanged, for the desk's line naming its project
+    (0.49.0)."""
+    root = pathlib.Path(f["path"]).parent.parent.parent
+    try:
+        stamp = (root / oh.OFFICE_MANIFEST_REL).stat().st_mtime_ns
+    except OSError:
+        stamp = None
+    key = (str(root), stamp)
+    if key not in _NAMES_BY_ROOT:
+        _NAMES_BY_ROOT[key] = oh.office_project_names(root)
+    return _NAMES_BY_ROOT[key]
 
 
 def successors(f):
@@ -2409,7 +2430,9 @@ def merge_job_words(m):
 
 
 def folder_title(f):
-    return f.get("title") or f["name"]
+    """A folder's title as a screen shows it: as he wrote it (0.49.0,
+    office_helper.shown), its directory name when it has none."""
+    return oh.shown(f.get("title") or f["name"])
 
 
 def deliver_item_words(u):
@@ -4295,8 +4318,14 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
             debug(f"the bundle {pathlib.Path(bundle).name} is read-only by its pack line at {bundle_found}: "
                   "a sitting, so the digest is written before it")
         elif found_read_only is None:
-            unknown = (f"bale found it at {bundle_found}, and its pack line there does not read" if bundle_found
-                       else "bale's rehearsal did not say where it found it")
+            # Since 0.49.0 office start hands bale the file it found
+            # (bin/office resolve_bundle), so the line is the file's own.
+            if bundle_found:
+                unknown = f"bale found it at {bundle_found}, and its pack line there does not read"
+            elif pathlib.Path(bundle).is_file():
+                unknown = f"its pack line at {bundle} does not read"
+            else:
+                unknown = "bale's rehearsal did not say where it found it"
     if sitting:
         digest_before_pack(office_root)
         if not bundle and (office_root / od.SPACE).is_dir() and od.SPACE not in includes:
@@ -6512,8 +6541,13 @@ def main(argv=None):
     try:
         rd = Reader()
         if a.cmd == "probe-folders":
+            # Each row's label names the folder's project (0.49.0), as
+            # every list of folders offered by key does.
+            names = oh.office_project_names(a.office)
+            by_name = {f["name"]: f for f in oh.read_folders(a.office) if f["space"] == "desk"}
             for name, sid, words in probe_folders(rd, a.office):
-                print(f"{name}\t{sid}\t{words}")
+                label = oh.folder_label(by_name[name], names) if name in by_name else f"desk/{name}"
+                print(f"{name}\t{sid}\t{words}\t{label}")
             return 0
         if a.cmd == "sort-out":
             # The standalone sorts open in this office: one id per line.
@@ -6568,8 +6602,10 @@ def main(argv=None):
     except (OSError, ValueError) as exc:
         log(f"error: {exc}")
         return 2
+    # Every line reaches a screen with his words as he wrote them (0.49.0):
+    # the desk, the walk-in, status, sessions; the pages keep their ASCII.
     for line in lines:
-        print(line)
+        print(oh.shown(line))
     # The lines already say which project could not be read and why;
     # the exit code tells the caller, which decides how loud to be.
     return 3 if bad else 0

@@ -592,15 +592,19 @@ class TestStartABundleThatOverlaps(LandCase):
             self.assertNotIn("overlaps this one", proc.stderr, stem)
         self.assertEqual(len(self.fake.calls_of("open")), 3)
 
-    def test_a_bare_name_cannot_be_read_first_so_bales_words_stand(self):
+    def test_a_bare_name_found_in_the_downloads_is_refused_before_anything_is_written(self):
+        # Since 0.49.0 the office finds the bare name in the downloads itself
+        # (bin/office resolve_bundle), so it reads the bundle's forecast and
+        # names the overlap in its own words, as for a path, before anything
+        # is written; bale opens nothing.
+        self.downloads_known()
         sid = self.start("fix-login", "--on", "alpha", "--goal", "g")
         bundle_file(self.downloads, "2026-10-05-bare", ["Fix it", "--slug", "bare", "--write", "src"])
         proc = self.run_office("start", "fix-login", "--on", "alpha", "2026-10-05-bare.bale-bundle", check=1)
-        # bale open --check says it before anything is written (0.13.0).
-        self.assertIn("start stopped before anything was written", proc.stderr)
-        self.assertIn(f"intersects 1 open session(s): {sid}", proc.stderr)
+        self.assertIn(f"{sid} is open in alpha ({self.folder}); its forecast (src) overlaps this one at src",
+                      proc.stderr)
+        self.assertIn("nothing else was written", proc.stderr)
         self.assertEqual(self.fake.calls_of("open"), [])
-        self.assertEqual(len(self.fake.calls_of("open-check")), 1)
 
     def test_office_bundles_take_turns_on_the_notepad(self):
         sid = self.start("fix-login", "--in-office", "--goal", "g")

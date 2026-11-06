@@ -95,6 +95,11 @@ def log(msg):
 
 # --- time, in words -----------------------------------------------------------------
 
+# The bundle offer's words, at most this many characters (bin/office
+# offer_bundles cut them to it before 0.49.0).
+OFFER_WORDS_MAX = 60
+
+
 def age_words(then, now):
     """How long ago, in plain words: `just now`, `12 minutes ago`, `3 hours
     ago`, `yesterday`, `4 days ago`."""
@@ -775,8 +780,9 @@ FIXED_KEYS = (
     # with the office's context, no session; its block is filed by the
     # item an ask out gets (office ask --learned).
     ("i", "a quick question, in your words, answered in a chat", "office", ["ask"]),
-    # The map (0.46.0): every project with its facts and its folders.
-    ("a", "the map: every project and its folders", "office", ["map"]),
+    # The map (0.46.0): every project with its facts and its folders; two
+    # tables since 0.49.0, the closed folders folded (office map --all).
+    ("a", "the map: every project and its folders (office map --all unfolds)", "office", ["map"]),
     # A planner sitting from his words (0.24.0): what he wants a planner
     # for, and nothing else; its folder is minted from his words, as the o
     # key's is (office start --planner offers the desk's folders by key).
@@ -1218,13 +1224,13 @@ def main(argv=None):
             dirs = a.dir or oh.machine_downloads(a.machine_file) or []
             sections, nowhere, _ = other_sections(rd, a.office, a.machine_file, dirs, now)
             if nowhere:
-                print(nowhere)
+                print(oh.shown(nowhere))
             for heading, said, theirs in sections:
-                print(f"\n{heading}:")
+                print(f"\n{oh.shown(heading)}:")
                 for line in said:
-                    print(f"  {line}")
+                    print(f"  {oh.shown(line)}")
                 for it in theirs:
-                    print(f"  {it['label']}: {elsewhere_line(it)}")
+                    print(f"  {oh.shown(it['label'])}: {oh.shown(elsewhere_line(it))}")
                 if not said and not theirs:
                     print("  nothing waits on you there")
             return 0
@@ -1240,9 +1246,13 @@ def main(argv=None):
                 if nowhere:
                     log(nowhere)
             for b in waiting:
-                words = " ".join((b["goal"] or "").split())
+                # The planner's words as he wrote them (0.49.0), cut here to
+                # the offer's sixty characters, so bash never counts bytes.
+                words = oh.shown(" ".join((b["goal"] or "").split()))
+                if len(words) > OFFER_WORDS_MAX:
+                    words = words[:OFFER_WORDS_MAX - 3] + "..."
                 age = age_words(b["at"], now) + (f"; {b['copies']} copies, the newest offered" if b["copies"] > 1 else "")
-                print(f"{b['path']}\t{b['stem']}\t{age}\t{oh.ascii_escape(words)[0]}")
+                print(f"{b['path']}\t{b['stem']}\t{age}\t{words}")
             return 0
         if a.cmd == "withdraw-bundle":
             # office withdraw --bundle STEM (0.41.0): --check names the copies
@@ -1261,7 +1271,9 @@ def main(argv=None):
             dt.date.fromisoformat(a.since)
         lines = home(rd, a.office, a.today, a.since, a.skew, a.founded == "yes", a.tz,
                      None if a.no_downloads else a.dir, now, a.menu_file, a.machine_file)
-        print("\n".join(lines))
+        # His words as he wrote them on the screen (0.49.0); the pages keep
+        # their ASCII.
+        print(oh.shown("\n".join(lines)))
         return 0
     except oh.HelperError as exc:
         log(f"error: {exc}")

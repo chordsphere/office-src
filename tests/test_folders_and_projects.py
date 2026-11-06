@@ -63,15 +63,17 @@ class FoldersCase(LandCase):
 # --- 1. one map -----------------------------------------------------------------------------
 
 class TestTheProjectFactsAsAUnit(unittest.TestCase):
+    # Since 0.49.0 a project's facts are a row of the map's first table
+    # (tests/test_desk_readability.py pins the rest of the shape).
     def test_here_or_a_host_the_audience_line_and_paused(self):
         import office_map as om
         p = {"name": "alpha", "path": "~/alpha", "host": None, "problem": None, "audience": None, "paused": False}
-        self.assertEqual(om.project_facts_line(p), "here (~/alpha); no audience")
+        self.assertEqual(om.project_row(p)[:4], ["alpha", "here (~/alpha)", "none", "no"])
         p.update(host="me@box", audience="origin", author="Pat <p@x.org>", base="main", branch_prefix="feature/",
                  paused=True)
-        self.assertEqual(om.project_facts_line(p),
-                         "on me@box (~/alpha); audience origin, author Pat <p@x.org>, base main, branch_prefix "
-                         "feature/; paused (office projects set alpha --unpaused)")
+        self.assertEqual(om.project_row(p)[:4],
+                         ["alpha", "on me@box (~/alpha)", "origin, author Pat <p@x.org>, base main, branch_prefix "
+                          "feature/", "yes"])
 
 
 class TestTheMap(FoldersCase):
@@ -79,28 +81,28 @@ class TestTheMap(FoldersCase):
         git_repo(self.e.tmp / "beta", {"README.md": "beta\n"})
         self.run_office("projects", "add", "beta", str(self.e.tmp / "beta"), check=0)
         self.run_office("open", "tidy-notes", "--title", "Tidy the notes", check=0)
-        sid = self.start("fix-login", "--on", "alpha", "--goal", "g")
+        self.start("fix-login", "--on", "alpha", "--goal", "g")
         before = self.head()
         out = self.run_office("map", check=0).stdout
-        self.assertIn(f"alpha\n  here ({self.proj}); no audience\n  after it lands: touch AFTER-LAND-RAN\n", out)
-        self.assertRegex(out, rf"\n  folder 1  fix-login  in flight: {sid}, out since \d{{4}}-\d\d-\d\d, ")
-        self.assertIn("beta\n  here (", out)
-        self.assertIn("\n  no folder\n", out)
-        self.assertIn("the office\n  folder 2  Tidy the notes  ready\n", out)
-        self.assertLess(out.index("alpha\n"), out.index("beta\n"))
-        self.assertLess(out.index("beta\n"), out.index("the office\n"))
+        self.assertRegex(out, rf"\nalpha +here \({re.escape(str(self.proj))}\) +none +no +after: touch AFTER-LAND-RAN\n")
+        self.assertRegex(out, r"\nfolder 1 +alpha +fix-login +- +in flight ")
+        self.assertRegex(out, r"\nbeta +here \(")
+        self.assertRegex(out, r"\nfolder 2 +no lane yet +Tidy the notes +- +ready\n")
+        self.assertLess(out.index("\nalpha "), out.index("\nbeta "))
+        self.assertLess(out.index("\nfolder 1 "), out.index("\nfolder 2 "))
         self.assertEqual(self.head(), before, "the map writes nothing")
         self.assertEqual(self.e.git(self.root, "status", "--porcelain").strip(), "")
-        # One project's section alone.
+        # One project's rows alone.
         only = self.run_office("map", "beta", check=0).stdout
-        self.assertTrue(only.startswith("beta\n"), only)
+        self.assertRegex(only, r"^PROJECT +WHERE")
         self.assertNotIn("alpha", only)
+        self.assertIn("no folder on beta", only)
 
     def test_newest_number_first_and_a_closed_folder_says_so(self):
         second = self.run_office("open", "fix-signup", "--lane", "alpha", check=0).stdout.strip()
         self.run_office("close", second.split("/")[1], check=0)
         out = self.run_office("map", "alpha", check=0).stdout
-        self.assertIn("  folder 2  fix-signup  closed, done\n  folder 1  fix-login  ready\n", out)
+        self.assertRegex(out, r"\nfolder 1 +alpha +fix-login +- +ready\nfolder 2 +alpha +fix-signup +- +done\n")
 
     def test_one_folders_record_ends_with_the_lines_that_change_it(self):
         sid = self.start("fix-login", "--on", "alpha", "--goal", "g")
@@ -298,7 +300,7 @@ class TestStartsScreenOnATerminal(FoldersCase):
         screen = flat(seen)
         self.assertIn("[9] 2026-11-04-b02,", screen)
         self.assertNotIn("[10]", screen)
-        self.assertIn("and 2 more, oldest first: office start --bundle FILE starts one by name, office withdraw "
+        self.assertIn("and 2 more, oldest first: office start --bundle STEM starts one by name, office withdraw "
                       "--bundle STEM takes one out of the offer", screen)
         self.assertLess(screen.index("[9] "), screen.index("and 2 more"))
 

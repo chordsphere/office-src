@@ -237,6 +237,7 @@ class TestThePage(LandCase):
         rows = waiting(self)
         self.assertEqual(sorted(r[1] for r in rows), ["2026-10-15-docs-pass", "2026-10-15-src-pass"])
         self.assertEqual({r[3] for r in rows}, {"Do the docs-pass work", "Do the src-pass work"})
+        self.downloads_known()  # where office start finds a bare name since 0.49.0
         self.run_office("start", "fix-login", "--on", "alpha", "2026-10-15-src-pass.bale-bundle", check=0)
         self.assertEqual([r[1] for r in waiting(self)], ["2026-10-15-docs-pass"])
         # A browser's second copy of the opened one is the same bundle.
@@ -291,7 +292,7 @@ class TestTheHomeScreenOnATerminal(LandCase):
         then = older.stat().st_mtime - 86400
         os.utime(older, (then, then))
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "start"], self.root, self.e.env, [
-            (b"(--bundle FILE) [return skips]:", "1"),
+            (b"(--bundle STEM) [return skips]:", "1"),
             (b"Which job, by its key (office start FOLDER):", "1"),
         ])
         self.assertEqual(code, 0, seen)

@@ -1157,7 +1157,8 @@ class TestWalkingIn(unittest.TestCase):
         out = self.e.run(cwd=self.root, check=0).stdout
         for want in ("The sample office", "UNFOUNDED", "current with office-src", "In flight:",
                      "this office scopes no projects", "On the desk:",
-                     "-job  next: (not written yet)", "no calendar", "a thought", "Suggestion box: 1 slip(s).",
+                     "-job (the office)  next: (not written yet)",  # its project after its name (0.49.0)
+                     "no calendar", "a thought", "Suggestion box: 1 slip(s).",
                      "From here: office start, office land, office note"):
             self.assertIn(want, out)
 

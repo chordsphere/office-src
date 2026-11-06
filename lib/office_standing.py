@@ -278,7 +278,9 @@ def words(st, sid=None):
     when = f"as of {st['as_of']}" if st.get("as_of") else ""
     whose = f"filed by {st['sitting']}" if sid and st.get("sitting") and st["sitting"] != sid else ""
     said = ", ".join(w for w in (when, whose) if w)
-    return out + (f" ({said})" if said else "")
+    # Screens only, so his words as he wrote them (0.49.0); standing.md
+    # keeps its ASCII.
+    return oh.shown(out + (f" ({said})" if said else ""))
 
 
 def write(office_root, rel, text, day, time):

@@ -499,7 +499,10 @@ class TestTheRecord(unittest.TestCase):
         releases = (REPO / "RELEASES.md").read_text()
         entry = releases.split("## 0.48.0", 1)[1].split("\n## ", 1)[0]
         self.assertIn("tests/test_ask.py", entry)
-        self.assertEqual((REPO / "VERSION").read_text().strip(), "0.48.0")
+        # The release that shipped the ask, or a later one (0.49.0: an equal
+        # pin failed at the next release).
+        version = tuple(int(n) for n in (REPO / "VERSION").read_text().strip().split("."))
+        self.assertGreaterEqual(version, (0, 48, 0))
 
     def test_the_template_names_invented_projects_and_its_placeholders_are_filled(self):
         text = (REPO / "templates/ask-brief.md").read_text()

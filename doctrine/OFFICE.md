@@ -355,12 +355,12 @@ words, and one bale's rehearsal refuses is refused in the office's words
 with bale's reason beside them (a bale whose rehearsal does not answer in
 JSON is refused on the office's reading alone). Where the office cannot
 read the pack line (a bare name bale's search finds), it says so and
-bale's own words stand. For a project on a host a
-bundle is a file on the occupant's machine: its path, or a bare name the
-office finds in the downloads (below), since bale's own search would run
-on the host. A session a
+bale's own words stand. A bundle is a file on the occupant's machine
+(0.49.0): its path, or its stem, which the office finds here or in the
+downloads (below) before anything is asked or written, and refuses by
+name when it is in neither. A session a
 planning sitting authored arrives as a bundle (a .bale-bundle file):
-`office start --bundle FILE` hands it to bale's open in the place the
+`office start --bundle STEM` hands it to bale's open in the place the
 occupant names, the office or the job's project, and gathers what rides
 the same way. The bundle's own pack line is the whole session, its goal,
 forecast and brief, and the office adds nothing to it and answers none of
@@ -1182,10 +1182,15 @@ project's name) when the work is the office's own. When `office start`,
 work is on because its lane names none, the answer is written as the
 lane through the same writer and said, so it is asked once; a flag typed
 for one run writes nothing. The status is never one of its fields:
-open, close and reopen write it. `office map` shows every project with
-its folders under it by lane, each with its state in the desk's words,
-and one folder's whole record with the lines that change it; it writes
-nothing. A verb that mints a number or appends to a page (a folder, a
+open, close and reopen write it. `office map` shows two tables (0.49.0):
+every project, one row each, then every folder, one row each with the
+project its lane names and its state in a few words, grouped by project
+with the office's own last, a project's closed folders past the newest
+three folded into one line (`office map --all` shows them); and one
+folder's whole record with the lines that change it; it writes nothing.
+Every list of folders offered by key, and the desk's line, names the
+folder's project, and every screen shows the occupant's words as he wrote
+them while the pages keep their ASCII. A verb that mints a number or appends to a page (a folder, a
 rider, an agenda item, a blueprint, a desk move applied) refuses while an
 open session in the office's own bale registry forecasts the space, page
 or folder it writes, and names the session: sessions are kept apart by
@@ -1616,7 +1621,7 @@ Kinds:
 | meeting | script (0.26.0): a meeting, said once in the occupant's words, when it happens and what it concerns, asked only when his words do not say when or name none of the office's projects (--words, --when, --about PROJECT, --in-office the twins); one line in the calendar's plan, a series never asked for again; the calendar arrives with the first; no folder | yes | occupant |
 | open | script: start a numbered folder on the desk, or a candidate, or one born done in the filing cabinet; on a terminal, from the occupant's words (the title, the Asked section and the goal office start takes, each worked-out field marked provisional); with --goal, the goal; the code office start new mints a folder through | yes | plumbing |
 | desk | script: in flight, ready in order, parked under what each waits for, candidates | yes | occupant |
-| map | script, read-only (0.46.0): every project the office scopes with its facts, what rides with it and what runs after it lands, and every folder whose lane names it with its state in the desk's words, then the office's own folders; one project's section, or one folder's whole record ending with the lines that change it | yes | occupant |
+| map | script, read-only (0.46.0): two tables (0.49.0), every project the office scopes with its facts, what rides with it and what runs after it lands, then every folder with its project and its state in a few words, the office's own last, a project's closed folders past the newest three folded into one line that --all unfolds; one project's rows, or one folder's whole record ending with the lines that change it | yes | occupant |
 | folder | script (0.46.0): the one writer of a folder's fields after open (lane, title, size, goal, source, class): each a replaced line, off the provisional list, one re-scoped History line per field, the folder committed alone; never its status; alone, its fields and the line that changes each | yes | occupant |
 | tray | script, read-only (0.46.0): a session's out tray opened again as start opens it, its files listed and its opener printed again from the copy start keeps beside the tray; an office ask's too, by its name or, bare, when it is the newest out (0.48.0) | yes | occupant |
 | ask | script (0.48.0): the quick path between office note and a session (section 8): a question in the occupant's words (--words, or the words after the verb), the project asked by key only when his words name none (--project NAME, --in-office the twins), sent as one out tray for a chat, a brief from the install's template with the office's context beside it, no bale verb run and no session id minted; with --learned, the chat's LEARNED block filed (from a file, stdin, or on a terminal the clipboard): a notepad page, the facts at the end of the handbook's chapters, the questions and answers on the page, each commit on its own, then the tray removed; a block that does not read, or that names no ask out from this office, refused by name; --learned none ends an ask with its page alone; bare on a terminal, a block on the clipboard naming an ask out is filed without a question | yes | occupant |
