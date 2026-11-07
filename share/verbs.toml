@@ -737,6 +737,24 @@ lands = []
 attended = true
 trigger = ["manual"]
 
+# A bailout's fresh session (0.52.0), sent by office start N --handoff:
+# bale handoff packs it where the bailed session ran (on its project, or in
+# the office), with that session's goal and recorded forecast inherited and
+# the worker's handoff.md first in its context; the office's context rides
+# beside the request (the folder, the hung items, what rides with the
+# project) and the opener is the office's, bale printing none. It lands as
+# the bailed session would have, writing what that session would have
+# written, and a merge or undo job the bailout ended takes it as its own.
+[verbs.handoff]
+kind = "project-session"
+built = true
+ships = ["handoff.md, first", "the reading plan's files", "desk/{folder}, beside the request",
+         "templates/walkthrough.md and templates/delivery.md, for a session on a project"]
+writes = ["{project}"]
+lands = []
+attended = true
+trigger = ["manual"]
+
 # The standalone sort (0.20.0), packed by office start --sort in the
 # office: it belongs to no folder. It ships every folder's folder.md, every
 # handbook chapter, the unsorted drops (in its brief and its request), the

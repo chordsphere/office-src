@@ -10,9 +10,10 @@
 # project's directory, with stdin closed: never .bale/, never a prompt.
 # It never writes what bale records. The surfaces after the reads run a
 # bale verb when the occupant asks: office start makes a session and its
-# context tarballs (pack, context, open), asking bale first whether a
-# bundle can open (open_check, which writes nothing; open_json from bale
-# 0.4.50 on), and office land lands one
+# context tarballs (pack, context, open; handoff for a bailout's fresh
+# session, 0.52.0), asking bale first whether a bundle can open
+# (open_check, which writes nothing; open_json from bale 0.4.50 on), and
+# office land lands one
 # (apply, retry), carries a clarification back (relay), and ends a
 # read-only sitting the office sent out (unlock). A datum the
 # office needs and bale does not stamp is a slip for bale-src, never a
@@ -298,6 +299,35 @@ keys = [
   "tarball",   # the request's absolute path; null on a second desk whose request left the outbox
   "opener",    # the paste text, LF-joined; when not a string, the scissor block on stderr is read
 ]
+
+# A bailout's fresh session (office start N --handoff, 0.52.0): bale handoff
+# TARBALL in the repo the bailed session ran in, stdin closed, so post_pack's
+# hook is declined without a prompt; on a project on a host through its
+# shell, the bailout carried into the office's temporary directory there
+# first and removed in the handoff's own connection, with bale status after.
+# bale handoff runs in the repo (repo_root of its cwd), refuses a detached
+# HEAD, resolves the tarball as apply does, refuses anything but a bailout
+# with a handoff.md, inherits the goal verbatim from .bale/sessions/
+# {responds_to}/manifest.json (refusing when that record is missing) and the
+# recorded forecast, runs pack's disjointness gate, mints the bailout's slug
+# on the UTC date with the next counter, writes .bale/outbox/request-SID.
+# tar.gz and opens the session with command "handoff". Its report is text on
+# stdout, format_summary_block's rows; it has no --json, prints no opener and
+# keeps no constraint, so the office reads two rows, holds the session to
+# bale status's open set before and after (exactly one new) and the request
+# to status's outbox, and composes the opener itself (lib/office_bale.py,
+# handoff_session and handoff_opener). No real bailout existed on the
+# occupant's machine to capture, so the rows are read from the code; the
+# suite's fake prints them in the same words.
+#
+# sid_line      the summary row naming the new session id
+# tarball_line  the summary row naming the request's path
+[surfaces.handoff]
+argv = ["handoff", "{tarball}"]
+format = "text"
+contract = "cmd_handoff in bin/bale, bale 0.4.56, read by the probes handoff-ground and handoff-tail of sitting 2026-11-06-office-src-plan-sitting-001"
+sid_line = "  session id:     "
+tarball_line = "  tarball:        "
 
 # Asked before office start writes anything, for a planner bundle: bale
 # open --check where the bundle opens, stdin closed. bale resolves a bare

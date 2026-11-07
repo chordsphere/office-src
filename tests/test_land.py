@@ -89,10 +89,12 @@ class FakeLandBale:
         return sid in json.loads(self.state.read_text())["repos"][os.path.realpath(repo)]["sessions"]
 
 
-def response_tarball(directory, sid, files=None, kind="normal", validation="pass", name=None, notes=None):
+def response_tarball(directory, sid, files=None, kind="normal", validation="pass", name=None, notes=None,
+                     handoff="# Handoff\n\nRead src/a.py first; the login redirect is half done.\n"):
     """A response tarball the way a worker ships one: files ({path: text})
     modified or created, a validation.sh that passes or fails, and, since
-    0.17.0, a notes.md when given (the folder's pages ride in it)."""
+    0.17.0, a notes.md when given (the folder's pages ride in it). A
+    bailout (0.52.0) carries handoff.md, unless handoff is None."""
     nnn = sid[-3:]
     members, changes = {}, []
     if notes is not None:
@@ -104,6 +106,8 @@ def response_tarball(directory, sid, files=None, kind="normal", validation="pass
                         "sha256": hashlib.sha256(data).hexdigest()})
     m = {"session_id": sid, "responds_to": sid, "corrects": None, "response_kind": kind,
          "summary": "A test response.", "changes": changes, "deferred": [], "validation_will_run": [], "claims": {}}
+    if kind == "bailout" and handoff is not None:
+        members["handoff.md"] = handoff.encode()
     if kind == "clarification":
         m["questions"] = [{"question": "Which name?", "context": "naming", "default_assumption": "the first",
                            "why_blocked": "two names"}]
