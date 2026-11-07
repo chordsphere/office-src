@@ -544,8 +544,37 @@ with the office line that does it (`bale retry -> office land SID
 office withdraw SID`), or `no office line: type it in REPO` for revert and
 amend-checkpoint. A clarification ends `Next: office relay SID
 ANSWER-FILE, ...`, and its block for the planner carries the office's
-tail with `answer: office relay SID ANSWER-FILE`. A bailout's line says
-there is no office line for the handoff yet and names bale's, and where.
+tail with `answer: office relay SID ANSWER-FILE`. A bailout ends `Next:
+office start N --handoff RESPONSE` (0.52.0), and `bale handoff` in office
+words is that line: it sends the fresh session the handoff asks for, from
+the office.
+
+    office start 14 --handoff                     # the fresh session folder 14's bailout asks for
+
+`office start FOLDER --handoff [RESPONSE]` (0.52.0) runs `bale handoff`
+where the bailed session ran, through the project's shell on a host (the
+bailout carried there first, and removed after), stdin closed: bale packs
+the fresh session with the bailed session's goal and forecast and the
+worker's `handoff.md` first. RESPONSE is the bailout, a path or its name
+here or in your downloads; none, the response of the folder's newest
+session there. start reads which session bale opened from `bale status`
+before and after (exactly one more, held to bale's report and its outbox),
+then fills the tray as for a pack (the office's context, the doctrine,
+what rides), records the session in the folder with a `handed-off` line in
+its History, and puts the opener on the clipboard last. bale's handoff
+prints no opener, so the office composes one in the shape of bale's and
+says so: it names `handoff.md` as the first thing to read, the folder's
+brief where it rides, and the constraint the original pack carried (bale's
+handoff drops it). Before anything runs it refuses by name a response that
+is not a bailout, one whose session the folder does not record or that is
+still open (land its bailout first), a sitting's, a folder in the filing
+cabinet, and `--in-office`, `--merge`, `--undo-bale`, `--bundle`, `new`,
+`--drop`, `--goal`, `--brief`, `--write`, `--sort`, `--prep`, `--planner`
+and the other flags that make no sense beside it; `--branch NAME` checks a
+branch out first, since bale stamps the checked-out branch as the session's.
+A refusal of bale's (a detached HEAD, a clone without bale's record of the
+bailed session, an open session holding the forecast) is said in bale's
+words with the office line that answers it, and nothing is written.
 Bare `office land` with several sessions out lands the one whose response
 is in your downloads (`from the downloads: response-SID.tar.gz is here, so
 SID lands`); with responses for several, it offers those first. It asks nothing about
@@ -562,7 +591,12 @@ out and was never worked: no response in your downloads, no apply begun.
 It names the session by its folder, asks once, runs bale's unlock with
 bale's reason `abandoned` where the session is open, and writes a line in
 the folder's History; a folder opened for that session alone is said with
-the line that closes it.
+the line that closes it. A merge or undo job that named the session no
+longer does (0.52.0): its page's line is cleared, said and committed, and
+`office start N --merge` (or `--undo-bale`) sends another in its place. A
+bailout ends a job's session the same way, kept on the page as its
+`bailed` line, and `office start N --handoff` puts the fresh session in
+its place, so land closes the job for that one.
 
     office withdraw --bundle 2026-10-27-picklists-review   # a planner's bundle you will not send, out of the offer
 
@@ -1350,7 +1384,17 @@ commit, the files the session took it out of, the session) and takes the
 job's materials out of the folder; under another session open in the
 clone it closes nothing, and `office deliver N` closes it later. Its notes
 carry no Walkthrough or Delivery either, and land's last line is `office
-deliver N`.
+deliver N`. Before it closes the job, land checks the session's work
+(0.52.0): for each of the job's paths, bale's change is the lines its
+commit put there that the file did not hold before and the lines it took
+away, read from the materials' `before/` and `bale/` (blank lines, and a
+line both sides hold, never decide), and a path still holds it when the
+workbench has every line bale put and none it took. Such a path keeps the
+job open, said with the path and the line, nothing removed: the page's
+session line is cleared (the session kept as its `earlier` line), and
+land's last line is `office start N --undo-bale`, which sends the session
+again. A session that kept some of bale's lines on purpose and took out
+the rest closes the job.
 
 After an applied landing, before the after-land actions, land files what
 the session's notes.md says (0.20.0), when it found the response on this

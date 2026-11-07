@@ -6,9 +6,9 @@ by starting the interpreter again).
 
 pack, status and --version go to the packing fake (pack_bale.py), in this
 process; this adds apply and retry (the walkthrough's merge, a HOLD, a
-base-drift and an out-of-forecast refusal, a clarification), unlock, the
-dossier (stats --sid), relay's re-emitted block, and open and open
---check, each printing lines the return-trip probe (and the later probes
+base-drift and an out-of-forecast refusal, a clarification, a bailout),
+unlock, the dossier (stats --sid), relay's re-emitted block, open and open
+--check, and handoff (0.52.0), each printing lines the return-trip probe (and the later probes
 named where they are used) captured from a real bale, kept verbatim with
 their sha256 in the development record's fixtures, with the session id
 and the paths swapped in; on a terminal it asks what the real one asks,
@@ -25,7 +25,22 @@ fake_program) that imports this module and calls main with the test's
 config: {"fixtures": the land fixtures, "miss": the dossier of no
 session, "state": file, "calls": file, "pack": the packing fake's own
 config}. FAKE_BALE_VERSION, FAKE_BALE_SEARCH, FAKE_BALE_UNLOCK_FAILS and
-FAKE_BALE_OUTBOX_GONE steer it from the test's environment, as before.
+FAKE_BALE_OUTBOX_GONE steer it from the test's environment, as before;
+FAKE_BALE_RECORD_GONE (a session id) makes handoff find no record of that
+bailed session (0.52.0).
+
+The bailout and the handoff are not captures: no real bailout existed on
+the occupant's machine to capture. They are built from bale 0.4.56's code
+as the probes handoff-ground and handoff-tail of sitting
+2026-11-06-office-src-plan-sitting-001 read it (cmd_handoff in bin/bale)
+and from bale help apply's words for a bailout: apply closes the session
+and names bale handoff; handoff refuses a detached HEAD, anything but a
+bailout and a bailout without handoff.md, inherits the goal from the
+bailed session's request record (here its request in the outbox, the
+fake's record of it) and its recorded forecast, runs pack's gate, mints
+the bailout's slug on the day with the next counter, writes the request
+(handoff.md first) and opens the session, and reports format_summary_block's
+rows on stdout with no opener.
 """
 
 import json
@@ -216,6 +231,22 @@ def main(cfg, argv):
             say(swap(cap["stdout"], "2026-10-03-probe-clar-001", sid, cap["cwd"], cwd))
             s = load(); s["land"]["clar"][sid] = m["questions"]; save(s)
             sys.exit(0)
+        if m["response_kind"] == "bailout":
+            # A bailout (0.52.0, not a capture; the module's docstring says
+            # what it is built from): an attempt with outcome bailout, the
+            # session closed, its request record kept, and bale's next step,
+            # bale handoff, named.
+            s = load()
+            r = s["repos"][cwd]
+            r["sessions"].remove(sid)
+            s["land"].setdefault("bailed", {})[sid] = r["scopes"].pop(sid, None)
+            s["land"]["attempts"].setdefault(sid, []).append(
+                {"command": verb, "outcome": "bailout", "change_paths": [], "state": None})
+            save(s)
+            say(["[bale] " + sid + ": bailout response (handoff.md: " + str(len(names)) + " member(s) read)",
+                 "[bale] closed session " + sid + " (bailout); its request record is kept for the handoff",
+                 "", "  next step: bale handoff '" + tb.name + "' packs the fresh session the handoff asks for"])
+            sys.exit(0)
         scope = repo["scopes"][sid] or []
         paths = [c["path"] for c in m["changes"]]
         outside = [p for p in paths if not under(p, scope)]
@@ -338,7 +369,8 @@ def main(cfg, argv):
         rec = dict(tpl["record"])
         rec["outcome"] = tries[-1]["outcome"] if tries else "opened"
         rec["in_flight"] = is_open
-        rec["closure"] = {"category": "applied", "unlock_reason": None} if not is_open else None
+        rec["closure"] = ({"category": "bailout" if rec["outcome"] == "bailout" else "applied", "unlock_reason": None}
+                          if not is_open else None)
         if sid in L["unlocked"]:
             why = L.get("unlock_reasons", {}).get(sid, "closed-read-only")
             rec.update(outcome="unlocked", in_flight=False, read_only=why == "closed-read-only",
@@ -384,6 +416,78 @@ def main(cfg, argv):
     def meets(a, b):
         a, b = a.strip("/"), b.strip("/")
         return a in ("", ".") or b in ("", ".") or a == b or a.startswith(b + "/") or b.startswith(a + "/")
+
+    if argv[0] == "handoff":
+        import datetime, hashlib, io, re, subprocess, tarfile
+        if len(argv) != 2:
+            print("fake bale: built for bale handoff TARBALL only", file=sys.stderr); sys.exit(97)
+        if git("symbolic-ref", "-q", "HEAD", check=False).returncode != 0:
+            print("[bale] error: bale handoff refuses a detached HEAD: it stamps the checked-out branch as the new "
+                  "session's integration target; check a branch out first", file=sys.stderr); sys.exit(1)
+        tb = resolve(argv[1], "tarball")
+        if tb is None:
+            missing(argv[1], "tarball")
+        with tarfile.open(tb) as t:
+            names = t.getnames()
+            mname = next(n for n in names if re.fullmatch(r"response-\d{3}/manifest\.json", n))
+            m = json.loads(t.extractfile(mname).read())
+            hname = mname.split("/")[0] + "/handoff.md"
+            handoff_md = t.extractfile(hname).read() if hname in names else None
+        if m.get("response_kind") != "bailout":
+            print("[bale] error: bale handoff is for bailout responses only (" + tb.name + " is response_kind="
+                  + str(m.get("response_kind")) + ")", file=sys.stderr); sys.exit(1)
+        if handoff_md is None:
+            print("[bale] error: " + tb.name + " is a bailout without handoff.md", file=sys.stderr); sys.exit(1)
+        parent = m["responds_to"]
+        record = pathlib.Path(cwd) / ".bale" / "outbox" / ("request-" + parent + ".tar.gz")
+        if not record.is_file() or os.environ.get("FAKE_BALE_RECORD_GONE") == parent:
+            print("[bale] error: cannot inherit goal: request manifest not found at " + cwd + "/.bale/sessions/"
+                  + parent + "/manifest.json", file=sys.stderr); sys.exit(1)
+        with tarfile.open(record) as t:
+            pm = json.loads(t.extractfile("request-001/manifest.json").read())
+        forecast = L.get("bailed", {}).get(parent)
+        if forecast is None:
+            forecast = pm.get("resolved_scope") or ["."]
+        for s_ in repo["sessions"]:
+            theirs = repo["scopes"].get(s_) or ["."]
+            if repo["scopes"].get(s_) == [] or forecast == []:
+                continue
+            pairs = [(a, b) for a in forecast for b in theirs if meets(a, b)]
+            if pairs:
+                print("[bale] error: forecast overlaps open session " + s_ + " ("
+                      + ", ".join(a + " ~ " + b for a, b in pairs) + "); narrow with --write, apply the open "
+                      "session's response, or unlock it", file=sys.stderr); sys.exit(1)
+        slug = re.fullmatch(r"\d{4}-\d{2}-\d{2}-(.+)-\d{3}", parent).group(1)
+        day = os.environ.get("FAKE_BALE_DAY") or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        n = 1 + sum(1 for s_ in repo["outbox"] if s_.startswith("request-" + day + "-" + slug + "-"))
+        sid = day + "-" + slug + "-" + format(n, "03d")
+        outbox = pathlib.Path(cwd) / ".bale" / "outbox"
+        out = outbox / ("request-" + sid + ".tar.gz")
+        packed_at = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat()
+        manifest = {"session_id": sid, "goal": pm["goal"], "constraints": [], "out_of_scope": [],
+                    "resolved_scope": forecast, "readme": None, "context_included": ["context/handoff.md"],
+                    "depends_on": {"previous_response": parent, "previous_probe": None, "superseded_session": None},
+                    "provenance": {"packed_at": packed_at, "work_class": pm.get("work_class", "mixed")}}
+        with tarfile.open(out, "w:gz") as t:
+            for rel, data in (("request-001/manifest.json", json.dumps(manifest).encode()),
+                              ("request-001/context/handoff.md", handoff_md)):
+                info = tarfile.TarInfo(rel); info.size = len(data)
+                t.addfile(info, io.BytesIO(data))
+        s = load()
+        r = s["repos"][cwd]
+        r["sessions"].append(sid); r["scopes"][sid] = forecast; r["outbox"].append(out.name)
+        files = git("ls-files", check=False).stdout.split()
+        s["land"]["base"][sid] = {f: head_sha(f) for f in files if under(f, forecast)}
+        s["land"]["packed"][sid] = cwd
+        s["land"].setdefault("handed_off", {})[sid] = parent
+        save(s)
+        print("[bale] handoff from bailout " + parent + " -> new session " + sid, file=sys.stderr)
+        print("[bale] wrote " + str(out), file=sys.stderr)
+        say(["", "  session id:     " + sid, "  tarball:        " + str(out),
+             "  inherited:      goal and write forecast of " + parent,
+             "  context:        1 file(s) (handoff.md)", "  depends_on:     " + parent, "",
+             "Send the tarball to the agent. When the response comes back,", "run: bale apply <response-tarball>"])
+        sys.exit(0)
 
     # bale 0.4.52's open --json and open --check --json, as the fallback probe
     # of session 2026-10-13-office-probe-002 captured them in a throwaway repo

@@ -935,8 +935,8 @@ def merged_text(audience, base, merged, sid=None):
 MERGE_DIR = "merge"
 MERGE_PAGE = "merge.md"
 MERGE_SIDES = ("parted", "workbench", "audience")
-MERGE_FIELD_RE = oh.LazyPattern(r"^- (project|audience|kind|branch|tip|workbench|parted|day|file|changed|session): "
-                                r"(.+?)\s*$")
+MERGE_FIELD_RE = oh.LazyPattern(r"^- (project|audience|kind|branch|tip|workbench|parted|day|file|changed|session|"
+                                r"bailed): (.+?)\s*$")
 # A `- changed: PATH` line (0.47.0) says how the audience changed it after the
 # path, ` (added)` or ` (deleted)`; a plain change says nothing more, unless
 # the path itself ends as such words would, when ` (changed)` is written too,
@@ -969,8 +969,9 @@ def read_merge_job(folder_dir):
     how)]: every other file the audience changed since the sides parted,
     how added, changed or deleted; [] on a page written before),
     uncopied (since 0.51.0, the changed paths past the cap, whose copy
-    audience/ does not hold) and session (or None); None when the folder
-    holds none. A page that does not read as a job raises DeliverError
+    audience/ does not hold), session (or None) and, only when the page
+    has one, bailed (0.52.0: the session that bailed out of the job, kept
+    for its handoff); None when the folder holds none. A page that does not read as a job raises DeliverError
     naming it."""
     path = merge_page_path(folder_dir)
     if not path.is_file():
@@ -1043,6 +1044,8 @@ def merge_page_text(job):
     lines += [changed_line(path, how, path not in uncopied) for path, how in changed]
     if job.get("session"):
         lines.append(f"- session: {job['session']}")
+    if job.get("bailed"):
+        lines.append(f"- bailed: {job['bailed']}")
     return "\n".join(lines) + "\n"
 
 
@@ -1247,7 +1250,8 @@ def merge_job_lines(office_root, rel, folder, project, where, kind, audience, si
             and old["workbench"] == workbench and sorted(old["files"]) == sorted(conflicts):
         return [f"the merge session {old['session']} was sent for this conflict ({rel}/{MERGE_DIR}/ holds its "
                 f"materials) and has not landed: office land {old['session']} brings it back and makes its "
-                f"resolution the merge commit, then office deliver {folder} delivers; nothing was pushed"]
+                f"resolution the merge commit, then office deliver {folder} delivers (office start {folder} --merge "
+                "sends another in its place, if it was withdrawn); nothing was pushed"]
     try:
         parted, workbench_read, changed, uncopied = carry_materials(where, (parted, workbench, tip, log_from),
                                                                     conflicts, folder_dir / MERGE_DIR)
@@ -1491,6 +1495,7 @@ def merge_sent(office_root, rel, sid):
     if job is None:
         raise DeliverError([f"{rel} holds no merge job, so {sid} was not named on one"])
     job["session"] = sid
+    job.pop("bailed", None)
     merge_page_path(folder_dir).write_text(merge_page_text(job), encoding="utf-8")
     commit_folder_paths(office_root, f"office start: {sid} sent for the merge in {rel.split('/')[-1]}",
                         f"{rel}/{MERGE_DIR}/{MERGE_PAGE}")
@@ -1549,7 +1554,8 @@ UNDO_DIR = "undo"
 UNDO_PAGE = "undo.md"
 UNDO_SIDES = ("before", "bale", "workbench")
 UNDO_DIFF = "bale.diff"
-UNDO_FIELD_RE = oh.LazyPattern(r"^- (project|commit|subject|workbench|parent|day|file|earlier|session): (.+?)\s*$")
+UNDO_FIELD_RE = oh.LazyPattern(r"^- (project|commit|subject|workbench|parent|day|file|earlier|session|bailed): "
+                               r"(.+?)\s*$")
 # The History line office land (or deliver) writes when it closes the job,
 # read back by the next delivery: which commit, and which paths the session
 # took it out of.
@@ -1579,8 +1585,9 @@ def read_undo_job(folder_dir):
     """The undo job a folder holds (undo/undo.md), as a dict: project,
     commit (bale's commit, whole), subject, workbench, parent, day, files
     (the paths that refused), earlier (the undo session that landed for the
-    same commit before, or None) and session (or None); None when the
-    folder holds none. A page that does not read as a job raises
+    same commit before, or None), session (or None) and, only when the page
+    has one, bailed (0.52.0, as the merge page's); None when the folder
+    holds none. A page that does not read as a job raises
     DeliverError naming it."""
     path = undo_page_path(folder_dir)
     if not path.is_file():
@@ -1639,6 +1646,8 @@ def undo_page_text(job):
     lines += [f"- file: {f}" for f in job["files"]]
     if job.get("session"):
         lines.append(f"- session: {job['session']}")
+    if job.get("bailed"):
+        lines.append(f"- bailed: {job['bailed']}")
     return "\n".join(lines) + "\n"
 
 
@@ -1824,16 +1833,186 @@ def undo_sent(office_root, rel, sid):
     if job is None:
         raise DeliverError([f"{rel} holds no undo job, so {sid} was not named on one"])
     job["session"] = sid
+    job.pop("bailed", None)
     undo_page_path(folder_dir).write_text(undo_page_text(job), encoding="utf-8")
     commit_folder_paths(office_root, f"office start: {sid} sent for the undo in {rel.split('/')[-1]}",
                         f"{rel}/{UNDO_DIR}/{UNDO_PAGE}")
     return f"{rel}/{UNDO_DIR}/{UNDO_PAGE} names {sid} as the undo session; office land {sid} closes the job"
 
 
+# --- a job's session line follows its session (0.52.0) ----------------------------------------------
+#
+# A merge or undo job's page names the session sent for it (merge_sent,
+# undo_sent), and land closes the job when that session lands. A session that
+# never will (office withdraw closed it, or the worker bailed out) is taken off
+# the page, said and committed in the office, and the job is offered again;
+# a bailout is kept on the page as its `- bailed:` line, so that when office
+# start N --handoff hands it off, the fresh session takes the job's line and
+# land closes the job for it.
+
+JOB_FLAGS = {"merge": "--merge", "undo": "--undo-bale"}
+
+
+def folder_key_of(folder_dir):
+    """How an office line names a folder: its number, else its name."""
+    folder_dir = pathlib.Path(folder_dir)
+    try:
+        parsed = oh.parse_folder((folder_dir / "folder.md").read_text(encoding="utf-8"))
+        number = (parsed["fields"].get("number") or [""])[0]
+    except (OSError, UnicodeDecodeError) as exc:
+        debug(f"{folder_dir}/folder.md could not be read for its number: {exc}")
+        number = ""
+    return number or folder_dir.name
+
+
+def job_and_kind(folder_dir):
+    """(kind, job, page path, page text writer) for the job a folder holds,
+    or (None, None, None, None); a page that does not read is said under
+    OFFICE_DEBUG and holds no job here."""
+    try:
+        job = folder_job(folder_dir)
+    except DeliverError as exc:
+        debug("; ".join(exc.lines))
+        return None, None, None, None
+    if job is None:
+        return None, None, None, None
+    if is_undo(job):
+        return "undo", job, undo_page_path(folder_dir), undo_page_text
+    return "merge", job, merge_page_path(folder_dir), merge_page_text
+
+
+def job_session_ended(office_root, rel, sid, how):
+    """When the folder's merge or undo job names sid as its session and that
+    session ended without landing, the job's session line is cleared, said
+    and committed alone, and the job is offered again. how is "withdrawn"
+    (office withdraw closed it) or "bailed" (its bailout landed; the page
+    keeps it as its bailed line, for office start N --handoff). Returns the
+    lines to say; [] when no job names sid."""
+    folder_dir = pathlib.Path(office_root) / rel
+    kind, job, page, text = job_and_kind(folder_dir)
+    if job is None or job.get("session") != sid:
+        return []
+    key = folder_key_of(folder_dir)
+    flag = JOB_FLAGS[kind]
+    job["session"] = None
+    if how == "bailed":
+        job["bailed"] = sid
+    page_rel = f"{rel}/{page.parent.name}/{page.name}"
+    try:
+        page.write_text(text(job), encoding="utf-8")
+        commit_folder_paths(office_root, f"office {'withdraw' if how == 'withdrawn' else 'land'}: {sid} no longer "
+                                         f"the {kind} session in {folder_dir.name}", page_rel)
+    except (OSError, ob.LandError) as exc:
+        why = "; ".join(exc.lines) if isinstance(exc, ob.LandError) else str(exc)
+        return [f"{page_rel} still names {sid} as its {kind} session, which will never land: the page could not be "
+                f"written ({why}); office start {key} {flag} sends another in its place"]
+    if how == "bailed":
+        return [f"{page_rel} no longer names {sid}, which bailed out of the {kind} job: office start {key} --handoff "
+                f"hands it off, the fresh session taking the job's line, or office start {key} {flag} sends another "
+                "in its place"]
+    return [f"{page_rel} no longer names {sid}, which office withdraw closed: office start {key} {flag} sends another "
+            "in its place"]
+
+
+def job_handed_off(office_root, rel, bailout, sid):
+    """When the folder's job keeps bailout as its bailed line, the fresh
+    session sid office start N --handoff sent takes the job's session line,
+    so office land closes the job for it; committed alone. Returns the
+    line to say, or None when no job keeps that bailout."""
+    folder_dir = pathlib.Path(office_root) / rel
+    kind, job, page, text = job_and_kind(folder_dir)
+    if job is None or job.get("bailed") != bailout:
+        return None
+    if job.get("session"):
+        return (f"{rel}'s {kind} job names {job['session']} as its session already, sent after {bailout} bailed, so "
+                f"{sid} does not take its line; office land {job['session']} closes the job")
+    job["session"] = sid
+    job.pop("bailed", None)
+    page_rel = f"{rel}/{page.parent.name}/{page.name}"
+    page.write_text(text(job), encoding="utf-8")
+    commit_folder_paths(office_root, f"office start: {sid} from the handoff of {bailout}, the {kind} session in "
+                                     f"{folder_dir.name}", page_rel)
+    verb = "makes its resolution the merge commit" if kind == "merge" else "closes the job"
+    return f"{page_rel} names {sid} as the {kind} session in place of {bailout}; office land {sid} {verb}"
+
+
 def applied_in(place, sid):
     """Whether bale tagged the session applied in the clone (applied/SID)."""
     run = ohost.run_in(place, ["git", "rev-parse", "-q", "--verify", f"refs/tags/applied/{sid}^{{commit}}"])
     return run.returncode == 0
+
+
+# --- the undo's close checks its work (0.52.0) --------------------------------------------------------
+#
+# The next delivery trusts a closed undo job for its paths (0.51.0, decision
+# 3): it takes each as the workbench holds it. So before the job closes, each
+# path is read on the workbench and held to bale's change, as the job's
+# materials record it (before/ and bale/, beside the page). The rule: bale's
+# change at a path is the lines its commit put there that the file did not
+# hold before (put), and the lines it took away that its version does not hold
+# (took), blank lines aside, so a line that reads the same on both sides
+# (a closing brace, a line bale moved) never decides. A path still holds
+# bale's change when every line bale put is still there and none it took is
+# back. A path where the session kept some of bale's lines on purpose and
+# took out the rest closes; one where it changed nothing of bale's keeps the
+# job open. A path whose change has no such line (bale only reordered or
+# touched blank lines) cannot be told, is said under OFFICE_DEBUG, and never
+# keeps a job open.
+
+def side_lines(path):
+    """A materials file's lines (None when the side has no copy)."""
+    try:
+        return pathlib.Path(path).read_bytes().decode("utf-8", "replace").splitlines()
+    except FileNotFoundError:
+        return None
+
+
+def bale_change(materials, path):
+    """(put, took) for one of an undo job's paths: the lines bale's commit
+    put there that the file did not hold before, and the lines it took away
+    that its version does not hold, each in the order the file had them,
+    blank lines left out; from the job's before/ and bale/ copies (a side
+    with no copy is a file that was not there)."""
+    before = side_lines(pathlib.Path(materials) / "before" / path) or []
+    bales = side_lines(pathlib.Path(materials) / "bale" / path) or []
+    had, has = set(before), set(bales)
+    put = [l for l in dict.fromkeys(bales) if l.strip() and l not in had]
+    took = [l for l in dict.fromkeys(before) if l.strip() and l not in has]
+    return put, took
+
+
+def still_holds(put, took, now):
+    """Whether a file's lines (now; None for no file) still hold bale's
+    change: every line it put there, and none it took away. A change with
+    no line to tell it by holds nothing."""
+    if not put and not took:
+        return False
+    lines = set(now or [])
+    return all(l in lines for l in put) and not any(l in lines for l in took)
+
+
+def held_paths(folder_dir, files, place, ref="HEAD"):
+    """[(path, words)] for each of an undo job's paths whose version at ref
+    in the clone (through its shell for a hosted one, one connection for
+    them all) still holds bale's change, words naming one line that shows
+    it; [] when none does. A read that fails is a HostError."""
+    materials = pathlib.Path(folder_dir) / UNDO_DIR
+    changes = {f: bale_change(materials, f) for f in files}
+    asked = [f for f in files if changes[f][0] or changes[f][1]]
+    for f in files:
+        if f not in asked:
+            debug(f"{f}: bale's change has no line to tell it by (its before/ and bale/ copies differ only in "
+                  "order or blank lines), so the close does not check it")
+    runs = ohost.run_many(place, [["git", "show", f"{ref}:{f}"] for f in asked]) if asked else []
+    held = []
+    for f, run in zip(asked, runs):
+        now = run.stdout.splitlines() if run.returncode == 0 else None
+        put, took = changes[f]
+        if still_holds(put, took, now):
+            line = (f"bale's line {put[0]!r} is still there" if put
+                    else f"the line {took[0]!r} bale took away is still gone")
+            held.append((f, line))
+    return held
 
 
 def close_landed_undo(office_root, rel, folder, place, day, verb, sid=None, rd=None):
@@ -1879,6 +2058,17 @@ def close_landed_undo(office_root, rel, folder, place, day, verb, sid=None, rd=N
     if not landed:
         debug(f"the undo session {s} has not landed in {place}: no applied/{s} there")
         return None, []
+    # 0.52.0: the session's work checked before the job closes. A path whose
+    # workbench version still holds bale's change keeps the job open, its
+    # materials where they are; the session line is cleared and the landed
+    # session kept as the page's earlier line, so the job is offered again.
+    try:
+        held = held_paths(folder_dir, job["files"], place)
+    except ohost.HostError as exc:
+        return None, [f"the undo job for {s} was not closed: the workbench's copies of {', '.join(job['files'])} "
+                      f"could not be read to check the session's work ({exc}); office deliver {folder} closes it"]
+    if held:
+        return None, kept_open(office_root, rel, folder, job, s, held, verb)
     text = undone_text(job, s)
     told = [f"closed {rel}'s undo job: the undo session {s} took bale's own commit {job['commit'][:7]} out of "
             f"{', '.join(job['files'])} on the workbench"]
@@ -1898,10 +2088,36 @@ def close_landed_undo(office_root, rel, folder, place, day, verb, sid=None, rd=N
     return job, told
 
 
+def kept_open(office_root, rel, folder, job, sid, held, verb):
+    """An undo job whose landed session left bale's change in a path (held:
+    [(path, words)]), kept open: the page's session line cleared and the
+    session kept as its earlier line, committed alone, the materials left
+    where they are. Returns the lines to say, each path with its line, and
+    the office line that sends the session again."""
+    folder_dir = pathlib.Path(office_root) / rel
+    key = folder_key_of(folder_dir)
+    job = dict(job, session=None, earlier=sid)
+    page_rel = f"{rel}/{UNDO_DIR}/{UNDO_PAGE}"
+    told = [f"the undo session {sid} landed, and the workbench still holds bale's own commit {job['commit'][:7]}'s "
+            f"change in {len(held)} of the job's file(s), so {rel}'s undo job stays open and nothing was removed:"]
+    told += [f"  {path}: {words}" for path, words in held]
+    try:
+        undo_page_path(folder_dir).write_text(undo_page_text(job), encoding="utf-8")
+        commit_folder_paths(office_root, f"office {verb}: {sid} left bale's own commit {job['commit'][:7]} in the "
+                                         f"workbench for {folder}; the undo job stays open", page_rel)
+    except (OSError, ob.LandError) as exc:
+        why = "; ".join(exc.lines) if isinstance(exc, ob.LandError) else str(exc)
+        told.append(f"{page_rel} still names {sid}: it could not be written ({why})")
+    told.append(f"office start {key} --undo-bale sends the undo session again, its brief naming {sid} as the one that "
+                "landed before; nothing is delivered until the job closes")
+    return told
+
+
 def land_undo(office_root, project, sid, folder_rel, day):
     """office land's step after an applied landing (0.51.0): when the
     folder's undo job names this session, the job closed. Returns (is an
-    undo session, lines)."""
+    undo session, lines): "open" in place of True when the close's check
+    kept the job open (0.52.0), the workbench still holding bale's change."""
     root = pathlib.Path(office_root)
     folder = folder_rel.split("/")[-1]
     try:
@@ -1916,9 +2132,18 @@ def land_undo(office_root, project, sid, folder_rel, day):
         return True, [f"the undo job for {sid} was not closed: {why}; office deliver {folder} closes it once that is "
                       "put right"]
     try:
-        _, lines = close_landed_undo(root, folder_rel, folder, ohost.place_of(entry), day, "land", sid=sid)
+        closed, lines = close_landed_undo(root, folder_rel, folder, ohost.place_of(entry), day, "land", sid=sid)
     except DeliverError as exc:
         return True, [f"error: {l}" for l in exc.lines]
+    if closed is None:
+        # Kept open by the close's check (0.52.0): the page now names no
+        # session and keeps this one as its earlier line.
+        try:
+            now = read_undo_job(root / folder_rel)
+        except DeliverError:
+            now = None
+        if now and not now.get("session") and now.get("earlier") == sid:
+            return "open", lines
     return True, lines
 
 
@@ -3034,11 +3259,22 @@ def main(argv=None):
     p = sub.add_parser("undo-sent", help="name the session office start --undo-bale sent on the folder's undo job")
     p.add_argument("office"); p.add_argument("folder", help="space/name"); p.add_argument("--sid", required=True)
     p = sub.add_parser("land-undo", help="office land: a landed undo session's job closed; prints `undo` on stdout "
-                                         "when the session was one")
+                                         "when the session was one, `undo-open` when the close's check kept the job "
+                                         "open (0.52.0)")
     p.add_argument("office"); p.add_argument("--project", required=True); p.add_argument("--sid", required=True)
     p.add_argument("--folder", required=True); p.add_argument("--day", required=True)
+    # 0.52.0: a job's session line follows its session.
+    p = sub.add_parser("job-handoff", help="office start N --handoff: the fresh session takes the line of the job "
+                                           "its bailout ended; the line to say on stdout, or nothing")
+    p.add_argument("office"); p.add_argument("folder", help="space/name"); p.add_argument("--bailout", required=True)
+    p.add_argument("--sid", required=True)
     a = ap.parse_args(argv)
     try:
+        if a.cmd == "job-handoff":
+            line = job_handed_off(a.office, a.folder, a.bailout, a.sid)
+            if line:
+                print(line)
+            return 0
         if a.cmd in ("merge-start", "undo-start"):
             got = (merge_start if a.cmd == "merge-start" else undo_start)(a.office, a.folder, a.brief_out)
             print(f"project\t{got['project']}")
@@ -3059,7 +3295,7 @@ def main(argv=None):
             for line in lines:
                 log(line)
             if was:
-                print("undo")
+                print("undo-open" if was == "open" else "undo")
             return 0
         if a.cmd == "land-merge":
             was, lines = land_merge(a.office, a.project, a.sid, a.folder, a.day)

@@ -1620,7 +1620,7 @@ STATUSES = DESK_STATUSES + CABINET_STATUSES
 HISTORY_VERBS = ("candidate", "queued", "opened", "ratified", "gated", "cleared", "grown",
                  "re-scoped", "corrected", "ruled", "carried", "consumed", "done",
                  "absorbed", "split", "retired", "reopened", "note", "ended", "delivered", "probe",
-                 "dropped", "withdrawn", "merged", "review", "undone")
+                 "dropped", "withdrawn", "merged", "review", "undone", "handed-off")
 # The state-changing verbs and the status each leaves the folder in:
 # candidate -> queued -> open -> done; any desk status -> absorbed,
 # split or retired; done -> reopened -> open.

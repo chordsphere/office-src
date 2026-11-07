@@ -240,6 +240,12 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.52.0 (session 2026-11-07-start-handoff-001): `office start N --handoff`
+  sends a bailout's fresh session (office_bale handoff_check,
+  handoff_session, handoff_opener; [surfaces.handoff]); a job's session line
+  cleared on withdraw or bailout and taken on handoff (office_deliver
+  job_session_ended, job_handed_off); the undo close's check (held_paths);
+  resolve_hosted_bundle gone.
 - 0.51.0 (session 2026-11-06-undo-bale-003): bale's own change taken out
   of the workbench through an undo session, never by hand.
   - office_deliver take_out_own raises UndoConflict (every refusing path);

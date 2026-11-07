@@ -68,7 +68,8 @@ you: words`, or `waiting on you: nothing` while the sitting is working.
 
 Every line the sitting hands the occupant to type is an office line (doctrine
 section 10): `office start`, `office land`, `office relay`, `office probe`,
-never `bale open` and never bale's verbs (bale retry, relay, unlock, handoff),
+never `bale open` and never bale's verbs (bale retry, relay, unlock, handoff:
+`office start N --handoff` hands a bailout off),
 which are bale's record and reach him through the office. A probe block it
 returns carries one more comment line in its purpose header, kept to the byte
 (doctrine section 4, continued; values illustrative):

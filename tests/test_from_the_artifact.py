@@ -12,8 +12,8 @@ One class (or a unit class and a verb class) per item of the brief
    verb there;
 3. every line the office hands the occupant is an office line: a
    clarification's Next line and tail, and bale's verbs in office words;
-4. a bailout's Next line (the half this release left: office start
-   --handoff is a proposal, and the line says so);
+4. a bailout's Next line (the half this release left; since 0.52.0 it is
+   office start N --handoff, tests/test_handoff.py);
 5. one copy runs a probe: the run line in its purpose header, and the
    home screen's r key;
 6. a standing alone on the clipboard reaches the office through office
@@ -373,15 +373,16 @@ class TestTheLandingsOfficeWords(LandCase):
         self.assertNotIn("0.44.0", flat("\n".join(doctrine[:299])))
 
 
-# --- 4. a bailout's line (left: office start --handoff is proposed) --------------------------------
+# --- 4. a bailout's line (0.52.0: office start N --handoff) --------------------------------------------
 
 class TestABailoutsLine(unittest.TestCase):
-    def test_the_line_says_there_is_no_office_line_yet_and_where_bales_goes(self):
+    def test_the_line_is_office_start_handoff_where_bale_handoff_runs(self):
         plan = dict(TestOfficeWords.PLAN)
         words, nxt = ob.outcome_words(plan, "bailout")
-        self.assertIn("Bailed: the worker handed 2026-11-03-fix-login-001 off; nothing landed.", words)
-        self.assertEqual(nxt, "no office line yet: type bale handoff 'response-x.tar.gz' in /w/alpha; it packs the fresh "
-                              "session the handoff asks for, and office sessions 3 SID records it in the folder")
+        self.assertIn("Bailed: the worker handed 2026-11-03-fix-login-001 off; nothing landed", words)
+        self.assertEqual(nxt, "office start 3 --handoff response-x.tar.gz (bale handoff runs in /w/alpha; it sends the "
+                              "fresh session the handoff asks for)")
+        self.assertNotIn("no office line", nxt)
         self.assertNotIn("bale printed the handoff step above", words)
 
 

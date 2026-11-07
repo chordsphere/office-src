@@ -4,6 +4,77 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.52.0
+
+Additive: no migration, nothing to do in any office. The fifteenth serial
+session of the plan begun on 2026-10-27: 0.44.0's first proposal (item 4
+of its brief, left at its seam), 0.51.0's two proposals, and 0.49.0's
+note on bundle plumbing. A folder records a handoff as a new History verb,
+`handed-off`; a merge or undo job's page may carry a `bailed` line. Both
+read as absent on an older folder.
+
+A bailout's fresh session goes out from the office. `office start N
+--handoff [RESPONSE]` runs `bale handoff` where the bailed session ran
+(through the project's shell on a host, the bailout carried there first
+and removed in the handoff's own connection), stdin closed, and reads which session
+it opened from bale status's open set before and after, exactly one more,
+held to the report's `session id` and `tarball` rows and to
+request-SID.tar.gz in status's outbox. RESPONSE is the bailout, a path or
+its name here or in the downloads; none, the response of the folder's
+newest session there. Everything after is a pack's: the tray (the office's
+context beside the request, the doctrine, what rides), the folder's record
+(`- SID: from the handoff of BAILOUT` in Sessions and a `handed-off`
+History line, one commit), and the opener on the clipboard last. bale
+handoff prints no opener and keeps no constraint, so the office composes
+the opener in the shape of bale's, says so in its last line and on the
+screen, and names handoff.md first, the folder's brief where it rides and
+the original pack's constraint. Refused by name before anything runs: a
+response that is not a bailout or carries no handoff.md, one whose session
+the folder does not record, is still open or was a sitting, a folder in
+the filing cabinet, and `--in-office`, `--merge`, `--undo-bale`,
+`--bundle`, `new`, `--drop`, `--goal`, `--brief`, `--write`, `--include`,
+`--slug`, `--read-only`, `--sort`, `--prep`, `--planner`, `--words` and
+`--carry` beside it; `--branch` checks out first. bale's refusals (a
+detached HEAD, the missing record, the gate) are said in bale's words with
+the office line that answers each, and nothing is written in the office:
+no survey runs before a handoff. A bailout's Next line, and `bale handoff`
+in office words, is now `office start N --handoff RESPONSE (bale handoff
+runs in REPO; ...)`; the README, the doctrine and the sitting brief no
+longer say there is no office line for it. [surfaces.handoff] declares the
+verb, its contract (cmd_handoff in bin/bale, bale 0.4.56, read by the
+probes handoff-ground and handoff-tail) and its two rows; share/verbs.toml
+and the doctrine's session kinds gain `handoff`.
+
+A job's session line follows its session. When office withdraw closes the
+session a merge or undo job names, or its bailout lands, the page's line is
+cleared, said and committed, and the job is offered again (`office start N
+--merge`, or `--undo-bale`); a bailout is kept as the page's `bailed` line,
+and `office start N --handoff` puts the fresh session in its place, so
+land closes the job for it. The merge line gains the undo line's `office
+start N --merge sends another in its place, if it was withdrawn`.
+
+The undo job's close checks its work. Before office land (or deliver)
+closes an undo job, each of its paths is read on the workbench and held to
+bale's change as the materials record it: the lines bale's commit put
+there that the file did not hold before, and those it took away (before/
+against bale/; blank lines, and lines both sides hold, never decide). A
+path that still holds bale's change (every line bale put still there and
+none it took back) keeps the job open, said with the path and the line,
+nothing removed: the session line cleared, the session kept as the page's
+`earlier` line, and land's last line `office start N --undo-bale`.
+
+0.49.0's note. resolve_hosted_bundle and bundle_lands_read's bare-name
+branch are gone from bin/office: since 0.49.0 every bundle start takes is a
+file, so neither ran. START_BUNDLE_FOUND stays: it feeds --bundle-found.
+
+Tests: tests/test_handoff.py (the surface, the line, the opener, the
+whole loop through the office here and on a host, the refusals, the job
+line as units and through the office, the close's rule and its kept-open
+job, and the record); tests/fakes/land_bale.py learned a bailout apply and
+bale handoff, built from bale's code (no real bailout was there to
+capture); tests/test_land.py's response_tarball writes a bailout's
+handoff.md; tests/test_from_the_artifact.py pins the new line.
+
 ## 0.51.0
 
 Additive: no migration, nothing to do in any office. The fourteenth serial

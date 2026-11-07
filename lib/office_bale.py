@@ -4373,9 +4373,317 @@ def open_bundle(rd, pack_dir, bundle, scratch=None, as_json=False):
     return {"sid": sid, "tarball": tarball, "opener": opener, "second_desk": second_desk}
 
 
+# --- a bailout's fresh session: office start N --handoff (0.52.0) ------------------------------------
+#
+# bale handoff is a third way a request is built, beside pack and open: it
+# takes a bailout response, inherits the bailed-on session's goal verbatim and
+# its recorded forecast exactly, and packs a fresh session whose request
+# carries the worker's handoff.md first. office start N --handoff runs it
+# where the bailed session ran (through the project's shell on a host, the
+# tarball carried there first), reads the new session from bale status's open
+# set before and after (exactly one more, held to the report's rows and to the
+# request in status's outbox), and then does everything a pack's start does:
+# the tray, the folder's record, the opener. bale handoff prints no opener and
+# keeps no constraint, so the office composes the opener from the request, in
+# the shape of bale's own, and says it is the office's (handoff_opener).
+
+HANDOFF_RESPONSE_RE = oh.LazyPattern(r"response-\d{3}/manifest\.json")
+REQUEST_MANIFEST_RE = oh.LazyPattern(r"request-\d{3}/manifest\.json")
+
+
+def response_facts(path):
+    """(responds_to, response_kind, handoff.md's path inside the response or
+    None) of a response tarball: the worker's file, read without bale."""
+    import json
+    import tarfile
+    try:
+        with tarfile.open(path) as t:
+            members = [m for m in t.getmembers() if m.isfile()]
+            m = next((m for m in members if HANDOFF_RESPONSE_RE.fullmatch(m.name)), None)
+            if m is None:
+                raise StartError([f"{path} holds no response-NNN/manifest.json, so it is not a response tarball"])
+            manifest = json.loads(t.extractfile(m).read().decode("utf-8"))
+            top = m.name.split("/", 1)[0]
+            handoff = next((x.name for x in members if x.name == f"{top}/handoff.md"), None)
+    except (OSError, tarfile.TarError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise StartError([f"{path} is not a response tarball the office can read: {exc}"])
+    sid = manifest.get("responds_to")
+    if not isinstance(sid, str) or not oh.SID_RE.match(sid):
+        raise StartError([f"{path}: its manifest's responds_to is not a session id: {sid!r}"])
+    return sid, manifest.get("response_kind"), handoff
+
+
+def handoff_places(office_root, lane=None):
+    """[(label, entry or None, where bale reads)] the office reads bale's
+    records in, the folder's own project first, the office last: where a
+    session the folder records may have run. A project that cannot be read
+    is left out, said under OFFICE_DEBUG."""
+    out, office = [], pathlib.Path(office_root)
+    entries = office_projects(office_root) or []
+    for entry in sorted(entries, key=lambda e: e["name"] != lane):
+        try:
+            out.append((entry["name"], entry, readable(entry)))
+        except BaleError as exc:
+            debug(f"{entry['name']}: not read for the handoff ({exc})")
+    out.append((OFFICE_LABEL, None, office))
+    return out
+
+
+def handoff_check(rd, office_root, folder_rel, response=None, cwd=None, downloads=None):
+    """What office start N --handoff [RESPONSE] sends, read before anything
+    runs: a dict of tarball (a path here, or a bare name for bale's own
+    search on a project here), bailout (the session it answers), where,
+    project, key (how a line names the folder) and said (lines). Raises
+    StartError, naming what it looked for, for: no response; a response
+    that is not a bailout or carries no handoff.md; one whose session the
+    folder does not record, is still open, ended otherwise, or was a
+    read-only sitting; a folder in the filing cabinet."""
+    root = pathlib.Path(office_root)
+    md = root / folder_rel / "folder.md"
+    name = pathlib.PurePosixPath(folder_rel).name
+    if not folder_rel.startswith("desk/"):
+        raise StartError([f"{folder_rel} is in the filing cabinet: office reopen {name} brings it back to the desk, "
+                          f"and office start {name} --handoff then sends the fresh session; nothing ran"])
+    parsed = oh.parse_folder(md.read_text(encoding="utf-8"))
+    key = (parsed["fields"].get("number") or [""])[0] or name
+    sids = parsed["sids"]
+    here = pathlib.Path(cwd or os.getcwd())
+    looked = ", ".join([str(here)] + [str(d) for d in downloads or []])
+    said, bare, path = [], None, None
+    if response:
+        given = pathlib.Path(response).expanduser()
+        at = given if given.is_absolute() else here / given
+        if at.is_file():
+            path = at.resolve()
+        elif "/" in response:
+            raise StartError([f"--handoff {response}: no such file; nothing ran"])
+        else:
+            m = RESPONSE_NAME_RE.match(response)
+            if not m or not oh.SID_RE.match(m.group(1)):
+                raise StartError([f"--handoff {response}: not a file here, and not a response's name "
+                                  "(response-SID.tar.gz) to look for; nothing ran"])
+            path = find_in(downloads, response, here)
+            if path is None:
+                path, note = newest_copy(browser_copies(downloads or [], response), response, StartError)
+                if note:
+                    said.append(note)
+            if path is None:
+                bare = response
+    else:
+        if not sids:
+            raise StartError([f"{folder_rel} records no session, so there is no bailout of its own to hand off: "
+                              f"office start {key} sends its first; nothing ran"])
+        newest = sids[-1]
+        want = f"response-{newest}.tar.gz"
+        path = find_in([], want, here)
+        if path is None:
+            path, note = newest_copy(browser_copies(downloads or [], want), want, StartError)
+            if note:
+                said.append(note)
+        if path is None:
+            raise StartError([f"no {want} (the response of {newest}, the newest session {folder_rel} records) in "
+                              f"{looked or 'the downloads'}: save the bailout there, or name it: office start {key} "
+                              "--handoff RESPONSE; nothing ran"])
+        said.append(f"the bailout is {path}, the response of {newest}, the newest session {folder_rel} records")
+    if path is not None:
+        bailout, kind, handoff_md = response_facts(path)
+        if kind != "bailout":
+            raise StartError([f"{path.name} is a {kind or 'kindless'} response for {bailout}, not a bailout: only a "
+                              f"bailout is handed off (office land {bailout} lands it); nothing ran"])
+        if handoff_md is None:
+            raise StartError([f"{path.name} carries no handoff.md, which bale handoff needs (a bailout's handoff is "
+                              "what the fresh session reads first): the worker's response is not one bale hands off; "
+                              "nothing ran"])
+    else:
+        bailout = RESPONSE_NAME_RE.match(bare).group(1)
+    if bailout not in sids:
+        raise StartError([f"{(path.name if path else bare)} answers {bailout}, which {folder_rel} does not record "
+                          f"(it records {', '.join(sids) or 'none'}): the folder that records it hands it off; "
+                          "nothing ran"])
+    lane = (parsed["fields"].get("lane") or [""])[0].split(":", 1)[0].strip() or None
+    found = None
+    for label, entry, where in handoff_places(root, lane):
+        try:
+            d = rd.dossier(where, bailout)
+        except BaleError as exc:
+            debug(f"{label}: {bailout}'s record not read ({exc})")
+            continue
+        if d is not None:
+            found = (label, entry, where, session_view(rd, d))
+            break
+    if found is None:
+        raise StartError([f"{bailout} is in none of the records the office reads (this office's and its projects'), "
+                          "so where it ran is unknown and bale handoff has nowhere to run; nothing ran"])
+    label, entry, where, view = found
+    shown = "the office" if entry is None else label
+    if view["in_flight"]:
+        raise StartError([f"{bailout} is still open in {shown}: office land {bailout} lands its bailout first (bale "
+                          f"closes the session), then office start {key} --handoff sends the fresh one; nothing ran"])
+    if view["read_only"]:
+        raise StartError([f"{bailout} was a read-only sitting in {shown}: a sitting is not handed off; the office "
+                          "sends another sitting itself (office start --planner); nothing ran"])
+    if view["outcome"] != "bailout":
+        raise StartError([f"{bailout} ended {outcome_word(view)} in {shown}, not as a bailout, so there is nothing "
+                          "to hand off; nothing ran"])
+    if bare is not None and entry is not None and hosted_project(entry):
+        raise StartError([f"{bare} is not in {looked}: a bailout for a project on {entry['host']} is carried there "
+                          "from this machine, so give its path, or add the directory it is in to downloads in "
+                          "machine.toml; nothing ran"])
+    if bare is not None:
+        said.append(f"{bare} is not in {looked}; bale's own search finds it in {shown}")
+    return {"tarball": str(path) if path is not None else bare, "bailout": bailout,
+            "where": "office" if entry is None else "project", "project": None if entry is None else label,
+            "key": key, "said": said}
+
+
+def report_rows(lines, spec, keys):
+    """{key: value} of a text report's summary rows, each found by the
+    row's start the surface declares (spec[key + "_line"]); a row the
+    report lacks is None."""
+    out = {}
+    for k in keys:
+        start = spec[f"{k}_line"]
+        out[k] = next((l[len(start):].strip() for l in lines if l.startswith(start)), None)
+    return out
+
+
+def handoff_refusal_lines(text, key, bailout):
+    """The office's line beside bale's own words, for the refusals bale
+    handoff is known to make (cmd_handoff, bale 0.4.56); [] for another."""
+    low = text.lower()
+    if "detached" in low:
+        return [f"bale handoff stamps the checked-out branch as the session's target: office start {key} --handoff "
+                "RESPONSE --branch NAME checks a branch out in the clone first"]
+    if "cannot inherit goal" in low:
+        return [f"bale inherits the goal from its record of {bailout} (.bale/sessions/{bailout}/ in the repo it was "
+                f"packed in), which this clone does not hold; office start {key} sends a fresh session on the "
+                "folder's goal instead"]
+    if "bailout responses only" in low:
+        return [f"office land {bailout} lands a response that is not a bailout"]
+    if "forecast" in low or "overlap" in low or "intersect" in low:
+        return ["a session open there holds the forecast the handoff inherits: office land SID brings it back, or "
+                f"office withdraw SID closes one never worked; then office start {key} --handoff again"]
+    return []
+
+
+def handoff_session(rd, pack_dir, tarball, scratch=None):
+    """bale handoff TARBALL in pack_dir, stdin closed. Returns sid, tarball,
+    opener (None: bale prints none) and second_desk (False).
+
+    The session it opened is read as open_bundle reads one: bale status's
+    open set before and after, which must name exactly one new session; the
+    report's `session id` and `tarball` rows ([surfaces.handoff]) must name
+    that session and its request, request-SID.tar.gz in status's outbox. On
+    a host the status after, and the scratch's removal, ride the handoff's
+    own connection."""
+    spec = rd.consumption.surface("handoff")
+    before = set(rd.key(rd.status(pack_dir), "status", "sessions") or [])
+    hosted = rd.hosted(pack_dir)
+    status_argv = rd.consumption.argv("status")
+    also = None
+    if hosted:
+        also = [["bale", *status_argv]] + ([scratch.removal_argv()] if scratch is not None and scratch.made else [])
+    proc, shown, where = rd.invoke("handoff", pack_dir, timeout=PACK_TIMEOUT, whole_why=True, also=also,
+                                   tarball=tarball)
+    lines = proc.stdout.splitlines()
+    rd.forget(pack_dir)
+    if hosted:
+        if scratch is not None and scratch.made:
+            scratch.removed_by_step()
+        run = rd.also_runs[0]
+        if run.returncode == 0:
+            try:
+                rd._cache[(str(pack_dir), tuple(status_argv))] = rd.parse("status", run, "bale status --json",
+                                                                           str(pack_dir))
+            except BaleError as exc:
+                debug(f"bale status after the handoff did not read from its batch ({exc}); asked on its own")
+    st = rd.status(pack_dir)
+    new = [x for x in (rd.key(st, "status", "sessions") or []) if x not in before]
+    rows = report_rows(lines, spec, ("sid", "tarball"))
+    if len(new) != 1:
+        raise BaleError("output", f"{shown} exited 0 in {where}, but bale status names {len(new)} newly open "
+                                  f"session(s) ({', '.join(new) or 'none'}), so the office cannot tell which it opened")
+    sid = new[0]
+    if rows["sid"] != sid:
+        raise BaleError("output", f"{shown} opened {sid} in {where} by bale status, but its report's session id row "
+                                  f"says {rows['sid'] or 'nothing'}")
+    name = f"request-{sid}.tar.gz"
+    tb = rows["tarball"]
+    if tb is None or pathlib.PurePath(tb).name != name or name not in (rd.key(st, "status", "outbox") or []):
+        raise BaleError("output", f"{shown} opened {sid} in {where}, but its report's tarball ({tb or 'none'}) is not "
+                                  f"the request bale status lists for it ({name})")
+    return {"sid": sid, "tarball": tb, "opener": None, "second_desk": False}
+
+
+def request_facts(path):
+    """(sid, goal, packed_at or None, handoff.md's path inside the request or
+    None) of a request tarball, read from its manifest and its members."""
+    import json
+    import tarfile
+    with tarfile.open(path) as t:
+        members = [m for m in t.getmembers() if m.isfile()]
+        m = next((m for m in members if REQUEST_MANIFEST_RE.fullmatch(m.name)), None)
+        if m is None:
+            raise StartError([f"{path} holds no request-NNN/manifest.json"])
+        manifest = json.loads(t.extractfile(m).read().decode("utf-8"))
+        top = m.name.split("/", 1)[0] + "/"
+        handoff = next((x.name[len(top):] for x in members
+                        if x.name.startswith(top) and pathlib.PurePosixPath(x.name).name == "handoff.md"), None)
+    packed = (manifest.get("provenance") or {}).get("packed_at")
+    return manifest.get("session_id"), manifest.get("goal"), packed, handoff
+
+
+HANDOFF_OPENER_MARK = ("(This opener is the office's: bale handoff prints none, so office-src composed it from the "
+                       "request, in the shape of bale's own.)")
+
+
+def handoff_opener(request, bailout, folder_rel, has_brief, context_name, constraint=None):
+    """The session opener for a handoff's fresh session, composed by the
+    office in the shape of bale's (the captured ones, fixtures bale-0.4.45):
+    its goal and session from the request, handoff.md named as the first
+    thing to read, the folder's brief where it rides in the office's
+    context, and the constraint the original pack carried, which bale's
+    handoff drops. Its last line says it is the office's."""
+    sid, goal, packed, handoff = request_facts(request)
+    handoff = handoff or "handoff.md"
+    if has_brief:
+        brief = (f"The folder's brief, {folder_rel}/brief.md, rides in {context_name} beside the request, with the "
+                 "folder (its job, goal and History).")
+    else:
+        brief = (f"The folder, {folder_rel} (its job, goal and History), rides in {context_name} beside the request; "
+                 "the handoff carries no README brief of its own.")
+    lines = ['I\'m using "bale", a CLI that packaged the attached request tarball.',
+             f"This message opens bale session {sid}.",
+             f"Goal, verbatim from the request manifest: {goal}",
+             "The docs and tools in the tarball are mine, written for this workflow;",
+             "AGENT.md and the four docs beside it are my instructions for this",
+             f"session. Read manifest.json first, then AGENT.md, then {handoff},",
+             f"the handoff the worker of {bailout} wrote when it bailed out: this",
+             "session picks the work up from there. AGENT.md says when the other",
+             "four docs are needed.",
+             brief,
+             "tools/craft_response.py and tools/response_lint.py are",
+             "stdlib-only formatters with no network access - conveniences over the",
+             "docs, which are the contract; read them before you run them, and a",
+             "response assembled by hand is just as valid."]
+    if constraint:
+        lines.append(f"The original pack's constraint, which bale's handoff does not carry over: {constraint}")
+    if packed:
+        lines.append(f"Packed at {packed} (UTC).")
+    lines += ["bale's dates are UTC and can run a day ahead of this chat's date (a timezone gap, not an error); "
+              "date what you write from the session id.",
+              "If you need something from me, a fact from my machine or a decision,",
+              "end that turn with the matching block from TARBALL.md (a probe, a",
+              "light question block, or a clarification response) rather than a",
+              "question in prose, which tends to get lost. This is a worker session:",
+              "what I need back is one response tarball carrying the finished work.",
+              HANDOFF_OPENER_MARK]
+    return lines
+
+
 def start(rd, office_root, folder, where, project, goal, slug, includes, writes, read_only,
           brief, work_class, tray_root, bundle=None, leave_out=(), install_files=(), checked=False,
-          bale_rehearsed=False, bundle_found=None):
+          bale_rehearsed=False, bundle_found=None, handoff=None):
     """Pack a session for a folder and fill its out tray. Returns a dict:
     sid, tray, files, opener (lines, or None), carried (what each file
     is), warnings. Raises StartError with lines to print when it cannot
@@ -4406,7 +4714,16 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     it was named; it reads it there instead, and only to tell whether the
     bundle sends out a sitting, so the digest is written before it as
     before any other sitting (0.21.0). Every other check keeps reading
-    the bundle where it was named, as before."""
+    the bundle where it was named, as before.
+
+    handoff (0.52.0) is handoff_check's dict for office start N --handoff:
+    bale handoff runs in place of a pack (handoff_session), with the
+    bailout carried to the host first for a hosted project; goal, slug,
+    forecast and includes are bale's, inherited from the bailed session,
+    so the office's overlap check is bale's gate there, and the survey is
+    not run again, so a refusal leaves the office as it was. The office's
+    context rides beside the request (for a session in the office too),
+    and the opener is the office's (handoff_opener)."""
     import shutil
     import tempfile
     import office_drafting as od
@@ -4583,7 +4900,7 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     # wherever bale's rehearsal does) is bale's to judge: a bundle whose
     # session is still open overlaps that session by construction, and
     # bale takes it as a second desk (0.18.0).
-    if not (bundle and argv is None):
+    if not (bundle and argv is None) and not handoff:
         lines = overlap_lines(rd, office_root, pack_dir, where, project, forecast, bundle, bundle_supersedes)
         if lines and not (bundle and bale_rehearsed):
             raise StartError(lines)
@@ -4592,8 +4909,13 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
 
     # Every check has passed: survey the machine again before anything
     # is packed, so the hung survey this session reads is current, and a
-    # refused start commits nothing.
-    survey_before_pack(office_root)
+    # refused start commits nothing. A handoff runs none (0.52.0): bale may
+    # refuse it, and then nothing in the office moves.
+    if handoff:
+        debug("no survey before a handoff: a refusal leaves the office as it was; the session reads the survey "
+              "as it is")
+    else:
+        survey_before_pack(office_root)
     # A sitting (a read-only office session, a bundle's included) opens on
     # the digest: written just before the pack, and the drafting table
     # rides with the sitting whenever the office has one. A bundle's pack
@@ -4641,8 +4963,13 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         riding = []
         warnings.append(f"the in-tray could not be read, so no drop rides with this session: {exc}")
     drops_place = None
+    # A handoff's request is bale's (0.52.0): the office's context rides
+    # beside it, as a project session's does, wherever it runs.
+    beside = where == "project" or bool(handoff)
     if riding:
-        if where == "office" and not bundle:
+        if beside:
+            drops_place = "beside the request, in the office's context"
+        elif where == "office" and not bundle:
             if includes:
                 includes = [*includes, *[r for r in riding if r not in includes]]
                 drops_place = "inside the request"
@@ -4660,7 +4987,9 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
         req_tree = pack_dir if argv is not None and where == "project" else None
         req_inc, req_exc = (bundle_tree_includes, bundle_tree_excludes) if req_tree else (None, ())
     else:
-        req_tree = pack_dir if where == "project" else None
+        # A handoff's request ships the handoff and its reading plan, never
+        # the tree, so no doctrine of the tree's rides in it.
+        req_tree = pack_dir if where == "project" and not handoff else None
         req_inc, req_exc = (list(includes) or None), ()
     try:
         own = doctrine_sums(req_tree, req_inc, req_exc, rd)
@@ -4701,7 +5030,8 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                     (holder / rel).parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(src, holder / rel)
                 carried.append(scratch_context(rd, tray, holder, "from the install: " + ", ".join(install_files)))
-        if where == "project":
+        context_name = None
+        if beside:
             # The office's context rides beside the request, never inside
             # it: the folder and the hung items, named, because include
             # groups do not fire under --context.
@@ -4720,6 +5050,8 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                                               + (f", the letterhead (its voice page first: {project} has an audience)"
                                                  if letterhead else "")
                                               + (f", and {len(riding)} unsorted drop(s)" if riding else "")))
+            # Its name in the tray, for a handoff's opener (0.52.0).
+            context_name = carried[-1].split(":", 1)[0]
         elif riding and bundle:
             # An office bundle: the drops ride beside it, as their own
             # context tarball, since the bundle's pack line is the planner's.
@@ -4765,7 +5097,19 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                 stage = f"what rides from {ride_place.host}"
                 carried += pack_host_rides(rd, tray, ride_place, ride_rows, project)
         # The session itself, last.
-        if bundle:
+        if handoff:
+            given = handoff["tarball"]
+            if hosted:
+                stage = "sending the bailout to " + pack_dir.host
+                given = scratch.send(given)
+            stage = "the handoff"
+            try:
+                opened = handoff_session(rd, pack_dir, given, scratch if hosted else None)
+            except BaleError as exc:
+                raise StartError([f"bale handoff did not open the fresh session, so no session was opened and no out "
+                                  f"tray was made: {exc}"]
+                                 + handoff_refusal_lines(str(exc), handoff.get("key") or "N", handoff["bailout"]))
+        elif bundle:
             stage = "the bundle's open"
             if hosted:
                 stage = "sending the bundle to " + pack_dir.host
@@ -4834,12 +5178,27 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                           + (f" on {pack_dir.host}" if hosted else ""),
                           (f"record the session in its folder with: office sessions {pathlib.Path(folder).name} {sid}"
                            if folder else "no folder records a standalone sort; office land SID brings it back")])
+    if handoff:
+        # bale handoff prints no opener (0.52.0): the office composes it from
+        # the request now in the tray, and says it is the office's.
+        try:
+            opened["opener"] = handoff_opener(
+                final / name, handoff["bailout"], folder,
+                bool(folder) and (office_root / folder / "brief.md").is_file(),
+                context_name or "the office's context", PROJECT_CONSTRAINT if where == "project" else None)
+        except (OSError, StartError, ValueError) as exc:
+            why = "; ".join(exc.lines) if isinstance(exc, StartError) else str(exc)
+            warnings.append(f"the request in the tray could not be read for the opener ({why}); the session is open, "
+                            "and its manifest names its goal")
+            opened["opener"] = None
     # The opener says how many drops ride, in one line after bale's own.
     if riding and opened["opener"] is not None:
         opened["opener"] = [*opened["opener"], "", odrop.opener_line(len(riding), sitting=forecast == [])]
     kind = "an office session" if where == "office" else project + " session"
     if hosted:
         kind += f", packed on {pack_dir.host} and carried back"
+    if handoff:
+        kind += f", from the handoff of {handoff['bailout']}"
     if bundle:
         kind += f", from the bundle {pathlib.Path(bundle).name}"
         if opened["second_desk"]:
@@ -4857,8 +5216,8 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
                             f"the doctrine this sitting went out under: {exc}")
     return {"sid": sid, "tray": str(final), "files": sorted(tray.files), "carried": carried,
             "opener": opened["opener"], "pack_dir": str(pack_dir), "request": str(final / name),
-            "warnings": warnings, "sitting": forecast == [], "second_desk": opened["second_desk"],
-            "drops": len(riding), "doctrine": doctrine}
+            "warnings": warnings, "sitting": forecast == [] and not handoff, "second_desk": opened["second_desk"],
+            "drops": len(riding), "doctrine": doctrine, "handoff": handoff["bailout"] if handoff else None}
 
 
 # --- a host's bale brought level: office projects level-bale ---------------------------
@@ -5701,12 +6060,33 @@ def withdraw(rd, office_root, sid, day, downloads=None):
                 told.append(f"{rel}: History: {day} withdrawn: {sid}")
             except LandError as exc:
                 told.append(f"{rel}: History: {day} withdrawn: {sid}, written but not committed ({' '.join(exc.lines)})")
+        # A merge or undo job that named the session (0.52.0): its line
+        # cleared, and the job offered again.
+        told += job_lines_after(root, [folder], sid, "withdrawn")
         if alone_in(root, folder, sid):
             alone.append(folder)
     where = "the office" if x["label"] == OFFICE_LABEL else x["label"]
     words = (f"Withdrawn: {sid} is closed in {where}, never worked; bale records it as {reason}."
              + ("" if x["folders"] else " No folder recorded it (the in-tray's sort)."))
     return words, told, alone
+
+
+def job_lines_after(office_root, folders, sid, how):
+    """office_deliver.job_session_ended for each desk folder that records a
+    session which ended without landing (how: withdrawn, bailed): the lines
+    to say. A step that cannot run is one line, never a refusal: the
+    session is already closed in bale."""
+    import office_deliver as odl
+    lines = []
+    for rel in folders:
+        if not rel.startswith("desk/"):
+            continue
+        try:
+            lines += odl.job_session_ended(office_root, rel, sid, how)
+        except (oh.HelperError, OSError, StartError) as exc:
+            why = "; ".join(exc.lines) if isinstance(exc, StartError) else str(exc)
+            lines.append(f"{rel}: whether a job there names {sid} could not be read ({why}); office status says")
+    return lines
 
 
 def take_record_out(office_root, plan):
@@ -5915,15 +6295,17 @@ def relay_next_line(plan):
 
 
 def handoff_line(plan):
-    """A bailout's Next line (0.44.0). The office has no line yet that runs
-    bale handoff (office start --handoff is proposed, not built: item 4 of
-    the brief, the half this release left), so the line says so and names
-    bale's own, where to type it: the one place the occupant is still sent
-    to bale, said as such."""
-    tarball = shell_quote(str(plan.get("tarball") or "RESPONSE"))
-    return (f"no office line yet: type bale handoff {tarball} in {plan_repo_words(plan)}; it packs the fresh "
-            f"session the handoff asks for, and office sessions {plan_folder_key(plan)} SID records it in the "
-            "folder")
+    """A bailout's Next line (0.44.0; an office line since 0.52.0): office
+    start N --handoff RESPONSE, which runs bale handoff where the session
+    was (through the project's shell for a hosted one), puts the fresh
+    session's request in the out tray with the office's opener, and
+    records it in the folder. RESPONSE is the bailout as land had it: a
+    path, or the name bale's search found."""
+    tarball = str(plan.get("tarball") or "RESPONSE")
+    shown = tarball if re.fullmatch(r"[A-Za-z0-9_./:@%+=,~-]+", tarball) and not tarball.startswith("~") \
+        else shell_quote(tarball)
+    return (f"office start {plan_folder_key(plan)} --handoff {shown} (bale handoff runs in {plan_repo_words(plan)}; "
+            "it sends the fresh session the handoff asks for)")
 
 
 # The bale verbs a landing's own output may name (0.44.0), in the order the
@@ -5999,9 +6381,10 @@ def outcome_words(plan, outcome, named=(False, [])):
                 "above say what stays open.", None)
     if outcome == "bailout":
         # The office's line for the fresh session the handoff asks for
-        # (0.44.0): office start --handoff runs bale handoff there.
-        return (f"Bailed: the worker handed {sid} off; nothing landed. The line below says how the fresh session "
-                "the handoff asks for goes out.", handoff_line(plan))
+        # (0.44.0; built in 0.52.0): office start N --handoff runs bale
+        # handoff there.
+        return (f"Bailed: the worker handed {sid} off; nothing landed, and bale closed the session. The line below "
+                "sends the fresh session the handoff asks for.", handoff_line(plan))
     if outcome == "refused":
         words = f"Not landed: bale refused before it recorded an attempt for {sid}; its words are above."
         if plan.get("verb") == "retry" and not plan.get("accept_checkpoint_change"):
@@ -6063,6 +6446,11 @@ def land_outcome(rd, office_root, plan, code, capture, day):
     words, nxt = outcome_words(plan, outcome, accepts_bale_names(printed))
     applied = outcome == "applied"
     told = put_record_back(office_root, plan, applied, day)
+    if outcome == "bailout":
+        # A merge or undo job that named this session (0.52.0): bale closed
+        # it, so the job's line is cleared and the bailout kept for its
+        # handoff; the job is offered again.
+        told = list(told or []) + job_lines_after(office_root, plan.get("folders") or [], plan["sid"], "bailed")
     return {"outcome": outcome, "applied": applied, "words": words, "next": nxt, "told": told,
             "office_words": office_words(printed, plan),
             "relays": [{"to": to, "lines": lines} for to, lines in blocks],
@@ -6475,6 +6863,19 @@ def build_parser(only=None):
     p.add_argument("--bundle-found", default=None,
                    help="the file bale's rehearsal found the bundle at this start (bundle-check's first line), "
                         "read only to tell whether a bundle named by a bare name sends out a sitting")
+    p.add_argument("--handoff", default=None,
+                   help="office start N --handoff (0.52.0): the bailout response bale handoff takes, as handoff-check "
+                        "resolved it (a path, or a bare name for bale's own search)")
+    p.add_argument("--handoff-sid", default=None, help="the session the bailout answers, from handoff-check")
+    p.add_argument("--handoff-key", default=None, help="how a line names the folder, from handoff-check")
+    p = add("handoff-check", help="office start N --handoff's reads before anything runs (0.52.0): tarball<tab>T, "
+                                  "bailout<tab>SID, where<tab>office|project, project<tab>NAME, key<tab>N and "
+                                  "say<tab>LINE; a refusal on stderr, exit 1")
+    p.add_argument("office"); p.add_argument("folder", help="desk/NAME")
+    p.add_argument("--response", help="the bailout as given: a path, or a name looked for here and in the downloads")
+    p.add_argument("--cwd", help="where a relative response is read from (default: here)")
+    p.add_argument("--downloads", action="append", default=[],
+                   help="a directory machine.toml's downloads lists (repeatable)")
     p = add("start-check", help="a project on a host answers, its bale is at the floor and its repo is "
                                            "bale's, before start writes anything: HOST<tab>VERSION, or nothing for a "
                                            "project on this machine")
@@ -6823,13 +7224,35 @@ def main(argv=None):
         if found is not None:
             print(f"{found[0]}\t{found[1]}")
         return 0
+    if a.cmd == "handoff-check":
+        try:
+            got = handoff_check(Reader(), a.office, a.folder, a.response, a.cwd, a.downloads)
+        except StartError as exc:
+            for line in exc.lines:
+                log(f"error: {line}")
+            return 1
+        except (oh.HelperError, BaleError, ohost.HostError, OSError) as exc:
+            log(f"error: {exc}")
+            return 1
+        for key in ("tarball", "bailout", "where", "project", "key"):
+            if got[key] is not None:
+                print(f"{key}\t{got[key]}")
+        for line in got["said"]:
+            print(f"say\t{line}")
+        return 0
     if a.cmd == "start":
         import json
+        handoff = None
+        if a.handoff:
+            if not a.handoff_sid:
+                log("error: --handoff needs --handoff-sid (a defect in office-src: bin/office passes both)")
+                return 2
+            handoff = {"tarball": a.handoff, "bailout": a.handoff_sid, "key": a.handoff_key}
         try:
             result = start(Reader(), a.office, None if a.folder == "-" else a.folder, a.where, a.project, a.goal,
                            a.slug, a.include,
                            a.write, a.read_only, a.brief, a.work_class, a.tray_root, a.bundle, a.leave_out,
-                           a.install_file, a.checked, a.bale_rehearsed, a.bundle_found)
+                           a.install_file, a.checked, a.bale_rehearsed, a.bundle_found, handoff)
         except StartError as exc:
             for line in exc.lines:
                 log(f"error: {line}")
