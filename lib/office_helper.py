@@ -553,6 +553,10 @@ SESSION_KINDS = ("office-session", "project-session")
 TRIGGERS = ("manual", "before-sitting", "after-sitting", "after-build",
             "on-hold", "on-correctable-hold", "schedule")
 VERB_KEYS = ("lands", "attended", "trigger")
+# Keys a verb may carry and need not (0.54.0): words, the phrases a profile
+# line may name the verb's capability by (named_in_line reads them beside
+# the verb's name). Checked for shape when present.
+OPTIONAL_VERB_KEYS = ("words",)
 # Which surface a verb is on (0.22.0): the occupant's own, which office
 # help lists, or the plumbing the office and its sessions use. Every built
 # script verb says which.
@@ -621,6 +625,9 @@ def verb_catalog_problems(catalog):
             if "lands" in verb:
                 problems.append(f"{name}: lands must be a list of non-empty strings")
             lands = []
+        if "words" in verb and (not string_list(verb["words"]) or not verb["words"]):
+            problems.append(f"{name}: words must be a non-empty list of phrases (the ones a profile line may name "
+                            "it by), or left out")
         attended = verb.get("attended")
         if "attended" in verb and not isinstance(attended, bool):
             problems.append(f"{name}: attended must be true or false")
@@ -643,6 +650,18 @@ def verb_catalog_problems(catalog):
                 unchecked.append(f"{name}: lands {entry!r} could not be placed; every writes entry is prose")
             elif not any(falls_inside(entry, w) for w in path_writes):
                 problems.append(f"{name}: lands {entry!r} falls inside none of writes {path_writes}")
+    # A phrase names one verb (0.54.0): given to two, a profile line that
+    # says it could not say which is built.
+    owner = {}
+    for name, verb in sorted(verbs.items()):
+        if not isinstance(verb, dict) or not string_list(verb.get("words", [])):
+            continue
+        for phrase in verb.get("words", []):
+            key = " ".join(phrase.lower().split())
+            if key in owner:
+                problems.append(f"{name}: words {phrase!r} is {owner[key]}'s already; a phrase names one verb")
+            else:
+                owner[key] = name
     return problems, unchecked
 
 
@@ -3476,25 +3495,51 @@ def catalog_names(catalog):
     return out
 
 
-def named_in_line(line, names):
-    """The verb or kind a profile line names, or None: the leftmost of
-    `office NAME`, NAME in backticks (alone or after `office `), NAME
-    followed by session(s), verb(s) or kind(s), and a session kind on its
-    own (project session, office-sessions); a hyphen in a name may be
-    written as a space. A verb's bare word is not enough (open, land,
-    status and most others are ordinary words too)."""
-    best = None
+def catalog_words(catalog):
+    """{name: [phrase, ...]} for each verb share/verbs.toml gives a words
+    list (0.54.0): the phrases a profile line may name its capability by
+    ("a project on a host" for projects)."""
+    verbs = catalog.get("verbs") if isinstance(catalog, dict) else None
+    out = {}
+    for name, verb in (verbs or {}).items():
+        if isinstance(verb, dict) and string_list(verb.get("words", [])) and verb.get("words"):
+            out[name] = list(verb["words"])
+    return out
+
+
+def match_in_line(line, names, words=None):
+    """(name, phrase) for the verb or kind a profile line names, or None:
+    the leftmost of `office NAME`, NAME in backticks (alone or after
+    `office `), NAME followed by session(s), verb(s) or kind(s), a session
+    kind on its own (project session, office-sessions), and since 0.54.0
+    any phrase of words ({name: [phrase]}, catalog_words'), its spaces any
+    run of whitespace; a hyphen in a name may be written as a space. phrase
+    is the words phrase matched, or None when the name itself was. At one
+    place the longer match wins. A verb's bare word is not enough (open,
+    land, status and most others are ordinary words too)."""
+    best = None  # (start, -length, name, phrase)
     for name in names:
         spelled = re.escape(name).replace(r"\-", "[- ]")
-        forms = [rf"\boffice\s+{spelled}(?![\w-])", rf"`(?:office\s+)?{spelled}(?:\s[^`]*)?`",
-                 rf"(?<![\w-]){spelled}\s+(?:sessions?|verbs?|kinds?)\b"]
+        forms = [(rf"\boffice\s+{spelled}(?![\w-])", None), (rf"`(?:office\s+)?{spelled}(?:\s[^`]*)?`", None),
+                 (rf"(?<![\w-]){spelled}\s+(?:sessions?|verbs?|kinds?)\b", None)]
         if name in SESSION_KINDS:
-            forms.append(rf"(?<![\w-]){spelled}s?(?![\w-])")
-        for form in forms:
+            forms.append((rf"(?<![\w-]){spelled}s?(?![\w-])", None))
+        for phrase in (words or {}).get(name, []):
+            forms.append((r"(?<![\w-])" + r"\s+".join(re.escape(w) for w in phrase.split()) + r"(?![\w-])", phrase))
+        for form, phrase in forms:
             m = re.search(form, line, re.IGNORECASE)
-            if m and (best is None or m.start() < best[0] or (m.start() == best[0] and len(name) > len(best[1]))):
-                best = (m.start(), name)
-    return best[1] if best else None
+            if m:
+                key = (m.start(), -(m.end() - m.start()))
+                if best is None or key < best[:2]:
+                    best = (*key, name, phrase)
+    return (best[2], best[3]) if best else None
+
+
+def named_in_line(line, names, words=None):
+    """The verb or kind a profile line names, or None (match_in_line's
+    name)."""
+    found = match_in_line(line, names, words)
+    return found[0] if found else None
 
 
 def stale_profile_lines(profile, catalog, version):
@@ -3503,15 +3548,22 @@ def stale_profile_lines(profile, catalog, version):
     builds it, with its number and its words. A line that names nothing
     the catalog declares, or names what is still not built, is not said."""
     names = catalog_names(catalog)
+    words = catalog_words(catalog)
     out = []
     for n, line in enumerate(pathlib.Path(profile).read_text(encoding="utf-8").splitlines(), 1):
         if not NOT_BUILT_RE.search(line):
             continue
-        name = named_in_line(line, names)
-        if name is None or not names[name]:
+        found = match_in_line(line, names, words)
+        if found is None or not names[found[0]]:
             continue
-        out.append(f"  profile.md line {n} says {name} is not built; office-src {version} builds it "
-                   f"(share/verbs.toml): {line.strip()}")
+        name, phrase = found
+        if phrase is None:
+            out.append(f"  profile.md line {n} says {name} is not built; office-src {version} builds it "
+                       f"(share/verbs.toml): {line.strip()}")
+        else:
+            # Named by a capability's words (0.54.0): the words, then the verb.
+            out.append(f"  profile.md line {n} says {phrase} is not built; office-src {version} builds it "
+                       f"(office {name}, share/verbs.toml): {line.strip()}")
     return out
 
 
@@ -4440,6 +4492,52 @@ def add_machine_office(machine_file, root):
     return line
 
 
+def offices_status_lines(machine_file, office_root):
+    """office status's lines on machine.toml's offices (0.54.0): one line
+    naming each office listed, `NAME (ROOT)`, the one status runs in
+    marked `this one`; then a line under it for each listed root that is no
+    longer an office (or whose floor plan does not read). No office verb
+    takes a root out of the list (the office adds to it and never removes:
+    the occupant edits the file), so the line says that, and names the
+    entry to delete and the file it is in."""
+    try:
+        listed = machine_offices(machine_file)
+    except HelperError as exc:
+        return [f"offices:    machine.toml's {OFFICES_KEY} does not read: {exc}"]
+    if listed is None:
+        return [f"offices:    none listed ({machine_file}'s {OFFICES_KEY} is not set; office default PATH, "
+                "office init and the home screen list an office)"]
+    found, _ = listed_offices(machine_file)
+    here = os.path.realpath(str(office_root))
+    shown = "; ".join(f"{name} ({root}{', this one' if root == here else ''})" for root, name in found)
+    lines = [f"offices:    {len(found)} listed in {machine_file}: {shown or 'none that is an office'}"
+             + ("" if here in [r for r, _ in found] else "; this one is not in the list")]
+    seen = set()
+    for root in listed:
+        real = os.path.realpath(root)
+        if real in seen:
+            continue
+        seen.add(real)
+        if (pathlib.Path(real) / OFFICE_MANIFEST_REL).is_file():
+            try:
+                read_toml(pathlib.Path(real) / OFFICE_MANIFEST_REL)
+                continue
+            except HelperError as exc:
+                why = f"its floor plan does not read ({exc})"
+        else:
+            why = f"it is no longer an office (no {OFFICE_MANIFEST_REL})"
+        lines.append(f"  {root}: listed, but {why}; no office verb unlists it: take {toml_basic_string(root)} "
+                     f"out of {OFFICES_KEY} in {machine_file}")
+    return lines
+
+
+def cmd_offices_status(a):
+    """office status's offices lines (0.54.0); exit 0."""
+    for line in offices_status_lines(a.machine_file, a.office):
+        print(line)
+    return 0
+
+
 def cmd_offices(a):
     """machine.toml's offices: ROOT<tab>NAME per office listed, a root that
     is no longer an office said on stderr and skipped; --add ROOT appends
@@ -5008,6 +5106,9 @@ def build_parser(only=None):
     p = add("offices", help="machine.toml's offices (0.44.0): ROOT<tab>NAME per office listed (exit 3: not set); "
                              "--add ROOT appends one")
     p.add_argument("machine_file"); p.add_argument("--add"); p.set_defaults(fn=cmd_offices)
+    p = add("offices-status", help="office status's lines on machine.toml's offices (0.54.0): each office listed, "
+                                    "this one marked, and each listed root that is no longer an office")
+    p.add_argument("machine_file"); p.add_argument("office"); p.set_defaults(fn=cmd_offices_status)
     p = add("editor", help="machine.toml's editor (0.48.0; exit 3: not set): \"\" turns the editor off")
     p.add_argument("machine_file"); p.set_defaults(fn=cmd_editor)
     p = add("paste-command", help="machine.toml's paste_command (exit 3: not set); --set writes it; "

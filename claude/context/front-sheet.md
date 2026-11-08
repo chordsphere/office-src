@@ -240,6 +240,10 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.54.0 (session 2026-11-08-status-more-two-002): the Next line names an
+  ask out (office_bale ask_move), the digest the asks filed, status an
+  orphaned ask record, the sandbox in a container, the listed offices; the
+  map marks paused folders; start says a host ride's size; verbs.toml words.
 - 0.53.0 (session 2026-11-08-m10-status-more-001): office status names a
   project's missing or out-of-range tools (office_host parse_range,
   toolchain_argv, read_toolchain; office_bale toolchain_lines) and a stale

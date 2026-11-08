@@ -15,7 +15,8 @@ names. Since 0.49.0 the page is two tables, read at a glance:
         that cell); then the folders, one row each (FOLDER, PROJECT, TITLE,
         SIZE, STATE in a few words), grouped by project in the floor
         plan's order and the office's own last, open folders before closed
-        ones, each newest number first. Of a project's closed folders the
+        ones, each newest number first; a folder whose project is paused
+        says so first in its STATE (0.54.0, paused_words). Of a project's closed folders the
         newest CLOSED_SHOWN show and the rest fold into one line, `and N
         more closed: office map --all`; --all shows every row. On a
         terminal the page is cut to its width (the title column gives way
@@ -96,6 +97,9 @@ class Reading:
         ob.render_desk(rd, office_root, today, walk_in=True, now=self.now, groups_out=self.groups)
         self.projects = ob.office_projects(office_root) or []
         self.names = [p["name"] for p in self.projects]
+        # The projects marked paused (0.54.0): their sessions are read for
+        # nothing, so a folder of theirs says so on its own row.
+        self.paused = {p["name"] for p in self.projects if p.get("paused") and not p.get("problem")}
         self.folders = [f for f in oh.read_folders(office_root)]
         every, problems = ob.open_anywhere(rd, office_root, rendering=True)
         for line in problems:
@@ -181,7 +185,27 @@ class Reading:
             said.append(orev.folder_words(rows))
         if f["space"] == "filing-cabinet" and out:
             said.append(f"in the filing cabinet ({ob.folder_key(f)})")
+        paused = paused_words(self, f)
+        if paused:
+            said.insert(0, paused)
         return "; ".join(said)
+
+
+def paused_words(reading, f, short=False):
+    """What a folder of a paused project says (0.54.0), or None when its
+    project is not paused: that it is paused, and the last session the
+    folder records, which nothing reads while the project is paused (so
+    the map cannot say whether it is still out, and names it instead)."""
+    if f.get("problem"):
+        return None
+    project, _ = folder_place(f, reading.names)
+    if project is None or project not in (getattr(reading, "paused", None) or ()):
+        return None
+    sids = f.get("sids") or []
+    if short:
+        return "paused" + (f"; {sids[-1]} not read" if sids else "")
+    return (f"{project} is paused, so nothing of it is read (office projects set {project} --unpaused)"
+            + (f"; the last session this folder records, {sids[-1]}, is not read while it is" if sids else ""))
 
 
 def folder_title(f):
@@ -352,6 +376,9 @@ def short_state(reading, f):
         said.append(orev.folder_words(rows))
     if f["space"] == "filing-cabinet" and out:
         said.append("in the filing cabinet")
+    paused = paused_words(reading, f, short=True)
+    if paused:
+        said.insert(0, paused)
     return "; ".join(said)
 
 
