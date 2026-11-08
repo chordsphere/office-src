@@ -1107,13 +1107,18 @@ def fetch_file(place, remote, local, after=None):
 # (none outside git) and its physical path, tab-separated, one line per
 # path, in order. It takes the paths as arguments, so it runs wherever the
 # shell lands (chdir=False) or after any directory a round has entered.
+# Since 0.54.0 a fifth column: a directory outside git (the one kind
+# copied in full on the host before its pack) carries its size in KiB,
+# du -sk's, so start says it before the copy; empty for every other kind,
+# and empty when du cannot say.
 _RIDE_FACTS_SCRIPT = (
     'for o; do d="$o"; case "$d" in "~"|"~/"*) d="$HOME${d#"~"}" ;; esac; '
-    'if [ ! -e "$d" ]; then printf "gone\\t%s\\t\\t\\n" "$o"; continue; fi; '
+    'if [ ! -e "$d" ]; then printf "gone\\t%s\\t\\t\\t\\n" "$o"; continue; fi; '
     'if [ -d "$d" ]; then k=dir; w="$d"; n=""; else k=file; w=$(dirname -- "$d"); n="/$(basename -- "$d")"; fi; '
     'real=$(cd "$w" 2>/dev/null && pwd -P) || real=""; '
     'top=$(cd "$w" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || top=""; '
-    'printf "%s\\t%s\\t%s\\t%s\\n" "$k" "$o" "$top" "$real$n"; done'
+    'kb=""; if [ "$k" = dir ] && [ -z "$top" ]; then kb=$(du -sk -- "$d" 2>/dev/null | cut -f1); fi; '
+    'printf "%s\\t%s\\t%s\\t%s\\t%s\\n" "$k" "$o" "$top" "$real$n" "$kb"; done'
 )
 
 
@@ -1125,8 +1130,9 @@ def ride_facts_argv(paths):
 def read_ride_facts(run, paths, place=None):
     """The script's answer as one dict per path, in order: path (as
     given), kind (gone, file or dir), top (the git work tree's top, or
-    None) and real (the physical path; for a file, its directory's
-    physical path and its name). A script that failed, or answered for
+    None), real (the physical path; for a file, its directory's
+    physical path and its name) and kb (0.54.0: a directory outside git's
+    size in KiB, else None). A script that failed, or answered for
     other paths, is a HostError: never read as a ride that is not there."""
     where = f" on {place.host}" if place is not None and place.hosted else ""
     if run.returncode != 0:
@@ -1135,8 +1141,11 @@ def read_ride_facts(run, paths, place=None):
     rows = []
     for line in run.stdout.splitlines():
         parts = line.split("\t")
-        if len(parts) == 4 and parts[0] in ("gone", "file", "dir"):
-            rows.append({"path": parts[1], "kind": parts[0], "top": parts[2] or None, "real": parts[3] or None})
+        # Four columns before 0.54.0; the fifth, a size in KiB, may be empty.
+        if len(parts) in (4, 5) and parts[0] in ("gone", "file", "dir"):
+            kb = parts[4].strip() if len(parts) == 5 else ""
+            rows.append({"path": parts[1], "kind": parts[0], "top": parts[2] or None, "real": parts[3] or None,
+                         "kb": int(kb) if kb.isdigit() else None})
     if [r["path"] for r in rows] != list(paths):
         raise HostError("output", f"what rides{where} did not read back: {len(rows)} answer(s) for "
                                   f"{len(paths)} path(s)")

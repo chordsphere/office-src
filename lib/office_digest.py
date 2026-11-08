@@ -11,7 +11,8 @@ a number that can go stale is computed here, never written down
 edited by hand, like the survey.
 
 The eight sections, in order: versions per project; since the last
-sitting; the watches (office watches check's own lines, never
+sitting (since 0.54.0 its last line the asks filed or ended in the window,
+asks_filed); the watches (office watches check's own lines, never
 recorded); the standing lines; the desk (in flight, the first five
 ready, parked by gate); the in-tray (each unsorted drop by its page's
 file name, with the project it names when it names one, or none: 0.24.0);
@@ -317,6 +318,59 @@ def drafting_added(root, base):
     return "- drafting table: " + "; ".join(words)
 
 
+ASK_IN_SUBJECT = oh.LazyPattern(r"(ask-\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*)")
+
+
+def asks_filed(root, base):
+    """The asks filed or ended since the window's base (0.54.0), oldest
+    first, each with its page: read from the commits office ask makes,
+    whose subjects start `office ask:` (filed NAME, NAME's questions and
+    answers, ended NAME with nothing filed). The window itself skips an
+    ask's page (0.48.0: it is no sitting's), so this line is where a
+    sitting sees what the asks brought in."""
+    span = [f"{base}..HEAD"] if base else ["HEAD"]
+    text = git(root, "log", "--reverse", "--format=C%x09%H%x09%s", "--name-only",
+               f"--grep=^{oh.ASK_COMMIT_PREFIX}", *span)
+    if text is None:
+        return "- asks: could not be read (git log refused here)"
+    asks, subject = {}, None
+    for line in text.splitlines():
+        if line.startswith("C\t"):
+            subject = line.split("\t", 2)[2]
+            if not subject.startswith(oh.ASK_COMMIT_PREFIX):
+                subject = None  # --grep matched a later line of the message
+            continue
+        if subject is None:
+            continue
+        m = ASK_IN_SUBJECT.search(subject)
+        if not m:
+            continue
+        a = asks.setdefault(m.group(1), {"how": None, "page": None, "chapters": [], "qa": False})
+        rest = subject[len(oh.ASK_COMMIT_PREFIX):].strip()
+        if rest.startswith("filed "):
+            a["how"] = "filed"
+        elif rest.startswith("ended "):
+            a["how"] = "ended with nothing filed"
+        elif "questions and answers" in rest:
+            a["qa"] = True
+        path = line.strip()
+        if oh.ASK_PAGE_RE.match(path):
+            a["page"] = path
+        elif path.startswith("handbook/") and not path.endswith("/README.md") and path not in a["chapters"]:
+            a["chapters"].append(path)
+    if not asks:
+        return "- asks: none filed or ended"
+    words = []
+    for name, a in asks.items():
+        where = [a["page"] or "its page is in no commit of the window"]
+        if a["chapters"]:
+            where.append("facts in " + ", ".join(a["chapters"]))
+        if a["qa"]:
+            where.append("its questions and answers on the page")
+        words.append(f"{name} {a['how'] or 'touched'} ({'; '.join(where)})")
+    return f"- asks: {len(asks)} filed or ended: " + "; ".join(words)
+
+
 def since_section(rd, root, here, win):
     out = ["## Since the last sitting", "", f"The window: {win['words']}", ""]
     bad = False
@@ -330,6 +384,7 @@ def since_section(rd, root, here, win):
         bad = bad or broke
     out.append(folders_moved(root, win["base"]))
     out.append(drafting_added(root, win["base"]))
+    out.append(asks_filed(root, win["base"]))
     return out, bad
 
 

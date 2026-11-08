@@ -183,6 +183,7 @@ walk-in and never written down. In the order they win:
 | has a folder whose merge job waits for its session (0.41.0) | `office start N --merge` (start --merge sends the session that resolves it) |
 | has a folder whose undo job waits for its session (0.51.0) | `office start N --undo-bale` (start --undo-bale sends the session that takes bale's own change out of the workbench) |
 | has a folder whose work landed on a project with an audience and is not delivered (0.41.0) | `office deliver N` for the newest landing (deliver carries it to the audience; the others are counted) |
+| has an office ask out (0.54.0) | `office ask --learned` for the oldest, named with where it was asked and since when (its chat's LEARNED block on the clipboard, or a FILE, is what it files; `office tray ASK` opens its tray again; the home screen's first item is that ask's own key) |
 | has an unsorted drop in the in-tray | `office start --drop in-tray/PAGE` for the oldest whose project is one of the office's and has no session in flight on its lane; for the oldest whose project is none of them, the same with `--lane LANE` to fill (an office with no projects skips this) |
 | has an unsorted drop whose project is none of the office's and a session has gone out since it was dropped, or three or more unsorted drops and nothing ready | `office start --sort`, the standalone sort |
 | is unfounded | `office start FOLDER` for its founding folder (it goes out with the answers the folder keeps), or `office found` when no founding folder is on the desk |
@@ -317,7 +318,11 @@ declaration problem said there too. Then the folders, one row each:
 for one whose lane is still to be asked), its title, its size and its
 state in a few words (`in flight 3 days`, `sitting out 2 days, step 8 of
 14`, `landed, not delivered`, `merge job waiting`, `delivered BRANCH`,
-`review #N STATE`, `open`, `ready`, `parked`, `done`). Rows are grouped by
+`review #N STATE`, `open`, `ready`, `parked`, `done`). A folder whose
+project is paused says `paused` first (0.54.0), and the last session it
+records with `not read` (`paused; SID not read; open`), since nothing of
+a paused project is read, so the map cannot say whether that session is
+still out; its record says the same in full. Rows are grouped by
 project in the floor plan's order, the office's own last; open folders
 come before closed ones, each newest number first, and of a project's
 closed folders the newest three show while the rest fold into one line,
@@ -403,8 +408,13 @@ files each fact at the end of its project's chapter as `- DATE: fact
 commit on its own, and removes the tray. A block that does not read, or
 that names no ask out, is refused by name, and nothing is written. Until
 then the walk-in, the home screen and `office status` show the ask as
-out; `office tray ask-DATE-SLUG` opens its tray again, and `office ask
---learned none ASK` ends it with the page alone.
+out, and since 0.54.0 the walk-in's Next line names it, after a waiting
+job or delivery and before a drop; `office tray ask-DATE-SLUG` opens its
+tray again, and `office ask --learned none ASK` ends it with the page
+alone. A tray you delete by hand leaves the ask's record beside where it
+was; `office status` names it with the one line that removes it (`rm --
+RECORD [OPENER]`). The digest says the asks filed or ended since the last
+sitting, each with its page.
 
 ### Send a session out
 
@@ -1074,7 +1084,12 @@ here (`--ride PATH`) or, for a project on a host, a path there (`--ride
 host:PATH`, 0.50.0): that one is checked in the round start makes on the
 host, packed there by the host's bale and carried back into the tray
 (`rides with PROJECT (host:PATH, packed on HOST)`), and `--leave-out
-host:PATH` names it as declared. Before the pack, start's screen names the
+host:PATH` names it as declared. A directory outside git there is copied
+whole into a scratch on the host for its pack, so start's screen says its
+size first (0.54.0), read in that same round (`host:~/data is 41.2 MiB, a
+directory outside git on HOST, copied whole into a scratch there for its
+pack`); over 256 MiB it says the copy is LARGE and names `--leave-out
+host:PATH`, and nothing is refused. Before the pack, start's screen names the
 branch the session builds on (`PROJECT's clone at WHERE is on BRANCH`,
 or a detached HEAD; 0.50.0), and `--branch NAME` checks NAME out in the
 clone first, as a bundle's BRANCH line is checked out (above). The
@@ -2404,7 +2419,28 @@ words: `profile.md line 31 says project-session is not built; office-src
 VERB`, in backticks, or followed by session, verb or kind; a session kind
 by itself (`project sessions`). A verb's bare word (open, land, desk) is
 an ordinary word and names nothing, and a line that names nothing, or
-names what is still not built, is not said.
+names what is still not built, is not said. Since 0.54.0 a verb in
+share/verbs.toml may carry `words`, the phrases a line may name its
+capability by when it names no verb: `a project on a host` (and
+`projects on a host`, `a hosted project`, `hosted projects`) for
+projects, `the out trip` for start, `the return trip` for land. Such a
+line is said with its phrase: `profile.md line 31 says a project on a host
+is not built; office-src 0.54.0 builds it (office projects,
+share/verbs.toml): ...`.
+
+The sandbox in a container (0.54.0). When the survey's `## Machine`
+class is `container`, a project on this machine is where bale's sandbox
+may not run, as on a host, so `office status` gives it the hosted line,
+in the same words with `this machine` for the host: the office's
+`[sandbox]` setting, or the line that writes it where the sandbox cannot
+run and bale.toml does not turn it off. On WSL, a host, or with no
+survey, nothing is said of a project here.
+
+The offices on this machine (0.54.0). `office status` names the offices
+machine.toml lists (`offices:    2 listed in FILE: home (ROOT, this one);
+work (ROOT)`), or says none is, and under it each listed root that is no
+longer an office: the office only ever adds to that list, so the line
+names the entry and the file to take it out of.
 
 A clone's view of its audience (0.39.0). A clone on a host often cannot
 reach the audience's git host (it has no credentials there), so its

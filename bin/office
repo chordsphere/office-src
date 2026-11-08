@@ -1378,9 +1378,13 @@ what fixes it when it does not), whether bale.toml's include group matches
 the floor plan, the install's catalogs, folders against their History
 (and each one still provisional though every session it records landed
 applied), filed pages against git, the drafting table against the catalog
-and each ratified charter against git from its ratifying commit on, the installed
+and each ratified charter against git from its ratifying commit on, the asks
+out (and a record whose tray is gone, with the line that removes it), the
+offices machine.toml lists (this one marked, and a root no longer an office
+named with the edit that unlists it), the installed
 bale and the projects (and each tool a project's package.json engines or
-.nvmrc names that its own shell does not find, or finds outside the range),
+.nvmrc names that its own shell does not find, or finds outside the range;
+in a container, by the survey's class, the sandbox line for a project here),
 the letterhead and its voice page, and the push
 guard in each audience clone (an older or missing one named with the
 line that replaces it). It reports and exits 0.
@@ -1429,7 +1433,7 @@ cmd_status() {
   # then each line's read in the order the lines are printed. None writes,
   # and none depends on another's answer, so they go out together; what
   # each would have printed to stderr still goes there as it runs.
-  local name bytecode doctrine survey tz_named drift defects folders waiting structure filed drafting tray handbook bale letterhead asks stale
+  local name bytecode doctrine survey tz_named drift defects folders waiting structure filed drafting tray handbook bale letterhead asks stale offices
   local skewr calls=()
   batch_call calls skew-report "$root/$MANIFEST_REL" "$(install_version)" "$MIGRATIONS"
   batch_call calls get "$root/$MANIFEST_REL" office.name --default "(unnamed)"
@@ -1449,9 +1453,10 @@ cmd_status() {
   batch_call calls -q drop:tray-check "$root"
   batch_call calls -q sort:handbook-check "$root"
   batch_call calls -q ask:out-lines "$root" --machine-file "$MACHINE_FILE" --status
+  batch_call calls -q offices-status "$MACHINE_FILE" "$root"
   batch_call calls bale:status-lines "$root"
   batch_call calls deliver:status-lines "$root"
-  batch_run skewr name bytecode doctrine profile stale survey tz_named drift defects folders waiting structure filed drafting tray handbook asks bale letterhead -- "${calls[@]}"
+  batch_run skewr name bytecode doctrine profile stale survey tz_named drift defects folders waiting structure filed drafting tray handbook asks offices bale letterhead -- "${calls[@]}"
   if [ "$skewr_rc" != 0 ]; then
     [ -n "$skewr" ] || die "cannot read the version stamp in $root/$MANIFEST_REL"
     die "cannot plan migrations from $MIGRATIONS"
@@ -1553,9 +1558,15 @@ cmd_status() {
   [ -z "$handbook" ] || printf '%s\n' "$handbook"
   case $handbook_rc in 0|3) ;; *) printf 'handbook:   could not be checked\n' ;; esac
   # The office asks out (0.48.0): one line when any is, read from their
-  # trays; nothing when none is.
+  # trays; nothing when none is. Since 0.54.0 a record whose tray is gone
+  # is one line more, with the line that removes it.
   [ "$asks_rc" = 0 ] || asks=""
   [ -z "$asks" ] || printf '%s\n' "$asks"
+  # The offices on this machine (0.54.0): machine.toml's offices, this one
+  # marked, and each listed root that is no longer an office, with the edit
+  # that unlists it (no verb does: the office only ever adds to the list).
+  if [ "$offices_rc" = 0 ] && [ -n "$offices" ]; then printf '%s\n' "$offices"
+  else printf 'offices:    could not be checked\n'; fi
   # The read side: which bale is installed against the version the
   # office's reads were written for, and whether each project in scope
   # can be read. Lines, never a refusal.
@@ -10987,7 +10998,7 @@ walk_in() {
   # notepad's last lines; none writes, and each needs only the head.
   local calls=() vars=(desk) week="" week_rc=0 has_calendar=0
   batch_call calls bale:desk "$root" --walk-in --today "$today" ${since:+--since "$since"} \
-    --next-file "$next_file" --skew "$WALK_SKEW" --founded "$WALK_FOUNDED"
+    --next-file "$next_file" --skew "$WALK_SKEW" --founded "$WALK_FOUNDED" --machine-file "$MACHINE_FILE"
   if has_space "$root" calendar; then
     has_calendar=1; vars+=(week)
     batch_call calls week "$root/calendar" --today "$today" --now "$(office_time "$WALK_TZ")" --tz "$WALK_TZ"

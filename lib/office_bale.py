@@ -1562,6 +1562,10 @@ def blueprint_desk(table, folders, flying, since, bid, flight):
 #      in the order the sitting decided, so the next two states could
 #      name a folder a move retires or miss one a move opens (0.11.0;
 #      0.8.0's order ratified, this step added by the plan-4b sitting);
+#   3a. a merge or undo job waiting for its session, then a folder whose
+#      work landed and is not delivered (0.41.0, delivery_move); then an
+#      office ask out (0.54.0, ask_move): its LEARNED block waits on the
+#      occupant as a delivery does, so it comes before a drop;
 #   3b. an unsorted drop (0.19.0): the oldest drop in the in-tray whose
 #      project resolves to one of the floor plan's projects, with no
 #      session in flight on a folder of that lane, goes straight out as a
@@ -1738,6 +1742,40 @@ def delivery_move(groups):
     return None
 
 
+ASK_LEARNED = "office ask --learned"
+
+
+def ask_move(groups):
+    """(command, why) for the Next line's ask row (0.54.0), or None: the
+    oldest office ask out from this office (groups["asks"], office_ask
+    asks_out's list, oldest first), which waits on the occupant as a
+    delivery does: its chat's LEARNED block is his to file."""
+    import office_ask as oa
+    asks = groups.get("asks") or []
+    if not asks:
+        return None
+    a = asks[0]
+    when = f"{a.get('day', '?')} {a.get('time', '')}".rstrip()
+    more = f"; {len(asks) - 1} more out after it" if len(asks) > 1 else ""
+    return (ASK_LEARNED,
+            f"{a['name']} ({oa.where_words(a)}) has been out since {when}: once its chat ends, --learned files its "
+            f"LEARNED block from the clipboard (or from a FILE); office tray {a['name']} opens its tray again{more}")
+
+
+def asks_waiting(office_root, machine_file):
+    """The asks out from this office, for the Next line (0.54.0): office_ask
+    asks_out in the out tray machine.toml names (default ~/out-tray); []
+    when it cannot be read, said under OFFICE_DEBUG."""
+    import office_ask as oa
+    import office_home as hs
+    tray_root = hs.tray_root_of(machine_file)
+    try:
+        return oa.asks_out(office_root, tray_root)
+    except (OSError, oh.HelperError) as exc:
+        debug(f"the asks out could not be read from {tray_root}, so the Next line does not name one: {exc}")
+        return []
+
+
 def sort_move(drops, groups, projects):
     """(command, why) for office start --sort, or None (the rule 3c
     above): an unsorted drop with no project, or one that does not
@@ -1829,6 +1867,11 @@ def next_move(skew, founded, out, groups, projects, slips, behind=None, cache=No
     # A merge job waiting for its session, then a folder whose work landed
     # and is not delivered (0.41.0): after the moves, before a drop.
     move = delivery_move(groups)
+    if move is not None:
+        return move
+    # An office ask out (0.54.0): after a waiting job or delivery, before a
+    # drop, since it waits on the occupant as a delivery does.
+    move = ask_move(groups)
     if move is not None:
         return move
     move = drop_move(groups.get("drops") or [], groups, projects) \
@@ -2622,6 +2665,9 @@ def status_lines(rd, office_root):
         lines.append(f"projects:   none; {no_projects_line(projects)}")
         return lines, 0
     problems, hosted, paused, toolchain = [], [], [], []
+    # In a container (0.54.0: the survey's Machine class), a project on this
+    # machine is where bale's sandbox may not run, as on a host: its line.
+    contained = machine_class(office_root) == "container"
     for p in projects:
         if p.get("paused") and not p["problem"]:
             # Read for nothing (0.41.0): no directory check, no host reached.
@@ -2640,6 +2686,10 @@ def status_lines(rd, office_root):
                     toolchain += toolchain_lines(p["name"], ohost.toolchain_state(p["resolved"]))
                 except ohost.HostError as exc:
                     toolchain.append(f"  {p['name']}: its toolchain could not be read: {exc}")
+                if contained:
+                    sandbox = sandbox_status_line(p, ohost.place_of(p))
+                    if sandbox:
+                        toolchain.append(sandbox)
         if not ok:
             problems.append(f"  {p['name']}: {text}")
     lines.append(f"projects:   {len(projects)} in scope"
@@ -2754,13 +2804,31 @@ def toolchain_lines(name, tc):
     return out
 
 
+SURVEY_PAGE = "floor-plan/survey.md"
+
+
+def machine_class(office_root):
+    """The survey's `## Machine` class (`WSL`, `container`, or a host's
+    words), or None when the survey is not there or names none: office
+    status reads the page office survey wrote, and never surveys."""
+    path = pathlib.Path(office_root) / SURVEY_PAGE
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        debug(f"the survey could not be read for the machine's class, so none is assumed: {exc}")
+        return None
+    return oh.facts_from_page(text).get("machine.class")
+
+
 def sandbox_status_line(project, place, run=None):
     """office status's line on bale's sandbox for a hosted project (0.39.0),
     or None when there is nothing to say: the setting the office wrote
     (`sandbox: off by bale.toml, written DAY: WHY`), or, where bale's
     sandbox cannot run and bale.toml does not turn it off, the step that
     writes it. run is the sandbox read's Run when it rode another call;
-    a read that fails is a line."""
+    a read that fails is a line. Since 0.54.0 it is said of a project on
+    this machine too when this machine is a container, in the same words,
+    the host's name standing as `this machine`."""
     name = project["name"]
     try:
         written, table, refuses, said = (ohost.read_sandbox(place, run) if run is not None
@@ -2770,7 +2838,8 @@ def sandbox_status_line(project, place, run=None):
     if written:
         return f"  {name}: sandbox: off by bale.toml, written {written}"
     if refuses and not table:
-        return (f"  {name}: sandbox: bale's sandbox cannot run on {place.host} ({said or 'the probe refused'}) and "
+        return (f"  {name}: sandbox: bale's sandbox cannot run on {place.host if place.hosted else 'this machine'} "
+                f"({said or 'the probe refused'}) and "
                 f"bale.toml does not turn it off, so every apply there asks; office projects set {name} --prepare "
                 "writes the setting")
     return None
@@ -2932,7 +3001,52 @@ def read_host_rides(place, host_rides, run):
     if gone:
         raise StartError([f"a declared ride-along is not on {place.host}: {g} (office projects set changes what "
                           "rides); nothing was written" for g in gone])
-    return list(zip(host_rides, rows))
+    pairs = list(zip(host_rides, rows))
+    for line in ride_size_lines(place, pairs):
+        log(line)
+    return pairs
+
+
+# A directory outside git rides from the host as a full copy into a
+# scratch there, packed by the host's bale (0.50.0); one past this many
+# KiB is said as large on start's screen (0.54.0), with the flag that
+# leaves it home this once. Nothing is refused: bale's own caps decide what
+# of it the context tarball holds.
+RIDE_LARGE_KB = 256 * 1024
+
+
+def size_words(kb):
+    """KiB as a person reads a size: 812 KiB, 41.2 MiB, 3.1 GiB."""
+    if kb < 1024:
+        return f"{kb} KiB"
+    if kb < 1024 * 1024:
+        return f"{kb / 1024:.1f} MiB"
+    return f"{kb / (1024 * 1024):.1f} GiB"
+
+
+def ride_size_lines(place, pairs, large=RIDE_LARGE_KB):
+    """start's lines (0.54.0) for each host ride that is a directory
+    outside git, said before anything is copied: its size, read by the
+    same round that read its facts; above large, that it is large and the
+    --leave-out that keeps it home this once. A size du could not give is
+    said as unknown, never guessed."""
+    out = []
+    for stored, fact in pairs:
+        if fact["kind"] != "dir" or fact["top"] is not None:
+            continue
+        kb = fact.get("kb")
+        if kb is None:
+            out.append(f"{stored} is a directory outside git on {place.host}, copied whole into a scratch there "
+                       "for its pack; its size could not be read there (du said nothing)")
+        elif kb > large:
+            out.append(f"{stored} is {size_words(kb)}, a directory outside git on {place.host}: LARGE (over "
+                       f"{size_words(large)}), and the whole of it is copied into a scratch there before its pack, "
+                       f"so this start takes a while; --leave-out {shell_quote(stored)} leaves it home this once "
+                       "(nothing is refused: bale's own caps decide what of it rides)")
+        else:
+            out.append(f"{stored} is {size_words(kb)}, a directory outside git on {place.host}, copied whole into "
+                       "a scratch there for its pack")
+    return out
 
 
 def pack_host_rides(rd, tray, place, rows, project):
@@ -6955,6 +7069,8 @@ def build_parser(only=None):
                    help="the office's version state, for the Next line")
     p.add_argument("--founded", choices=("yes", "no"), default="yes", help="whether the profile is complete")
     p.add_argument("--blueprint", help="only this blueprint's member folders, in the desk's order")
+    p.add_argument("--machine-file", help="machine.toml, whose out_tray holds the asks out the Next line may name "
+                                          "(0.54.0)")
     p = add("writers"); p.add_argument("office"); p.add_argument("paths", nargs="+")
     p = add("sort-out", help="the standalone sorts open in the office's registry, one id per line")
     p.add_argument("office")
@@ -7410,6 +7526,9 @@ def main(argv=None):
             lines, bad = render_desk(rd, a.office, a.today, a.since, a.walk_in, groups_out=groups,
                                      blueprint=a.blueprint)
             if a.next_file:
+                # The asks out (0.54.0), for the Next line's ask row.
+                if a.machine_file:
+                    groups["asks"] = asks_waiting(a.office, a.machine_file)
                 # Never fails the walk-in: a Next line that cannot be
                 # worked out says so, and why is a debug line away.
                 try:

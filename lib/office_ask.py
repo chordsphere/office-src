@@ -67,9 +67,10 @@ The command line (bin/office calls it through pylib):
         the asks out from this office, oldest first:
         NAME<TAB>PROJECT (or -)<TAB>DAY TIME<TAB>TRAY
     office_ask.py out-lines OFFICE (--tray-root DIR | --machine-file FILE) [--status]
-        the same in the walk-in's words (or office status's one line);
-        nothing when none is out; with --machine-file, the tray root is
-        its out_tray (default ~/out-tray)
+        the same in the walk-in's words (or office status's one line, and
+        since 0.54.0 one more for each record whose tray is gone, with the
+        line that removes it); nothing when none is out; with
+        --machine-file, the tray root is its out_tray (default ~/out-tray)
     office_ask.py name-of --file FILE
         the name in the text's last LEARNED block (exit 3: no block)
     office_ask.py file OFFICE --tray-root DIR --file FILE --day DAY --time HH:MM
@@ -201,6 +202,38 @@ def asks_out(office_root, tray_root):
         out.append(dict(rec, tray=str(tray)))
     out.sort(key=lambda r: (str(r.get("day", "")), str(r.get("time", "")), r["name"]))
     return out
+
+
+def orphans(office_root, tray_root):
+    """The records this office left whose tray is gone (0.54.0): a tray
+    deleted by hand leaves its ask-DATE-SLUG.ask.json, and its opener's
+    copy, behind, and nothing else removes them. [(name, record path,
+    opener path or None)], by name. A record of another office's is that
+    office's, and is left out."""
+    root = pathlib.Path(tray_root)
+    if not root.is_dir():
+        return []
+    out = []
+    for path in sorted(root.glob("ask-*" + RECORD_SUFFIX)):
+        rec = read_record(path)
+        if rec is None or not same_place(rec.get("office", ""), office_root):
+            continue
+        if (root / rec["name"]).is_dir():
+            continue
+        opener = opener_path(root, rec["name"])
+        out.append((rec["name"], path, opener if opener.is_file() else None))
+    return out
+
+
+def orphan_line(name, record, opener=None):
+    """office status's line for a record whose tray is gone, with the one
+    line that removes it (the record, and the opener's copy when it is
+    there): the ask was neither filed nor ended, so nothing of it is in the
+    office, and the record is all that says it was sent."""
+    import shlex
+    paths = " ".join(shlex.quote(str(p)) for p in (record, opener) if p is not None)
+    return (f"asks:       {name}'s tray is gone from {pathlib.Path(record).parent}, and its record is left behind "
+            f"(nothing of it was filed); rm -- {paths} removes it")
 
 
 def where_words(rec):
@@ -591,9 +624,15 @@ def main(argv=None):
             # From machine.toml (the walk-in's and status's batch read it
             # here, with no helper call of its own), else as given.
             import office_home as hs
-            out = asks_out(a.office, a.tray_root or hs.tray_root_of(a.machine_file))
-            if out and a.status:
-                print(status_line(out))
+            tray_root = a.tray_root or hs.tray_root_of(a.machine_file)
+            out = asks_out(a.office, tray_root)
+            if a.status:
+                # office status's line, then (0.54.0) one for each record
+                # whose tray is gone, with the line that removes it.
+                if out:
+                    print(status_line(out))
+                for name, record, opener in orphans(a.office, tray_root):
+                    print(orphan_line(name, record, opener))
             elif out:
                 for r in out:
                     print(f"  {out_line(r)}")

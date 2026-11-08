@@ -1658,7 +1658,10 @@ schedules a session, never
 dispatches one to a model and never carries pastes, so whoever carries
 sessions (the occupant, bale, a future harness) can change freely
 without the office changing. The declarations are share/verbs.toml in
-the install.
+the install. A verb there may carry `words` (0.54.0), the phrases a
+profile line may name its capability by when it names no verb (`a
+project on a host` for projects); the catalog check takes the key as
+optional and refuses a phrase given to two verbs.
 
 Kinds:
 
@@ -1672,7 +1675,7 @@ Kinds:
 | init | script; writes bale.toml, asks which projects the office watches, asks the profile's questions, opens the founding folder and sends the founding session out through start | yes | occupant |
 | found | script: the founding door for an office that exists: the profile's questions (only what the founding folder does not keep), the founding folder, the founding session out through start | yes | plumbing |
 | survey | script | yes | plumbing |
-| status | script, read-only: the office against the install, and (0.25.0) the letterhead, its voice page and each audience clone's push guard, an older one named with the line that replaces it | yes | plumbing |
+| status | script, read-only: the office against the install, and (0.25.0) the letterhead, its voice page and each audience clone's push guard, an older one named with the line that replaces it; (0.54.0) the offices machine.toml lists, this one marked and a root no longer an office named with the edit that unlists it, an ask's record whose tray is gone with the line that removes it, and in a container (the survey's class) the sandbox line for a project on this machine, in the hosted line's words | yes | plumbing |
 | upgrade | script; when a migration needs judgment, opens its folder and sends the renovation session out through start; with or without a migration, brings the letterhead's missing pages and the current push guard (0.25.0) | yes | plumbing |
 | where, default | script: which office a command acts on | yes | plumbing |
 | note | script: append a dated line to the notepad | yes | occupant |
@@ -1866,7 +1869,9 @@ order the sitting decided); a folder whose merge job waits for its session
 --undo-bale`, 0.51.0), then the folder whose work landed newest on a
 project with an audience and is not delivered (`office deliver N`, the
 others counted; placed here in 0.41.0, and such a folder never falls to
-the open-folder row); an unsorted drop (the oldest whose project
+the open-folder row); an office ask out (`office ask --learned`, the
+oldest named: its LEARNED block waits on the occupant as a delivery
+does; placed here in 0.54.0); an unsorted drop (the oldest whose project
 is one of the office's, with no session in flight on a folder of that
 lane: `office start --drop in-tray/PAGE`; the oldest whose project is
 none of the office's, or that has none: the same line with `--lane
@@ -2326,7 +2331,8 @@ section is complete when it has text outside comments and no line that
 starts with TODO. An office with an incomplete profile is unfounded and
 says so on every command. `office status` also names a profile line that
 says a verb or session kind is not built when the install's verbs.toml
-builds it (0.53.0), by its number and words; the profile is the
+builds it (0.53.0), by its number and words, or (0.54.0) names a
+capability by a phrase of that verb's `words`; the profile is the
 occupant's, and nothing the office runs edits it. Capture still works in an unfounded office.
 
 Spawning an office is a conversation, not a form, and the conversation

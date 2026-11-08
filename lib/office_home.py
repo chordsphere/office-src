@@ -921,6 +921,8 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
     names = Names(office_root)
     groups = {}
     ob.render_desk(rd, office_root, today, since, walk_in=True, now=now, groups_out=groups)
+    # The asks out (0.54.0), for the Next move's ask row, as the walk-in's.
+    groups["asks"] = ob.asks_waiting(office_root, machine_file)
     out, problems = ob.sessions_to_land(rd, office_root)
     for p in problems:
         debug(f"the home screen could not read every repo: {p}")
@@ -964,7 +966,7 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
     items += tray_items(every, names, directories, tray_root_of(machine_file))
     # Each ask out (0.48.0): its key files the LEARNED block on the
     # clipboard, and its words name the verb that opens its tray again.
-    items += ask_items(office_root, tray_root_of(machine_file))
+    items = with_asks(items, ask_items(office_root, tray_root_of(machine_file)))
     # The sessions out that were never worked: the w key's (office withdraw).
     try:
         offered, _, _ = ob.withdraw_view(rd, office_root, directories)
@@ -1052,6 +1054,19 @@ def ask_items(office_root, tray_root):
         debug(f"the asks out could not be read from {tray_root}: {exc}")
         return []
     return [item(oa.home_words(r), ["ask", "--learned"]) for r in out]
+
+
+def with_asks(items, asks):
+    """The waiting list with the asks' items after it (0.48.0). When the
+    Next move is the ask row (0.54.0, office_bale ask_move: the same argv
+    as an ask's item), the oldest ask's item takes the Next item's place,
+    marked, so the ask is offered once and in its own words."""
+    asks = list(asks)
+    first = items[0] if items and items[0].get("next") else None
+    if first is not None and asks and first["argv"] == asks[0]["argv"]:
+        lead = dict(asks.pop(0), next=True)
+        return [lead, *items[1:], *asks]
+    return [*items, *asks]
 
 
 def tray_reading(rd, office_root, tray_root, sid=None, folder=None):

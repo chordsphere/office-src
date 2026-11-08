@@ -4,6 +4,68 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.54.0
+
+Additive: no migration, nothing stored changes, nothing to do in any
+office. A verb in share/verbs.toml may now carry an optional `words`
+list. The seventeenth serial session of the plan begun on 2026-10-27,
+status-more-two: six of the seven items 0.53.0 left, its proposal of a
+`words` list among them. The seventh, the walk-in's In flight lines and
+the home screen's Projects block in the map's table shape, waits for a
+session of its own (this one's notes say why).
+
+The asks' three lines. The walk-in's Next line, and the home screen's
+first item, name an office ask that is out (`office ask --learned`, with
+the ask's name, where it was asked and since when), after the desk's
+moves and a waiting job or delivery and before a drop to sort: an ask
+out waits on the occupant as a delivery does (office_bale ask_move,
+asks_waiting; office_home with_asks). The digest's Since the last
+sitting section says the asks filed or ended in its window, oldest
+first, each with its page, the chapters its facts went to and whether
+its questions and answers were added, read from the commits office ask
+makes (`office ask:`); the window itself still skips an ask's page
+(office_digest asks_filed). `office status` names an ask's record whose
+tray is gone (a tray deleted by hand) with the one line that removes it,
+`rm -- RECORD [OPENER]` (office_ask orphans, orphan_line).
+
+The sandbox line in a container. When the survey's `## Machine` class is
+`container`, `office status` says of a project on this machine what it
+says of a hosted one: the office's own `[sandbox]` setting, or, where
+bale's sandbox cannot run and bale.toml does not turn it off, `bale's
+sandbox cannot run on this machine (...) ... office projects set NAME
+--prepare writes the setting`, read with the same script run here
+(office_bale machine_class, sandbox_status_line).
+
+The listed offices. `office status` names the offices machine.toml
+lists, the one it runs in marked `this one`, and under it each listed
+root that is no longer an office (or whose floor plan does not read):
+no verb takes one out of the list, so the line names the entry and the
+file to edit (office_helper offices_status_lines, helper
+offices-status).
+
+The map's paused folders. A folder whose project is paused says
+`paused` in its state cell, and the last session it records with `not
+read`, since nothing of a paused project is read; its record page says
+the same in full (office_map paused_words).
+
+A host ride's size. Before a directory outside git is copied on the
+host for its pack, start's screen says its size, read by du in the
+round that already reads what rides (the facts script's fifth column);
+over 256 MiB it says the copy is large and names `--leave-out
+host:PATH`. Nothing is refused (office_host _RIDE_FACTS_SCRIPT,
+read_ride_facts; office_bale ride_size_lines, RIDE_LARGE_KB).
+
+A profile's capability words. share/verbs.toml's optional `words` list
+names the phrases a profile line may name a verb's capability by, read
+by the profile rule beside the verb's name: projects carries `a project
+on a host`, `projects on a host`, `a hosted project` and `hosted
+projects`, start `the out trip`, land `the return trip`. Such a line is
+said as `profile.md line N says PHRASE is not built; office-src VERSION
+builds it (office VERB, share/verbs.toml): WORDS`. The catalog check
+takes the key as optional, its shape checked, and refuses a phrase given
+to two verbs (office_helper catalog_words, match_in_line,
+OPTIONAL_VERB_KEYS). Tests: tests/test_status_more_two.py.
+
 ## 0.53.0
 
 Additive: no migration, nothing stored changes, nothing to do in any
