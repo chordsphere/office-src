@@ -4,6 +4,56 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.53.0
+
+Additive: no migration, nothing stored changes, nothing to do in any
+office. The sixteenth serial session of the plan begun on 2026-10-27,
+m10-status-more: the M10 friction report's items 10 and 16, and of the
+eight proposals its brief carried, the handoff offered (0.52.0's) and one
+spelling for an unreadable project (sessions-read's). The other five, and
+the tables, wait for the next session (its notes say what was read).
+
+A project's toolchain. For each project whose clone has a package.json
+with an `engines` field, or a `.nvmrc`, `office status` asks the
+project's own shell for each tool named (node, npm, yarn, pnpm, bun),
+the login shell bale's runs get: `bash -lc` on this machine, so a hook in
+~/.bash_profile counts, and the project's shell on a host, riding the
+connection that already reads bale's version and the sandbox setting
+there. One line for a tool missing or outside the range (`proj: needs
+node >=24 (package.json engines); its shell finds node 22.11.0`, or
+`finds no node`), and one for a range the office cannot read (a
+pre-release, an nvm alias), which it never guesses; what meets its range,
+and an engines key naming another program, are said under OFFICE_DEBUG.
+The range reader is npm's grammar as projects write it: comparators,
+partial versions and x-ranges, carets, tildes, hyphen ranges, spaces and
+`||` (office_host.parse_range, satisfies, nvmrc_range; the read is
+toolchain_argv and read_toolchain, the lines office_bale.toolchain_lines).
+
+The profile's stale line. `office status` names, under its profile line,
+each line of the profile that says a verb or session kind is not built
+(`not built`, `not yet built`, `isn't built`, `hasn't been built`,
+`unbuilt`) when share/verbs.toml says this install builds it: `profile.md
+line N says NAME is not built; office-src VERSION builds it
+(share/verbs.toml): WORDS`. A line names a verb as `office VERB`, in
+backticks, or followed by session, verb or kind, and a session kind on
+its own; a verb's bare word names nothing. The office never writes the
+profile (office_helper profile-built, stale_profile_lines,
+named_in_line).
+
+The handoff offered. A merge or undo job whose page carries `- bailed:
+SID` and no session is offered `office start N --handoff
+response-SID.tar.gz` wherever a waiting job is offered: status's line, the
+walk-in's desk line and Next line, the home screen's item, the map's Next
+rows and deliver's waiting-job line, in place of `--merge` or
+`--undo-bale`, which would send a session from scratch (office_bale
+job_bailed, job_start_words, job_start_line).
+
+One spelling for an unreadable project. The walk-in's In flight, `office
+projects --ledger`, `--landed` and `--versions`, the land plan's problems
+and the digest now say a project they cannot read as `NAME: not read:
+WHY`, office sessions' spelling, once per rendering (office_bale
+unread_line, everywhere).
+
 ## 0.52.0
 
 Additive: no migration, nothing to do in any office. The fifteenth serial

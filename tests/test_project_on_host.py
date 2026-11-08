@@ -493,7 +493,7 @@ class TestReach(HostedCase):
 
     def test_the_walk_in_prints_the_one_line_in_the_projects_place_and_renders_the_rest(self):
         proc = self.run_office(check=0)
-        self.assertIn(f"  far: cannot read: {DOWN} does not answer (ssh: connect to host "
+        self.assertIn(f"  far: not read: {DOWN} does not answer (ssh: connect to host "
                       f"{DOWN.split('@')[1]} port 22: Connection timed out); start the VPN client; then rerun: office\n",
                       proc.stdout)
         self.assertIn(f"  here: {OPEN_WORKER} open,", proc.stdout)
@@ -513,7 +513,7 @@ class TestReach(HostedCase):
     def test_a_rendering_stops_there_with_the_line_to_rerun(self):
         proc = self.run_office("projects", "--ledger")
         self.assertEqual(proc.returncode, 1)
-        self.assertIn(f"far: cannot read: {DOWN} does not answer", proc.stdout)
+        self.assertIn(f"far: not read: {DOWN} does not answer", proc.stdout)
         self.assertIn("then rerun: office projects --ledger", proc.stdout)
         self.assertIn("here: trust ledger", proc.stdout)
         self.assertEqual(len(self.ssh.connections()), 1)

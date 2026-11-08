@@ -1371,14 +1371,17 @@ stamp and any skew, whether the install is level with the working copy it
 was installed from, whether its bytecode cache is level with its lib/ for
 this python3, the doctrine it runs on by its OFFICE.md's short hash (and
 each read-only sitting out under an older one, both hashes named), whether
-the profile is complete, the survey's age and
+the profile is complete (and each line of it that says a verb or kind is
+not built when the install builds it), the survey's age and
 the office-src it records, whether the floor plan's timezone resolves (and
 what fixes it when it does not), whether bale.toml's include group matches
 the floor plan, the install's catalogs, folders against their History
 (and each one still provisional though every session it records landed
 applied), filed pages against git, the drafting table against the catalog
 and each ratified charter against git from its ratifying commit on, the installed
-bale and the projects, the letterhead and its voice page, and the push
+bale and the projects (and each tool a project's package.json engines or
+.nvmrc names that its own shell does not find, or finds outside the range),
+the letterhead and its voice page, and the push
 guard in each audience clone (an older or missing one named with the
 line that replaces it). It reports and exits 0.
 Examples:
@@ -1426,13 +1429,14 @@ cmd_status() {
   # then each line's read in the order the lines are printed. None writes,
   # and none depends on another's answer, so they go out together; what
   # each would have printed to stderr still goes there as it runs.
-  local name bytecode doctrine survey tz_named drift defects folders waiting structure filed drafting tray handbook bale letterhead asks
+  local name bytecode doctrine survey tz_named drift defects folders waiting structure filed drafting tray handbook bale letterhead asks stale
   local skewr calls=()
   batch_call calls skew-report "$root/$MANIFEST_REL" "$(install_version)" "$MIGRATIONS"
   batch_call calls get "$root/$MANIFEST_REL" office.name --default "(unnamed)"
   batch_call calls bytecode-check "$OFFICE_SRC"
   batch_call calls bale:doctrine-lines "$root"
   batch_call calls profile-check "$root/$PROFILE_REL" "$SHAPE"
+  batch_call calls -q profile-built "$root/$PROFILE_REL" "$VERBS" "$(install_version)"
   batch_call calls -q survey-age "$root/$SURVEY_REL" --install "$(install_version)"
   batch_call calls -q get "$root/$MANIFEST_REL" office.timezone --default UTC
   batch_call calls include-group-check "$root/$MANIFEST_REL" "$root/$BALE_TOML_REL" "$root"
@@ -1447,7 +1451,7 @@ cmd_status() {
   batch_call calls -q ask:out-lines "$root" --machine-file "$MACHINE_FILE" --status
   batch_call calls bale:status-lines "$root"
   batch_call calls deliver:status-lines "$root"
-  batch_run skewr name bytecode doctrine profile survey tz_named drift defects folders waiting structure filed drafting tray handbook asks bale letterhead -- "${calls[@]}"
+  batch_run skewr name bytecode doctrine profile stale survey tz_named drift defects folders waiting structure filed drafting tray handbook asks bale letterhead -- "${calls[@]}"
   if [ "$skewr_rc" != 0 ]; then
     [ -n "$skewr" ] || die "cannot read the version stamp in $root/$MANIFEST_REL"
     die "cannot plan migrations from $MIGRATIONS"
@@ -1484,6 +1488,12 @@ cmd_status() {
        printf '%s\n' "$profile" | sed 's/^/  /' ;;
     *) printf 'profile:    could not be checked\n' ;;
   esac
+  # A profile line that says a verb or kind is not built when this install
+  # builds it (0.53.0): one line each under the profile line, its number
+  # and words; nothing when there is none. The profile is the occupant's:
+  # the office names the line and never edits it.
+  [ "$stale_rc" = 0 ] || stale=""
+  [ -z "$stale" ] || printf '%s\n' "$stale"
   [ "$survey_rc" = 0 ] || survey='unreadable'
   printf 'survey:     %s\n' "$survey"
   [ "$tz_named_rc" = 0 ] || tz_named=UTC

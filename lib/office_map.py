@@ -488,7 +488,10 @@ def next_lines(reading, f):
     u = (reading.groups.get("undelivered_by_rel") or {}).get(f["rel"])
     if m is not None and not m["landed"]:
         kind = job_kind_word(m["job"])
-        rows.append((f"office start {key} {ob.job_flag(m['job'])}", f"sends the {kind} session office deliver wrote"))
+        bailed = ob.job_bailed(m["job"])
+        rows.append((ob.job_start_line(f, m["job"]),
+                     f"hands off {bailed}, which bailed out of the {kind} job" if bailed
+                     else f"sends the {kind} session office deliver wrote"))
     elif u is not None:
         rows.append((f"office deliver {key}", f"carries {u['sid']}'s work to {u['project']}'s audience"))
     if not rows:

@@ -240,6 +240,11 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.53.0 (session 2026-11-08-m10-status-more-001): office status names a
+  project's missing or out-of-range tools (office_host parse_range,
+  toolchain_argv, read_toolchain; office_bale toolchain_lines) and a stale
+  profile line (office_helper stale_profile_lines); a bailed job offered the
+  handoff (office_bale job_start_words); one `NAME: not read: WHY`.
 - 0.52.0 (session 2026-11-07-start-handoff-001): `office start N --handoff`
   sends a bailout's fresh session (office_bale handoff_check,
   handoff_session, handoff_opener; [surfaces.handoff]); a job's session line

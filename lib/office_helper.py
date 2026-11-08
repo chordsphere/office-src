@@ -3447,6 +3447,88 @@ def cmd_profile_check(a):
     return 3
 
 
+# --- the profile's lines on what is built (0.53.0) ---------------------------------
+#
+# The profile is the occupant's page: the office reads it and never writes
+# it. A founding may write a line that says some capability is not built
+# yet, meaning to be told when it is; office status names such a line once
+# share/verbs.toml says the install builds what it names.
+
+# A line says something is not built when it has one of these, any case:
+# not built, not yet built, not built yet, isn't built, hasn't been built,
+# not been built, unbuilt.
+NOT_BUILT_RE = LazyPattern(r"(?:\bnot\s+(?:yet\s+)?(?:been\s+)?built\b|n['\u2019]t\s+(?:yet\s+)?(?:been\s+)?built\b"
+                           r"|\bunbuilt\b)", re.IGNORECASE)
+
+
+def catalog_names(catalog):
+    """{name: built} for every verb share/verbs.toml declares and for its
+    two session kinds, a kind built when any verb of it is (script, the
+    third kind, is not a capability anyone says is missing)."""
+    verbs = catalog.get("verbs") if isinstance(catalog, dict) else None
+    out = {}
+    for name, verb in (verbs or {}).items():
+        if isinstance(verb, dict):
+            out[name] = verb.get("built") is True
+    for kind in SESSION_KINDS:
+        out[kind] = any(isinstance(v, dict) and v.get("kind") == kind and v.get("built") is True
+                        for v in (verbs or {}).values())
+    return out
+
+
+def named_in_line(line, names):
+    """The verb or kind a profile line names, or None: the leftmost of
+    `office NAME`, NAME in backticks (alone or after `office `), NAME
+    followed by session(s), verb(s) or kind(s), and a session kind on its
+    own (project session, office-sessions); a hyphen in a name may be
+    written as a space. A verb's bare word is not enough (open, land,
+    status and most others are ordinary words too)."""
+    best = None
+    for name in names:
+        spelled = re.escape(name).replace(r"\-", "[- ]")
+        forms = [rf"\boffice\s+{spelled}(?![\w-])", rf"`(?:office\s+)?{spelled}(?:\s[^`]*)?`",
+                 rf"(?<![\w-]){spelled}\s+(?:sessions?|verbs?|kinds?)\b"]
+        if name in SESSION_KINDS:
+            forms.append(rf"(?<![\w-]){spelled}s?(?![\w-])")
+        for form in forms:
+            m = re.search(form, line, re.IGNORECASE)
+            if m and (best is None or m.start() < best[0] or (m.start() == best[0] and len(name) > len(best[1]))):
+                best = (m.start(), name)
+    return best[1] if best else None
+
+
+def stale_profile_lines(profile, catalog, version):
+    """office status's lines for the profile (0.53.0): each line that says
+    a verb or kind is not built when share/verbs.toml says this install
+    builds it, with its number and its words. A line that names nothing
+    the catalog declares, or names what is still not built, is not said."""
+    names = catalog_names(catalog)
+    out = []
+    for n, line in enumerate(pathlib.Path(profile).read_text(encoding="utf-8").splitlines(), 1):
+        if not NOT_BUILT_RE.search(line):
+            continue
+        name = named_in_line(line, names)
+        if name is None or not names[name]:
+            continue
+        out.append(f"  profile.md line {n} says {name} is not built; office-src {version} builds it "
+                   f"(share/verbs.toml): {line.strip()}")
+    return out
+
+
+def cmd_profile_built(a):
+    """office status's stale profile lines: exit 0 with nothing printed when
+    there is none, 0 with the lines when there are, 2 when the profile or
+    the catalog cannot be read."""
+    try:
+        lines = stale_profile_lines(a.profile, read_toml(a.verbs), a.version)
+    except (OSError, UnicodeDecodeError, HelperError) as exc:
+        print(f"profile:    could not be read for what it says is not built: {exc}", file=sys.stderr)
+        return 2
+    for line in lines:
+        print(line)
+    return 0
+
+
 def offices_fact(machine_file):
     """The survey's Machine offices fact (0.44.0): each office machine.toml
     lists, `NAME (ROOT)`, joined by `; `; a root no longer an office is
@@ -4810,6 +4892,10 @@ def build_parser(only=None):
     p.set_defaults(fn=cmd_set_migrated)
     p = add("profile-check"); p.add_argument("profile"); p.add_argument("shape")
     p.set_defaults(fn=cmd_profile_check)
+    p = add("profile-built", help="office status's lines for profile lines that say a verb or kind is not built "
+            "when share/verbs.toml says the install builds it (0.53.0)")
+    p.add_argument("profile"); p.add_argument("verbs"); p.add_argument("version")
+    p.set_defaults(fn=cmd_profile_built)
     p = add("survey-render"); p.add_argument("--facts", required=True)
     p.add_argument("--previous", required=True); p.add_argument("--out", required=True)
     p.add_argument("--machine-file", help="machine.toml: the Machine section names its offices (0.44.0)")

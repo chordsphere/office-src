@@ -818,7 +818,7 @@ class TestDigest(DigestCase):
     def test_an_unreadable_project_is_said_on_the_page_and_exits_3(self):
         shutil.rmtree(self.proj["office-src"])
         proc = self.digest(code=3)
-        self.assertIn("- office-src: cannot read: no such directory on this machine", proc.stdout)
+        self.assertIn("- office-src: not read: no such directory on this machine", proc.stdout)
         self.assertTrue((self.root / DT / "digest.md").is_file())
 
 

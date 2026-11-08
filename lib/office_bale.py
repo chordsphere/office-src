@@ -728,7 +728,7 @@ def rendered(project):
     """readable() for a rendering (0.41.0): a project marked paused (office
     projects set NAME --paused) is read for nothing, and raises BaleError
     of kind paused whose words are the one line the rendering says in the
-    place its "cannot read" line would go. The verbs that carry work
+    place its "not read" line would go. The verbs that carry work
     already out (land, deliver, probe) read with readable(), and so still
     reach it."""
     if project.get("paused") and not project.get("problem"):
@@ -738,8 +738,10 @@ def rendered(project):
 
 def unread_line(label, exc):
     """A project a rendering could not read, in one line: the paused line
-    for a paused one, else `LABEL: cannot read: WHY`."""
-    return str(exc) if getattr(exc, "kind", None) == "paused" else f"{label}: cannot read: {exc}"
+    for a paused one, else `LABEL: not read: WHY` (0.53.0: one spelling in
+    every rendering, office sessions' own; it was `cannot read`
+    elsewhere)."""
+    return str(exc) if getattr(exc, "kind", None) == "paused" else f"{label}: not read: {exc}"
 
 
 def hosted_project(project):
@@ -924,7 +926,7 @@ def in_flight(rd, office_root, now=None):
                 lines.append(unread_line(label, exc))
                 continue
             bad += 1
-            lines.append(f"{label}: cannot read: {exc}")
+            lines.append(unread_line(label, exc))
     older = older_sittings(office_root, [(sid, folders) for _, sid, folders in sitting_lines])
     for at, sid, _ in sitting_lines:
         if sid in older:
@@ -1362,7 +1364,7 @@ def open_words(f, groups):
     or that no session is in flight for it."""
     m = (groups.get("merge_by_rel") or {}).get(f["rel"])
     if m is not None and not m["landed"]:
-        return f"{job_waiting_words(m['job'])}; office start {folder_key(f)} {job_flag(m['job'])}"
+        return f"{job_waiting_words(m['job'])}; {job_start_line(f, m['job'])}"
     u = (groups.get("undelivered_by_rel") or {}).get(f["rel"])
     if u is not None:
         return f"landed {u['sid']} on {u['day']}, not delivered; office deliver {folder_key(f)}"
@@ -1714,6 +1716,12 @@ def delivery_move(groups):
     if waiting:
         f, job = waiting[0]["folder"], waiting[0]["job"]
         more = f"; {len(waiting) - 1} more wait" if len(waiting) > 1 else ""
+        bailed = job_bailed(job)
+        if bailed:
+            # 0.53.0: the handoff, not a session from scratch.
+            return (job_start_line(f, job),
+                    f"{oh.cite(f)}'s {'undo' if odl_is_undo(job) else 'merge'} job waits and {bailed} bailed out of "
+                    f"it; start --handoff sends the fresh session its handoff asks for{more}")
         if odl_is_undo(job):
             return (f"office start {folder_key(f)} --undo-bale",
                     f"{oh.cite(f)}'s undo job waits; start --undo-bale sends the session that takes bale's own change "
@@ -2142,7 +2150,7 @@ def render_ledger(rd, office_root, name=None):
                 lines.append(unread_line(p["name"], exc))
                 continue
             bad += 1
-            lines.append(f"{p['name']}: cannot read: {exc}")
+            lines.append(unread_line(p['name'], exc))
     return lines, bad
 
 
@@ -2183,7 +2191,7 @@ def render_landed(rd, office_root, path, name=None):
                 lines.append(unread_line(p["name"], exc))
                 continue
             bad += 1
-            lines.append(f"{p['name']}: cannot read: {exc}")
+            lines.append(unread_line(p['name'], exc))
     return lines, bad
 
 
@@ -2230,7 +2238,7 @@ def render_versions(rd, office_root, name=None):
                 lines.append(unread_line(p["name"], exc))
                 continue
             bad += 1
-            lines.append(f"{p['name']}: cannot read: {exc}")
+            lines.append(unread_line(p['name'], exc))
     return lines, bad
 
 
@@ -2337,13 +2345,37 @@ def job_flag(job):
     return "--undo-bale" if odl_is_undo(job) else "--merge"
 
 
+def job_bailed(job):
+    """The session that bailed out of a job waiting for its session (0.53.0:
+    the page's `- bailed: SID` line, kept since 0.52.0), or None."""
+    return job.get("bailed") if not job.get("session") else None
+
+
+def job_start_words(job):
+    """What office start takes after the folder to send a waiting job's
+    session (0.53.0): for a job a session bailed out of, the handoff of its
+    response (`--handoff response-SID.tar.gz`, the name a browser saves it
+    by, which office start looks for here and then in the downloads), so the
+    fresh session starts from the handoff rather than from scratch; else
+    the job's own flag."""
+    bailed = job_bailed(job)
+    return ["--handoff", f"response-{bailed}.tar.gz"] if bailed else [job_flag(job)]
+
+
+def job_start_line(f, job):
+    """The office start line for a waiting job: `office start N WORDS`."""
+    return " ".join(["office start", folder_key(f), *job_start_words(job)])
+
+
 def job_waiting_words(job):
     """A waiting job in a desk line's words (before its office line)."""
+    bailed = job_bailed(job)
+    after = f"; {bailed} bailed out of it" if bailed else ""
     if odl_is_undo(job):
         return (f"undo job waiting: bale's own commit {job['commit'][:7]} conflicts with the workbench in "
-                f"{len(job['files'])} file(s)")
+                f"{len(job['files'])} file(s){after}")
     return (f"merge job waiting: {job['audience']}/{job['branch']} conflicts with the workbench in "
-            f"{len(job['files'])} file(s)")
+            f"{len(job['files'])} file(s){after}")
 
 
 def waiting_on_delivery(office_root, folders=None, projects=None):
@@ -2471,6 +2503,10 @@ def deliver_item_words(u):
 def merge_item_words(m):
     f = m["folder"]
     kind = "undo" if odl_is_undo(m["job"]) else "merge"
+    bailed = job_bailed(m["job"])
+    if bailed:
+        return (f"Hand off the {kind} session for {oh.cite(f)}, {folder_title(f)}: {bailed} bailed out; "
+                f"{merge_job_words(m)}")
     return f"Send the {kind} session for {oh.cite(f)}, {folder_title(f)}: {merge_job_words(m)}"
 
 
@@ -2488,7 +2524,13 @@ def waiting_lines(office_root):
     for m in merges:
         f, job = m["folder"], m["job"]
         n = folder_key(f)
-        if odl_is_undo(job):
+        bailed = None if m["landed"] else job_bailed(job)
+        if bailed:
+            # 0.53.0: a job a session bailed out of is offered its handoff.
+            kind = "undo" if odl_is_undo(job) else "merge"
+            lines.append(f"{oh.cite(f)}: {kind} job waiting, its session {bailed} bailed out; {job_start_line(f, job)} "
+                         "sends the fresh session its handoff asks for")
+        elif odl_is_undo(job):
             # 0.51.0: the undo job, beside the merge job.
             if m["landed"]:
                 lines.append(f"{oh.cite(f)}: undo session {m['landed']} landed; office deliver {n} closes the undo job")
@@ -2579,7 +2621,7 @@ def status_lines(rd, office_root):
     if not projects:
         lines.append(f"projects:   none; {no_projects_line(projects)}")
         return lines, 0
-    problems, hosted, paused = [], [], []
+    problems, hosted, paused, toolchain = [], [], [], []
     for p in projects:
         if p.get("paused") and not p["problem"]:
             # Read for nothing (0.41.0): no directory check, no host reached.
@@ -2592,13 +2634,19 @@ def status_lines(rd, office_root):
             hosted.append(p)
         else:
             ok, text = oh.check_project_dir(p["resolved"])
+            if ok:
+                # Its toolchain (0.53.0), read under bash -lc as bale's runs are.
+                try:
+                    toolchain += toolchain_lines(p["name"], ohost.toolchain_state(p["resolved"]))
+                except ohost.HostError as exc:
+                    toolchain.append(f"  {p['name']}: its toolchain could not be read: {exc}")
         if not ok:
             problems.append(f"  {p['name']}: {text}")
     lines.append(f"projects:   {len(projects)} in scope"
                  + (f"; {len(problems)} cannot be read" if problems else "; each is a repo bale runs in"
                     + (f", {len(hosted)} through a host's shell" if hosted else ""))
                  + (f"; {len(paused)} paused" if paused else ""))
-    lines += problems + paused
+    lines += problems + paused + toolchain
     # A project on a host: one reach check, and that host's bale against
     # the read side's floor, with the remedy when it is behind. Never a
     # network call the survey makes (doctrine section 13): this is
@@ -2611,14 +2659,17 @@ def status_lines(rd, office_root):
         place = ohost.place_of(p)
         try:
             # bale's version and the sandbox setting there, in one connection
-            # (0.39.0): the sandbox read rides after bale --version.
-            proc, shown, where = rd.invoke("version", place, also=[ohost.sandbox_argv(place)])
+            # (0.39.0): the sandbox read rides after bale --version, and the
+            # toolchain read (0.53.0) after it.
+            proc, shown, where = rd.invoke("version", place, also=[ohost.sandbox_argv(place),
+                                                                   ohost.toolchain_argv(place)])
+            also = list(rd.also_runs)
             line = rd.parse("version", proc, shown, where)
             m = re.match(cons.surface("version")["pattern"], line)
             if not m:
                 raise BaleError("output", f"bale --version printed {line!r}, not `bale X.Y.Z`")
             v = m.group(1)
-            sandbox = sandbox_status_line(p, place, rd.also_runs[0] if rd.also_runs else None)
+            sandbox = sandbox_status_line(p, place, also[0] if also else None)
             if oh.compare_versions(v, cons.floor) >= 0:
                 lines.append(f"  {p['name']}: {p['host']} answers; bale {v} there, within the read side's "
                              f"range (bale {cons.floor} or later)"
@@ -2630,12 +2681,77 @@ def status_lines(rd, office_root):
                              f"this machine's bale{f' ({here})' if here else ''} before a session is sent there")
             if sandbox:
                 lines.append(sandbox)
+            if len(also) > 1:
+                try:
+                    lines += toolchain_lines(p["name"], ohost.read_toolchain(place, also[1]))
+                except ohost.HostError as exc:
+                    lines.append(f"  {p['name']}: its toolchain could not be read: {exc}")
         except BaleError as exc:
             lines.append(f"  {p['name']}: {exc}" if exc.kind == "unreachable"
                          else f"  {p['name']}: {p['host']} answers, but bale there could not be read: {exc}")
         except oh.HelperError as exc:
             lines.append(f"  {p['name']}: bale's version on {p['host']} could not be compared: {exc}")
     return lines, 0
+
+
+def toolchain_lines(name, tc):
+    """office status's lines on a project's toolchain (0.53.0), from what
+    office_host.read_toolchain found where its clone is: one line for each
+    tool package.json's engines (or a .nvmrc, for node) asks for that its
+    shell finds missing or outside the range, and one for a range the
+    office cannot read. A tool that meets its range is said under
+    OFFICE_DEBUG only, as is an engines key the office does not ask a shell
+    about (office_host.TOOLCHAIN_TOOLS). [] when the clone has neither file."""
+    import json
+    if tc.empty:
+        return []
+    out, needs = [], []
+    if tc.package is not None:
+        try:
+            data = json.loads(tc.package)
+        except json.JSONDecodeError as exc:
+            return [f"  {name}: package.json does not read as JSON ({exc.msg}, line {exc.lineno}), so the office "
+                    "cannot say what its scripts need"]
+        engines = data.get("engines") if isinstance(data, dict) else None
+        if engines is not None and not isinstance(engines, dict):
+            out.append(f"  {name}: package.json engines is not a table of tools and ranges, so the office cannot "
+                       "read it")
+            engines = {}
+        for tool, rng in (engines or {}).items():
+            if tool not in ohost.TOOLCHAIN_TOOLS:
+                debug(f"{name}: package.json engines names {tool} ({rng!r}), which the office does not ask a "
+                      f"shell about (it asks for {', '.join(ohost.TOOLCHAIN_TOOLS)})")
+                continue
+            needs.append((tool, rng, "package.json engines", ohost.parse_range))
+    if tc.nvmrc is not None:
+        needs.append(("node", tc.nvmrc, ".nvmrc", ohost.nvmrc_range))
+    for tool, rng, source, parse in needs:
+        shown = rng if isinstance(rng, str) else json.dumps(rng)
+        try:
+            wanted = parse(rng)
+        except ohost.RangeError:
+            out.append(f"  {name}: {source} says {tool} {json.dumps(shown)}, which the office cannot read as a "
+                       "range, so it does not say whether its shell's meets it")
+            continue
+        if tool not in tc.found:
+            debug(f"{name}: {tool} was not asked of its shell ({source} names it, but the read did not find "
+                  f"\"{tool}\" in package.json)")
+            continue
+        printed = tc.found[tool]
+        if printed is None:
+            out.append(f"  {name}: needs {tool} {shown} ({source}); its shell finds no {tool}")
+            continue
+        version = ohost.found_version(printed)
+        if version is None:
+            out.append(f"  {name}: needs {tool} {shown} ({source}); its shell's {tool} --version printed "
+                       f"{json.dumps(printed)}, which names no version")
+        elif not ohost.satisfies(version, wanted):
+            out.append(f"  {name}: needs {tool} {shown} ({source}); its shell finds {tool} "
+                       f"{'.'.join(map(str, version))}")
+        else:
+            debug(f"{name}: needs {tool} {shown} ({source}); its shell finds {tool} "
+                  f"{'.'.join(map(str, version))}, which meets it")
+    return out
 
 
 def sandbox_status_line(project, place, run=None):
@@ -5480,7 +5596,7 @@ def open_anywhere(rd, office_root, sid=None, unreachable=None, rendering=False):
                             # folder at delivery, and ends on deliver's line.
                             "audience": (p.get("audience") or None) if p else None})
         except BaleError as exc:
-            problems.append(f"{label}: cannot read: {exc}")
+            problems.append(unread_line(label, exc))
             if exc.kind == "unreachable" and unreachable is not None:
                 unreachable.append((label, str(exc)))
     return out, problems

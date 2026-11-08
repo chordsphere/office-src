@@ -596,7 +596,12 @@ longer does (0.52.0): its page's line is cleared, said and committed, and
 `office start N --merge` (or `--undo-bale`) sends another in its place. A
 bailout ends a job's session the same way, kept on the page as its
 `bailed` line, and `office start N --handoff` puts the fresh session in
-its place, so land closes the job for that one.
+its place, so land closes the job for that one. Since 0.53.0 a job a
+session bailed out of is offered that way wherever a waiting job is
+offered (`office status`'s line, the walk-in's desk line and Next line,
+the home screen's item, the map's Next rows, deliver's line): `office
+start N --handoff response-SID.tar.gz`, never `--merge` or `--undo-bale`,
+which would send a session from scratch.
 
     office withdraw --bundle 2026-10-27-picklists-review   # a planner's bundle you will not send, out of the offer
 
@@ -798,7 +803,7 @@ rendering says bale is missing and the rest of the command works.
 
 ### Looking after an office
 
-    office status              # version, skew, the install against its source, its bytecode cache, the doctrine and any sitting out under an older one, profile, survey age, timezone, hung items, catalogs, folders, filed pages, bale, projects, the letterhead, the push guards
+    office status              # version, skew, the install against its source, its bytecode cache, the doctrine and any sitting out under an older one, profile (and a line of it that says something built is not), survey age, timezone, hung items, catalogs, folders, filed pages, bale, projects (and a tool a project's scripts need that its shell lacks), the letterhead, the push guards
     office survey              # rewrite floor-plan/survey.md, report what changed
     office upgrade             # run pending migrations: dry run, then one commit; a renovation goes out through office start; with or without one, the letterhead's missing pages and the current push guards
     office found               # an unfounded office's founding session, through the founding door
@@ -2265,13 +2270,20 @@ downloads was opened there, so it leaves the offer as any other. Every rendering
 walk-in and its In flight, the home screen's project line, `office desk`,
 `office status`, `office sessions`, `office projects` and its renderings,
 the digest and the watches) reads nothing of a paused project, no bale
-call and no git, and says one line where its "cannot read" line would go:
+call and no git, and says one line where its "not read" line would go:
 `NAME: paused (office projects set NAME --unpaused)`; `office projects`
 lists it with `(paused: office projects set NAME --unpaused)` in place of
 the check of its path. `office start` refuses to send a session to it,
 by its folder's lane or `--on`, with that line, before anything is
 written. Every other verb is as it was: a session already out on it
 still lands, and deliver and probe still run there.
+
+A project a rendering cannot read (its path gone, its host not
+answering, its bale refusing) is one line in that rendering, in one
+spelling everywhere since 0.53.0: `NAME: not read: WHY`, as `office
+sessions` said it already (the walk-in's In flight, `office projects
+--ledger`, `--landed` and `--versions`, the land plan's problems and the
+digest said `NAME: cannot read: WHY`).
 
 The floor plan's [projects] table names each project and the path of its
 repo; `office projects add` writes it, and checks the path is the top of
@@ -2367,6 +2379,32 @@ again. `office status` names it per hosted project (`proj: sandbox: off
 by bale.toml, written 2026-10-29: ...`), and where the sandbox cannot
 run and nothing turns it off, the line that writes it; nothing when it
 is not needed.
+
+A project's toolchain (0.53.0). For each project whose clone has a
+package.json with an `engines` field, or a `.nvmrc`, `office status`
+asks the project's own shell, the login shell bale's runs get (`bash
+-lc` here, the project's shell on a host, in the connection status
+already makes there), for each tool engines names (node, npm, yarn,
+pnpm, bun; node for a `.nvmrc`), and says one line for a tool it does
+not find or that is outside the range: `proj: needs node >=24
+(package.json engines); its shell finds node 22.11.0`, or `finds no
+node`. A hook in ~/.bash_profile counts, as it does for bale. A range the
+office cannot read (a pre-release, an nvm alias such as `lts/*`) is said
+as such, never guessed; a tool that meets its range, and an engines key
+for another program, are said under `OFFICE_DEBUG=1` only.
+
+The profile's stale line (0.53.0). The profile is yours, and the office
+never writes it. A founding may write a line saying some capability is
+not built yet, meaning to be told when it is: `office status` names each
+profile line that says a verb or session kind is not built (`not built`,
+`not yet built`, `isn't built`, `hasn't been built`, `unbuilt`) when
+share/verbs.toml says this install builds it, with its number and its
+words: `profile.md line 31 says project-session is not built; office-src
+0.53.0 builds it (share/verbs.toml): ...`. A line names a verb as `office
+VERB`, in backticks, or followed by session, verb or kind; a session kind
+by itself (`project sessions`). A verb's bare word (open, land, desk) is
+an ordinary word and names nothing, and a line that names nothing, or
+names what is still not built, is not said.
 
 A clone's view of its audience (0.39.0). A clone on a host often cannot
 reach the audience's git host (it has no credentials there), so its

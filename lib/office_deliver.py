@@ -1682,6 +1682,8 @@ def waiting_merge_lines(folder_dir, rel, folder):
         return []
     side = f"{job['audience']}/{job['branch']}"
     nxt = (f"office land {job['session']} brings its session back" if job.get("session")
+           else f"office start {folder} --handoff response-{job['bailed']}.tar.gz hands off {job['bailed']}, which "
+                "bailed out of it" if job.get("bailed")
            else f"office start {folder} --merge sends its session")
     return [f"{rel}'s merge job ({side} into the workbench) is waiting, and a folder holds one job at a time, so the "
             f"undo job was not written: {nxt}, and office deliver {folder} then writes it; nothing was pushed"]
@@ -1697,6 +1699,8 @@ def waiting_undo_lines(folder_dir, rel, folder):
     if job is None:
         return []
     nxt = (f"office land {job['session']} brings its session back" if job.get("session")
+           else f"office start {folder} --handoff response-{job['bailed']}.tar.gz hands off {job['bailed']}, which "
+                "bailed out of it" if job.get("bailed")
            else f"office start {folder} --undo-bale sends its session")
     return [f"{rel}'s undo job (bale's own commit {job['commit'][:7]}) is waiting, and a folder holds one job at a "
             f"time, so the merge's materials were not written: {nxt}, and office deliver {folder} then writes them; "
