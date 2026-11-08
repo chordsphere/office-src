@@ -1,0 +1,336 @@
+{
+  "record_version": 1,
+  "session_id": "2026-11-08-m10-status-more-001",
+  "created_at": "2026-11-08T15:51:03+00:00",
+  "attempts": [
+    {
+      "at": "2026-11-08T15:51:03+00:00",
+      "outcome": "opened",
+      "command": "pack",
+      "closure_reason": null,
+      "tarball": null,
+      "validation": null,
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib",
+        "share",
+        "templates",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [],
+      "feedback": null,
+      "log": ".bale/logs/2026-11-08-m10-status-more-001.log",
+      "bundle": {
+        "stem": "2026-11-06-m10-status-more",
+        "brief_sha256": "5b9d5443823d2796a1bee2547570c7738e5710ccd9e2d7339fd01bd81ac606d9",
+        "checkpoint_sha256": null,
+        "manifest_sha256": "5559c120fe2aff80d60c8d25233d5296ae647024cd751350f59a1df44a2a61df"
+      },
+      "provenance": {
+        "work_class": "mixed",
+        "packer": "chordsphere",
+        "packed_at": "2026-11-08T15:51:02+00:00"
+      }
+    },
+    {
+      "at": "2026-11-08T18:03:50+00:00",
+      "outcome": "applied",
+      "command": "apply",
+      "closure_reason": null,
+      "tarball": "response-2026-11-08-m10-status-more-001.tar.gz",
+      "validation": {
+        "state": "PASS",
+        "exit_code": 0,
+        "claims": {
+          "tests/run.sh --fast test_status_more test_read_side": {
+            "value": "pass",
+            "claim_basis": "observed"
+          },
+          "tests/run.sh touched modules (--slow)": {
+            "value": "pass",
+            "claim_basis": "observed"
+          }
+        },
+        "claim_verdict": {
+          "tests/run.sh --fast test_status_more test_read_side": {
+            "claim": "pass",
+            "verdict": "pass",
+            "agreement": "agree"
+          },
+          "tests/run.sh touched modules (--slow)": {
+            "claim": "pass",
+            "verdict": "skip",
+            "agreement": "n/a"
+          }
+        },
+        "reconciliation_parsed": true,
+        "validation_will_run": [
+          "bash -n bin/office",
+          "python syntax (the 11 changed .py files)",
+          "session assertions (VERSION, RELEASES, front sheet, doctrine core, the four items' wiring, the tests' pins)",
+          "bin/office executable",
+          "tests/run.sh --fast test_status_more test_read_side",
+          "tests/run.sh touched modules (--slow)"
+        ]
+      },
+      "scope_kind": "write-forecast",
+      "scope": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib",
+        "share",
+        "templates",
+        "tests"
+      ],
+      "overridden_paths": [],
+      "overridden_path_sources": {},
+      "required_check_overrides": [],
+      "base_drift_overrides": [],
+      "sandbox_escaped": false,
+      "network_grant_exercised": false,
+      "sandbox_confined": true,
+      "sandbox_off_source": null,
+      "cost": {
+        "tokens_in": null,
+        "tokens_out": null,
+        "usd": null,
+        "model_tier": null,
+        "calls": null,
+        "models": null
+      },
+      "change_paths": [
+        "README.md",
+        "RELEASES.md",
+        "VERSION",
+        "bin/office",
+        "claude/context/front-sheet.md",
+        "doctrine/OFFICE.md",
+        "lib/office_bale.py",
+        "lib/office_deliver.py",
+        "lib/office_digest.py",
+        "lib/office_helper.py",
+        "lib/office_home.py",
+        "lib/office_host.py",
+        "lib/office_map.py",
+        "tests/test_project_on_host.py",
+        "tests/test_read_side.py",
+        "tests/test_status_more.py",
+        "tests/test_watches_digest.py"
+      ],
+      "feedback": {
+        "mechanical": {
+          "response_kind": "normal",
+          "schema_valid": true,
+          "mirror_agreement": {
+            "changes_to_files": true,
+            "files_to_changes": true
+          },
+          "claims_subset": true,
+          "provenance": {
+            "bale_version": "0.4.56",
+            "contract_docs": {
+              "AGENT.md": "31dcdded2a8fd175f7778c2bd1be09688e89e76b8fd4cd62b7646aacfa2782c4",
+              "TARBALL.md": "3037b905ee561af44f27cc83ec45d832feb7d429a98d4e07b4482a518cda6e94",
+              "DOCS.md": "90cc9aad0670610b7865a54db33975103580cdd3354d000b8db07f8a6e956d0c",
+              "CODE.md": "49a145323bfc472a22dd8be56565d6e7767fd1ffbd33c36cda95e7e3e149ab75",
+              "PLANNER.md": "a8e5714e51049768e52bb5bc0ede9338db1175e7095d9b2bdd0d314ab3e01078"
+            },
+            "packer": "chordsphere",
+            "work_class": "mixed",
+            "checkpoint": null,
+            "checkpoint_scope_admitted": false,
+            "packed_at": "2026-11-08T15:51:02+00:00",
+            "base_files": {
+              "README.md": "7c2c51b3d9b96cf95e80ac33366dcd8222925538d1e004e21393001b2acd29c3",
+              "RELEASES.md": "ce23dcdca4b23f0511b42805b0c5e9be7a78b199a9f8e42e35e7d401d1a21088",
+              "VERSION": "f0ff15ea2ce1fbc899964a336ed594ad3d53eac3ae183a081b547998805ab138",
+              "bin/office": "fb07ee75ea7d0ae6745877e0585f939de3ba8c3d36258eb62229bde34be58414",
+              "claude/context/front-sheet.md": "c7864129aa3d5c4338105c5e239b553da0775b2d5db626511ffbd61d2c900eca",
+              "doctrine/OFFICE.md": "5a53dd7042d4d8acf48d7af08c9aef04301801583d1fbbb08ff615938ba5d905",
+              "lib/office_ask.py": "5f79e21d4cb04c7bb63d6ff05dda9bb64cc6ce217692e4799f3f50e82172b4dc",
+              "lib/office_bale.py": "3220597876e05770357a5ad2c9e1e588701e28836b9dc3228f3655eaa3387ee1",
+              "lib/office_deliver.py": "547fa8e10cb99b3139f4de1ac06c589184d674c5e231cc6df7a6c818d230005e",
+              "lib/office_digest.py": "1654d3d43203e466d33c73c22cdec43470402d6492f3fac201806e85aa056d8d",
+              "lib/office_door.py": "26a712cdf634ebd72f5a4b78f95587661c06a2636668aac068a2a64ef730b1b5",
+              "lib/office_drafting.py": "a7975eae94d5b4a5f92886c274906f59ebbca25adb9c7b570248710151347898",
+              "lib/office_drop.py": "05679f1740b69bc3c277b4fbd44afd133806f465b225d3f1a526d7e143ba2989",
+              "lib/office_helper.py": "fa9f4e6da9b0168f083cca9fd31032f58e09654b04752fcbd2037024c4819f35",
+              "lib/office_home.py": "256343710bbb87c01009aeb0396e35ec5fd566a7b7b57658bc54fbe1155fa889",
+              "lib/office_host.py": "8005f29b0d7e7bab0df906333efff84369567b49272c3a73b1b277cb599c721e",
+              "lib/office_letterhead.py": "2cc7622ebd689e1d9e42619c3f0ec7933bb3b34f202b1e93ed152eab4cf3ecdd",
+              "lib/office_map.py": "9464a0dbff18a2998ddae14bedfc2626129e0509e8d41f577c04dbd50de6a620",
+              "lib/office_meeting.py": "f385ede365fed3008de30c50ee0344f84fee3df3b5ab754d7a8cf24fa60be986",
+              "lib/office_planner.py": "65265e78085f46aa1c1b534f06e70bff10a3f191b5d1ab2be448b4650a36327c",
+              "lib/office_probe.py": "826125a56d0e0978af9581cb36d66282e638c7bce56ca13eea2dc9186dcd86e9",
+              "lib/office_refresh.py": "1c90daeeca3821367560a1394ef894a0413397f99cbf0b3b48172dc844c67e9b",
+              "lib/office_review.py": "3249fab7408737ce51e75ded16283b1239089807ddfbcdcaa825c9728d728490",
+              "lib/office_sort.py": "bbcb730f8dc3ae4287d472d7e1a9e552571d7043db782096cf9a3fa0baabf1f7",
+              "lib/office_standing.py": "6ebb3557133e209c7467670dc70ef3e778c515b0d9236cb5807e5734ed418b5d",
+              "lib/office_watches.py": "446b4f243779e780466bcb6364ee9e4e4aad0f3f2e11c6565f220e333c33fbb1",
+              "share/bale-consumption.toml": "bb2f3e7d9ff92ba9f80116d33f556850c70a90f41dc94bf535dc9b76d7085dcf",
+              "share/letterhead.toml": "eea85089e1edb0b2228ffabce90020bf6124afaca387ec11c6dfb090c47eec10",
+              "share/profile-shape.toml": "be33d802bb251cbae19eb2ec87c1068f12974a8c3cb532f7b4f8d78553f53083",
+              "share/spaces.toml": "6ec0e529005e5beed5ba4beb09afd8e611d8beb6a0753990c8020142ac3d3cc1",
+              "share/verbs.toml": "8e000fcdbe4d35b7598ca01a330b95f917635ab08feeda3d4cd480bbd84c6fe6",
+              "share/watch-queries.toml": "a131e859f3668a9288c4f2a8e14d26eb141d3190a9fe2dea2a2a12466107cda0",
+              "templates/ask-brief.md": "9f2dcf3f0cb1136f2e618f240fdd4e97e06a3b930fc5060a6b34c5b1d5b83dd5",
+              "templates/blueprint.md": "afdcee03c546aed8351407128984b8bc8302bc08d6e8e0bdc03f36eddd0b43a1",
+              "templates/calendar-plan.md": "2627a24e2460f3234728fcb6cb97efe6d5525d01ee3d21e5112c7a9d8440f700",
+              "templates/calendar-record.md": "6d4d067bf2f681295c370e65156515da309943ae6e4a3e5bcacd4d9540730c9a",
+              "templates/clipboard-series.md": "a5d9eb92961bd491b10225321c7564ba0afd3bbb8d9bedd6913f26be36866f22",
+              "templates/clipboard-sheet.md": "3a49bc3bc432964a963d3a8167ab19ac237119f309d9f1943c9313c9e61bd769",
+              "templates/close-report.md": "2ed79c13360c2c9b2dc354b7203d22104344670be50bbe7b70409b32de1012fe",
+              "templates/delivery.md": "4f04f059280fa84a387775b1c2494dd59e83213dea0ba420879397cda73315a2",
+              "templates/drafting-table-README.md": "cc8824bba0fb1cb4f20848c69206287e4d0211ec570c2e43e4b83b2afd4f8a52",
+              "templates/drafting-table-agenda.md": "ec2c50086d54a7e29c253cc98d7bd20b749a58862e0ede7a42e70fe5f56e15f0",
+              "templates/drafting-table-evidence.md": "2db0ee33c42518ec534463f8d28782d6446eca05fa63a4c6a3f2f33603397516",
+              "templates/drafting-table-moves.md": "f66ff189ab6d642774580116792dd9edee24ba414b35d829c40866cc4a2992da",
+              "templates/drafting-table-riders.md": "997a09888b6e5d981f968683629861cace9005f9e1759b5a2ece42ca4f2d2b43",
+              "templates/drafting-table-rulings.md": "c3ee8b27e758291a2dd418f5b56168a5d3539aff84e5714d999e8f96a90cd084",
+              "templates/drafting-table-watch-log.md": "ab312220fe93939ef3c719e2ff1175f004937624d85bb7188080b83497c12f20",
+              "templates/drafting-table-watches.md": "2dcdec752acf5c3ac508feffc1a8e1027ca799dfa43699673c9f7d148ee04c5d",
+              "templates/drop-brief.md": "6dce5bf46cd06eeb8da1d658150c114517f3ff7107754592291acc73bc369591",
+              "templates/folder.md": "bbf7390000645252e5441fa2685712ba8b8b70d56321eec327cbbe3c243cc149",
+              "templates/handbook-README.md": "f2f8b368e6d05bb062144adbb62cdc96891c6e444f9587767de97032dd15cac7",
+              "templates/handbook-chapter.md": "f8a57c3f203f11a162c99dd8a3e2fe5e6eb4decae702d7120720c08f2e9754cd",
+              "templates/in-tray-README.md": "3e9adfd8c44c4bda715f5084a53a7e76d947baccc058f74e7ec2ae90132d6c66",
+              "templates/letterhead-README.md": "158a23007fab9a79785557fc6a0d2e61dd4a6cdf78cfc5699ec63d3ffffa4b4b",
+              "templates/letterhead-forbidden.txt": "0fa5ebab79ebf5f32d459143ad5fe8e21fa33061aca7c68c8bf3c50ba100de5c",
+              "templates/letterhead-voice.md": "d78e46be7c89da1b59986699175e98c49e29c96aca9d0b53f6dfc92cf8f31eaa",
+              "templates/merge-brief.md": "db6a1e87130e558f4e4bc5685e8ebed6d23b159dd9d9929e89f3ee46dfd0b490",
+              "templates/notepad-page.md": "692df506823206c9db5f7153bf90aa0bf46014ad80fe2962163a5997f8e065de",
+              "templates/prep-brief.md": "d00a48683a3c83586edb347ee2c91e8bd3b13d5db1d4f8783b37a6c363ce661a",
+              "templates/profile.md": "c57c886d2d71ff7c07969282a6778da8f0c7a6e352f08021ce50574ce4c7a708",
+              "templates/rolodex-card.md": "833635ca21cc16ed318ae9a8103c9afc8fd8e98027a1fa4eb013cee9cf386833",
+              "templates/sitting-brief.md": "fcff5d53845879de559a8dd007c070b5d537e73db7a389136bc372543b286aca",
+              "templates/sort-brief.md": "f04653669254e9e8beca59c4d7172011e598bfb7cfd0abdc0a3e966be151a7c4",
+              "templates/suggestion-slip.md": "8b95b77a645429817ace549f81822ff0c65b1369746bb580635a4be6ac87c5d1",
+              "templates/undo-brief.md": "1542dd7bab1fa7bb1dcee3998db4e1503436dc3f942b38a3f645cc95d338eb63",
+              "templates/walkthrough.md": "dce05bbd474606b2f6e8b9a444288c0aa35027706ad80c5071efa7b775aa7e96",
+              "tests/fakes/gh_fake.py": "c7ac15c54c3d2d7c3b4cd741f103d75d069df8d4a943874f6239005a16064835",
+              "tests/fakes/land_bale.py": "1e6a7cabdc4306437112a7ee726ea78d4a39438958854f990615153ed4e750b8",
+              "tests/fakes/pack_bale.py": "fbf35a9c88afa7d9c8d64dbb985e7985476196311911dd05b1fc143fc768d22b",
+              "tests/fakes/replay_bale.py": "f31101e58b28106452c4572b6e38a7642276937076b1f0cc320c9b185c56eea5",
+              "tests/fakes/small_bales.py": "25e74224d580bddfc5a2eb91696d7816c8a4e8f73ea20deb7c9dc2be0422bc4b",
+              "tests/fast-tier.toml": "97638123555e85de9842ffaee58c1cf5aef939666b25d25c971c0973640f994a",
+              "tests/run.sh": "35b3954b5bf5d4e975ba58026bc8c313e11e94f1e97bd5f2140aa963f40829cf",
+              "tests/runner.py": "d255c4e31416e719befb1d3d0e1e581dabe3a5c21eaad5a1b02f36ced1a1fc7f",
+              "tests/test_answer_review.py": "c8f6b8996e08ba64519cf9c5da5a25f7366cdbc0a33558130d680b5056542461",
+              "tests/test_ask.py": "7b08d6150c0048df6bc2c64e1eaee5c7b807c7d41df6c786d464e2370c2a6fe3",
+              "tests/test_audience_line.py": "58d15a91df1abb2c1d3549b8c0a9a325184874750b61ebeb10f59849affe3b29",
+              "tests/test_bale_own_commits.py": "dcaf46d88dab463baadebd8b167107fde06554337020e7c7fd051e6db5de8740",
+              "tests/test_clean_delivery.py": "42c2fafd9e87b1b9037ad3c97f1a9ddc2974cb800571dddaad930d84a56d8a1d",
+              "tests/test_deliver_fixes.py": "90c6450874b407dee0d8e9a78e929ad3b741ab315c2dd31fa0ce6cb6b38332d7",
+              "tests/test_deliver_merges.py": "fc6bae4b2f01190cecdedcedaee4f3d58fca26fdd7166796126b3d5c4f2a68b0",
+              "tests/test_delivery_words.py": "1aacd84854e0c8de6bf6578163d6a671439bc65e49a109a92def8db954b75c6f",
+              "tests/test_desk_readability.py": "3cf3416ae2faaf3518fbc1d7135d101cf03cc8dc37d83d4f385f27ff5071f161",
+              "tests/test_desk_verbs.py": "4173df258a66fef4544a6d6e2ee15db27bf77d3549c8fe3b2b359c3c36d9b4ca",
+              "tests/test_drafting_table.py": "523529701ddf0c0e7baf193ae8ad4a8a19d05c09adf2f4f5a7884be691916807",
+              "tests/test_drop.py": "7ed73e08c58fa70d4a3fa5253bb034f26f215a979002781c1f81cdc75484d889",
+              "tests/test_filed_append_only.py": "9daf033c18db0969190168fb2276dd835c3abd71a56f5bd01d0d6f0edd76d45b",
+              "tests/test_folders_and_projects.py": "048bf3283a2fbfba0b800896f2e436c0203540f8670526a75a901afc4d7aa3be",
+              "tests/test_founding_door.py": "b02dcbbd571f7b10c23fd739a1aec5bfa467b3ffd7e924ead1be869a2fe7ddcd",
+              "tests/test_from_the_artifact.py": "260a3dd53533ba954292db421930afd065f843fc9a93eabf6b77f98c168b59ce",
+              "tests/test_front_door.py": "1061adfc0881e602eab9b101684db8e9866582006893fd550515e4e372519d41",
+              "tests/test_handoff.py": "feeaf0a4ba042b597ac1f4aeb1dac824cef2acfee0e46dffe170d7c63a699a26",
+              "tests/test_home_screen.py": "aef800cdf390ab10450737cd814cb045c4e07e72c57b117a420e510b394af2db",
+              "tests/test_home_screen_offers.py": "0902073f8fef8843505b3a88081a2e5a02da405f0ccd0d085c7204e73e858fc2",
+              "tests/test_host_refresh.py": "cef425f3579b308e9f621f715ecf7cb0c8661820df944bb6579f2e56b7405e5e",
+              "tests/test_host_rides.py": "a2281dcad2e51c772daf13eb404df689b1313a84faa0c70436443f1b85668db3",
+              "tests/test_land.py": "640381c7e60b7c24ef2f5e103689d996d25ee8fcbc5d9eac88819e72fe5f3d50",
+              "tests/test_meetings_view.py": "56980328a9a9e5dffe79eb8f93aed52d965a54df8bd4337edbf767b95e0ab223",
+              "tests/test_office.py": "47004fff47e6a1449efc4800702eb2ebe1b207f54bf6b54dae80b0b5f2a6235f",
+              "tests/test_one_door.py": "30abff9672dce9f22fea8fd5b005ee1d20715573692030730975405e440e5c9a",
+              "tests/test_out_trip_to_host.py": "807a7a3719890219cccbf45a7456dc611ac5610554b55db1a63abe4df86ddc93",
+              "tests/test_planner_from_words.py": "0f5c55fd38205ed3905fc347b47815ed98759d45693948cd7e59251eca67d3cf",
+              "tests/test_probe.py": "729e9db40518310337ed9292a290c9b9f8e96ccabe01a5926f9806c3e6bea650",
+              "tests/test_project_on_host.py": "aac408a2df6d73d5cdfe098ef50dd5d4d78b66d567d2b0f1d00f3ad85aae68e3",
+              "tests/test_pull_requests.py": "ec6dc7b92cf9bc4adb111f81d355e2b812aa3fcf542cb25b1c6f8690ba444bbc",
+              "tests/test_read_side.py": "f69f3a9665e0d5d1e1bd2631d13c6436dbdba35867b1d78b3bfb50b0785fb600",
+              "tests/test_return_trip.py": "8033aa99f5e76adf2f5d44040ba07fc14f07f9599647177862c857b07687bdfb",
+              "tests/test_second_trip.py": "b2e2972997e49f91ffe15b696357d2a94f94cc38db819e1f6e34e2621bb3dda5",
+              "tests/test_sessions_read.py": "ef808b84a8ccf21f24fff804e27731366e1f823ebd28be07c0d81a4b33e83906",
+              "tests/test_sort.py": "eb81db37d2887f9cf2cbfc69e57f30ffb3d6b6597d3839dc15a525ea7ff650ba",
+              "tests/test_spanning_probe.py": "d9883e444231b5a2c741ae0420d47b199c3e0f08742befde66bca496e8bdba81",
+              "tests/test_standing.py": "6d7b0c4803c859a7fe096719793bb27b7cbbdd4e3b26b22f3bf9a8bcb58dd858",
+              "tests/test_start.py": "4ef1fc2a5cd8f143491358bf62f441132e8e5bd7ca036fff31c4fa878178d94d",
+              "tests/test_suite_clock.py": "75c8111b1661710bdfeb5313790278677bf9c330a3c40de8eee646b19e66a436",
+              "tests/test_third_trip.py": "3e24ddf7ce52ec0cd693ab85dfa0f7c5a470aca16b87937838d9e4840ffa26ba",
+              "tests/test_three_gaps.py": "cdc96ebb86414f4b6d08add01d432b1c1fc01f1b6817049048d9ef45aa54062b",
+              "tests/test_tidy.py": "4522fe1fa74eca8a3a55a0f71e53468ab0be4d530e6b68199fae61d97660815e",
+              "tests/test_undo_bale.py": "b73bc6957493965184c5971984e1e5f660edf54fd52cc7def98b53f109e42fa3",
+              "tests/test_walkthrough_tidy.py": "41992df92329fecd0f5fe8c13057947d3764ab5bb4c9a9839490f9824ecfd9a0",
+              "tests/test_watches_digest.py": "bd90d845ff9faf2ae3081fe1b174e2df3df4efc7fd0d9c93989199c6046e924d"
+            },
+            "model_identity": "anthropic:claude-opus-5-5"
+          }
+        },
+        "self_reported": {
+          "assumptions": [
+            "the brief's tree is the 0.52.0 HEAD carried in context/, and the work office's own stale profile line names a verb or session kind (its words were not in the request)"
+          ],
+          "judgment_calls": [
+            "toolchain tools asked for are node, npm, yarn, pnpm and bun, each only when package.json names it; another engines key is said under OFFICE_DEBUG",
+            "npm's range grammar subset (comparators, partials, x-ranges, ^, ~, hyphen, ||); a pre-release is a range the office cannot read",
+            ".nvmrc taken, .tool-versions and pyproject's requires-python left and proposed",
+            "a profile line names a verb only as office VERB, in backticks, or followed by session/verb/kind; a session kind on its own; a verb's bare word names nothing",
+            "the stale-profile line carries the line's words after the brief's template",
+            "the handoff offer names response-SID.tar.gz, and deliver's waiting-job line offers it too",
+            "NAME: not read: WHY is the one spelling, through unread_line",
+            "item 5 left at the seam with 3, 4, 7, 9 and 10, a deviation from the seam's grouping of 8, 5 and 6"
+          ],
+          "budget_pressure": "tight",
+          "includes_missing": [
+            "decision: the work office's actual 'not built yet' profile line, to test item 16 against its words"
+          ],
+          "compaction_occurred": {
+            "occurred": false,
+            "disclosure_ref": null
+          },
+          "docs_read": [
+            "AGENT.md META through section 11.2, and 11.7",
+            "README.md (the brief)",
+            "TARBALL.md sections 1, 2, 5.1-5.4, 7, 10.1"
+          ]
+        }
+      },
+      "log": ".bale/logs/2026-11-08-m10-status-more-001.log",
+      "clarification": {
+        "rounds": 0,
+        "records": []
+      },
+      "corrects": null,
+      "checkpoint": {
+        "configured": false
+      }
+    }
+  ],
+  "updated_at": "2026-11-08T18:03:50+00:00",
+  "outcome": "applied"
+}
