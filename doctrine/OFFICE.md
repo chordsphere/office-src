@@ -2078,7 +2078,11 @@ stricter than bale's own probe. bale then runs a response's scripts
 unconfined there without asking at every apply, and FORCE-logs the key on
 every run; where the sandbox runs nothing is written, a table already
 there is the occupant's and left, and `office status` names the setting
-per hosted project. The verbs that run bale to make or land a session do so with
+per hosted project. In the same connection (0.53.0) it asks the project's
+shell, the login shell bale runs in, for each tool the project's
+package.json engines or .nvmrc names, here under `bash -lc`, and names a
+tool missing or outside its range; a range it cannot read is said, never
+guessed. The verbs that run bale to make or land a session do so with
 the occupant at the terminal (pack and open in `office start`, which
 first asks `bale open --check`, a rehearsal that writes nothing, whether
 a bundle can open before it writes anything of its own; apply,
@@ -2320,7 +2324,10 @@ section writes that down, because a missing boundary and an absent one
 read the same. `office status` tells a complete profile from a stub: a
 section is complete when it has text outside comments and no line that
 starts with TODO. An office with an incomplete profile is unfounded and
-says so on every command. Capture still works in an unfounded office.
+says so on every command. `office status` also names a profile line that
+says a verb or session kind is not built when the install's verbs.toml
+builds it (0.53.0), by its number and words; the profile is the
+occupant's, and nothing the office runs edits it. Capture still works in an unfounded office.
 
 Spawning an office is a conversation, not a form, and the conversation
 starts before the session does, so the session has something to write

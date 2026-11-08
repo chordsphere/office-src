@@ -178,7 +178,7 @@ def sessions_since(rd, root, label, p, start):
     except ob.BaleError as exc:
         if exc.kind == "paused":
             return f"- {ob.unread_line(label, exc)}", False
-        return f"- {label}: cannot read: {exc}", True
+        return f"- {ob.unread_line(label, exc)}", True
     sids = {sid for sid, _ in open_now}
     if start is not None:
         subjects = git(cwd, "log", f"--since={start.isoformat()}", "--format=%s")
@@ -212,7 +212,7 @@ def sessions_since(rd, root, label, p, start):
                     groups["closed"].append(f"{sid} ({ob.outcome_word(v)})")
                     seen.add("closed")
     except ob.BaleError as exc:
-        return f"- {label}: cannot read: {exc}", True
+        return f"- {ob.unread_line(label, exc)}", True
     parts = []
     for word in ("applied", "held", "bailed", "reverted", "closed"):
         if groups[word]:

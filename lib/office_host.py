@@ -753,6 +753,247 @@ def read_sandbox(place, run):
     return facts.get("written") or None, facts.get("table") == "yes", refuses, facts.get("probe_said", "")
 
 
+# --- a project's toolchain (0.53.0) -----------------------------------------------------------
+#
+# What a project's own scripts need (package.json's engines, and a .nvmrc
+# beside it) against what its own shell finds: the shell bale's sessions
+# run in, a login shell (bash -lc on this machine, the project's shell
+# prefix on a host), so a hook in ~/.bash_profile counts as bale would see
+# it. office status reads it beside the reads it already makes, and says a
+# line only for a tool missing or outside its range.
+
+# The tools the office asks a shell for, in the order it asks. A tool
+# engines names outside this list is not asked for (said under
+# OFFICE_DEBUG): the office does not guess how to ask an unknown program
+# its version.
+TOOLCHAIN_TOOLS = ("node", "npm", "yarn", "pnpm", "bun")
+
+# The marker lines the read prints before each fact; package.json comes
+# last, so its text runs to the end of the output whatever it holds.
+_TC_MARK = "--office-toolchain--"
+
+# One script, with the clone's path and the tools as its arguments: for
+# each tool package.json names in quotes (or node, when a .nvmrc is
+# there), the version its shell finds or that it finds none; then the
+# .nvmrc's first line and package.json's text. A clone with neither file
+# prints nothing. Shell builtins only, past the tools it asks for: a
+# login shell whose PATH holds little still answers.
+_TOOLCHAIN_READ = (
+    'd="$1"; shift; ' + _EXPAND_D + 'cd "$d" || exit 3; '
+    '[ -f package.json ] || [ -f .nvmrc ] || exit 0; '
+    'each() { while IFS= read -r l || [ -n "$l" ]; do "$@" "$l" || return 0; done < package.json; }; '
+    'names() { case "$2" in *"\"$1\""*) found=1; return 1 ;; esac; }; '
+    'say() { printf "%s\\n" "$1"; }; '
+    'for t in "$@"; do found=0; '
+    '[ -f package.json ] && each names "$t"; '
+    '[ "$t" = node ] && [ -f .nvmrc ] && found=1; '
+    'if [ "$found" = 1 ]; then '
+    'if command -v "$t" >/dev/null 2>&1; then echo "' + _TC_MARK + ' tool $t"; '
+    '"$t" --version </dev/null 2>&1 | { IFS= read -r v; say "$v"; }; '
+    'else echo "' + _TC_MARK + ' none $t"; fi; fi; done; '
+    'if [ -f .nvmrc ]; then echo "' + _TC_MARK + ' nvmrc"; IFS= read -r v < .nvmrc; say "$v"; fi; '
+    'if [ -f package.json ]; then echo "' + _TC_MARK + ' package.json"; each say; fi'
+)
+
+
+def toolchain_argv(place):
+    """The toolchain read's one argv, for a batch or a bale call that carries
+    it (office status reads it beside bale --version on a host, one
+    connection). It takes the path as an argument. On this machine it runs
+    under bash -lc, the login shell bale's own runs get; through a host's
+    shell it runs as the shell's one command, which is that login shell
+    already."""
+    place = as_place(place)
+    if place.hosted:
+        return ["sh", "-c", _TOOLCHAIN_READ, "office-toolchain", place.path, *TOOLCHAIN_TOOLS]
+    return ["bash", "-lc", _TOOLCHAIN_READ, "office-toolchain", place.path, *TOOLCHAIN_TOOLS]
+
+
+class Toolchain:
+    """What the toolchain read found where a clone is: package (package.json's
+    text, or None), nvmrc (its first line, or None), and found, a tool's name
+    mapped to the first line its --version printed, or None when its shell
+    finds no such program. A tool not asked for is not in found."""
+
+    def __init__(self, package=None, nvmrc=None, found=None):
+        self.package, self.nvmrc, self.found = package, nvmrc, dict(found or {})
+
+    @property
+    def empty(self):
+        return self.package is None and self.nvmrc is None
+
+
+def read_toolchain(place, run):
+    """A Toolchain from the toolchain read's Run; a read that failed is a
+    HostError naming where."""
+    if run.returncode != 0:
+        raise HostError("refused", f"the toolchain at {place} could not be read: {_last_words(run.stderr)}")
+    lines = run.stdout.splitlines()
+    tc, i = Toolchain(), 0
+    while i < len(lines):
+        line = lines[i]
+        if not line.startswith(_TC_MARK + " "):
+            i += 1  # what a login shell printed around the read
+            continue
+        what = line[len(_TC_MARK) + 1:].split()
+        if what[0] == "package.json":
+            tc.package = "\n".join(lines[i + 1:])
+            break
+        if what[0] == "tool" and len(what) == 2:
+            nxt = lines[i + 1] if i + 1 < len(lines) and not lines[i + 1].startswith(_TC_MARK) else ""
+            tc.found[what[1]] = nxt.strip()
+            i += 2 if nxt else 1
+            continue
+        if what[0] == "none" and len(what) == 2:
+            tc.found[what[1]] = None
+        elif what[0] == "nvmrc":
+            nxt = lines[i + 1] if i + 1 < len(lines) and not lines[i + 1].startswith(_TC_MARK) else ""
+            tc.nvmrc = nxt.strip()
+            i += 2 if nxt else 1
+            continue
+        i += 1
+    return tc
+
+
+def toolchain_state(place):
+    """The Toolchain where a clone is, in a read of its own (a test, or a
+    caller with no round to ride)."""
+    place = as_place(place)
+    return read_toolchain(place, run_in(place, toolchain_argv(place), chdir=False))
+
+
+# A range, as npm writes one in engines (node-semver's grammar, the subset
+# a project writes): comparators (>=, >, <=, <, =) and bare versions,
+# partial versions and x-ranges (24, 24.x, 24.1.*, *), carets and tildes,
+# hyphen ranges (A - B), a space between comparators meaning both, and ||
+# meaning either. A pre-release tag, or anything else, is a RangeError:
+# the office says it cannot read the range rather than guess.
+
+class RangeError(ValueError):
+    """A range the office cannot read."""
+
+
+_PARTIAL_RE = re.compile(r"^v?(\d+|[xX*])(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?$")
+_FOUND_RE = re.compile(r"(\d+)\.(\d+)\.(\d+)")
+_OP_RE = re.compile(r"^(>=|<=|>|<|=|\^|~>?|)\s*(.*)$")
+
+
+def found_version(text):
+    """The (major, minor, patch) a --version line names (`v22.11.0`,
+    `10.9.0`, `bun 1.1.0`), or None when it names none."""
+    m = _FOUND_RE.search(text or "")
+    return tuple(int(g) for g in m.groups()) if m else None
+
+
+def _partial(text):
+    """A partial version's numbers, None where it is x, *, or absent:
+    (24, None, None) for 24 or 24.x."""
+    m = _PARTIAL_RE.match(text)
+    if not m:
+        raise RangeError(text)
+    parts = [None if g is None or g in "xX*" else int(g) for g in m.groups()]
+    # 24.x.3 is not a range anyone means: once a part is wild, the rest are.
+    for i in range(1, 3):
+        if parts[i - 1] is None:
+            parts[i] = None
+    return tuple(parts)
+
+
+def _bounds(op, text):
+    """[(comparator, version)] for one comparator token: each a pair the
+    version found must meet, comparator one of >=, >, <=, <."""
+    if text in ("", "*", "x", "X"):
+        return []
+    major, minor, patch = _partial(text)
+    if major is None:
+        return []
+    low = (major, minor or 0, patch or 0)
+    if minor is None:
+        nxt = (major + 1, 0, 0)
+    elif patch is None:
+        nxt = (major, minor + 1, 0)
+    else:
+        nxt = None  # a whole version
+    if op in ("", "="):
+        return [(">=", low), ("<", nxt)] if nxt else [(">=", low), ("<=", low)]
+    if op == ">=":
+        return [(">=", low)]
+    if op == ">":
+        return [(">=", nxt)] if nxt else [(">", low)]
+    if op == "<":
+        return [("<", low)]
+    if op == "<=":
+        return [("<", nxt)] if nxt else [("<=", low)]
+    if op in ("~", "~>"):
+        return [(">=", low), ("<", (major + 1, 0, 0) if minor is None else (major, minor + 1, 0))]
+    if op == "^":
+        if major > 0 or minor is None:
+            top = (major + 1, 0, 0)
+        elif minor > 0 or patch is None:
+            top = (0, minor + 1, 0)
+        else:
+            top = (0, 0, patch + 1)
+        return [(">=", low), ("<", top)]
+    raise RangeError(op + text)
+
+
+def _hyphen(a, b):
+    lo = _partial(a)
+    hi = _partial(b)
+    out = [] if lo[0] is None else [(">=", (lo[0], lo[1] or 0, lo[2] or 0))]
+    if hi[0] is None:
+        return out
+    if hi[1] is None:
+        return out + [("<", (hi[0] + 1, 0, 0))]
+    if hi[2] is None:
+        return out + [("<", (hi[0], hi[1] + 1, 0))]
+    return out + [("<=", hi)]
+
+
+def parse_range(text):
+    """A range's alternatives: a list of lists of (comparator, version), a
+    version satisfying the range when it meets every pair of one
+    alternative. A RangeError when the office cannot read it."""
+    if not isinstance(text, str):
+        raise RangeError(repr(text))
+    alternatives = []
+    for alt in text.split("||"):
+        alt = alt.strip()
+        m = re.fullmatch(r"(\S+)\s+-\s+(\S+)", alt)
+        if m:
+            alternatives.append(_hyphen(*m.groups()))
+            continue
+        # A space may sit between an operator and its version (>= 24).
+        tokens = re.findall(r"(?:>=|<=|>|<|=|\^|~>?)?\s*[^\s<>=^~]+", alt)
+        if "".join(t.replace(" ", "") for t in tokens) != alt.replace(" ", ""):
+            raise RangeError(text)
+        pairs = []
+        for tok in tokens:
+            op, rest = _OP_RE.match(tok.strip()).groups()
+            try:
+                pairs += _bounds(op, rest.strip())
+            except RangeError:
+                raise RangeError(text)
+        alternatives.append(pairs)
+    return alternatives
+
+
+def satisfies(version, alternatives):
+    """Whether a (major, minor, patch) meets a parsed range."""
+    tests = {">=": lambda a, b: a >= b, ">": lambda a, b: a > b, "<=": lambda a, b: a <= b, "<": lambda a, b: a < b}
+    return any(all(tests[op](version, v) for op, v in alt) for alt in alternatives)
+
+
+def nvmrc_range(text):
+    """A .nvmrc's line as a range for node: a version, whole or partial,
+    with or without its v (24, v24.1, 24.1.0). An alias (lts/*, node,
+    stable, lts/iron) is a RangeError: what it means is nvm's to say."""
+    text = (text or "").strip()
+    if not _PARTIAL_RE.match(text) or text.lower().strip("v") in ("", "x", "*"):
+        raise RangeError(text)
+    return parse_range(text.lstrip("vV"))
+
+
 # --- files through the shell (0.15.0) ------------------------------------------------------
 #
 # Bytes travel through the same prefix every read uses, never another

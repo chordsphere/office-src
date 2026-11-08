@@ -663,10 +663,10 @@ class TestInFlight(RenderingCase):
         self.private()
         shutil.rmtree(self.proj)
         out = self.e.run(cwd=self.root, check=0).stdout
-        self.assertIn("office-src: cannot read: no such directory on this machine", out)
+        self.assertIn("office-src: not read: no such directory on this machine", out)
         self.assertIn("On the desk:", out)
         out = self.e.run(cwd=self.root, check=0, extra={"PATH": path_without_bale(self.e.tmp)}).stdout
-        self.assertIn("office-src: cannot read:", out)
+        self.assertIn("office-src: not read:", out)
 
 
 class TestFolderSessions(RenderingCase):
@@ -755,7 +755,7 @@ class TestLedgerLandedVersions(RenderingCase):
         for flag in (("--ledger",), ("--versions",), ("--landed", "VERSION")):
             proc = self.e.run("projects", *flag, cwd=self.root)
             self.assertEqual(proc.returncode, 1, flag)
-            self.assertIn("office-src: cannot read: no such directory on this machine", proc.stdout)
+            self.assertIn("office-src: not read: no such directory on this machine", proc.stdout)
 
     def test_every_key_read_while_rendering_is_declared(self):
         rd = ob.Reader()
