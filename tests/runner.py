@@ -35,6 +35,14 @@ The suite's clock (0.17.1). Four ways to run it:
   log and its one-line verdict file are written; latest names the newest;
 - --serial, one process, unittest discover -v, on the terminal.
 
+Any of the four takes --fake-day DAY (0.56.0): every job's fake bales
+mint a session's id on DAY (YYYY-MM-DD) where a test sets no day of its
+own, FAKE_BALE_DEFAULT_DAY in the job's environment, handed on by every
+Env. A run far from today finds a test that takes a session's day from
+the wall clock, which passes on any other run but one that straddles
+midnight UTC. Without the flag the variable never reaches a job, the
+caller's own included.
+
 Nothing a test runs reads the running machine's home or temporary
 directory: every job, and the --serial run, is given a HOME, a TMPDIR and
 XDG directories of its own under one scratch directory the runner makes
@@ -127,6 +135,12 @@ WALK_IN = "walk-in"
 DETACHED_KEEP = 10
 # A detached run's priority, below the occupant's own work.
 DETACHED_NICE = 10
+# The fake bales' default day for the run (0.56.0, --fake-day DAY): set
+# in every job's environment only when the flag gives it, never taken from
+# the caller's (fake_day_env); tests/test_office.py Env hands it to the
+# fakes, which mint a session's day from it when a test sets none
+# (tests/fakes/pack_bale.py minting_day).
+FAKE_DAY_VAR = "FAKE_BALE_DEFAULT_DAY"
 # The caller's settings a job keeps: the job count. Every other OFFICE_
 # variable (OFFICE_ROOT, OFFICE_DEBUG, ...) would point a test at the
 # running machine's office or change what the command prints.
@@ -341,6 +355,31 @@ def isolated_env(base, root, pycache=None):
     env.update({"HOME": str(home), "TMPDIR": str(tmp), "OFFICE_WINDOWS_USERS": "", **DESKTOP_VARS, **SURVEY_VARS, **GH_VARS,
                 "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": str(gitconfig),
                 "PYTHONDONTWRITEBYTECODE": "1", "OFFICE_TESTS_UNDER_RUNNER": "1"})
+    return env
+
+
+# --- a far fake day (0.56.0) ------------------------------------------------------------
+
+def read_fake_day(text):
+    """--fake-day's DAY as the fakes mint it, YYYY-MM-DD, or ValueError
+    naming what does not read: a sweep under a day far from today keeps a
+    test that takes a session's day from the wall clock honest (0.55.0's
+    decision 14 ran one on a hand-patched copy)."""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text or ""):
+        raise ValueError(f"--fake-day {text}: not a day, YYYY-MM-DD")
+    try:
+        datetime.date.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(f"--fake-day {text}: not a day ({exc})") from None
+    return text
+
+
+def fake_day_env(environ, day=None):
+    """environ for the run: FAKE_DAY_VAR set to day when --fake-day gave
+    one, and removed otherwise, so a caller's own never reaches a job."""
+    env = {k: v for k, v in environ.items() if k != FAKE_DAY_VAR}
+    if day:
+        env[FAKE_DAY_VAR] = day
     return env
 
 
@@ -869,6 +908,9 @@ def main(argv=None):
                     help=f"processes at a time (default {DEFAULT_JOBS}, or OFFICE_TEST_JOBS)")
     ap.add_argument("--logs", default=None, help="directory for the logs (default: a new one under the temp dir)")
     ap.add_argument("--plan", action="store_true", help="print the jobs and their test counts; run nothing")
+    ap.add_argument("--fake-day", metavar="DAY", default=None,
+                    help="the fake bales mint every session on DAY (YYYY-MM-DD) unless a test sets its own: a sweep "
+                         "for a test that reads the day from the clock")
     ap.add_argument("modules", nargs="*", help="run only these modules (test_x), the serial group's share of them "
                                                "included; with --fast, modules, classes or tests added to the tier")
     ap.add_argument("--job", help=argparse.SUPPRESS)
@@ -885,13 +927,20 @@ def main(argv=None):
     if a.detached_child:
         return detached_child(a.detached_child, a.jobs)
 
-    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    try:
+        day = read_fake_day(a.fake_day) if a.fake_day is not None else None
+    except ValueError as exc:
+        print(f"[run] error: {exc}", file=sys.stderr)
+        return 2
+    env = fake_day_env(dict(os.environ, PYTHONDONTWRITEBYTECODE="1"), day)
+    if day:
+        say(f"the fake bales mint sessions on {day} (--fake-day), not today, unless a test sets its own day")
     if a.detach:
         if a.modules or a.plan or a.logs:
             print("[run] error: --detach runs the whole suite and keeps its logs under the state directory; "
                   "drop the module names, --plan and --logs", file=sys.stderr)
             return 2
-        return detach(a.jobs)
+        return detach(a.jobs, env)
     if a.serial:
         if a.modules:
             print("[run] error: --serial runs the whole suite; drop the module names", file=sys.stderr)

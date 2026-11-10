@@ -463,7 +463,7 @@ def main(cfg, argv):
                       + ", ".join(a + " ~ " + b for a, b in pairs) + "); narrow with --write, apply the open "
                       "session's response, or unlock it", file=sys.stderr); sys.exit(1)
         slug = re.fullmatch(r"\d{4}-\d{2}-\d{2}-(.+)-\d{3}", parent).group(1)
-        day = os.environ.get("FAKE_BALE_DAY") or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        day = pack_bale.minting_day()
         n = 1 + sum(1 for s_ in repo["outbox"] if s_.startswith("request-" + day + "-" + slug + "-"))
         sid = day + "-" + slug + "-" + format(n, "03d")
         outbox = pathlib.Path(cwd) / ".bale" / "outbox"

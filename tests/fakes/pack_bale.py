@@ -26,6 +26,20 @@ import pathlib
 import sys
 
 
+def minting_day(environ=None):
+    """The UTC day the fake mints a session id on: FAKE_BALE_DAY, which a
+    test sets for its own session ids; else FAKE_BALE_DEFAULT_DAY, the
+    whole run's default (0.56.0, tests/run.sh --fake-day DAY, handed to
+    every Env); else today on the UTC clock, as bale mints it. land_bale
+    mints a handoff's id through it too."""
+    environ = os.environ if environ is None else environ
+    day = environ.get("FAKE_BALE_DAY") or environ.get("FAKE_BALE_DEFAULT_DAY")
+    if day:
+        return day
+    import datetime
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+
+
 def fx(fix, label):
     return json.loads((fix / (label + ".json")).read_text(encoding="utf-8"))
 
@@ -154,7 +168,7 @@ def main(cfg, argv):
     if "pack" in state["fail"]:
         print("[bale] error: the fake was told to refuse this pack", file=sys.stderr)
         return 1
-    day = os.environ.get("FAKE_BALE_DAY") or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    day = minting_day()
     n = 1 + sum(1 for s in repo["outbox"] if s.startswith("request-" + day + "-" + a.slug + "-"))
     sid = day + "-" + a.slug + "-" + format(n, "03d")
     outbox.mkdir(parents=True, exist_ok=True)

@@ -1004,8 +1004,10 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
         debug(f"which sessions could be withdrawn could not be read: {exc}")
         offered = []
     # The r key (0.44.0): a folder on the desk records a session open where
-    # probes run (office_bale.probe_folders' rule, from the same reading).
-    probe_ready = any(r.startswith("desk/") for x in every for r in x["folders"])
+    # probes run (office_bale.probe_folders' rule, from the same reading),
+    # or (0.56.0) a meeting's prep is out, which bare office probe offers
+    # beside the folders.
+    probe_ready = probe_key_shown(every, meetings)
     lines, menu = render_page(rows, items, len(out), desk_words(groups), len(offered) + len(bundles), probe_ready,
                               others, nowhere)
     if directories is None:
@@ -1014,6 +1016,18 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
     write_menu(menu_file, menu)
     return lines
 
+
+
+def probe_key_shown(every, meetings):
+    """Whether the home screen offers the r key, bare office probe: a
+    folder on the desk records a session open where probes run (0.44.0,
+    office_bale.probe_folders' rule, from the screen's own reading of the
+    sessions out, every), or a meeting's prep is out (0.56.0; the
+    meetings as the screen read them), since bare office probe offers the
+    preps out beside the folders."""
+    if any(r.startswith("desk/") for x in every for r in x["folders"]):
+        return True
+    return any(m.get("state") == "prep out" and m.get("sid") for m in meetings or ())
 
 # --- the out tray, opened again (0.46.0) -----------------------------------------------
 #

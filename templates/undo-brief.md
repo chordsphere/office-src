@@ -53,7 +53,10 @@ noticed on the way (propose those in notes.md). A file that should not
 exist with bale's change taken out is a deleted change. A file you leave
 out keeps the workbench's version, and the next delivery takes it so:
 leave one out only when the workbench's version already holds nothing of
-bale's commit. Run the project's tests where the tree here lets you.
+bale's commit. Run the project's tests where the tree here lets you. What
+you ship leaves with that delivery, so a change made in it only to keep
+the letterhead (punctuation, phrasing, naming) is shipped clean and never
+mentioned in what leaves, a comment in the file included.
 
 When the response lands, its commit on the workbench is the undo, the
 work's own, and `office land` closes the job: the folder's History gains

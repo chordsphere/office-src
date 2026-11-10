@@ -101,8 +101,7 @@ you ask, as your hands at the terminal; bale asks its own questions and
 only you answer them. It never schedules a session, never hands one to a
 model and never carries pastes. bale carries the session.
 
-> Section 1, what an office is, sits past the core banner, ahead of
-> the rest of section 4; its number is unchanged.
+> Section 1, what an office is, sits past the core banner, first.
 
 ## 2. The audience line and three boundaries
 
@@ -241,7 +240,9 @@ A session is packed where it lands.
   letterhead/voice.md (an empty, marked place means no words yet), and
   the forbidden list, which ride beside its request (0.25.0). What it
   writes for the audience holds no em dash, en dash or ellipsis unless
-  the letterhead lifts one.
+  the letterhead lifts one. The project's conventions, its handbook
+  chapter's `## Conventions` (0.56.0), win over the voice page for the
+  form of what leaves; the voice page keeps the words.
 - A session writes what the office keeps for it at the end of its
   notes.md, and `office land` files it, so a project session never writes
   the office: each light block it sent and the occupant's answer under
@@ -273,24 +274,23 @@ A session is packed where it lands.
   folder does not carry stays absent. It says in one line what changed. A section off this
   shape is said and nothing of it is filed.
 
-> Section 4 continues past the core banner, from "`office start`
-> does all of this", and sections 5 to 8 follow it there.
+> Section 4 continues past the core banner, then sections 5 to 8.
 
 ## 9. House rules for every office
 
 These hold in every office. Each office adds its own in its profile.
 
 1. Every session lands something: at minimum a notepad entry and the
-   folder it touched. A planning sitting's words travel in the briefs of
-   the sessions it authors, and `office start` files them in the notepad
-   when it sends one of those sessions out.
+   folder it touched; principle 2 says how a sitting's words land.
 2. Every session that lands a change to something the handbook describes
    updates the front sheet of that chapter in plain language.
 3. Nothing goes on a rolodex card that would embarrass the occupant if
    the person read it.
-4. Anything that asks the occupant for bookkeeping, setup or moving files
-   is friction. Say so in a suggestion slip. When a hand step cannot be
-   avoided, give it as one line and say where to run it.
+4. Anything that asks the occupant for bookkeeping, setup or moving
+   files is friction: say so in a suggestion slip.
+5. Every step handed to the occupant is the exact command and one plain
+   sentence on what it does and what he will see; no bale or office term
+   goes unexplained at first use. Machinery is explained when he asks.
 
 > Sections 10 to 15 sit past the core banner, after section 8.
 
@@ -433,6 +433,19 @@ not read, or a second one, is said and the first taken. The planner
 writes the line whenever the session's work must land on a branch the
 clone would not otherwise be on, and leaves it out otherwise.
 
+One feature is one pull request from the audience's base (0.56.0, the
+gaps of 2026-10-28, C5). So a sitting that authors project sessions
+gives each feature its own session, and names in each one's brief the
+branch it builds on: a BRANCH line when it must build on a branch the
+clone would not otherwise be on (`office start --branch NAME` does the
+same for a session that is not a bundle's), and none when it builds on
+the clone's workbench, whose delivery `office deliver` makes from the
+base. Before it sends a session out, it checks that the base holds what
+the session depends on (an earlier feature's pull request merged), with
+a probe of the clone after start's refresh; a delivery made while the
+base lacks it would carry that earlier work too. When the base does not
+hold it, the sitting holds the session back and says what it waits on.
+
 A planner's brief may name the sitting its session succeeds (0.43.0), in
 the same shape and read in the same places (the value illustrative):
 
@@ -511,7 +524,12 @@ standing for the folder that records the session: where `--project`
 says, or the one project (or the office) the meeting concerns, asked when
 it concerns several; `office probe --prep [SID]` runs one by hand. A
 standing beside the block is filed as the prep's, and no History line is
-written, since no folder records a prep.
+written, since no folder records a prep. Bare `office probe`, with no
+folder, no `--prep` and no run line, offers each prep out beside the
+folders that record a session open where probes run (0.56.0): the one
+such session in all is the probe's, said; several are offered by key,
+the folders' sittings first, then the preps, then the rest; and the home
+screen's `r` key, which runs it, shows while a prep is out too.
 
 The answers a session's artifacts give (0.44.0). A question `office start`
 or `office land` would ask is not asked when an artifact (a bundle's brief,
@@ -1368,7 +1386,7 @@ arrives with the first meeting.
 Handbook. Only the private layer. Shareable technical documentation
 belongs in the projects (README, docs/), and a chapter points at it
 rather than restating it. One chapter per project, handbook/PROJECT.md,
-in two parts (values illustrative):
+in three parts (values illustrative):
 
   ```
   # alpha
@@ -1376,6 +1394,10 @@ in two parts (values illustrative):
   ## Front sheet
 
   <for the occupant, in plain language: what the project is and where it stands; replaced whole by a session's Front sheet>
+
+  ## Conventions
+
+  None settled yet.
 
   ## Facts
 
@@ -1392,17 +1414,44 @@ indented lines as a list item does, and is filed whole, on one line
 (0.38.0; before, only a wrapped fact's first line was filed, and those
 cut-off lines stay where they are, the handbook being append-only).
 Every session that lands a change to a
-system updates that chapter's front sheet, through its notes.md. The
-handbook arrives with the first fact `office land` files, as the in-tray
-arrives with the first drop: its front page from the install's template,
-the floor plan's entry as the catalog declares it with the front page
-hung, and bale.toml's trigger and pull, committed with that filing; a
-chapter arrives from its template with its project's first fact. A
-chapter rides with every session whose lane names its project, and every
-chapter rides with the standalone sort. `office status` checks a handbook
-that exists against the catalog, and every chapter against its shape.
-The handbook is live, never filed. Correspondence, including copies of
-messages sent, is the folder's, not the handbook's.
+system updates that chapter's front sheet, through its notes.md.
+
+The conventions (0.56.0) are the project's own answer for the form of
+what leaves it: the commit style, the review's shape, which repository
+and base a review goes to, and what the project's own CONTRIBUTING (or
+its like) says. They are settled with the project's reviewer once and
+written over the template's `None settled yet.` by hand or through a
+session in the office, one `- ` line each (values illustrative):
+
+  ```
+  ## Conventions
+
+  - commits: Conventional Commits, as CONTRIBUTING.md asks
+  - review: one pull request per feature, from main, its template filled
+  - repository: the clone's origin, never the one CONTRIBUTING.md clones
+  ```
+
+`office land` never writes them, and no migration does. Where they
+speak, they win over the voice page for the form of what leaves (a
+commit's subject style, a review's sections); the voice page keeps the
+words, and the letterhead's check holds both. A chapter made before
+0.56.0 has no such section, and one that still reads `None settled yet.`
+has none settled; either way a project session follows what the
+repository's own CONTRIBUTING says where it speaks, as the project's
+convention, never the voice page over it, and says in its notes.md that
+the chapter settles none, so the occupant settles it once. `office
+status` finds nothing missing in a chapter without the section.
+
+The handbook arrives with the first fact `office land` files, as the
+in-tray arrives with the first drop: its front page from the install's
+template, the floor plan's entry as the catalog declares it with the
+front page hung, and bale.toml's trigger and pull, committed with that
+filing; a chapter arrives from its template with its project's first
+fact. A chapter rides with every session whose lane names its project,
+and every chapter rides with the standalone sort. `office status` checks
+a handbook that exists against the catalog, and every chapter against
+its shape. The handbook is live, never filed. Correspondence, including
+copies of messages sent, is the folder's, not the handbook's.
 
 Rolodex. One card per person, as a guide for responding to them.
 
@@ -1716,7 +1765,7 @@ Kinds:
 | map | script, read-only (0.46.0): two tables (0.49.0), every project the office scopes with its facts, what rides with it and what runs after it lands, then every folder with its project and its state in a few words, the office's own last, a project's closed folders past the newest three folded into one line that --all unfolds; one project's rows, or one folder's whole record ending with the lines that change it | yes | occupant |
 | folder | script (0.46.0): the one writer of a folder's fields after open (lane, title, size, goal, source, class): each a replaced line, off the provisional list, one re-scoped History line per field, the folder committed alone; never its status; alone, its fields and the line that changes each | yes | occupant |
 | tray | script, read-only (0.46.0): a session's out tray opened again as start opens it, its files listed and its opener printed again from the copy start keeps beside the tray; an office ask's too, by its name or, bare, when it is the newest out (0.48.0) | yes | occupant |
-| ask | script (0.48.0): the quick path between office note and a session (section 8): a question in the occupant's words (--words, or the words after the verb), the project asked by key only when his words name none (--project NAME, --in-office the twins), sent as one out tray for a chat, a brief from the install's template with the office's context beside it, no bale verb run and no session id minted; with --learned, the chat's LEARNED block filed (from a file, stdin, or on a terminal the clipboard): a notepad page, the facts at the end of the handbook's chapters, the questions and answers on the page, each commit on its own, then the tray removed; a block that does not read, or that names no ask out from this office, refused by name; --learned none ends an ask with its page alone; bare on a terminal, a block on the clipboard naming an ask out is filed without a question | yes | occupant |
+| ask | script (0.48.0): the quick path between office note and a session (section 8): a question in the occupant's words (--words, or the words after the verb), the project asked by key only when his words name none (--project NAME, --in-office the twins), sent as one out tray for a chat, a brief from the install's template with the office's context beside it, no bale verb run and no session id minted (0.56.0: the declared chat kind it overlapped is retired, and Q-3, where a chat lands, is answered by the ask's page and facts); with --learned, the chat's LEARNED block filed (from a file, stdin, or on a terminal the clipboard): a notepad page, the facts at the end of the handbook's chapters, the questions and answers on the page, each commit on its own, then the tray removed; a block that does not read, or that names no ask out from this office, refused by name; --learned none ends an ask with its page alone; bare on a terminal, a block on the clipboard naming an ask out is filed without a question | yes | occupant |
 | week | script: this week's calendar and its gaps, and a meeting whose prep is out | yes | plumbing |
 | close | script: move a folder to the filing cabinet, done, absorbed, split or retired | yes | occupant |
 | reopen | script: move a done folder back to the desk | yes | plumbing |
@@ -1936,8 +1985,11 @@ Otherwise the occupant does the work and leaves a trace: office note for
 a conversation or decision, a commit for code. Between the two shapes
 sits the ask (0.48.0): a question worth a chat but not a session, an
 urgent one most of all, goes out through `office ask`, with the office's
-context and its trace. Cleanup reads notes and git logs, including
-commits no session made, and keeps folders and chapters current.
+context and its trace. The ask is the chat the verbs catalog once
+declared ahead of the command (0.56.0 retired that declaration): a chat
+about a folder's job is that folder's work session. Cleanup reads notes
+and git logs, including commits no session made, and keeps folders and
+chapters current.
 
 `office ask` takes the question in his words, as `office start new` takes
 a job's, and asks which project it is on, by key, only when his words name

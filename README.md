@@ -125,7 +125,8 @@ bringing one back (`l`), a note (`n`), a drop (`d`), the whole desk
 (`k`) and help (`h`) are always there, and `q` leaves; `w` withdraws a
 session never worked, or a bundle no session opened, while one waits;
 `r` runs the probe on the clipboard (`office probe`) while a folder on the
-desk records a session open where probes run (0.44.0). After this
+desk records a session open where probes run (0.44.0), or a meeting's prep
+is out (0.56.0). After this
 office's own sections comes one section per other office this machine
 lists (machine.toml's `offices`, 0.44.0), headed `NAME (ROOT):`: the
 responses in your downloads for sessions it or its projects have out,
@@ -659,7 +660,10 @@ SCRIPT whole (0.45.0). With no folder named (0.41.0), when
 exactly one folder on the desk records a session open where probes run
 (a read-only sitting, or a session in the office or on a project), the
 probe is that folder's, and it says so; with several, those folders
-alone are offered by key, sittings first. The block's stderr is masked
+alone are offered by key, sittings first. A meeting's prep out is offered
+beside them (0.56.0): the one prep, with no folder's session open, is the
+probe's, said, and with others it is one more key, after the folders'
+sittings. The block's stderr is masked
 on the screen too (0.43.0). When the text you copy carries the sitting's
 standing block after the probe block (0.43.0), probe files it on the
 folder first and says so in one line, so one paste does both.
@@ -1467,7 +1471,11 @@ bare first (a leading date and a trailing session id the session wrote
 are dropped and said, since land adds both; 0.38.0) and read whole when
 it wraps onto indented lines as a list item does (0.38.0; before, only
 its first line was filed), and a `####
-Front sheet` in place of the chapter's, whole; and its `## Structure`,
+Front sheet` in place of the chapter's, whole (a chapter's `## Conventions`,
+0.56.0, between its front sheet and its facts, is the project's own rules
+for what leaves it, settled with its reviewer once and written by hand or
+through a session in the office; land never writes it, and a chapter
+without one reads as none); and its `## Structure`,
 the folder's title, size and goal as the session judged them, each filed
 over a field the folder marks provisional, the rest kept as they are, in
 one line saying what changed. The handbook arrives with
@@ -2201,7 +2209,11 @@ front page, its voice page (`letterhead/voice.md`, the occupant's style
 rule for text that leaves the office, an empty marked place for his
 words) and its forbidden list, from the install's templates; a session
 on a project with an audience carries it and reads the voice page before
-it writes. The check never writes it. In a git repo, a line of `--words`
+it writes. Since 0.56.0 the voice page's head says the rule for a fix made
+only to keep the letterhead (shipped clean, never mentioned in a commit, a
+review or a message), and that a project's own conventions, its handbook
+chapter's `## Conventions`, set the form of what leaves it, the voice page
+keeping the words. The check never writes it. In a git repo, a line of `--words`
 that is a line of the repo's own pull-request template, as HEAD holds
 it, is not held to the phrasing rule or (0.26.0) the three characters:
 its words are the repository's, and a template you cannot change would
@@ -2650,6 +2662,7 @@ twice.
     tests/run.sh --detach          # the whole suite in the background, for after a landing
     tests/run.sh --serial          # the whole suite in one process, as before 0.13.0
     tests/run.sh test_land         # one module, with its share of the serial group
+    tests/run.sh --fake-day 2031-02-03  # any of these, the fake bales minting every session on that day
 
 The suite's clock. The whole suite takes many minutes, and bale's
 contract gives a session's validation two; so validation runs the fast
@@ -2694,7 +2707,11 @@ under the temp directory, which WSL empties on a restart, so the
 summary carries what a failure said). It exits 0
 when every test passed, 1 when one failed, 2 when it could not run.
 `--serial` is today's single process, `python3 -m unittest discover -s
-tests -v`, which still works as it always did.
+tests -v`, which still works as it always did. `--fake-day DAY` (0.56.0)
+goes with any of them: the fake bales mint every session's id on DAY
+wherever a test sets no day of its own, so a run far from today finds a
+test that reads a session's day from the clock (which would otherwise
+fail only on a run that straddles midnight UTC).
 
 Since 0.21.0 the suite waits less, and no test checks less. The serial
 lane holds only tests that drive a terminal: a class whose other tests

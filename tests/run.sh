@@ -14,6 +14,11 @@
 #                                  names its verdict file, and it returns at once
 #   tests/run.sh --serial          the whole suite, one process
 #   tests/run.sh test_land         one module (and its share of the serial group)
+#   tests/run.sh --fake-day 2031-02-03
+#                                  any of the above with the fake bales minting
+#                                  every session on that day unless a test sets
+#                                  its own (0.56.0): a sweep for a test that
+#                                  reads a session's day from the clock
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONDONTWRITEBYTECODE=1

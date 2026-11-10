@@ -240,6 +240,11 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.56.0 (session 2026-11-10-practice-rules-001): the practice written
+  down: words to the occupant (house rule 5), a cleanup never named, a
+  project's conventions in its handbook chapter, one pull request per
+  feature, a wrapped fact; the chat kind retired beside the ask; bare
+  office probe offers the preps; tests/run.sh --fake-day.
 - 0.55.0 (session 2026-11-08-prep-and-tidy-003): a prep's standing in the
   calendar (office standing --prep), its doctrine compared on the home
   screen and in status, its probe (office probe --prep); probe calls read

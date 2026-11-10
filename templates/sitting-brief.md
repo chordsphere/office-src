@@ -42,6 +42,18 @@ so `office start` ends this sitting once the successor is out and the two
 are never open side by side. The unsorted drops that ride are read, and owe
 no Sort here. When the sitting is over, `office land` ends it.
 
+When it authors sessions on a project with an audience, each feature is its
+own session and leaves as its own pull request from the audience's base. So
+each session's brief names the branch it builds on: a BRANCH line when it
+must build on a branch the clone would not otherwise be on, and none when it
+builds on the clone's workbench, whose delivery `office deliver` makes from
+the base. Before it sends a session out, the sitting checks that the base
+holds what that session depends on (an earlier feature's pull request
+merged), with a probe of the project's clone; when it does not, the session
+waits, and the sitting says on what. Each session's brief also points at the
+project's conventions, its handbook chapter's `## Conventions`, which win
+over the voice page for the form of what leaves (doctrine section 5).
+
 The sitting also owes the occupant where it stands. At the end of any turn
 where its plan or its place in it changed, it prints its standing block,
 after the probe block when the turn ends in one (both in one fence, the
@@ -66,8 +78,12 @@ gives it (`session_id`); then `step N of M: words`; one `- [x]`, `- [>]`
 or `- [ ]` line per step, exactly one `[>]`, the Nth; last `waiting on
 you: words`, or `waiting on you: nothing` while the sitting is working.
 
-Every line the sitting hands the occupant to type is an office line (doctrine
-section 10): `office start`, `office land`, `office relay`, `office probe`,
+Every step the sitting hands the occupant is the exact command and one plain
+sentence on what it does and what he will see; a bale or office term gets
+its plain meaning the first time it appears, and how the machinery works is
+explained when he asks (doctrine section 9, rule 5). Every line the sitting
+hands the occupant to type is an office line (doctrine section 10): `office
+start`, `office land`, `office relay`, `office probe`,
 never `bale open` and never bale's verbs (bale retry, relay, unlock, handoff:
 `office start N --handoff` hands a bailout off),
 which are bale's record and reach him through the office. A probe block it

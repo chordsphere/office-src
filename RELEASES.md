@@ -4,6 +4,78 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.56.0
+
+Additive: no migration, nothing stored changes, nothing to do in any
+office. A chapter made from now on has a `## Conventions` place between its
+front sheet and its facts; one made before has none, and reads as none. A
+letterhead's voice page and handbook front page arriving from now on carry
+the new words; an office's own copies are never rewritten. The nineteenth
+and last serial session of the plan begun on 2026-10-27, practice-rules:
+four items of the gaps report of 2026-10-28 (section C), two workers'
+proposals about the briefs and the catalog, and 0.55.0's two.
+
+Words to the occupant (C1). The doctrine's section 9 has a fifth house
+rule, inside the core: every step handed to the occupant is the exact
+command and one plain sentence on what it does and what he will see, no
+bale or office term unexplained at first use, and machinery explained
+when he asks. The core keeps its 299 lines: rule 1 points at principle 2
+instead of saying it again, rule 4's hand step went into rule 5, and two
+pointer lines became one each. The sitting, prep and ask briefs say it
+where they hand him lines.
+
+A cleanup never named (C2's rule; its check landed in 0.38.0). A fix made
+only to keep the audience barrier (punctuation, phrasing, naming) is
+shipped clean and never mentioned in a commit, a review or a message: the
+voice page's head says it (office-src's part, never the occupant's
+section), and so do templates/delivery.md and the merge and undo briefs,
+where they say what leaves.
+
+A project's conventions over the brief (C4). The handbook chapter has a
+`## Conventions` place (`None settled yet.`), settled with the project's
+reviewer once and written by hand or through a session in the office:
+the commit style, the review's shape, which repository and base, what the
+project's own CONTRIBUTING says. Where they speak they win over the voice
+page for the form of what leaves; the voice page keeps the words (the
+doctrine's core says the order, section 5 says it whole). With none
+settled a session follows the repository's own CONTRIBUTING where it
+speaks and says so. `office land` never writes the section; no migration
+does. The delivery page, the sitting brief and the voice page point at it.
+
+One pull request per feature (C5). The sitting brief, and the doctrine
+where it says the BRANCH line: a sitting authoring project sessions gives
+each feature its own session, names in each brief the branch it builds on
+(a BRANCH line, or none for the workbench), and checks with a probe that
+the audience's base holds what the session depends on before it sends it.
+
+A wrapped fact. The sort and drop briefs say, after their bare sentence,
+that a fact may wrap onto indented lines and is filed whole.
+
+The chat kind settled. share/verbs.toml's `chat` declaration (unbuilt,
+landing a transcript, "Q-3, open") is retired: the ask is the chat
+without a folder, and a chat about a folder's job is its work session. Q-3
+is answered by the ask's page and facts; the doctrine's ask row and
+section 8 say so.
+
+The preps offered. Bare `office probe` (no folder, no --prep, no run line)
+offers each meeting's prep out beside the folders that record a session
+open where probes run (bin/office probe_bare_session): the one in all is
+the probe's, said; several are asked by key, the folders' sittings first,
+then the preps; piped, named. The home screen's `r` key shows while a prep
+is out too (office_home probe_key_shown). With no prep out every line
+reads as before.
+
+A far fake day. `tests/run.sh --fake-day DAY` runs any of the runner's
+ways with both fake bales minting every session's id on DAY where a test
+sets no day of its own (tests/runner.py read_fake_day, fake_day_env;
+FAKE_BALE_DEFAULT_DAY, handed on by every Env under the runner;
+tests/fakes/pack_bale.py minting_day, which land_bale's handoff uses too).
+
+Tests: tests/test_practice_rules.py, a new module (31 tests, one of them
+in the serial lane), and the pins that moved with the words
+(tests/test_sort.py's chapter block and bare sentence,
+tests/test_office.py's declared kinds); the suite holds 1590.
+
 ## 0.55.0
 
 Additive: no migration, nothing stored changes, nothing to do in any
