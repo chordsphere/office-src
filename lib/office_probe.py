@@ -101,6 +101,10 @@ EXIT_ASK_SID = 5
 # the header and never run.
 RUN_LINE_PREFIX = "# office: probe "
 RUN_LINE_RE = oh.LazyPattern(r"^# office: probe (\S+)((?: --(?:project|sid) \S+)*)$")
+# A meeting's prep's run line (0.55.0): no folder records a prep, so it
+# names the prep by its id, and where it runs when it says:
+#   # office: probe --prep SID [--project NAME]
+RUN_PREP_RE = oh.LazyPattern(r"^# office: probe --prep (\S+)((?: --project \S+)?)$")
 RUN_FLAG_RE = oh.LazyPattern(r" --(project|sid) (\S+)")
 # The helper a spanning block calls (0.34.0): `office-on PROJECT COMMAND...`
 # names a project the block reaches. A reach is read from a call alone
@@ -217,14 +221,23 @@ def read_block(text):
 def run_line(header):
     """(line, {folder, project, sid}) from the block's purpose header: the
     first `# office: probe FOLDER [--project NAME] [--sid SID]` line
-    (0.44.0), its parts as written (project and sid None when left out);
-    (None, None) when the header carries none. Raises ProbeError, naming
-    the line, for one that begins like it and does not read, or names a
-    flag twice, so the occupant is told rather than the line passed over."""
+    (0.44.0), its parts as written (project and sid None when left out), or
+    (0.55.0) the first `# office: probe --prep SID [--project NAME]` line,
+    folder None and one more part, prep, the prep's id; (None,
+    None) when the header carries none. Raises ProbeError, naming the line,
+    for one that begins like it and does not read, or names a flag twice,
+    so the occupant is told rather than the line passed over."""
     for line in header:
         if not line.startswith(RUN_LINE_PREFIX.rstrip()):
             continue
         text = line.rstrip()
+        m = RUN_PREP_RE.match(text)
+        if m:
+            if not oh.SID_RE.match(m.group(1)):
+                raise ProbeError([f"the block's run line names --prep {m.group(1)}, which is not a session id: "
+                                  f"{text!r}; nothing ran"])
+            project = m.group(2).split()[1] if m.group(2) else None
+            return text, {"folder": None, "project": project, "sid": m.group(1), "prep": m.group(1)}
         m = RUN_LINE_RE.match(text)
         if not m:
             raise ProbeError([f"the block's run line does not read: {text!r} is not `{RUN_LINE_PREFIX}FOLDER "
@@ -242,7 +255,19 @@ def calls_of(text):
     """The `office-on` calls in a block's text (0.45.0), in order, one
     (line number, project) pair per call: the project is the bare word
     after the helper's name when it is one (ON_NAME_RE), None when it is
-    not (a variable, a quoted word, no word at all). A call is the bare
+    not (a variable, a quoted word, no word at all). call_words (0.55.0)
+    reads the same calls with the words after the project too."""
+    return [(c["line"], c["project"]) for c in call_words(text)]
+
+
+def call_words(text):
+    """The `office-on` calls in a block's text, in order (0.55.0: calls_of
+    with the words): one dict per call, line (its line number), project
+    (the bare word after the helper's name when it is one, else None), raw
+    (that word as the shell reads it, quotes taken off, None when the call
+    names no word at all) and words (the call's words after the project,
+    as the shell reads them, a redirection and its target, and a
+    descriptor's number before it, left out). A call is the bare
     word `office-on` where a command begins: at a line's start, or after
     `;`, `|`, `||`, `&&`, `&`, `(`, `{`, `$(` or a backtick, or after a
     word that takes a command (COMMAND_WORDS) or a `NAME=value` word; read
@@ -273,9 +298,16 @@ def calls_of(text):
         if cmd["heredoc"] is not None:
             heredocs.append((word, cmd["heredoc"]))
             cmd["heredoc"] = None
+        elif cmd["redirect"]:
+            # A redirection's target is no word of the call's (0.55.0).
+            cmd["redirect"] = False
         elif cmd["after_on"]:
-            calls.append((cmd["on_line"], word if bare and ON_NAME_RE.fullmatch(word) else None))
+            cmd["call"] = {"line": cmd["on_line"], "project": word if bare and ON_NAME_RE.fullmatch(word) else None,
+                           "raw": word, "words": []}
+            calls.append(cmd["call"])
             cmd["after_on"] = False
+        elif cmd["call"] is not None:
+            cmd["call"]["words"].append(word)
         elif cmd["at_start"]:
             if bare and word == ON_HELPER:
                 cmd["after_on"], cmd["on_line"], cmd["at_start"] = True, line_no, False
@@ -289,8 +321,9 @@ def calls_of(text):
         begin; a call that reached the end with no project named one."""
         end_word(cmd)
         if cmd["after_on"]:
-            calls.append((cmd["on_line"], None))
+            calls.append({"line": cmd["on_line"], "project": None, "raw": None, "words": []})
             cmd["after_on"] = False
+        cmd["call"], cmd["redirect"] = None, False
         cmd["at_start"] = True
 
     while i < n:
@@ -398,7 +431,13 @@ def calls_of(text):
             cmd["heredoc"] = strips_tabs
             i += 3 if strips_tabs else 2
         elif c in "<>":
+            # A descriptor's number before it (`2>&1`) is the
+            # redirection's, not a word (0.55.0); the next word is its
+            # target.
+            if cmd["in_word"] and cmd["bare"] and "".join(cmd["word"]).isdigit():
+                cmd["word"], cmd["in_word"] = [], False
             end_word(cmd)
+            cmd["redirect"] = True
             i += 1
             while i < n and text[i] in "<>&":
                 i += 1
@@ -417,9 +456,11 @@ def _command_list(closer):
     backtick, or None for the block itself), whether the next word begins
     a command, the word being read and whether it is bare so far, whether
     the last word was office-on (the next names the project), and whether
-    the next word is a heredoc's delimiter."""
+    the next word is a heredoc's delimiter; and (0.55.0) the call whose
+    words are being read, and whether the next word is a redirection's
+    target."""
     return {"kind": "cmd", "closer": closer, "at_start": True, "word": [], "in_word": False, "bare": True,
-            "after_on": False, "on_line": 0, "heredoc": None}
+            "after_on": False, "on_line": 0, "heredoc": None, "call": None, "redirect": False}
 
 
 def reaches_of(lines):
@@ -432,6 +473,44 @@ def reaches_of(lines):
         if name is not None and name not in out:
             out.append(name)
     return out
+
+
+# The words run_on refuses an unread name in (0.45.0), said at plan time
+# too (0.55.0), before anything runs.
+LITERAL_WORDS = "name each project literally, never through a variable"
+# A shell line given as one word (0.55.0): one word with a space, a tab or
+# a `;` in it, which the project's shell takes as one command's name.
+ONE_WORD_LINE_RE = oh.LazyPattern(r"[\s;]")
+
+
+def check_calls(text):
+    """The block's office-on calls checked at plan time (0.55.0), before
+    anything runs: a call whose project is not a bare name (`office-on "$P"
+    ls`, `office-on $P ls`, `office-on` alone) is refused, a ProbeError
+    naming its line in run_on's words, since calls_of drops it and the
+    block would run as plain, the mistake said only by `command not found`
+    in its output. Returns the warning lines for each call whose command is
+    one word holding a space, a tab or a `;` (`office-on alpha 'a; b'`):
+    since 0.45.0 the words reach the project's shell as given, so that word
+    is a command's name there and exits 127; the line names the `sh -c`
+    form. A warning, never a refusal: the block may mean it."""
+    import shlex
+    lines = text.split("\n")
+    shown = lambda n: lines[n - 1].strip() if 0 < n <= len(lines) else ""  # noqa: E731
+    warnings = []
+    for c in call_words(text):
+        if c["project"] is None:
+            given = ("names no project" if c["raw"] is None
+                     else f"names {c['raw']!r}, which is not a project's bare name" if c["raw"]
+                     else "names a word the shell makes as it runs, not a project's bare name")
+            raise ProbeError([f"line {c['line']} ({shown(c['line'])}): {ON_HELPER} {given}; a name is read from the "
+                              f"block before it runs, so {LITERAL_WORDS}; nothing ran"])
+        if len(c["words"]) == 1 and ONE_WORD_LINE_RE.search(c["words"][0]):
+            line = c["words"][0]
+            warnings.append(f"line {c['line']} ({shown(c['line'])}): {ON_HELPER} {c['project']} is given its command "
+                            f"as one word, {line!r}, which {c['project']}'s shell runs as a command of that name (exit "
+                            f"127); a shell line goes as sh -c: {ON_HELPER} {c['project']} sh -c {shlex.quote(line)}")
+    return warnings
 
 
 def read_output(text):
@@ -720,7 +799,60 @@ def soft_sid(sid, pool, name, words):
     return None
 
 
-def plan(office_root, folder_rel, project, block_file, sid=None, rd=None, sid_soft=False):
+def recorder(office_root, folder_rel=None, prep=None):
+    """What records the session a probe is for (0.55.0): a dict of rel (the
+    folder's desk/NAME, or the calendar's record page for a prep), name
+    (how a line names it), recorded (the session ids, in order), prep (the
+    prep's id, or None) and goes (how such a session goes out). A folder's
+    sessions are its Sessions lines; a meeting's prep is its record line in
+    the calendar, since no folder records one, and only one still out is a
+    probe's. Raises ProbeError for a prep the calendar does not record or
+    holds as held."""
+    if prep is None:
+        md = pathlib.Path(office_root) / folder_rel / "folder.md"
+        folder = oh.parse_folder(md.read_text(encoding="utf-8"))
+        return {"rel": folder_rel, "name": pathlib.Path(folder_rel).name, "prep": None,
+                "recorded": list(dict.fromkeys(folder["sids"])), "goes": "a folder's session goes out through office start"}
+    import office_meeting as om
+    rec = om.prep_of(office_root, prep)
+    if rec is None:
+        raise ProbeError([f"--prep {prep}: the calendar records no meeting's prep {prep} ({om.RECORD}); a sitting a "
+                          "folder records is probed with office probe FOLDER; nothing ran"])
+    if rec["state"] != "prep out":
+        raise ProbeError([f"--prep {prep}: the meeting {rec['title']} is recorded {rec['state']}, so its prep is "
+                          "over and no probe is its; nothing ran"])
+    return {"rel": om.RECORD, "name": f"the prep for {rec['title']}", "prep": prep, "recorded": [prep],
+            "goes": "a meeting's prep goes out through office start --prep"}
+
+
+def preps_out(office_root):
+    """[(sid, title, about)] of each meeting's prep the calendar records as
+    out (0.55.0), in the record's order: what office probe --prep with no
+    id chooses from."""
+    import office_meeting as om
+    return [(r["sid"], r["title"], r["about"]) for r in om.read_record(office_root) if r["state"] == "prep out"]
+
+
+def prep_where(office_root, sid):
+    """(where, words) for a prep's probe with no --project (0.55.0): the
+    one thing its meeting concerns (office_meeting.concerns_of: one of the
+    office's projects, or `office` for the office itself), else ("", the
+    concerns) when it concerns several and the occupant says which."""
+    import office_bale as ob
+    import office_meeting as om
+    import office_planner as op_
+    rec = om.prep_of(office_root, sid)
+    if rec is None:
+        return "", "the calendar records no such prep"
+    names = [p["name"] for p in ob.office_projects(office_root) or []]
+    concerns = om.concerns_of(rec["about"], names)
+    shown = ", ".join("the office" if c == op_.OFFICE else c for c in concerns)
+    if len(concerns) == 1:
+        return (OFFICE if concerns[0] == op_.OFFICE else concerns[0]), shown
+    return "", shown
+
+
+def plan(office_root, folder_rel, project, block_file, sid=None, rd=None, sid_soft=False, prep=None):
     """Everything office probe settles before it asks: the block read, where
     it runs, and the session it is for. The session is the folder's
     recorded session open where the project lives (bale status there);
@@ -731,18 +863,24 @@ def plan(office_root, folder_rel, project, block_file, sid=None, rd=None, sid_so
     can be for too (0.33.0): the block runs in the project's repo, under
     the sitting's id, and its output is kept in the sitting's out tray.
     Returns the plan, or raises ProbeError; raises AskSid with the
-    candidates when several are open and nothing says which."""
+    candidates when several are open and nothing says which. A meeting's
+    prep (prep, its id; 0.55.0) is planned as a folder's sitting is, the
+    calendar's record line standing for the folder's Sessions: its sitting
+    is open in the office, so a probe of a project runs there under the
+    prep's id, and one of the office runs in its root."""
     import office_bale as ob
     import office_host as ohost
     rd = rd or ob.Reader()
     block = read_block(pathlib.Path(block_file).read_text(encoding="utf-8", errors="replace"))
+    # The calls checked before anything is reached (0.55.0): an unread
+    # project refuses, a one-word shell line is warned of in the plan.
+    warnings = check_calls(block["text"])
+    who = recorder(office_root, folder_rel, prep)
     if block["reaches"]:
-        return plan_spanning(office_root, folder_rel, project, block, sid, rd, sid_soft)
+        return dict(plan_spanning(office_root, folder_rel, project, block, sid, rd, sid_soft, who=who),
+                    warnings=warnings)
     place, label, words = where_it_runs(office_root, project)
-    md = pathlib.Path(office_root) / folder_rel / "folder.md"
-    folder = oh.parse_folder(md.read_text(encoding="utf-8"))
-    recorded = list(dict.fromkeys(folder["sids"]))
-    name = pathlib.Path(folder_rel).name
+    recorded, name = who["recorded"], who["name"]
     # The sessions open where it runs, and whether probe-output/ is there
     # already: on a host, both in one connection (the reach).
     there_already = False
@@ -795,7 +933,7 @@ def plan(office_root, folder_rel, project, block_file, sid=None, rd=None, sid_so
         raise ProbeError([f"{name} records no session open {words} (it records: {', '.join(recorded) or 'none'}; "
                           f"open there: {', '.join(open_here) or 'none'}; and no read-only sitting of its is open "
                           "in the office), and a probe is a session's: its output is kept under that session's "
-                          "out tray. Nothing ran; a folder's session goes out through office start"])
+                          f"out tray. Nothing ran; {who['goes']}"])
     # Raises AskSid, for the caller to ask, when several could be meant.
     chosen = choose_session(candidates, sittings, block["slug"], sid)
     if chosen is None:
@@ -804,13 +942,13 @@ def plan(office_root, folder_rel, project, block_file, sid=None, rd=None, sid_so
     if there_already:
         raise ProbeError([f"{OUTPUT_DIR}/ is already {words}, from an earlier run, so a fallback probe's output "
                           f"could not be told from it; nothing ran. Carry or remove it first (it is not the repo's)"])
-    return {"folder": folder_rel, "name": name, "sid": chosen, "project": label, "where": words,
+    return {"folder": who["rel"], "name": name, "sid": chosen, "project": label, "where": words,
             "place": place_record(place), "header": block["header"], "slug": block["slug"],
             "lines": block["text"].count("\n"), "sitting": chosen in sittings and chosen not in candidates,
-            "reaches": {}}
+            "reaches": {}, "warnings": warnings, "prep": who["prep"]}
 
 
-def plan_spanning(office_root, folder_rel, project, block, sid, rd, sid_soft=False):
+def plan_spanning(office_root, folder_rel, project, block, sid, rd, sid_soft=False, who=None):
     """The plan for a block that spans the office and the projects it
     names with office-on (0.34.0): it runs in the office root, so --project
     is office or not given; every project named must be one the office
@@ -827,10 +965,8 @@ def plan_spanning(office_root, folder_rel, project, block, sid, rd, sid_soft=Fal
         raise ProbeError([f"the block calls {ON_HELPER} for {', '.join(block['reaches'])}, so it runs in the office root "
                           f"and reaches each of them through its shell; --project {project} does not fit it (give "
                           f"--project office, or leave it out); nothing ran"])
-    md = pathlib.Path(office_root) / folder_rel / "folder.md"
-    folder = oh.parse_folder(md.read_text(encoding="utf-8"))
-    recorded = list(dict.fromkeys(folder["sids"]))
-    name = pathlib.Path(folder_rel).name
+    who = who or recorder(office_root, folder_rel)
+    recorded, name = who["recorded"], who["name"]
     root_place = ohost.Place(str(pathlib.Path(office_root).resolve()), name=OFFICE)
     reaches, reach_words, open_in_projects = {}, [], []
     for reached in block["reaches"]:
@@ -866,8 +1002,8 @@ def plan_spanning(office_root, folder_rel, project, block, sid, rd, sid_soft=Fal
     if not pool and sid is None:
         raise ProbeError([f"{name} records no session open in the office or in {', '.join(block['reaches'])} (it records: "
                           f"{', '.join(recorded) or 'none'}; open: {', '.join(office_sids + open_in_projects) or 'none'}), "
-                          "and a probe is a session's: its output is kept under that session's out tray. Nothing ran; a "
-                          "folder's session goes out through office start"])
+                          f"and a probe is a session's: its output is kept under that session's out tray. Nothing ran; "
+                          f"{who['goes']}"])
     chosen = choose_session(candidates, sittings, block["slug"], sid)
     if chosen is None:
         raise ProbeError([f"--sid {sid}: not a session {name} records that is open in the office or in "
@@ -875,10 +1011,10 @@ def plan_spanning(office_root, folder_rel, project, block, sid, rd, sid_soft=Fal
     if (pathlib.Path(root_place.path) / OUTPUT_DIR).exists():
         raise ProbeError([f"{OUTPUT_DIR}/ is already in the office root, from an earlier run, so a fallback probe's "
                           "output could not be told from it; nothing ran. Carry or remove it first"])
-    return {"folder": folder_rel, "name": name, "sid": chosen, "project": label, "where": where,
+    return {"folder": who["rel"], "name": name, "sid": chosen, "project": label, "where": where,
             "place": place_record(root_place), "header": block["header"], "slug": block["slug"],
             "lines": block["text"].count("\n"), "sitting": chosen in sittings and chosen not in candidates,
-            "reaches": reaches}
+            "reaches": reaches, "prep": who["prep"]}
 
 
 class AskSid(Exception):
@@ -1101,9 +1237,15 @@ def main(argv=None):
     q.add_argument("block")
     q = sub.add_parser("on", help="office-on PROJECT COMMAND...: one command where the project lives (0.34.0); "
                                   "its line is `on --plan FILE -- PROJECT COMMAND...`, read by on_main, not here")
+    q = sub.add_parser("preps-out", help="each meeting's prep out (0.55.0): SID<tab>TITLE<tab>ABOUT")
+    q.add_argument("office")
+    q = sub.add_parser("prep-where", help="where a prep's probe runs by its meeting's concerns (0.55.0): "
+                                          "where<tab>PROJECT|office|(empty), concerns<tab>WORDS")
+    q.add_argument("office"); q.add_argument("--sid", required=True)
     q = sub.add_parser("plan", help="the block read, where it runs and its session: one JSON line (exit 5: several "
                                     "sessions open, printed one per line)")
-    q.add_argument("office"); q.add_argument("folder", help="desk/NAME")
+    q.add_argument("office"); q.add_argument("folder", nargs="?", help="desk/NAME (none with --prep)")
+    q.add_argument("--prep", help="a meeting's prep's id, which the calendar records, for the folder (0.55.0)")
     q.add_argument("--project", required=True, help="a project the office scopes, or office")
     q.add_argument("--block", required=True); q.add_argument("--sid")
     q.add_argument("--sid-soft", action="store_true", help="--sid came from the block's run line: one that is not "
@@ -1129,15 +1271,27 @@ def main(argv=None):
             line, got = run_line(read_block(pathlib.Path(a.block).read_text(encoding="utf-8", errors="replace"))["header"])
             if line is not None:
                 print(f"line\t{line}")
-                for key in ("folder", "project", "sid"):
-                    print(f"{key}\t{got[key] or ''}")
+                for key in ("folder", "project", "sid", "prep"):
+                    print(f"{key}\t{got.get(key) or ''}")
             return 0
         if a.cmd == "has-block":
             text = pathlib.Path(a.block).read_text(encoding="utf-8", errors="replace")
             return 0 if BEGIN_WORD in text else 3
+        if a.cmd == "preps-out":
+            for sid, title, about in preps_out(a.office):
+                print(f"{sid}\t{title}\t{', '.join(about)}")
+            return 0
+        if a.cmd == "prep-where":
+            where, words = prep_where(a.office, a.sid)
+            print(f"where\t{where}")
+            print(f"concerns\t{words}")
+            return 0
         if a.cmd == "plan":
+            if (a.folder is None) == (a.prep is None):
+                raise ProbeError(["plan takes a folder (desk/NAME) or --prep SID, one of them"])
             try:
-                print(json.dumps(plan(a.office, a.folder, a.project, a.block, a.sid, sid_soft=a.sid_soft)))
+                print(json.dumps(plan(a.office, a.folder, a.project, a.block, a.sid, sid_soft=a.sid_soft,
+                                      prep=a.prep)))
             except AskSid as exc:
                 # One per line: the id, a tab, and its words for the key.
                 for s in exc.candidates:

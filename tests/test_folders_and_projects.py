@@ -31,7 +31,6 @@ run in the serial lane. Run with the rest of the suite:
     tests/run.sh test_folders_and_projects
 """
 
-import datetime as dt
 import os
 import pathlib
 import re
@@ -281,7 +280,11 @@ class TestStartsScreenOnATerminal(FoldersCase):
         self.assertLessEqual(len(said), 12, "\n".join(said))
         self.assertTrue(said[-1].startswith("[office] next: attach every file in the out tray ("), said[-1])
         # The session's day is bale's (the fake's: the UTC day), not the bundle's name's.
-        day = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+        # It is read as the fake minted it, from the tray start names (0.55.0):
+        # the wall clock read after the start is a day on whenever the start
+        # straddles midnight UTC, and another day when the fake is set to one.
+        day = re.search(r"\nOut tray: \S+/(\d{4}-\d{2}-\d{2})-screen-pass-001\n", before).group(1)
+        self.assertNotEqual(day, "2026-11-04")
         self.assertIn(f"(office tray {day}-screen-pass-001 opens the tray and prints the opener again)", said[-1])
         self.assertTrue(any(l.startswith("[office] from the downloads: ") for l in said))
         self.assertFalse([l for l in said if l.startswith("[office] out tray: ")])
@@ -307,8 +310,12 @@ class TestStartsScreenOnATerminal(FoldersCase):
 
 class TestStartsLinesPiped(FoldersCase):
     def test_piped_the_record_keeps_every_line_and_the_next_line_ends_it(self):
-        proc = self.run_office("start", "fix-login", "--on", "alpha", "--goal", "g", check=0)
-        self.assertIn("[office] out tray: request-", proc.stderr)
+        # Since 0.55.0 the background lines are said under OFFICE_DEBUG piped
+        # too, as on a terminal (tests/test_prep_and_tidy.py, item 14): this
+        # run asks for them, so the record still keeps every line.
+        proc = self.run_office("start", "fix-login", "--on", "alpha", "--goal", "g", check=0,
+                               extra={"OFFICE_DEBUG": "1"})
+        self.assertIn("[office] debug: out tray: request-", proc.stderr)
         self.assertIn("[office] next: attach every file in the out tray (", proc.stderr)
         self.assertIn("it is printed below", proc.stderr)
         self.assertNotIn("Attach every file", proc.stdout)

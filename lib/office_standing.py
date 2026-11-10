@@ -46,6 +46,13 @@ the successor files its own, its `- sitting:` line saying whose; office
 land ending the sitting leaves it as the record of where it ended, and
 office close moves it with the folder. Nothing deletes it.
 
+A meeting's prep has no folder (0.43.0), so since 0.55.0 its standing is
+filed in the calendar, the meeting's own space, as one page per prep,
+calendar/standing-SID.md (prep_rel), in the same shape, checked against
+the calendar's record line rather than a folder's Sessions, and written
+by the office command alone: `office standing --prep [SID]`, office probe
+for a prep, and the home screen's key beside the prep's item.
+
 Who files it: `office standing FOLDER [FILE | -]` (bin/office
 cmd_standing: a file, stdin, or the clipboard on a terminal), office probe
 when the text it reads carries a standing beside the probe block (split
@@ -71,6 +78,15 @@ The command line (bin/office calls it through pylib):
         read
     office_standing.py show OFFICE FOLDER
         the folder's standing in the screens' words, or nothing
+    office_standing.py write-prep OFFICE [--sid SID] --file FILE --day DAY --time HH:MM
+        (0.55.0) check, then write a meeting's prep's standing as
+        calendar/standing-SID.md: the block's id must be a prep the
+        calendar's record names (SID, or the block's own when it is left
+        out); prints `sid`, `title`, `page` and `words`
+    office_standing.py place-of OFFICE --file FILE
+        (0.55.0) where the block is filed: `desk NAME` for the one desk
+        folder recording its sitting, else `prep SID` for a prep the
+        calendar records; exit 1 when neither does
 
 Standard library only. Logs to stderr with an [office] prefix; exits 0
 when it did what it was asked, 1 on a refusal (the line says why), 2 on
@@ -136,13 +152,14 @@ def spans(lines):
     return out, at
 
 
-def read_block(text, recorded=None):
+def read_block(text, recorded=None, whose="the folder"):
     """The last standing block in text, read: {sid, step, of, words, steps
     [(mark, words)], waiting, lines}, lines being the block from its BEGIN
     line to its END line as the page keeps them. Raises StandingError,
     naming the line, for a text with no complete block and for a block off
-    the shape; given recorded (the sessions a folder records), for a block
-    whose id is none of them."""
+    the shape; given recorded (the sessions a folder records, or the one a
+    calendar's record line names for a prep, 0.55.0, whose saying which),
+    for a block whose id is none of them."""
     lines = lines_of(text)
     found, unclosed = spans(lines)
     if not found:
@@ -186,7 +203,7 @@ def read_block(text, recorded=None):
         raise StandingError(f"line {first + 2}: the step line says step {step}, and the `- [>]` step is the "
                             f"{now[0]}{ordinal(now[0])}")
     if recorded is not None and sid not in recorded:
-        raise StandingError(f"the block is {sid}'s, a session the folder does not record (it records: "
+        raise StandingError(f"the block is {sid}'s, a session {whose} does not record (it records: "
                             f"{', '.join(recorded) or 'none'})")
     return {"sid": sid, "step": step, "of": of, "words": words, "steps": steps, "waiting": waiting,
             "lines": lines[first:last + 1]}
@@ -293,13 +310,93 @@ def write(office_root, rel, text, day, time):
         raise oh.HelperError(f"{rel} has no folder.md")
     recorded = list(dict.fromkeys(oh.parse_folder(md.read_text(encoding="utf-8"))["sids"]))
     block = read_block(text, recorded)
+    write_page(md.parent / PAGE, block, day, time)
+    return block
+
+
+def write_page(page, block, day, time):
+    """A standing page written whole, through a temporary file beside it."""
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day) or not re.fullmatch(r"\d{2}:\d{2}", time):
         raise oh.HelperError(f"--day is YYYY-MM-DD and --time HH:MM, not {day!r} and {time!r}")
-    page = md.parent / PAGE
-    tmp = page.with_name(f".{PAGE}.tmp")
+    page = pathlib.Path(page)
+    tmp = page.with_name(f".{page.name}.tmp")
     tmp.write_text(page_text(block, day, time), encoding="utf-8")
     os.replace(tmp, page)
-    return block
+
+
+# --- a meeting's prep (0.55.0) ----------------------------------------------------------
+#
+# No folder records a prep (0.43.0's decision 14): the calendar's record
+# line does, `- DATE HH:MM TITLE: prep out, SID; doctrine: HASH`. Its
+# standing is filed in the meeting's own space, as calendar/standing-SID.md
+# (prep_rel), one page per prep, in the folder page's shape, written by
+# the office command alone. Nothing deletes it: when the prep is held the
+# page stays as the record of where it ended, as a folder's does.
+
+PREP_PREFIX = "standing-"
+
+
+def prep_rel(sid):
+    """Where a prep's standing is filed: calendar/standing-SID.md."""
+    import office_meeting as om
+    if not oh.SID_RE.match(sid or ""):
+        raise oh.HelperError(f"not a session id: {sid!r}")
+    return f"{om.SPACE}/{PREP_PREFIX}{sid}.md"
+
+
+def prep_record(office_root, sid):
+    """The calendar's record line for the prep sid, or a StandingError
+    saying the calendar records none (a prep is the calendar's, never a
+    folder's)."""
+    import office_meeting as om
+    rec = om.prep_of(office_root, sid)
+    if rec is None:
+        raise StandingError(f"the block is {sid}'s, and the calendar records no meeting's prep {sid} "
+                            f"({om.RECORD}); a sitting a folder records is filed with office standing FOLDER")
+    return rec
+
+
+def write_prep(office_root, sid, text, day, time):
+    """Check the last block in text against the prep the calendar records
+    as sid (None: the block's own id, which the calendar must record as a
+    prep) and write calendar/standing-SID.md whole. Returns (block, the
+    record line, the page's path relative to the office). Raises
+    StandingError, the page left as it was."""
+    import office_meeting as om
+    if sid is None:
+        sid = read_block(text)["sid"]
+    rec = prep_record(office_root, sid)
+    block = read_block(text, [sid], whose=f"the calendar's record of the prep for {rec['title']}")
+    calendar = pathlib.Path(office_root) / om.SPACE
+    if not calendar.is_dir():
+        raise oh.HelperError(f"{om.SPACE}/ is not in this office, so the prep's standing has nowhere to go")
+    rel = prep_rel(sid)
+    write_page(pathlib.Path(office_root) / rel, block, day, time)
+    return block, rec, rel
+
+
+def prep_standing(office_root, sid):
+    """The standing filed for the prep sid (0.55.0), or None."""
+    try:
+        rel = prep_rel(sid)
+    except oh.HelperError:
+        return None
+    return read_page(pathlib.Path(office_root) / rel)
+
+
+def place_of(office_root, text):
+    """Where the text's last standing block is filed (0.55.0): ("desk",
+    NAME) for the one desk folder that records its sitting (folder_of), or
+    ("prep", SID) when no folder records it and the calendar records it as
+    a meeting's prep. Raises StandingError when neither does."""
+    block = read_block(text)
+    try:
+        return "desk", folder_of(office_root, text)
+    except StandingError as exc:
+        import office_meeting as om
+        if om.prep_of(office_root, block["sid"]) is not None:
+            return "prep", block["sid"]
+        raise StandingError(f"{exc}, and the calendar records no meeting's prep {block['sid']}")
 
 
 # --- the command line ------------------------------------------------------------------
@@ -323,6 +420,13 @@ def main(argv=None):
     p.add_argument("office"); p.add_argument("--file", required=True)
     p = sub.add_parser("show", help="a folder's standing in the screens' words, or nothing")
     p.add_argument("office"); p.add_argument("folder", help="desk/NAME")
+    p = sub.add_parser("write-prep", help="file the text's last standing block as a meeting's prep's, "
+                                          "calendar/standing-SID.md (0.55.0)")
+    p.add_argument("office"); p.add_argument("--sid", help="the prep's id; left out, the block's own")
+    p.add_argument("--file", required=True); p.add_argument("--day", required=True); p.add_argument("--time", required=True)
+    p = sub.add_parser("place-of", help="where the text's last standing block is filed: desk<tab>NAME or "
+                                        "prep<tab>SID (0.55.0)")
+    p.add_argument("office"); p.add_argument("--file", required=True)
     a = ap.parse_args(argv)
     try:
         if a.cmd == "check":
@@ -350,6 +454,17 @@ def main(argv=None):
             return 0
         if a.cmd == "folder-of":
             print(folder_of(a.office, read_text(a.file)))
+            return 0
+        if a.cmd == "write-prep":
+            block, rec, rel = write_prep(a.office, a.sid, read_text(a.file), a.day, a.time)
+            print(f"sid\t{block['sid']}")
+            print(f"title\t{rec['title']}")
+            print(f"page\t{rel}")
+            print(f"words\t{words(dict(block, as_of=f'{a.day} {a.time}'))}")
+            return 0
+        if a.cmd == "place-of":
+            kind, value = place_of(a.office, read_text(a.file))
+            print(f"{kind}\t{value}")
             return 0
         if a.cmd == "show":
             st = folder_standing(a.office, a.folder)

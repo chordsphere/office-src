@@ -80,7 +80,12 @@ returns carries one more comment line in its purpose header, kept to the byte
 
 the folder as `office probe` takes it (its number, a unique part of its
 name), the two flags as `office probe`'s own, so bare `office probe` with the
-block on the clipboard runs it with no other word typed. And when a session it
+block on the clipboard runs it with no other word typed. A call that spans the
+office and a project is `office-on PROJECT COMMAND...`, PROJECT named
+literally (never a variable: `office probe` reads it before anything runs,
+and refuses a block that does not name it), and a shell line goes as
+`office-on PROJECT sh -c 'LINE'`, since one quoted word is one command's
+name there. And when a session it
 authors carries riders, its brief may name them, one RIDES line per ride,
 `--- RIDES PATH ---` (PATH as `office rider add --rides` takes it), or
 `--- RIDES none ---` for none, so `office start` carries exactly those, piped

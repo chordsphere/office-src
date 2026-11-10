@@ -207,7 +207,9 @@ warn and write. `office note` commits a notepad page only when its
 committed bytes are untouched and the new lines are at its end. `office
 slip` asks on a terminal only for the words; what the slip is about (the
 office, bale, office-src, or one of the office's projects) is `--about`'s
-to say, or the session's that reads the box.
+to say, or the session's that reads the box. Its last line (0.55.0) says
+where the box is and how many slips it holds, so a slip is known to be in
+it.
 
 `office drop` captures a message or a thread nobody has read for you:
 one page in the in-tray, `in-tray/DATE-SLUG.md`, committed on its own,
@@ -223,7 +225,9 @@ drop it can write. A text that is one office command line (one
 non-blank line beginning `office `) is usually the clipboard holding the
 command you just copied instead of the message: from the clipboard the
 drop asks once, before writing anything, whether to drop it anyway (no by
-default, `--anyway` the twin, and a yes writes it); from a file or stdin
+default, `--anyway` the twin, and a yes writes it; after a no, `r` reads
+the clipboard again once you have copied the message, and the drop goes on
+from there, 0.55.0); from a file or stdin
 it is dropped as given, and the line saying what it took says so. The
 in-tray arrives with the first drop. From then on every session `office
 start` sends out carries the unsorted drops, and a session that can
@@ -335,7 +339,12 @@ tables, nothing folded; `office map 12` one folder's whole record, with
 the session's id and the riders the tables leave out: its fields, its sessions as
 `office sessions` shows them, its riders, deliveries, reviews and
 standing, the lines that act on it next, and the lines that change its
-fields. The map writes nothing. Every list of folders offered by key
+fields. Since 0.55.0 the page ends with the office asks out, which live
+outside any folder, as the lines that act on each (`office ask
+--learned`, `office tray ASK`); `office map alpha` shows alpha's. `office
+desk` ends with them too, in the walk-in's words, and with each ask's
+record whose tray is gone and the `rm` line that removes it, as `office
+status` says it. The map writes nothing. Every list of folders offered by key
 names the project the same way (0.49.0), `folder N, TITLE (PROJECT)`,
 `(the office)` for the office's own: start's jobs on the desk, `Folders in
 desk/`, the planner's folder and probe's folders with a session open; and
@@ -447,7 +456,7 @@ one `[office]` line per thing settled from an artifact or a record (the
 before the opener, `next: attach every file in the out tray (PATH) to a
 fresh chat, then paste the opener below (office tray SID opens the tray
 and prints the opener again)`; the rest is said under `OFFICE_DEBUG=1`,
-and piped every line is said as before. Start keeps the opener it prints
+piped too since 0.55.0 (until then a piped start said every line). Start keeps the opener it prints
 beside the tray, `~/out-tray/SID.opener.txt` (outside the tray, so every
 file in the tray is still one to attach): `office tray`, `office tray N`
 or `office tray SID` opens the tray again as start does, lists its files
@@ -669,6 +678,18 @@ holding a standing and no probe block is filed as `office standing` files
 it, and nothing runs (`the clipboard holds a standing and no probe: filed
 on desk/NAME; nothing to run`).
 
+    office probe --prep                  # 0.55.0: a meeting's prep's probe, under the prep's id
+
+A meeting's prep has no folder, so its sitting writes the line as
+`# office: probe --prep SID [--project NAME]`, and `office probe --prep
+[SID]` runs one by hand (0.55.0): the calendar's record line is what
+records the prep's session, a read-only sitting open in the office, so the
+probe runs as a sitting's does, under the prep's id, where `--project`
+says or else where the one project (or the office) its meeting concerns
+lives, asked when it concerns several. With no id, the one prep out is
+taken, said. A standing beside its block is filed as the prep's (below),
+and no History line is written, since no folder records a prep.
+
 ### Where a sitting stands
 
     office standing 21                   # the sitting's last standing block, from the clipboard
@@ -687,6 +708,20 @@ the page is left as it was. Then the home screen, the walk-in's In flight
 line and `office desk`, under the folder's next move, show the step you
 are on and what waits on you. The page stays when the sitting ends, as
 the record of where it ended; a successor's filing replaces it.
+
+    office standing --prep               # 0.55.0: a meeting's prep's standing, from the clipboard
+
+A meeting's prep prints its standing too, and no folder records a prep,
+so `office standing --prep [SID]` (0.55.0) files it in the calendar, the
+meeting's own space, as `calendar/standing-SID.md`: the same page in the
+same shape, checked against the calendar's record line (the block's id
+must be a prep the calendar records; with no SID, the block's own), and
+committed on its own. `office probe` files one that rides with a prep's
+probe block, and the home screen's key beside the prep's item runs it.
+The prep's item then says where it stands, as a sitting's does, and the
+walk-in's In flight line too; since 0.55.0 the item, and `office status`'s
+doctrine lines, also say when the prep is out under an older doctrine,
+read from its record line's stamp.
 
 ### Deliver it to the audience
 
@@ -1645,7 +1680,12 @@ or is not one the block named). The call's words arrive as given
 `office-on PROJECT bash -c SCRIPT` runs SCRIPT whole there, a word with a
 space stays one word, and a quote or a `$` in a word arrives as your shell
 left it; a shell line is written `office-on PROJECT sh -c 'LINE'`, since
-one quoted word is one command's name. Such a block takes no `--project`
+one quoted word is one command's name. Before anything runs (0.55.0)
+`office probe` reads each call: one whose project is not a bare name
+(`office-on "$P" ls`) refuses the block, naming its line (`name each
+project literally, never through a variable; nothing ran`), and one whose
+command is one word holding a space or `;` (`office-on alpha 'a; b'`) is
+warned of, the `sh -c` form named, and the block still runs. Such a block takes no `--project`
 (`office` is the only one that fits, and is said); its session is the
 folder's open in the office, a sitting or an office session, or in a
 project it reaches, chosen by the rule above; a fallback's
@@ -2501,8 +2541,8 @@ from (unset, the audience remote's HEAD branch, read from the clone).
 The audience line has a fifth key, `branch_prefix` (`feature/`, kept
 with one trailing slash), which `office deliver` reads from the floor
 plan and puts before a branch named by the words or the folder's slug
-(0.38.0); no verb sets it yet, so it is written into the floor plan by
-hand until its flag is built (0.46.0 built it: `--branch-prefix`). A
+(0.38.0); `--branch-prefix PREFIX` sets it (0.46.0) and
+`--no-branch-prefix` clears it. A
 sixth, `audience_url` (0.50.0), is kept for a project on a host only: the
 audience remote's URL, written when `--audience REMOTE` is set, read from
 the clone's remote through the shell then, or given with `--audience-url
@@ -2553,8 +2593,8 @@ matches the floor plan.
 | lib/office_helper.py | TOML, profile, survey, migration and floor-plan helpers (python3, standard library); since 0.28.0 the LazyPattern and OneSubcommand every module's start leans on; since 0.29.0 `batch`, several subcommands of any lib/ module in one process, and `skew-report`; since 0.30.0 `bytecode-check`, office status's line on the install's bytecode cache; since 0.33.0 the doctrine stamp a sitting's Sessions line carries (`sitting_words`, `session_doctrine`) |
 | lib/office_bale.py | the only code that runs bale, through its --json surfaces: the read side and the renderings built on it (the desk's groups, the walk-in's Next line and the one-writer rule among them), office start's packing, bundles and out tray, and office land's apply and what it reads after (one `land` call since 0.30.0: the office's record out, bale apply or retry, the outcome); since 0.37.0 bale's two accepts, passed as typed, said, and named after a refusal (`accept_flags`, `accept_said`, `accepts_bale_names`, `accept_line`); since 0.38.0 office sessions' search, the lane's project first and an unreadable project a line (`project_records`, `folder_lane`) |
 | lib/office_host.py | a project on another host: the host, shell and connect keys, the shell that reaches it (every bale and git read of a hosted project runs through it, batched per round), the reach check, the check and the preparing of a clone for bale, here or there, and since 0.17.0 a clone's git facts, the push guard (version 2 since 0.25.0, and the state of an older one) and a bundle carried back |
-| lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives; since 0.45.0 a reach is read from a call alone, `calls_of`, and `run_on` quotes the call's words); since 0.38.0 the mask over what it hands back, a credential in a URL and a GitHub token (`mask_text`, `MaskedScreen`), and since 0.43.0 over its stderr too |
-| lib/office_standing.py | where a sitting stands (0.43.0): the standing block read to its shape (`read_block`, the last block in a text counting), taken out of a probe's text (`split`), filed as a folder's standing.md (`write`) and said on the screens (`folder_standing`, `words`) |
+| lib/office_probe.py | office probe: a worker's probe block read (refused by name when it is not a probe or does not say it is read-only), where it runs and the session it is for (since 0.33.0 a read-only sitting open in the office among them), the run through office_host, what came back between its sentinels, and the fallback's probe-output/ carried to the out tray; since 0.34.0 a block that spans the office and a project's host (the projects its office-on calls name, the helper written for the run, and what each call runs where the project lives; since 0.45.0 a reach is read from a call alone, `calls_of`, and `run_on` quotes the call's words); since 0.38.0 the mask over what it hands back, a credential in a URL and a GitHub token (`mask_text`, `MaskedScreen`), and since 0.43.0 over its stderr too; since 0.55.0 each office-on call read before anything runs (`call_words`, `check_calls`: a project not named literally refused, a one-word shell line warned of) and a meeting's prep's probe planned with the calendar's record line for its folder (`recorder`, `prep_where`, `preps_out`) |
+| lib/office_standing.py | where a sitting stands (0.43.0): the standing block read to its shape (`read_block`, the last block in a text counting), taken out of a probe's text (`split`), filed as a folder's standing.md (`write`) and said on the screens (`folder_standing`, `words`); since 0.55.0 a meeting's prep's, filed in the calendar as calendar/standing-SID.md (`write_prep`, `prep_standing`, `place_of`) |
 | lib/office_ask.py | office ask, the quick path (0.48.0): an ask's out tray and its record beside it (`send`, `asks_out`), the LEARNED block read to its shape (`read_block`, the last block in a text counting) and filed as a notepad page, the handbook's facts through office_sort's filing and the questions and answers on the page (`file_block`, `append_qa`), and the tray removed once it is filed (`close`) |
 | lib/office_deliver.py | the audience line's crossing: office deliver's plan (the fetch, the carry, the squash, the check, the commits read back whole; since 0.34.0 a branch made outside the office adopted when the occupant says so; since 0.36.0 what bale's own commits changed taken out before the squash, own_commits and take_out_own; since 0.38.0 the lines the squash adds checked rather than its files whole, the branch rule and the rule that chose it, `branch_why`, a branch another folder delivered to continued and work it delivered refused twice, `other_deliveries`), its run (the identities checked, the push, the record) and what it abandons; office letterhead check --on PROJECT; since 0.25.0 the office's side of the letterhead (its rules, its arrival, its voice page), office status's letterhead and guard lines, what office upgrade brings without a migration, and office land's review; since 0.35.0 a folder's delivery.md read as the letterhead reads it at deliver and at land's review alike, the words that leave and nothing of the office's (delivery_words); since 0.40.0 the merge session's job, its materials and the merge commit made from its landed resolution, the content test of a delivery a review merged as a squash, and a continued delivery's range squash; since 0.47.0 the merge's materials carry the audience's side whole, every file it changed since the sides parted |
 | lib/office_letterhead.py | the letterhead check, standalone (imports nothing of the office, so it travels to a host as the program python3 reads from stdin); the characters an office's letterhead refuses and lifts, and a repository's pull-request templates; since 0.38.0 the lines a diff adds read rather than its files whole (`--added`), and the words-only lists (`WORDS_ONLY_SECTIONS`) |

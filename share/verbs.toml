@@ -471,13 +471,15 @@ trigger = ["manual"]
 # Where a read-only sitting stands (0.43.0): its last standing block filed
 # on its folder as one page, replaced whole and committed alone, by the
 # office command and never by a session. office probe files one that rides
-# with a probe block, and the home screen offers it by key.
+# with a probe block, and the home screen offers it by key. A meeting's
+# prep has no folder, so since 0.55.0 --prep files its standing in the
+# calendar as calendar/standing-SID.md, by the same rule.
 [verbs.standing]
 kind = "script"
 built = true
 surface = "plumbing"
-writes = ["desk/{folder}/standing.md"]
-lands = ["desk/{folder}/standing.md"]
+writes = ["desk/{folder}/standing.md", "calendar/standing-{sid}.md"]
+lands = ["desk/{folder}/standing.md", "calendar/standing-{sid}.md"]
 attended = true
 trigger = ["manual"]
 
@@ -491,12 +493,17 @@ trigger = ["manual"]
 # exist after it: a refused or declined probe writes nothing. Since 0.44.0
 # the block's run line (# office: probe FOLDER [--project NAME] [--sid SID])
 # says the rest when no folder is given, and a text holding a standing and
-# no probe block files the standing and runs nothing.
+# no probe block files the standing and runs nothing. Since 0.55.0 a
+# meeting's prep's probe runs too (--prep, or its run line # office: probe
+# --prep SID [--project NAME]): no History line, a standing beside it filed
+# as the prep's; and a call whose project is not a bare name refuses the
+# block before anything runs.
 [verbs.probe]
 kind = "script"
 built = true
 surface = "plumbing"
-writes = ["desk/{folder}/folder.md", "desk/{folder}/standing.md", "the session's out tray on this machine"]
+writes = ["desk/{folder}/folder.md", "desk/{folder}/standing.md", "calendar/standing-{sid}.md",
+          "the session's out tray on this machine"]
 lands = []
 attended = true
 trigger = ["manual"]

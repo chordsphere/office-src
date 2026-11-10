@@ -24,6 +24,9 @@ names. Since 0.49.0 the page is two tables, read at a glance:
         whole. With --project, that project's rows in both tables, nothing
         folded; with --folder (desk/NAME or filing-cabinet/NAME), one
         folder's whole record, ending with the lines that change its fields.
+        Since 0.55.0, given --machine-file, the page ends with the office
+        asks out, which live outside any folder: the lines that act on
+        each, in a folder record's Next shape (ask_lines).
     office_map.py fields OFFICE REL
         office folder N with no flag: the folder's fields, then the line
         that changes each.
@@ -432,9 +435,30 @@ def terminal_width():
     return shutil.get_terminal_size().columns or None
 
 
-def page(reading, project=None, fold=True, width=None):
+def ask_lines(asks, project=None):
+    """The map's rows for the office asks out (0.55.0), which live outside
+    any folder: the lines that act on each, in next_lines' shape, the
+    oldest first (the walk-in's Next line names it, office_bale.ask_move);
+    with project, only the asks on it. [] when none is out."""
+    import office_ask as oa
+    import office_bale as ob
+    asks = [a for a in asks or [] if project is None or a.get("project") == project]
+    if not asks:
+        return []
+    rows = []
+    for a in asks:
+        when = f"{a.get('day', '?')} {a.get('time', '')}".rstrip()
+        rows.append((ob.ASK_LEARNED, f"files {a['name']}'s LEARNED block ({oa.where_words(a)}, asked {when})"))
+        rows.append((f"office tray {a['name']}", "opens its tray again and prints its opener"))
+    width = max(len(line) for line, _ in rows)
+    return ["", "Asks out (outside any folder; the walk-in's Next line names the oldest):"] + \
+        [f"  {line.ljust(width)}  {what}" for line, what in rows]
+
+
+def page(reading, project=None, fold=True, width=None, asks=None):
     """The map's page: the projects' table, then the folders' table, then
-    the footer line. project: that project's rows alone, nothing folded."""
+    (0.55.0) the asks out, then the footer line. project: that project's
+    rows alone, nothing folded, and its asks alone."""
     import office_bale as ob
     if project is not None:
         projects = ob.select(reading.projects, project)[:1]
@@ -459,6 +483,7 @@ def page(reading, project=None, fold=True, width=None):
     else:
         lines.append("no folder" + (f" on {projects[0]['name']}" if project is not None else
                                     " on the desk or in the filing cabinet"))
+    lines += ask_lines(asks, projects[0]["name"] if project is not None and projects else None)
     return lines + ["", "office map N shows one folder's whole record and the lines that change it."]
 
 
@@ -593,6 +618,7 @@ def main(argv=None):
     p.add_argument("office"); p.add_argument("--today", required=True)
     p.add_argument("--project"); p.add_argument("--folder"); p.add_argument("--now")
     p.add_argument("--all", action="store_true", help="every closed folder, none folded")
+    p.add_argument("--machine-file", help="machine.toml, whose out_tray holds the asks out the page names (0.55.0)")
     p = sub.add_parser("fields", help="a folder's fields and the line that changes each")
     p.add_argument("office"); p.add_argument("rel")
     p = sub.add_parser("open-for", help="the sessions open that a folder records: SID, WHERE")
@@ -618,7 +644,8 @@ def main(argv=None):
         if a.folder:
             lines = [oh.shown(line) for line in folder_record(reading, a.folder)]
         else:
-            lines = page(reading, a.project, fold=not a.all, width=terminal_width())
+            asks = ob.asks_waiting(a.office, a.machine_file) if a.machine_file else []
+            lines = page(reading, a.project, fold=not a.all, width=terminal_width(), asks=asks)
         print("\n".join(lines))
         return 0
     except (oh.HelperError, ob.BaleError) as exc:

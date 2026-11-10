@@ -230,9 +230,15 @@ def orphan_line(name, record, opener=None):
     line that removes it (the record, and the opener's copy when it is
     there): the ask was neither filed nor ended, so nothing of it is in the
     office, and the record is all that says it was sent."""
+    return f"asks:       {orphan_words(name, record, opener)}"
+
+
+def orphan_words(name, record, opener=None):
+    """orphan_line's words, without status's label (0.55.0: office desk
+    says them under a heading of its own)."""
     import shlex
     paths = " ".join(shlex.quote(str(p)) for p in (record, opener) if p is not None)
-    return (f"asks:       {name}'s tray is gone from {pathlib.Path(record).parent}, and its record is left behind "
+    return (f"{name}'s tray is gone from {pathlib.Path(record).parent}, and its record is left behind "
             f"(nothing of it was filed); rm -- {paths} removes it")
 
 
