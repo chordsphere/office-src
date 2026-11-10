@@ -13,6 +13,12 @@ by the occupant on 2026-11-03.
    word, and a quote or a `$` arrives as the occupant's shell left it; on
    a host the quoted line goes through the project's shell as before.
 
+Since 0.55.0 this module also holds 0.34.0's spanning-probe tests, moved
+whole from tests/test_three_gaps.py (spanning_block, TestASpanningProbe,
+TestASpanningProbeOnAHost), and 0.55.0's own: a call whose project is not
+a bare name refused at plan time, and a one-word shell line warned of
+(TestTheCallsAreReadBeforeTheBlockRuns).
+
 The suite makes no network call and runs no real ssh or bale: the host is
 the fake ssh of tests/test_project_on_host.py, bale the fake of
 tests/test_land.py, and the blocks name invented projects. Run with the
@@ -24,13 +30,14 @@ rest of the suite:
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from test_out_trip_to_host import HostedStartCase  # noqa: E402
-from test_probe import ProbeCase  # noqa: E402
+from test_probe import ProbeCase, probe_block  # noqa: E402
 from test_project_on_host import HOST  # noqa: E402
 
 import office_probe as op  # noqa: E402
@@ -236,6 +243,191 @@ class TestTheWordsArriveAsGivenOnAHost(HostedStartCase):
                         [c[-1][:160] for c in calls])
         self.assertTrue(any("bash -c " in c[-1] and script in c[-1] for c in calls))
         self.assertEqual(self.ssh.left_on(HOST), [])
+
+
+# --- 0.55.0: the calls are read before the block runs ----------------------------------------------
+
+class TestTheCallsAreReadBeforeTheBlockRuns(ProbeCase):
+    """Items 4 and 5 of prep-and-tidy: a call whose project is not a bare
+    name is refused at plan time, naming its line in run_on's words; a
+    call whose command is one word holding a space or `;` is warned of,
+    naming the `sh -c` form, and the block still runs."""
+
+    def test_a_call_through_a_variable_is_refused_before_anything_runs(self):
+        for line, given in (('  office-on "$P" ls', "names '$P', which is not a project's bare name"),
+                            ("  office-on $P ls", "names '$P', which is not a project's bare name"),
+                            ('  office-on "$(echo alpha)" ls', "names a word the shell makes as it runs, not a project's bare name"),
+                            ("  office-on", "names no project")):
+            self.block.write_text(block_of(["  echo before", line]))
+            proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=1)
+            self.assertIn(f"line 9 ({line.strip()}): office-on {given}; a name is read from the block before it runs, "
+                          f"so {op.LITERAL_WORDS}; nothing ran", proc.stderr, line)
+            self.assertNotIn("PROBE BEGIN", proc.stdout)
+            self.assertNotIn("The probe block, as its purpose header says", proc.stderr)
+        self.assertEqual(self.history(), [])
+        # A block with a literal call beside it is refused the same way.
+        self.block.write_text(block_of(["  office-on alpha true", '  office-on "$P" ls']))
+        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=1)
+        self.assertIn("line 9 (office-on \"$P\" ls): office-on names '$P'", proc.stderr)
+
+    def test_a_one_word_shell_line_is_warned_of_and_the_block_runs(self):
+        self.block.write_text(block_of(["  office-on alpha 'pwd -P; true'", '  echo "exit: $?"']))
+        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=0)
+        warning = ("[office] warning: line 8 (office-on alpha 'pwd -P; true'): office-on alpha is given its command as "
+                   "one word, 'pwd -P; true', which alpha's shell runs as a command of that name (exit 127); a shell "
+                   "line goes as sh -c: office-on alpha sh -c 'pwd -P; true'")
+        self.assertIn(warning, proc.stderr)
+        self.assertLess(proc.stderr.index(warning), proc.stderr.index("The probe block, as its purpose header says"))
+        self.assertIn("exit: 127", proc.stdout)
+        self.assertEqual(len(self.history()), 1)
+        # The sh -c form, and words that are several, warn of nothing.
+        self.block.write_text(block_of(["  office-on alpha sh -c 'pwd -P; true'", "  office-on alpha git log -1"]))
+        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=0)
+        self.assertNotIn("as one word", proc.stderr)
+
+    def test_the_calls_words_as_units(self):
+        text = "\n".join(["x=1; office-on a-b ls ; office-on a-b \"ls -la\" 2>&1; office-on c_d ls > out",
+                          "LC_ALL=C office-on alpha git log -1 2>/dev/null | head",
+                          "y=$(office-on alpha cat f)", "office-on alpha 'a; b' <<< text", "echo office-on z"])
+        self.assertEqual([(c["line"], c["project"], c["words"]) for c in op.call_words(text)],
+                         [(1, "a-b", ["ls"]), (1, "a-b", ["ls -la"]), (1, "c_d", ["ls"]),
+                          (2, "alpha", ["git", "log", "-1"]), (3, "alpha", ["cat", "f"]), (4, "alpha", ["a; b"])])
+        self.assertEqual(op.calls_of(text), [(c["line"], c["project"]) for c in op.call_words(text)])
+        warned = op.check_calls(text)
+        self.assertEqual([w.split(" (", 1)[0] for w in warned], ["line 1", "line 4"])
+        self.assertIn("office-on alpha sh -c 'a; b'", warned[1])
+        self.assertEqual(op.check_calls("office-on alpha ls\n"), [])
+        with self.assertRaises(op.ProbeError):
+            op.check_calls('office-on "$P" ls\n')
+
+
+# --- 0.34.0: a probe that spans the office and a project's host ------------------------------------
+#
+# Moved here whole from tests/test_three_gaps.py in 0.55.0, assertions as
+# they were, so the spanning probe's tests have one home (test_probe keeps
+# the masked call, which is the mask's).
+
+def spanning_block(project="alpha", slug="fix-login", writes=False):
+    """A probe block in the crafter's shape whose body calls office-on for
+    a project: where the block runs, where the call ran, and its code. A
+    shell line goes as `sh -c LINE`: since 0.45.0 the call's words reach
+    the project's shell as given (one quoted word is one command's name,
+    not a line)."""
+    lines = [f"  office-on {project} sh -c 'pwd -P; git rev-parse --is-inside-work-tree'",
+             '  echo "on exit: $?"',
+             f"  office-on {project} sh -c 'exit 3'",
+             '  echo "on exit: $?"',
+             '  echo "cwd: $(pwd -P)"',
+             '  if IFS= read -r x; then echo "stdin had: $x"; else echo "stdin closed"; fi']
+    if writes:
+        lines += ["  mkdir -p probe-output", "  echo '{}' > probe-output/meta.json"]
+    header = [f"# PROBE {slug}: the office and {project}, in one block.",
+              f"# Why: the session needs both; office-on PROJECT reaches the project (the helper is office probe's).",
+              ("# Read-only except ./probe-output/: it writes only under ./probe-output/." if writes
+               else "# Read-only: writes nothing anywhere; stdout is the only output."),
+              "# Bound: probe() gets 10 seconds of wall clock."]
+    out = ["#!/usr/bin/env bash", *header, "", "probe() {", *lines, "}", 'out="$(probe 2>&1)"',
+           f'echo "=== PROBE BEGIN {slug} ==="', 'printf "%s\\n" "$out"',
+           "printf -- '--- integrity: %s lines ---\\n' \"$(printf '%s\\n' \"$out\" | wc -l)\"",
+           f'echo "=== PROBE END {slug} ==="']
+    return "\n".join(out) + "\n"
+
+
+class TestASpanningProbe(ProbeCase):
+    def test_the_reaches_are_read_from_the_blocks_own_lines(self):
+        b = op.read_block(spanning_block())
+        self.assertEqual(b["reaches"], ["alpha"])
+        self.assertEqual(op.read_block(probe_block())["reaches"], [])
+        text = probe_block(header=["# PROBE x: uses office-on PROJECT to reach a project.", "# Read-only: yes."])
+        self.assertEqual(op.read_block(text)["reaches"], [])
+        self.assertEqual(op.reaches_of(["x=1; office-on a-b 'ls' ; office-on a-b 'ls'; office-on c_d ls",
+                                        "echo not-office-on z", "  # office-on comment"]), ["a-b", "c_d"])
+
+    def test_it_runs_in_the_office_root_and_each_call_where_the_project_lives(self):
+        self.block.write_text(spanning_block())
+        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=0)
+        self.assertIn("the block calls office-on for alpha, so it runs in the office root", proc.stderr)
+        self.assertIn(f"It runs in the office root, reaching alpha in {os.path.realpath(self.proj)} (alpha's repo) with "
+                      f"office-on alpha, stdin closed", proc.stderr)
+        self.assertIn("office-on is on the block's PATH for alpha", proc.stderr)
+        self.assertIn(f"cwd: {os.path.realpath(self.root)}", proc.stdout)
+        self.assertIn(f"{os.path.realpath(self.proj)}\ntrue\non exit: 0", proc.stdout)
+        self.assertIn("on exit: 3", proc.stdout)
+        self.assertIn("stdin closed", proc.stdout)
+        self.assertIn(f"for {self.sid} (desk/{self.name})", proc.stderr)
+        self.assertRegex(self.history()[0], r"^- \d{4}-\d{2}-\d{2} probe: " + re.escape(self.sid) + r", \d+ lines$")
+
+    def test_a_project_the_office_does_not_scope_is_refused_before_anything_runs(self):
+        self.block.write_text(spanning_block(project="nowhere"))
+        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=1)
+        self.assertIn("office-on nowhere: --project nowhere: no project named nowhere", proc.stderr)
+        self.assertIn("nothing ran", proc.stderr)
+        self.assertNotIn("PROBE BEGIN", proc.stdout)
+        self.assertEqual(self.history(), [])
+
+    def test_a_project_flag_does_not_fit_a_spanning_block(self):
+        self.block.write_text(spanning_block())
+        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", "--project", "alpha", check=1)
+        self.assertIn("so it runs in the office root and reaches each of them through its shell; --project alpha does "
+                      "not fit it (give --project office, or leave it out); nothing ran", proc.stderr)
+        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", "--project", "office", check=0)
+        self.assertIn(f"cwd: {os.path.realpath(self.root)}", proc.stdout)
+
+    def test_a_sittings_spanning_probe_runs_under_the_sittings_id(self):
+        name = self.run_office("open", "plan-it", check=0).stdout.strip().split("/")[1]
+        out = self.run_office("start", name, "--in-office", "--read-only", "--goal", "Plan it", check=0).stdout
+        sit = re.search(r"^Packed (\S+) for ", out, re.M).group(1)
+        self.block.write_text(spanning_block(slug="plan-it", writes=True))
+        proc = self.run_office("probe", name, str(self.block), "--yes", check=0)
+        self.assertIn(f"for {sit} (desk/{name}, the read-only sitting open in the office)", proc.stderr)
+        self.assertIn(f"{os.path.realpath(self.proj)}\ntrue\non exit: 0", proc.stdout)
+        # The fallback's directory is the office root's, carried to the sitting's tray.
+        self.assertTrue((self.tray_root / sit / "probe-output" / "meta.json").is_file())
+        self.assertFalse((self.root / "probe-output").exists())
+        self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
+
+    def test_the_helper_as_a_unit(self):
+        plan = self.e.tmp / "plan.json"
+        plan.write_text(json.dumps({"reaches": {"alpha": {"path": str(self.proj), "host": None, "shell": None,
+                                                           "connect": None, "name": "alpha"}}}))
+        d = op.write_on_helper(self.e.tmp / "bin", plan)
+        helper = d / "office-on"
+        self.assertTrue(os.access(helper, os.X_OK))
+        env = dict(self.e.env, PATH=f"{d}{os.pathsep}{self.e.env['PATH']}")
+        proc = subprocess.run(["office-on", "alpha", "git", "log", "--format=%s", "-n", "1"], env=env,
+                              capture_output=True, text=True)
+        self.assertEqual((proc.returncode, proc.stdout), (0, "init\n"), proc.stderr)
+        proc = subprocess.run(["office-on", "alpha", "sh", "-c", "exit 5"], env=env, capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 5)
+        proc = subprocess.run(["office-on", "beta", "true"], env=env, capture_output=True, text=True)
+        self.assertEqual(proc.returncode, op.EXIT_ON_UNREACHED)
+        self.assertIn("office-on beta: not a project this probe reaches (its block names: alpha)", proc.stderr)
+        proc = subprocess.run(["office-on"], env=env, capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 2)
+
+
+class TestASpanningProbeOnAHost(HostedStartCase):
+    def test_each_call_runs_through_the_projects_shell(self):
+        self.only_far()
+        host = self.ssh.host_dir(HOST)
+        (host / "path").write_text(f"{self.fake.dir}:/usr/bin:/bin\n")
+        sid = self.start(self.name, "--on", "far", "--goal", "Fix it there", "--write", "src")
+        block = self.e.tmp / "probe.sh"
+        block.write_text(spanning_block(project="far"))
+        tray_root = self.e.home / "out-tray"
+        proc = self.run_office("probe", self.name, str(block), "--yes")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(f"reaching far in {self.proj} on {HOST} (through far's shell) with office-on far", proc.stderr)
+        self.assertIn(f"cwd: {os.path.realpath(self.root)}", proc.stdout)
+        self.assertIn(f"{os.path.realpath(self.proj)}\ntrue\non exit: 0", proc.stdout)
+        self.assertIn("on exit: 3", proc.stdout)
+        self.assertIn(f"for {sid} (desk/{self.name})", proc.stderr)
+        calls = self.ssh.connections()
+        self.assertTrue(all(c[0] == HOST for c in calls), calls)
+        self.assertTrue(all("-tt" not in c for c in calls), calls)
+        self.assertTrue(any("pwd -P" in c[-1] for c in calls), [c[-1][:80] for c in calls])
+        self.assertEqual(self.ssh.left_on(HOST), [])
+        self.assertFalse(tray_root.joinpath(sid, "probe-output").exists())
 
 
 if __name__ == "__main__":

@@ -4,6 +4,71 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.55.0
+
+Additive: no migration, nothing stored changes, nothing to do in any
+office. A meeting's prep's standing page, calendar/standing-SID.md, is new:
+it arrives with the first one filed. The eighteenth serial session of the
+plan begun on 2026-10-27, prep-and-tidy: the plan's last proposals but
+practice-rules', three about a meeting's prep, five about what the office
+says and warns, and six clean-ups, each proposed by a worker of the plan.
+
+A meeting's prep, filed, compared and probed. No folder records a prep
+(0.43.0), so `office standing --prep [SID]` files its standing in the
+calendar, the meeting's own space, as calendar/standing-SID.md, the same
+page in the same shape, checked against the calendar's record line and
+written by the office command alone (office_standing write_prep,
+prep_standing, place_of); `office probe` files one beside a prep's probe
+block, and the home screen's key beside the prep's item runs it. The
+prep's item and the walk-in's In flight line then say where it stands.
+The item, and `office status`'s doctrine lines, compare the doctrine
+stamp on the prep's record line as a folder's sitting's is compared
+(office_home prep_item_words; office_bale doctrine_lines, prep_words,
+prep_standing_words). A prep's probe runs through the office: `office
+probe --prep [SID]`, or the prep's run line `# office: probe --prep SID
+[--project NAME]`, plans it with the calendar's record line standing for
+the folder (office_probe recorder, preps_out, prep_where), under the
+prep's id, where --project says or the one project (or the office) its
+meeting concerns; no History line is written. The prep brief says so.
+
+The probe block, checked before it runs. A call whose project is not a
+bare name (`office-on "$P" ls`, `office-on $P ls`) refuses the block at
+plan time, naming its line in run_on's words; a call whose command is one
+word holding a space or `;` (`office-on alpha 'a; b'`) is warned of,
+naming the `sh -c` form, and the block runs (office_probe call_words,
+check_calls; the plan's `warnings`). The sitting brief says how to write
+a call.
+
+Three said lines. After a no, `office drop` on a terminal offers `r` to
+read the clipboard again once the message is copied; piped it ends as
+before. `office slip`'s last line says where the box is and how many
+slips it holds. `office desk` ends with the office asks out (the Next
+line's ask row first) and each ask's record left without its tray, with
+the line that removes it; the map's page ends with the asks out, the
+lines that act on each (office_bale ask_desk_lines; office_map
+ask_lines; office_ask orphan_words).
+
+The clean-ups. README's branch_prefix sentence says `--branch-prefix`.
+The last of the bundle plumbing 0.49.0 made dead is gone: the two
+`bundle_here` fallbacks to START_BUNDLE_FOUND, --bundle-found and start's
+`bundle_found` reading; an unreadable pack line names the bundle's file.
+The fake bale answers a dossier only in the repo that packed the session,
+and office start N --handoff says when a bailed session's record is found
+in more than one place, reading no host past the first (office_bale
+record_places, record_place_words). tests/test_three_gaps.py's spanning-probe
+tests moved whole to tests/test_spanning_probe.py. start's background
+lines (detail, and the out tray's per-file line) are said under
+OFFICE_DEBUG within any start, piped too (START_RUNNING, set for every
+start; the verbs that share them say their lines when run on their own).
+The sweep for a session's day hard-coded beside a pack, run with the fakes
+minting a far day, found one test that took the day from the wall clock;
+it reads the day from the tray start names now (the notes say how).
+
+Tests: tests/test_prep_and_tidy.py, a new module (30 tests), and
+tests/test_spanning_probe.py's TestTheCallsAreReadBeforeTheBlockRuns (3),
+beside the seven it took in from tests/test_three_gaps.py; the suite holds
+1559.
+
 ## 0.54.0
 
 Additive: no migration, nothing stored changes, nothing to do in any

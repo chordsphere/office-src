@@ -7,7 +7,8 @@ by starting the interpreter again).
 pack, status and --version go to the packing fake (pack_bale.py), in this
 process; this adds apply and retry (the walkthrough's merge, a HOLD, a
 base-drift and an out-of-forecast refusal, a clarification, a bailout),
-unlock, the dossier (stats --sid), relay's re-emitted block, open and open
+unlock, the dossier (stats --sid, answered since 0.55.0 only in the repo
+that packed the session), relay's re-emitted block, open and open
 --check, and handoff (0.52.0), each printing lines the return-trip probe (and the later probes
 named where they are used) captured from a real bale, kept verbatim with
 their sha256 in the development record's fixtures, with the session id
@@ -358,7 +359,11 @@ def main(cfg, argv):
 
     if argv[:2] == ["stats", "--sid"] and argv[3:] == ["--json"]:
         sid = argv[2]
-        if sid not in L["packed"]:
+        # Only the repo that packed the sid holds its record (0.55.0), as a
+        # real bale keeps its records per repo: asked anywhere else, the
+        # dossier of no session. Before 0.55.0 any repo answered, so no test
+        # could tell "still open in alpha" from "in the office".
+        if sid not in L["packed"] or os.path.realpath(L["packed"][sid]) != cwd:
             line = json.loads(json.loads(MISS.read_text())["stdout"][0])
             line["session_id"] = sid
             print(json.dumps(line)); sys.exit(0)

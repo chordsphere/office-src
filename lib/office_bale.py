@@ -853,6 +853,15 @@ def standing_words(office_root, folders, sid=None):
     return None
 
 
+def prep_standing_words(office_root, sid):
+    """What a screen says of where a meeting's prep stands (0.55.0): the
+    standing filed for it in the calendar (office_standing.prep_standing),
+    in office_standing's words, or None."""
+    import office_standing as ostand
+    st = ostand.prep_standing(office_root, sid)
+    return ostand.words(st, sid) if st is not None else None
+
+
 def in_flight(rd, office_root, now=None):
     """(lines, unreadable, flying): one line per open session in the
     projects the office scopes and in the office's own repo, each mapped
@@ -901,8 +910,10 @@ def in_flight(rd, office_root, now=None):
                     older = doctrines.older_stamp(prep["doctrine"])
                     if older:
                         ends += f"; {older}"
-                # Where the sitting stands (0.43.0), from its folder's page.
-                stands = standing_words(office_root, folders, sid) if read_only and folders else None
+                # Where the sitting stands (0.43.0), from its folder's page;
+                # a prep's (0.55.0) from its page in the calendar.
+                stands = (standing_words(office_root, folders, sid) if read_only and folders else
+                          prep_standing_words(office_root, sid) if prep else None)
                 if stands:
                     ends += f"; {stands}"
                 # The standalone sort belongs to no folder: it is the
@@ -1421,12 +1432,15 @@ def drafting_lines(groups, walk_in=False):
     return out
 
 
-def render_desk(rd, office_root, today, since=None, walk_in=False, now=None, groups_out=None, blueprint=None):
+def render_desk(rd, office_root, today, since=None, walk_in=False, now=None, groups_out=None, blueprint=None,
+                machine_file=None):
     """(lines, unreadable projects): office desk, or the walk-in's two
     sections. since is the day of the previous walk-in (default today):
     a ready folder whose gate cleared on or after it says so. groups_out,
     a dict when given, receives the desk's groups (the Next line reads
-    them, so the walk-in classifies the desk once)."""
+    them, so the walk-in classifies the desk once). office desk given
+    machine_file (0.55.0) ends with the asks out and each ask's record
+    left without its tray (ask_desk_lines)."""
     import office_drafting as od
     import office_drop as odrop
     import office_sort as osort
@@ -1499,7 +1513,38 @@ def render_desk(rd, office_root, today, since=None, walk_in=False, now=None, gro
     if groups.get("move_lines"):
         at = next(i for i, l in enumerate(lines) if l.startswith("Pending desk moves"))
         lines[at + 1:at + 1] = groups["move_lines"]
+    if machine_file and not walk_in:
+        lines += ask_desk_lines(office_root, machine_file)
     return lines, bad
+
+
+def ask_desk_lines(office_root, machine_file):
+    """office desk's asks (0.55.0), after the desk's own groups, as the
+    walk-in's Next line names one since 0.54.0: an Asks out section, one
+    line each in the walk-in's words (office_ask.out_line), the oldest
+    first, its first line the Next line's ask row; then each record of
+    this office's whose tray is gone, with the line that removes it
+    (office_ask.orphan_line, office status's since 0.54.0). Nothing when
+    there are neither; a tray root that cannot be read is said under
+    OFFICE_DEBUG, as asks_waiting says it."""
+    import office_ask as oa
+    import office_home as hs
+    tray_root = hs.tray_root_of(machine_file)
+    asks = asks_waiting(office_root, machine_file)
+    try:
+        orphans = oa.orphans(office_root, tray_root)
+    except (OSError, oh.HelperError) as exc:
+        debug(f"the asks' records could not be read from {tray_root}, so the desk names no orphan: {exc}")
+        orphans = []
+    out = []
+    if asks:
+        move = ask_move({"asks": asks})
+        out += ["", f"Asks out (next: {move[0]}; a quick question each, answered in a chat):"]
+        out += [f"  {oa.out_line(r)}" for r in asks]
+    if orphans:
+        out += ["", "Asks whose tray is gone:"]
+        out += [f"  {oa.orphan_words(name, record, opener)}" for name, record, opener in orphans]
+    return out
 
 
 def blueprint_desk(table, folders, flying, since, bid, flight):
@@ -3146,9 +3191,10 @@ class Tray:
             name = f"{stem}-{n}{dot}{ext}"
         shutil.copy2(src, self.dir / name)
         self.files.append(name)
-        # On start's screen (0.46.0, START_SCREEN) the tray's path and its
-        # files are said once, below; each file's line is a debug line there.
-        (debug if os.environ.get("START_SCREEN") == "1" else log)(f"out tray: {name}")
+        # Within office start (START_RUNNING) the tray's path and its files
+        # are said once, below (0.46.0), so each file's line is a debug line
+        # there, piped too since 0.55.0.
+        (debug if os.environ.get("START_RUNNING") == "1" else log)(f"out tray: {name}")
         return name
 
     def finish(self, sid):
@@ -3659,8 +3705,11 @@ class Doctrines:
 def doctrine_lines(rd, office_root):
     """(lines, 0): office status's doctrine line, the install's OFFICE.md
     by its short hash and release, then one line for each read-only sitting
-    open in the office whose Sessions line stamps another doctrine. bale is
-    asked which sessions are open only when a folder stamps another one."""
+    open in the office whose Sessions line stamps another doctrine, and
+    (0.55.0) for each meeting's prep out whose record line does, as a
+    folder's sitting's is compared. bale is asked which sessions are open
+    only when a folder or a prep stamps another one."""
+    import office_meeting as om
     try:
         install = install_doctrine_hash()
     except OSError as exc:
@@ -3669,6 +3718,14 @@ def doctrine_lines(rd, office_root):
         return [f"doctrine:   the install at {INSTALL} holds no doctrine/OFFICE.md"], 0
     head = f"doctrine:   OFFICE.md {oh.doctrine_short(install)}, the install's (office-src {install_version_here()})"
     other = {sid: s for sid, s in session_doctrines(office_root).items() if s != oh.doctrine_short(install)}
+    try:
+        preps = {r["sid"]: r for r in om.read_record(office_root)
+                 if r["state"] == "prep out" and r.get("doctrine") and r["doctrine"] != oh.doctrine_short(install)}
+    except (OSError, UnicodeDecodeError) as exc:
+        debug(f"the calendar's record could not be read for the preps' doctrine: {exc}")
+        preps = {}
+    for sid, r in preps.items():
+        other.setdefault(sid, r["doctrine"])
     own = office_registry(office_root) if other else None
     if own is None:
         return [head], 0
@@ -3676,7 +3733,13 @@ def doctrine_lines(rd, office_root):
         out = [sid for sid, ro in rd.open_sessions(own) if ro and sid in other]
     except BaleError as exc:
         return [head, f"  the sittings out could not be read, so none is compared with it: {exc}"], 0
-    return [head] + [f"  {sid}: a read-only sitting {oh.older_doctrine_words(other[sid], install)}" for sid in out], 0
+    return [head] + [f"  {sid}: {prep_words(preps[sid]) if sid in preps else 'a read-only sitting'} "
+                     f"{oh.older_doctrine_words(other[sid], install)}" for sid in out], 0
+
+
+def prep_words(r):
+    """A meeting's prep, as office status names it (0.55.0)."""
+    return f"the prep for {r['title']} ({r['date']} {r['time']})"
 
 
 def survey_before_pack(office_root):
@@ -4659,6 +4722,39 @@ def handoff_places(office_root, lane=None):
     return out
 
 
+def record_places(rd, places, sid):
+    """(found, also) for a session's record in bale's places (0.55.0):
+    found is the first place that records sid, in handoff_places' order,
+    as (label, entry, where, its view), or None; also is each later place
+    that records it too. Past the first, only places on this machine are
+    read, never a host's (a host is reached only where a record had to be
+    looked for there before 0.55.0), each said under OFFICE_DEBUG; a place
+    that cannot be read is passed over, said the same way."""
+    found, also = None, []
+    for label, entry, where in places:
+        if found is not None and entry is not None and hosted_project(entry):
+            debug(f"{label}: not read for a second record of {sid} (it is on a host)")
+            continue
+        try:
+            d = rd.dossier(where, sid)
+        except BaleError as exc:
+            debug(f"{label}: {sid}'s record not read ({exc})")
+            continue
+        if d is None:
+            continue
+        if found is None:
+            found = (label, entry, where, session_view(rd, d))
+        else:
+            also.append((label, entry, where, None))
+    return found, also
+
+
+def record_place_words(place):
+    """A place handoff_places names, as a line says it: the project's name,
+    or `the office`."""
+    return "the office" if place[1] is None else place[0]
+
+
 def handoff_check(rd, office_root, folder_rel, response=None, cwd=None, downloads=None):
     """What office start N --handoff [RESPONSE] sends, read before anything
     runs: a dict of tarball (a path here, or a bare name for bale's own
@@ -4731,16 +4827,14 @@ def handoff_check(rd, office_root, folder_rel, response=None, cwd=None, download
                           f"(it records {', '.join(sids) or 'none'}): the folder that records it hands it off; "
                           "nothing ran"])
     lane = (parsed["fields"].get("lane") or [""])[0].split(":", 1)[0].strip() or None
-    found = None
-    for label, entry, where in handoff_places(root, lane):
-        try:
-            d = rd.dossier(where, bailout)
-        except BaleError as exc:
-            debug(f"{label}: {bailout}'s record not read ({exc})")
-            continue
-        if d is not None:
-            found = (label, entry, where, session_view(rd, d))
-            break
+    found, also = record_places(rd, handoff_places(root, lane), bailout)
+    if found is not None and also:
+        # bale keeps its records per repo, so a second record is a copy (a
+        # tree with .bale/ copied whole, say): the first, the folder's lane
+        # first, is the one read, and the rest are said (0.55.0).
+        said.append(f"{bailout}'s record is in more than one place "
+                    f"({', '.join(record_place_words(p) for p in [found, *also])}): "
+                    f"the office reads {record_place_words(found)}'s, the folder's lane first")
     if found is None:
         raise StartError([f"{bailout} is in none of the records the office reads (this office's and its projects'), "
                           "so where it ran is unknown and bale handoff has nowhere to run; nothing ran"])
@@ -4913,7 +5007,7 @@ def handoff_opener(request, bailout, folder_rel, has_brief, context_name, constr
 
 def start(rd, office_root, folder, where, project, goal, slug, includes, writes, read_only,
           brief, work_class, tray_root, bundle=None, leave_out=(), install_files=(), checked=False,
-          bale_rehearsed=False, bundle_found=None, handoff=None):
+          bale_rehearsed=False, handoff=None):
     """Pack a session for a folder and fill its out tray. Returns a dict:
     sid, tray, files, opener (lines, or None), carried (what each file
     is), warnings. Raises StartError with lines to print when it cannot
@@ -4938,13 +5032,12 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     says bin/office has already checked the host this start (reach, the
     bale floor, the repo).
 
-    bundle_found is the file bale's rehearsal found a bundle at (bale
-    open --check, earlier in the same start). A bundle named by a bare
-    name is bale's to find, so the office cannot read its pack line where
-    it was named; it reads it there instead, and only to tell whether the
-    bundle sends out a sitting, so the digest is written before it as
-    before any other sitting (0.21.0). Every other check keeps reading
-    the bundle where it was named, as before.
+    A bundle is a file on this machine (since 0.49.0 bin/office
+    resolve_bundle finds a bare name before bale is asked), so its pack
+    line is read where it is; one the office cannot read leaves it unable
+    to tell a sitting, said in one line (digest_left_line). Until 0.55.0 a
+    bundle_found argument named where bale's rehearsal found it, for a
+    bare name bale searched for; no start hands bale a bare name now.
 
     handoff (0.52.0) is handoff_check's dict for office start N --handoff:
     bale handoff runs in place of a pack (handoff_session), with the
@@ -5154,25 +5247,14 @@ def start(rd, office_root, folder, where, project, goal, slug, includes, writes,
     sitting = where == "office" and forecast == []
     unknown = None
     if where == "office" and bundle and argv is None:
-        # The office could not read the bundle's pack line where it was
-        # named, so its forecast is unknown here. Until 0.21.0 that left
-        # a bare-named sitting without its digest, and said nothing. The
-        # line is read where bale's rehearsal found the bundle; when even
-        # that cannot be read, the start says why it left the page.
-        found_read_only = bundle_read_only(bundle_found)
-        if found_read_only is True:
-            sitting = True
-            debug(f"the bundle {pathlib.Path(bundle).name} is read-only by its pack line at {bundle_found}: "
-                  "a sitting, so the digest is written before it")
-        elif found_read_only is None:
-            # Since 0.49.0 office start hands bale the file it found
-            # (bin/office resolve_bundle), so the line is the file's own.
-            if bundle_found:
-                unknown = f"bale found it at {bundle_found}, and its pack line there does not read"
-            elif pathlib.Path(bundle).is_file():
-                unknown = f"its pack line at {bundle} does not read"
-            else:
-                unknown = "bale's rehearsal did not say where it found it"
+        # The office could not read the bundle's pack line, so its forecast
+        # is unknown here. Until 0.21.0 that left a sitting without its
+        # digest, and said nothing; the start says why it left the page.
+        # Since 0.49.0 the bundle is the file office start found (bin/office
+        # resolve_bundle), so the line is the file's own, and where bale's
+        # rehearsal found it (0.21.0 to 0.54.0, --bundle-found) is that file.
+        unknown = (f"its pack line at {bundle} does not read" if pathlib.Path(bundle).is_file()
+                   else f"{bundle} is not a file on this machine")
     if sitting:
         digest_before_pack(office_root)
         if not bundle and (office_root / od.SPACE).is_dir() and od.SPACE not in includes:
@@ -7070,7 +7152,7 @@ def build_parser(only=None):
     p.add_argument("--founded", choices=("yes", "no"), default="yes", help="whether the profile is complete")
     p.add_argument("--blueprint", help="only this blueprint's member folders, in the desk's order")
     p.add_argument("--machine-file", help="machine.toml, whose out_tray holds the asks out the Next line may name "
-                                          "(0.54.0)")
+                                          "(0.54.0) and office desk lists (0.55.0)")
     p = add("writers"); p.add_argument("office"); p.add_argument("paths", nargs="+")
     p = add("sort-out", help="the standalone sorts open in the office's registry, one id per line")
     p.add_argument("office")
@@ -7092,9 +7174,6 @@ def build_parser(only=None):
     p.add_argument("--bale-rehearsed", action="store_true",
                    help="bale open --check --json passed this bundle this start, over the office's own overlap "
                         "check (bundle-check printed `over` lines): bale's to judge, as a second desk")
-    p.add_argument("--bundle-found", default=None,
-                   help="the file bale's rehearsal found the bundle at this start (bundle-check's first line), "
-                        "read only to tell whether a bundle named by a bare name sends out a sitting")
     p.add_argument("--handoff", default=None,
                    help="office start N --handoff (0.52.0): the bailout response bale handoff takes, as handoff-check "
                         "resolved it (a path, or a bare name for bale's own search)")
@@ -7484,7 +7563,7 @@ def main(argv=None):
             result = start(Reader(), a.office, None if a.folder == "-" else a.folder, a.where, a.project, a.goal,
                            a.slug, a.include,
                            a.write, a.read_only, a.brief, a.work_class, a.tray_root, a.bundle, a.leave_out,
-                           a.install_file, a.checked, a.bale_rehearsed, a.bundle_found, handoff)
+                           a.install_file, a.checked, a.bale_rehearsed, handoff)
         except StartError as exc:
             for line in exc.lines:
                 log(f"error: {line}")
@@ -7524,7 +7603,7 @@ def main(argv=None):
                     dt.date.fromisoformat(day)
             groups = {}
             lines, bad = render_desk(rd, a.office, a.today, a.since, a.walk_in, groups_out=groups,
-                                     blueprint=a.blueprint)
+                                     blueprint=a.blueprint, machine_file=None if a.walk_in else a.machine_file)
             if a.next_file:
                 # The asks out (0.54.0), for the Next line's ask row.
                 if a.machine_file:

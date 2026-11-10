@@ -694,6 +694,20 @@ def sitting_item_words(s, names):
     return words
 
 
+def prep_item_words(m):
+    """The home screen's words for a meeting's prep that is out: the key
+    that ends it, then (0.55.0) what is known of it, each after a semicolon
+    as a sitting's item says it: out under an older doctrine (its record
+    line's stamp), and where it stands (its page in the calendar)."""
+    words = (f"End the prep for {m['title']} once the meeting is over: land records it held and files what "
+             "arose")
+    if m.get("stale"):
+        words += f"; it is {m['stale']}"
+    if m.get("standing"):
+        words += f"; {m['standing']}"
+    return words
+
+
 def home_items(skew, founded, out, groups, projects, slips, behind, bundles, names, directories, now, sittings=(),
                meetings=(), cache=None):
     """The waiting list, in order: the Next line's move first (marked),
@@ -746,8 +760,16 @@ def home_items(skew, founded, out, groups, projects, slips, behind, bundles, nam
         if s.get("standing_key"):
             items.append(item(f"File where {names.of(s['sid'])} stands now, from the sitting's last standing block "
                               "on the clipboard", ["standing", s["standing_key"]]))
-    items += [item(f"End the prep for {m['title']} once the meeting is over: land records it held and files what "
-                   "arose", ["land", m["sid"]]) for m in meetings if m["state"] == "prep out"]
+    # A prep's item says what a sitting's says (0.55.0): its doctrine, where
+    # it stands, and a second key that files a new standing from the
+    # clipboard (office standing --prep SID).
+    for m in meetings:
+        if m["state"] != "prep out":
+            continue
+        items.append(item(prep_item_words(m), ["land", m["sid"]]))
+        if m.get("sid"):
+            items.append(item(f"File where the prep for {m['title']} stands now, from the sitting's last standing "
+                              "block on the clipboard", ["standing", "--prep", m["sid"]]))
     # The Next line's move, first: an item above when it is one, else its
     # own line in the Next line's words. "office start new" and "office
     # desk" are the keys every screen has, so they are not repeated.
@@ -959,6 +981,14 @@ def home(rd, office_root, today, since, skew, founded, tz_name, directories, now
     except (OSError, ValueError, oh.HelperError) as exc:
         debug(f"the calendar could not be read for the meetings near now: {exc}")
         meetings = []
+    # Each prep out (0.55.0): its record line's doctrine compared as a
+    # folder's sitting's is, and where it stands from its calendar page.
+    for m in meetings:
+        if m["state"] != "prep out" or not m.get("sid"):
+            continue
+        rec = om.prep_of(office_root, m["sid"])
+        m["stale"] = doctrines.older_stamp(rec.get("doctrine")) if rec else None
+        m["standing"] = ob.prep_standing_words(office_root, m["sid"])
     items = home_items(skew, founded, out, groups, projects, ob.count_slips(office_root), behind, bundles, names,
                        directories, now, sittings, meetings, cache)
     # The out trays to open again (0.46.0): one per session out whose

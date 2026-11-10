@@ -777,8 +777,11 @@ class TestTheWaveOneRecord(unittest.TestCase):
         for words in ("`[office] the delivery branch is BRANCH: WHY` says which rule chose it",
                       "`--added` (0.38.0) reads the lines a diff adds, not the files it touches whole",
                       "masked (0.38.0)", "A project that cannot be read is one line after the sessions",
-                      "The audience line has a fifth key, `branch_prefix`", "no verb sets it yet"):
+                      "The audience line has a fifth key, `branch_prefix`",
+                      "`--branch-prefix PREFIX` sets it (0.46.0) and `--no-branch-prefix` clears it"):
             self.assertIn(words, readme)
+        # Gone since 0.55.0: it had been false since 0.46.0 built the flag.
+        self.assertNotIn("no verb sets it yet", readme)
         doctrine = " ".join((REPO / "doctrine/OFFICE.md").read_text().split())
         for words in ("hands the output back masked (a credential in a URL, a GitHub token)",
                       "The office keeps one clock for every date it writes", "refused (`names a cleanup`)",
@@ -1248,9 +1251,12 @@ class TestABundledSittingOpensOnTheDigest(LandCase):
         self.assertRegex(proc.stdout, r"^Packed \S+ for ", proc.stderr)
         lines = [l for l in proc.stderr.splitlines() if "it leaves drafting-table/digest.md" in l]
         found = (self.downloads / "2026-10-13-plan-odd.bale-bundle").resolve()
+        # Since 0.55.0 the line names the file start found, which is the one
+        # bale was handed (--bundle-found, which named where bale found it,
+        # is gone: it was that file).
         self.assertEqual(lines, [f"[office] the office cannot read the pack line of the bundle "
-                                 f"2026-10-13-plan-odd.bale-bundle (bale found it at {found}, and its pack line "
-                                 f"there does not read), so it cannot tell whether it sends out a sitting: it leaves "
+                                 f"2026-10-13-plan-odd.bale-bundle (its pack line at {found} does not read), so it "
+                                 f"cannot tell whether it sends out a sitting: it leaves "
                                  f"drafting-table/digest.md as it was, written {written}; office digest writes it"])
         self.assertEqual(len(self.digest_commits()), before)
 

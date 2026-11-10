@@ -273,7 +273,9 @@ class TestStartChecksTheBundleFirst(LandCase):
 
     def test_bale_is_asked_before_the_open_where_the_open_runs(self):
         bundle_file(self.downloads, "2026-10-07-fix", self.argv())
-        proc = self.run_office("start", "fix-login", "--on", "alpha", "2026-10-07-fix.bale-bundle", check=0)
+        # A background line, said under OFFICE_DEBUG piped too since 0.55.0.
+        proc = self.run_office("start", "fix-login", "--on", "alpha", "2026-10-07-fix.bale-bundle", check=0,
+                               extra={"OFFICE_DEBUG": "1"})
         self.assertIn("bale open --check, which writes nothing", proc.stderr)
         # Since 0.49.0 the office finds the bare name in the downloads and
         # asks bale about that file.

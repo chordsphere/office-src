@@ -696,7 +696,9 @@ class TestABundleOnAHost(HostedStartCase):
                         ["Fix it there", "--slug", "fix-there", "--write", "src", "--constraint", ob.PROJECT_CONSTRAINT],
                         brief="# Brief\n")
         before = self.e.git(self.root, "rev-parse", "HEAD")
-        proc = self.run_office("start", self.name, "--on", "far", str(b))
+        # bale's answer is a background line, said under OFFICE_DEBUG piped
+        # too since 0.55.0.
+        proc = self.run_office("start", self.name, "--on", "far", str(b), extra={"OFFICE_DEBUG": "1"})
         self.assertEqual(proc.returncode, 0, proc.stderr)
         sid = re.search(r"^Packed (\S+) for ", proc.stdout, re.M).group(1)
         self.assertIn("fix-there", sid)

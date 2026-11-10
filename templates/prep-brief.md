@@ -105,18 +105,24 @@ waiting on you: nothing
 Its BEGIN line names this session's id; then `step N of M: words`; one
 `- [x]`, `- [>]` or `- [ ]` line per step, exactly one `[>]`, the Nth;
 last `waiting on you: words`, or `waiting on you: nothing` while the
-sitting is working. A sitting a folder records is filed by `office probe`
-or the home screen's key (`office standing FOLDER`); no folder records a
-prep, so its standing is his to read in the chat, and the office files it
-nowhere.
+sitting is working. A sitting a folder records is filed with `office
+standing FOLDER`; no folder records a prep, so the office files its
+standing in the calendar, as calendar/standing-SID.md (SID this session's
+id): `office probe` files it when it rides beside the probe block, and
+the home screen's key beside this prep, `office standing --prep`, files
+it from the clipboard; the home screen then says where the prep stands.
 
 Every line the sitting hands him to type is an office line (doctrine section
 10): `office land`, `office probe`, never bale's verbs. A probe block it
-returns carries, in its purpose header, the line `# office: probe FOLDER
-[--project NAME] [--sid SID]`, kept to the byte (doctrine section 4,
-continued), so bare `office probe` runs it from one copy, FOLDER being the
-folder that records the session the probe is for; no folder records a prep
-itself, so a probe for the prep's own session has no folder to name and
-`office probe` does not run it. A session a prep authors may
+returns carries, in its purpose header, the line `# office: probe --prep
+SID [--project NAME]`, kept to the byte (doctrine section 4, continued),
+SID this session's id, so bare `office probe` runs it from one copy, under
+this session, where NAME lives (a project, or `office` for the office
+root); with no `--project`, where the meeting's one concern lives, and he
+is asked when it concerns several. The calendar's record line is what
+records this session, so no folder is named. A call that spans the office
+and a project is written `office-on PROJECT COMMAND...` with PROJECT
+named literally, and a shell line as `office-on PROJECT sh -c 'LINE'`.
+A session a prep authors may
 name its riders in its brief, one `--- RIDES PATH ---` line per ride, or
 `--- RIDES none ---`.

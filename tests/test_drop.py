@@ -331,6 +331,9 @@ class TestADropThatIsAnOfficeCommandOnATerminal(unittest.TestCase):
         code, seen = on_a_terminal(self, [str(self.e.office_bin), "drop"], self.root, self.e.env, [
             (b"The clipboard holds an office command line, not a message: office drop --project m10-api. "
              b"Drop it anyway? (--anyway) (y/n) [n]:", ""),
+            # 0.55.0: after the no, one key reads the clipboard again; a
+            # plain return ends (tests/test_prep_and_tidy.py, item 6).
+            (b"a plain return ends here (office drop) [return skips]:", ""),
         ])
         self.assertEqual(code, 0, seen)
         self.assertIn("nothing dropped: the clipboard held an office command line, not a message; copy the message "

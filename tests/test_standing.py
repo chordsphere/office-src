@@ -329,7 +329,9 @@ class TestTheBriefsSayIt(unittest.TestCase):
         ost.read_block(block)
         import tomllib
         v = tomllib.loads((REPO / "share/verbs.toml").read_text())["verbs"]["standing"]
-        self.assertEqual((v["kind"], v["surface"], v["writes"]), ("script", "plumbing", ["desk/{folder}/standing.md"]))
+        # 0.55.0: a meeting's prep's page in the calendar too (tests/test_prep_and_tidy.py).
+        self.assertEqual((v["kind"], v["surface"], v["writes"]),
+                         ("script", "plumbing", ["desk/{folder}/standing.md", "calendar/standing-{sid}.md"]))
 
 
 # --- 5. land leaves the page ---------------------------------------------------------------

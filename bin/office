@@ -33,11 +33,15 @@ warn()  { printf '[office] warning: %s\n' "$*" >&2; }
 die()   { printf '[office] error: %s\n' "$*" >&2; exit 1; }
 debug() { [ "${OFFICE_DEBUG:-0}" = "1" ] && printf '[office] debug: %s\n' "$*" >&2; return 0; }
 # detail TEXT (0.46.0): a line of what office start did that the occupant
-# need not read to go on. On start's screen (START_SCREEN: a start whose
-# stderr is a terminal) it is said under OFFICE_DEBUG only, so the screen
-# holds what was settled, what he must know and what to do next; piped it
-# is a line as before, for the scripts and sessions that read the record.
-detail() { if [ "${START_SCREEN:-0}" = 1 ]; then debug "$*"; else log "$*"; fi; }
+# need not read to go on. Within a start (START_RUNNING, which office start
+# sets and exports) it is said under OFFICE_DEBUG only, so the screen holds
+# what was settled, what he must know and what to do next; until 0.55.0
+# only a start on a terminal did so, and a piped one said every line, a
+# second record of one start that no script or session read (the tests
+# that pin such a line run with OFFICE_DEBUG=1). The verbs that share
+# these functions, run on their own (office open, office sessions, office
+# survey), say the line as before.
+detail() { if [ "${START_RUNNING:-0}" = 1 ]; then debug "$*"; else log "$*"; fi; }
 
 # -B throughout: the helper imports office_host, the reader imports the
 # helper, and an install is never written to.
@@ -1956,7 +1960,8 @@ usage_slip() {
   cat <<'USAGE'
 usage: office slip [TEXT...] [--about WHAT]   (or the text on stdin)
 Drops a friction slip in the suggestion box: one new page,
-suggestion-box/DATE-SLUG.md, committed on its own. --about names what the
+suggestion-box/DATE-SLUG.md, committed on its own, its path on stdout; the
+last line says where the box is and how many slips it holds. --about names what the
 slip is about: the office, a tool (bale, office-src) or one of the
 office's projects, so it can be carried to that tool's project; left out,
 the session that reads the box judges it. On a terminal it asks for the
@@ -2028,6 +2033,11 @@ cmd_slip() {
   log "slipped $page${about:+ (about $about)}"
   commit_paths "$root" "office slip: $(basename "$page" .md)${about:+ (about $about)}" "$page" || true
   printf '%s\n' "$page"
+  # The box, last (0.55.0): where it is and how many slips it holds, so a
+  # slip is known to be in it (the walk-in counts the pages the same way).
+  local count
+  count="$(find "$root/suggestion-box" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+  log "the suggestion box, $root/suggestion-box, holds $count slip(s)"
 }
 
 # --- the in-tray: office drop (0.19.0) -----------------------------------------
@@ -2053,7 +2063,9 @@ says what it took: the first line and how many lines. A text that is one
 office command line (one non-blank line beginning `office `) is usually
 the clipboard holding the command just copied rather than the message: from
 the clipboard it asks once, before writing, whether to drop it anyway (no
-by default; --anyway is the flag twin, and a yes writes it); from a file or
+by default; --anyway is the flag twin, and a yes writes it; after a no, r
+reads the clipboard again once the message is copied, and a plain return
+ends with nothing dropped); from a file or
 stdin it is dropped as given, and the line saying what it took says it is
 an office command line. On a terminal, when
 the office scopes a project, it asks one question, the project: each of
@@ -2085,6 +2097,16 @@ drop_office_command() {
          if (line !~ /^office[ \t]/) exit 1
          print line
        }' "$1"
+}
+
+# drop_read_clipboard FILE TMP: the clipboard's text into FILE with
+# paste_command (PASTE, set by paste_setting), said; a read that fails
+# stops the drop.
+drop_read_clipboard() {
+  local file="$1" tmp="$2" rc
+  log "reading the message from the clipboard ($PASTE)"
+  timeout 15 bash -c "$PASTE" < /dev/null > "$file" 2> "$tmp/paste.err"; rc=$?
+  [ "$rc" = 0 ] || die "the clipboard could not be read: $PASTE exited $rc ($(tail -n 1 "$tmp/paste.err")); paste_command in $MACHINE_FILE"
 }
 
 cmd_drop() {
@@ -2121,37 +2143,45 @@ cmd_drop() {
   else
     paste_setting "office drop reads the message from the clipboard when it is given no file" \
       "give the message as a file (office drop FILE) or on stdin (office drop -)"
-    log "reading the message from the clipboard ($PASTE)"
-    timeout 15 bash -c "$PASTE" < /dev/null > "$text_file" 2> "$tmp/paste.err"; rc=$?
-    [ "$rc" = 0 ] || die "the clipboard could not be read: $PASTE exited $rc ($(tail -n 1 "$tmp/paste.err")); paste_command in $MACHINE_FILE"
+    drop_read_clipboard "$text_file" "$tmp"
     via="clipboard"
   fi
-  took="$(dropx took --text-file "$text_file")" \
-    || die "nothing to drop: the text from $([ "$via" = clipboard ] && printf 'the clipboard' || printf '%s' "$via") is empty"
-  lines="${took%%$'\t'*}"; first="${took#*$'\t'}"
-  from="$([ "$via" = clipboard ] && printf 'the clipboard' || printf '%s' "$via")"
   # A text that is one office command line (0.32.0) is usually the
   # clipboard holding the command just copied from a chat, not the message.
   # From the clipboard it is asked about once, before anything is written;
   # from a file or stdin it is dropped as given and said. A drop it can
-  # write is never refused: a yes, or --anyway, writes it.
-  command_line="$(drop_office_command "$text_file")" || command_line=""
-  if [ -z "$command_line" ]; then
-    log "took $lines line(s) from $from: $first"
-  elif [ "$via" != clipboard ]; then
-    log "took $lines line(s) from $from: $first (an office command line, not a message: dropped as given)"
-  elif [ "$anyway" = 1 ]; then
-    log "took $lines line(s) from $from: $first (an office command line, not a message: dropped anyway, --anyway)"
-  else
-    log "took $lines line(s) from $from: $first"
-    ask ans "The clipboard holds an office command line, not a message: $command_line. Drop it anyway? (--anyway) (y/n)" "n" 0 \
-      "y drops the line as it is, a page in the in-tray like any other. n, the default, drops nothing: copy the message itself and run office drop again. Copying a command from a chat replaces what the clipboard held, which is how a command reaches the in-tray instead of the message."
-    case "$ans" in
-      y|Y|yes) log "dropping the office command line, as asked" ;;
-      *) log "nothing dropped: the clipboard held an office command line, not a message; copy the message and run office drop again (--anyway drops the line as it is)"
-         return 0 ;;
-    esac
-  fi
+  # write is never refused: a yes, or --anyway, writes it. After a no
+  # (0.55.0) one key reads the clipboard again, once he has copied the
+  # message, and the drop goes on from there; a plain return ends it.
+  while :; do
+    took="$(dropx took --text-file "$text_file")" \
+      || die "nothing to drop: the text from $([ "$via" = clipboard ] && printf 'the clipboard' || printf '%s' "$via") is empty"
+    lines="${took%%$'\t'*}"; first="${took#*$'\t'}"
+    from="$([ "$via" = clipboard ] && printf 'the clipboard' || printf '%s' "$via")"
+    command_line="$(drop_office_command "$text_file")" || command_line=""
+    if [ -z "$command_line" ]; then
+      log "took $lines line(s) from $from: $first"
+    elif [ "$via" != clipboard ]; then
+      log "took $lines line(s) from $from: $first (an office command line, not a message: dropped as given)"
+    elif [ "$anyway" = 1 ]; then
+      log "took $lines line(s) from $from: $first (an office command line, not a message: dropped anyway, --anyway)"
+    else
+      log "took $lines line(s) from $from: $first"
+      ask ans "The clipboard holds an office command line, not a message: $command_line. Drop it anyway? (--anyway) (y/n)" "n" 0 \
+        "y drops the line as it is, a page in the in-tray like any other. n, the default, drops nothing: copy the message itself, and r then reads the clipboard again. Copying a command from a chat replaces what the clipboard held, which is how a command reaches the in-tray instead of the message."
+      case "$ans" in
+        y|Y|yes) log "dropping the office command line, as asked" ;;
+        *) log "nothing dropped: the clipboard held an office command line, not a message; copy the message and run office drop again (--anyway drops the line as it is)"
+           ask ans "Copy the message now, then r reads the clipboard again; a plain return ends here (office drop)" "" 0 \
+             "r reads the clipboard again, as office drop would, and the drop goes on from there: the line it took, then the project. A plain return ends here with nothing dropped, as the line above says."
+           case "$ans" in
+             r|R) drop_read_clipboard "$text_file" "$tmp"; continue ;;
+             *) return 0 ;;
+           esac ;;
+      esac
+    fi
+    break
+  done
   # Which project, by key, and only when the office scopes one: the one
   # question a drop asks, which a plain return skips (0.22.0).
   if [ "$project_given" = 0 ] && can_ask; then
@@ -2669,7 +2699,9 @@ PROJECT, that project's rows alone, nothing folded; with FOLDER (its
 number or a part of its name), the folder's whole record: its fields, its
 sessions as office sessions shows them, its riders, its deliveries and
 reviews, its standing, the lines that act on it next, and the lines that
-change its fields. It writes nothing.
+change its fields. The page, and PROJECT's, end with the office asks out
+(0.55.0), which live outside any folder: the lines that act on each. It
+writes nothing.
 Examples:
   office map
   office map --all
@@ -2691,10 +2723,10 @@ cmd_map() {
   root="$(resolve_office)" || exit 1
   require_current "$root"
   today="$(office_date "$(office_tz "$root")")"
-  if [ -z "$want" ]; then pylib "$MAP_PY" page "$root" --today "$today" "${all[@]}"; return $?; fi
+  if [ -z "$want" ]; then pylib "$MAP_PY" page "$root" --today "$today" "${all[@]}" --machine-file "$MACHINE_FILE"; return $?; fi
   names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
   if printf '%s\n' "$names" | grep -qxF -- "$want"; then
-    pylib "$MAP_PY" page "$root" --today "$today" --project "$want"; return $?
+    pylib "$MAP_PY" page "$root" --today "$today" --project "$want" --machine-file "$MACHINE_FILE"; return $?
   fi
   rel="$(find_any_folder "$root" "$want")" \
     || die "office map $want: no project or folder by that name (projects: $(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g'))"
@@ -2787,7 +2819,9 @@ item (met when a sitting ruled on it) or a ruling (met when it is on the
 ledger); one that names nothing is an error line. A gate that cleared
 since you last walked in says so. --blueprint ID shows only that arc's
 folders, in the same order, then the ones already filed and the
-decomposition lines with no folder yet. It only reads.
+decomposition lines with no folder yet. The desk ends (0.55.0) with the
+office asks out, one line each as the walk-in says them, and each ask's
+record whose tray is gone, with the rm line that removes it. It only reads.
 Examples:
   office desk
   office desk --blueprint 2026-10-05-rider-verbs
@@ -2809,7 +2843,10 @@ cmd_desk() {
   root="$(resolve_office)" || exit 1
   tz="$(office_tz "$root")"
   since="$(last_walk_in "$root")"
-  reader desk "$root" --today "$(office_date "$tz")" ${since:+--since "$since"} ${bp:+--blueprint "$bp"}; rc=$?
+  # machine.toml (0.55.0): the asks out, and an ask's record left without
+  # its tray, end the desk.
+  reader desk "$root" --today "$(office_date "$tz")" ${since:+--since "$since"} ${bp:+--blueprint "$bp"} \
+    --machine-file "$MACHINE_FILE"; rc=$?
   case $rc in
     0) return 0 ;;
     3) warn "some of this office's projects could not be read; In flight says which"; return 0 ;;
@@ -5149,11 +5186,6 @@ check_start_bundle() {
     esac
   done <<< "$(printf '%s\n' "$out" | tail -n +2)"
   [ -z "$found_at" ] || detail "bale found it at $found_at, and every gate it runs before an open passed"
-  # Where bale found it, for start to read a bare-named bundle's pack line
-  # there (whether it is a sitting, so the digest goes before it): a file
-  # on this machine only, never a hosted bundle's words.
-  START_BUNDLE_FOUND=""
-  [ -z "$found_at" ] || [ ! -f "$found_at" ] || START_BUNDLE_FOUND="$found_at"
   # A second desk is bale's to recognize (0.18.0): the office's own
   # overlap check caught this bundle, and bale's rehearsal passed it, so
   # the office says what it saw and what bale said, and goes on.
@@ -5696,8 +5728,8 @@ offer_sort_first() {
   if [ "$planner" = 1 ] || { [ "$where" = office ] && [ "$read_only" = 1 ]; }; then
     sitting=1
   elif [ "$where" = office ] && [ -n "$bundle" ]; then
-    file="$bundle"; [ -f "$file" ] || file="$START_BUNDLE_FOUND"
-    [ -z "$file" ] || [ "$(reader bundle-sitting --bundle "$file" 2>/dev/null)" != yes ] || sitting=1
+    # The bundle is a file here (resolve_bundle, 0.49.0).
+    [ "$(reader bundle-sitting --bundle "$bundle" 2>/dev/null)" != yes ] || sitting=1
   fi
   if [ "$sitting" = 0 ]; then
     [ -z "$sort_first" ] || log "--$([ "$sort_first" = yes ] && printf 'sort-first' || printf 'no-sort-first'): this session is not a sitting, so the sort is not offered before it"
@@ -5963,14 +5995,16 @@ cmd_start() {
   # --undo-bale), job_flag the flag that asked for it.
   local job_kind="" job_flag=""
   PREP_WANT=""
-  START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_BUNDLE_FOUND=""; START_DROP_PAGE=""
+  START_OPENED=""; START_TOOK=0; START_ASKED_WRITES=0; START_CHECKED_HOST=""; START_BALE_REHEARSED=0; START_DROP_PAGE=""
   START_BRANCH=""; START_BRANCH_DONE=0; START_BRANCH_FLAG=""
   START_REFRESH=""; START_REFRESH_DONE=0
   START_ENDS=""; START_RIDES=(); START_RIDES_NONE=0
   PLANNER_FILE=""; PLANNER_CONCERNS=(); PLANNER_WHY=""
-  # start's screen (0.46.0): on a terminal, the lines it need not read go
-  # under OFFICE_DEBUG (detail), here and in the reader it runs.
-  if [ -t 2 ]; then START_SCREEN=1; export START_SCREEN; fi
+  # start's screen (0.46.0): the lines it need not read go under
+  # OFFICE_DEBUG (detail), here and in the reader it runs; since 0.55.0
+  # piped too, so START_RUNNING is set for every start (before 0.55.0 its
+  # variable was set only when stderr was a terminal).
+  START_RUNNING=1; export START_RUNNING
   while [ $# -gt 0 ]; do
     case "$1" in
       --in-office) [ -z "$where" ] || [ "$where" = office ] || die "--in-office and --on are two places; give one"; where=office; in_office_given=1; shift ;;
@@ -6232,12 +6266,11 @@ cmd_start() {
     fi
     # A new job for a planner's bundle is opened from the bundle's own goal,
     # the planner's words: nothing is asked of the occupant (0.22.0).
-    local bundle_here="$bundle"
-    [ -f "$bundle_here" ] || bundle_here="$START_BUNDLE_FOUND"
-    if [ -n "$bundle" ] && [ -n "$bundle_here" ] && [ -f "$bundle_here" ]; then
+    # The bundle is a file here (resolve_bundle, 0.49.0).
+    if [ -n "$bundle" ] && [ -f "$bundle" ]; then
       words_file="$(mktemp)" || die "no temporary file for the bundle's goal"
       TMP_PATHS+=("$words_file")
-      if homex bundle-goal --bundle "$bundle_here" > "$words_file" 2>/dev/null && [ -s "$words_file" ]; then
+      if homex bundle-goal --bundle "$bundle" > "$words_file" 2>/dev/null && [ -s "$words_file" ]; then
         words_by="The planner's bundle $(basename "$bundle"), its goal"
         words_source="bundle $(basename "$bundle")"
       else
@@ -6482,7 +6515,6 @@ cmd_start() {
   for r in "${leave_out[@]}"; do args+=(--leave-out "$r"); done
   [ "$where" != project ] || [ "$START_CHECKED_HOST" != "$project" ] || args+=(--checked)
   [ "$START_BALE_REHEARSED" = 0 ] || args+=(--bale-rehearsed)
-  [ -z "$START_BUNDLE_FOUND" ] || args+=(--bundle-found "$START_BUNDLE_FOUND")
   # The out tray's setting was read with the folder's facts above; a
   # machine.toml that does not read is said, as machine_setting says it.
   if [ ! -f "$MACHINE_FILE" ]; then tray_root="$HOME/out-tray"
@@ -9895,6 +9927,7 @@ paste_setting() {
 usage_probe() {
   cat <<'USAGE'
 usage: office probe [FOLDER] [FILE | -] [--project NAME] [--sid SID] [--yes]
+       office probe --prep [SID] [FILE | -] [--project NAME] [--yes]
 Runs a worker's probe block where the folder's project lives and hands
 the output back; a block that calls `office-on PROJECT COMMAND...` spans
 the office and each project it names (below). The block comes from FILE, from stdin (-), or, with
@@ -9956,6 +9989,8 @@ lines`.
                  open where it runs (a read-only sitting open in the office
                  among them) and the block's slug names none
   --yes          run it without asking; piped, nothing runs without it
+  --prep [SID]   a meeting's prep's probe (0.55.0): SID the prep's id, or
+                 left out, the one prep out
 The session is the folder's recorded session open where the project
 lives, or a read-only sitting it records that is open in the office: a
 sitting's probe of a project (--project NAME) runs in that project's
@@ -9975,6 +10010,21 @@ block takes no --project (office is the only one that fits); its session
 is the folder's open in the office (a sitting or an office session) or in
 a project it reaches, chosen by the same rule; its fallback's
 probe-output/ is the office root's, carried the same way.
+Before anything runs (0.55.0) each office-on call is read: one whose
+project is not a bare name (office-on "$P" ls) refuses the block, naming
+its line, since a name is read before the block runs; one whose command is
+one word holding a space or `;` (office-on alpha 'a; b', which the
+project's shell runs as a command of that name) is warned of, naming the
+`sh -c` form (office-on alpha sh -c 'a; b'), and the block still runs.
+A meeting's prep (--prep, 0.55.0) has no folder: the calendar's record
+line records its session, a read-only sitting open in the office, so its
+probe runs as a sitting's does, under the prep's id: --project NAME, or
+the one project (or the office) its meeting concerns, asked when it
+concerns several. --prep with no SID takes the one prep out, said, or
+asks which by key. The prep's run line is `# office: probe --prep SID
+[--project NAME]`, kept to the byte. A standing beside its block is filed
+as the prep's, calendar/standing-SID.md (office standing --prep). No
+History line is written: no folder records a prep.
 Under the hood: bale status --json where the project lives (which sessions
 are open), then the block through bash -c there; OFFICE_DEBUG=1 shows every
 shell call, and OFFICE_PROBE_TIMEOUT=<seconds> (default 1800) stops a block
@@ -9986,6 +10036,7 @@ Examples:
   office probe 13 - --project office-src --yes < probe.sh
   office probe 21 --project office-src         (a sitting's probe of office-src's repo, under the sitting's id)
   office probe 6 probe.sh                      (a block calling office-on m10-api: the office root, reaching m10-api)
+  office probe --prep                          (the one prep out; the block on the clipboard)
 USAGE
 }
 
@@ -10004,6 +10055,7 @@ standx() { pylib "$STANDING_PY" "$@"; }
 usage_standing() {
   cat <<'USAGE'
 usage: office standing [FOLDER] [FILE | -]
+       office standing --prep [SID] [FILE | -]
 Files where a read-only sitting stands on its folder: the last standing
 block in the text (--- STANDING BEGIN SID --- to --- STANDING END ---,
 doctrine section 4, continued), written as desk/FOLDER/standing.md, a
@@ -10021,13 +10073,22 @@ session in this office's registry whose forecast holds the page keeps
 the write out, said (the one-writer rule). No bale verb runs.
 office probe files a standing that rides with the probe block in the same
 text, and the home screen offers this verb by key for each sitting out.
+A meeting's prep has no folder (0.55.0): --prep files its standing in the
+calendar, the meeting's space, as calendar/standing-SID.md, the same page
+in the same shape, checked against the calendar's record line (the
+block's id must be a prep the calendar records) and written by this verb
+alone, under the same one-writer rule. The home screen's item for the
+prep then says where it stands, with a key beside it that runs this.
   FOLDER   the sitting's folder: its name, a unique part of it, or folder N;
            asked on a terminal when left out
   FILE     the text holding the block; - reads it from stdin
+  --prep [SID]  a meeting's prep's standing: SID is the prep's session id;
+           left out, the block's own id, which the calendar must record
 Examples:
   office standing 21                 (the block on the clipboard)
   office standing 21 standing.txt
   office standing plan-it - < chat.txt
+  office standing --prep             (a prep's block on the clipboard)
 USAGE
 }
 
@@ -10064,11 +10125,43 @@ file_standing() {
 }
 STANDING_PAGE="standing.md"
 
+# file_prep_standing ROOT SID FILE VIA STRICT (0.55.0): the last standing
+# block in FILE filed as a meeting's prep's, calendar/standing-SID.md (SID
+# empty: the block's own id, which the calendar must record as a prep),
+# and committed alone, said in one line; STRICT as file_standing's.
+file_prep_standing() {
+  local root="$1" sid="$2" file="$3" via="$4" strict="$5" held rc tz out rel title words refuse=die
+  [ "$strict" = 1 ] || refuse=warn
+  if [ -z "$sid" ]; then
+    out="$(standx check --file "$file")" || { $refuse "the standing from $via was not filed (the line above says why)"; return 1; }
+    sid="$(printf '%s\n' "$out" | sed -n 's/^sid\t//p')"
+  fi
+  rel="calendar/standing-$sid.md"
+  held="$(reader writers "$root" "$rel" 2>/dev/null)"; rc=$?
+  if [ "$rc" = 3 ]; then
+    printf '%s\n' "$held" | sed 's/^/[office]   /' >&2
+    $refuse "an open session holds $rel (the one-writer rule), so the prep's standing is not filed beside it; office standing --prep $sid files it once that session is in"
+    return 1
+  fi
+  [ "$rc" = 0 ] || warn "bale's registry in this office could not be read; the standing is filed without the one-writer check"
+  tz="$(office_tz "$root")"
+  out="$(standx write-prep "$root" --sid "$sid" --file "$file" --day "$(office_date "$tz")" --time "$(office_time "$tz")")" || {
+    $refuse "the standing from $via was not filed (the line above says why); $rel is as it was"
+    return 1
+  }
+  title="$(printf '%s\n' "$out" | sed -n 's/^title\t//p')"; words="$(printf '%s\n' "$out" | sed -n 's/^words\t//p')"
+  commit_paths "$root" "office standing: $sid, the prep for $title" "$rel" || true
+  log "filed $sid's standing as $rel (the prep for $title), from $via: $words"
+  return 0
+}
+
 cmd_standing() {
-  local want="" file="" root name tmp text_file via rc
+  local want="" file="" root name tmp text_file via rc prep=0 prep_sid=""
   while [ $# -gt 0 ]; do
     case "$1" in
       -h|--help) usage_standing; return 0 ;;
+      --prep) prep=1; shift
+              if [ $# -gt 0 ] && [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*-[0-9]{3}$ ]]; then prep_sid="$1"; shift; fi ;;
       -) [ -z "$file" ] || die "office standing takes one text: FILE, or - for stdin"; file="-"; shift ;;
       -*) usage_standing >&2; die "office standing does not know $1; it takes a folder and FILE or -" ;;
       *) if [ -z "$want" ]; then want="$1"; elif [ -z "$file" ]; then file="$1"
@@ -10077,12 +10170,20 @@ cmd_standing() {
   done
   root="$(resolve_office)" || exit 1
   require_current "$root"
-  if [ -z "$want" ]; then
+  if [ "$prep" = 1 ]; then
+    # A prep has no folder (0.55.0): FOLDER's place holds the text.
+    if [ -n "$want" ]; then
+      [ -z "$file" ] || die "office standing --prep takes the prep's id and one text (FILE, or - for stdin), no folder"
+      file="$want"; want=""
+    fi
+  elif [ -z "$want" ]; then
     can_ask || { usage_standing >&2; die "name the sitting's folder: office standing FOLDER; piped input is never asked"; }
     ask_folder want "$root" desk standing
   fi
-  name="$(find_folder "$root" desk "$want")" || exit 1
-  [ -f "$root/desk/$name/folder.md" ] || die "desk/$name has no folder.md"
+  if [ "$prep" = 0 ]; then
+    name="$(find_folder "$root" desk "$want")" || exit 1
+    [ -f "$root/desk/$name/folder.md" ] || die "desk/$name has no folder.md"
+  fi
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/office-standing.XXXXXXXX")" || die "no temporary directory for the block"
   TMP_PATHS+=("$tmp")
   text_file="$tmp/text"
@@ -10095,7 +10196,8 @@ cmd_standing() {
     cp -- "$file" "$text_file" || die "could not read $file"
     via="file $(basename -- "$file")"
   else
-    can_ask || die "office standing reads the clipboard only on a terminal: give the block as a file (office standing $want FILE) or on stdin (office standing $want -); piped input is never asked"
+    local how="$want"; [ "$prep" = 0 ] || how="--prep${prep_sid:+ $prep_sid}"
+    can_ask || die "office standing reads the clipboard only on a terminal: give the block as a file (office standing $how FILE) or on stdin (office standing $how -); piped input is never asked"
     paste_setting "office standing reads the sitting's block from the clipboard when it is given no file" \
       "give the block as a file (office standing FOLDER FILE) or on stdin (office standing FOLDER -)"
     log "reading the standing from the clipboard ($PASTE)"
@@ -10103,6 +10205,7 @@ cmd_standing() {
     [ "$rc" = 0 ] || die "the clipboard could not be read: $PASTE exited $rc ($(tail -n 1 "$tmp/paste.err")); paste_command in $MACHINE_FILE"
     via="the clipboard"
   fi
+  if [ "$prep" = 1 ]; then file_prep_standing "$root" "$prep_sid" "$text_file" "$via" 1; return; fi
   file_standing "$root" "$name" "$text_file" "$via" 1
 }
 
@@ -10419,12 +10522,20 @@ probe_split_standing() {
 # records the standing's sitting. Returns 1 when the text holds a probe
 # block (or no standing), for the probe to go on.
 probe_standing_only() {
-  local root="$1" name="$2" block_file="$3"
+  local root="$1" name="$2" block_file="$3" prep_sid="${4:-}" place
   [ -n "$PROBE_STANDING" ] || return 1
   ! probe_py has-block "$block_file" || return 1
-  if [ -z "$name" ]; then
-    name="$(standx folder-of "$root" --file "$PROBE_STANDING")" \
-      || die "$PROBE_VIA holds a standing and no probe, and the standing could not be filed (the line above says why): office standing FOLDER files it; nothing ran"
+  if [ -z "$name" ] && [ -z "$prep_sid" ]; then
+    # The folder that records the sitting, or (0.55.0) the meeting's prep
+    # the calendar records, since no folder records a prep.
+    place="$(standx place-of "$root" --file "$PROBE_STANDING")" \
+      || die "$PROBE_VIA holds a standing and no probe, and the standing could not be filed (the line above says why): office standing FOLDER, or office standing --prep for a meeting's prep, files it; nothing ran"
+    case "$place" in desk$'\t'*) name="${place#desk$'\t'}" ;; prep$'\t'*) prep_sid="${place#prep$'\t'}" ;; esac
+  fi
+  if [ -n "$prep_sid" ]; then
+    file_prep_standing "$root" "$prep_sid" "$PROBE_STANDING" "$PROBE_VIA" 1 || exit 1
+    log "$PROBE_VIA holds a standing and no probe: filed as calendar/standing-$prep_sid.md; nothing to run"
+    return 0
   fi
   file_standing "$root" "$name" "$PROBE_STANDING" "$PROBE_VIA" 1 || exit 1
   log "$PROBE_VIA holds a standing and no probe: filed on desk/$name; nothing to run"
@@ -10435,11 +10546,14 @@ cmd_probe() {
   local want="" file="" project="" sid="" yes=0 root name md tmp block_file plan_file result_file out rc ans
   local names cands=() c tray_root tz day where block held
   local typed_project="" typed_sid="" text_read=0 sid_soft=() line_key line_val run_line="" line_folder="" line_project="" line_sid=""
+  local prep=0 prep_sid="" line_prep="" prep_title="" for_whom
   PROBE_VIA=""; PROBE_STANDING=""
   while [ $# -gt 0 ]; do
     case "$1" in
       -h|--help) usage_probe; return 0 ;;
       --yes) yes=1; shift ;;
+      --prep) prep=1; shift
+              if [ $# -gt 0 ] && [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*-[0-9]{3}$ ]]; then prep_sid="$1"; shift; fi ;;
       --project) [ $# -ge 2 ] || die "--project needs a project's name, or office for the office itself"; project="$2"; typed_project="$2"; shift 2 ;;
       --sid) [ $# -ge 2 ] || die "--sid needs the session's id"; sid="$2"; typed_sid="$2"; shift 2 ;;
       -) [ -z "$file" ] || die "office probe takes one block"; file="-"; shift ;;
@@ -10453,6 +10567,15 @@ cmd_probe() {
   if [ -n "$sid" ]; then
     [[ "$sid" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*-[0-9]{3}$ ]] || die "--sid $sid: not a session id (YYYY-MM-DD-slug-NNN)"
   fi
+  if [ "$prep" = 1 ]; then
+    # A prep has no folder (0.55.0): FOLDER's place holds the block, and
+    # --sid is the prep's own.
+    if [ -n "$want" ]; then
+      [ -z "$file" ] || die "office probe --prep takes the prep's id and one block (FILE, or - for stdin), no folder"
+      file="$want"; want=""
+    fi
+    [ -z "$sid" ] || die "--sid names a folder's session; a prep's is --prep SID"
+  fi
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/office-probe.XXXXXXXX")" || die "no temporary directory for the block"
   TMP_PATHS+=("$tmp")
   block_file="$tmp/block.sh"
@@ -10465,14 +10588,37 @@ cmd_probe() {
     probe_read_text "$file" "$block_file" "$tmp"
     text_read=1
     probe_split_standing "$block_file" "$tmp"
-    if probe_standing_only "$root" "" "$block_file"; then return 0; fi
+    if probe_standing_only "$root" "" "$block_file" "$prep_sid"; then return 0; fi
     out="$(probe_py run-line "$block_file")" || exit 1
     while IFS=$'\t' read -r line_key line_val; do
       case "$line_key" in
         line) run_line="$line_val" ;; folder) line_folder="$line_val" ;;
-        project) line_project="$line_val" ;; sid) line_sid="$line_val" ;;
+        project) line_project="$line_val" ;; sid) line_sid="$line_val" ;; prep) line_prep="$line_val" ;;
       esac
     done <<< "$out"
+    # A prep's run line (0.55.0), `# office: probe --prep SID [--project
+    # NAME]`: the prep it names, and where it runs when it says; a typed
+    # --prep SID wins, said. Its sid is the prep's, not a folder's.
+    if [ -n "$line_prep" ]; then
+      log "from the block: ${run_line#\# office: }"
+      if [ -n "$prep_sid" ] && [ "$prep_sid" != "$line_prep" ]; then
+        log "--prep $prep_sid, as typed, stands over the block's --prep $line_prep"
+      else
+        prep=1; prep_sid="$line_prep"
+      fi
+      line_sid=""; run_line=""
+      if [ -n "$line_project" ] && [ -z "$typed_project" ]; then
+        if [ "$line_project" = office ] || helper project-names "$root/$MANIFEST_REL" 2>/dev/null | grep -qxF -- "$line_project"; then
+          project="$line_project"
+        else
+          log "the block's run line names --project $line_project, which this office does not scope; where it runs is read as without it"
+        fi
+      fi
+    fi
+    if [ -n "$run_line" ] && [ "$prep" = 1 ]; then
+      log "the block's run line names a folder (${run_line#\# office: }), and --prep names a meeting's prep: the prep's is taken"
+      run_line=""
+    fi
     if [ -n "$run_line" ]; then
       log "from the block: ${run_line#\# office: }"
       if ( find_folder "$root" desk "$line_folder" ) >/dev/null 2>&1; then
@@ -10501,11 +10647,42 @@ cmd_probe() {
     fi
   fi
 
+  # A meeting's prep (0.55.0): no folder records it, the calendar's record
+  # line does. With no id: the one prep out, said; with several, by key.
+  if [ "$prep" = 1 ]; then
+    local prows=() prow pvals=() psid ptitle pabout
+    mapfile -t prows < <(probe_py preps-out "$root")
+    for prow in "${prows[@]}"; do
+      [ -n "$prow" ] || continue
+      IFS=$'\t' read -r psid ptitle pabout <<< "$prow"
+      pvals+=("$psid" "$psid, the prep for $ptitle${pabout:+ (about: $pabout)}")
+      [ "$psid" != "$prep_sid" ] || prep_title="$ptitle"
+    done
+    if [ -z "$prep_sid" ]; then
+      [ "${#pvals[@]}" -gt 0 ] || die "no meeting's prep is out (calendar/record.md records none), so there is no prep's session for the probe; office probe FOLDER runs a folder's"
+      if [ "${#pvals[@]}" -eq 2 ]; then
+        prep_sid="${pvals[0]}"
+        log "the calendar records one prep out, ${pvals[1]}: the probe is its (--prep SID names another)"
+      else
+        can_ask || die "$((${#pvals[@]} / 2)) meetings' preps are out ($(for ((i = 0; i < ${#pvals[@]}; i += 2)); do printf '%s ' "${pvals[$i]}"; done | sed 's/ $//; s/ /, /g')): name one, office probe --prep SID; piped input is never asked"
+        printf "The meetings' preps out:\n" >&2
+        pick prep_sid "Which prep's sitting asked for this probe, by its key (--prep SID)" \
+          "Each is a meeting's prep the calendar records as out, a read-only sitting open in the office. The probe is the one whose sitting returned the block." \
+          "" 0 "${pvals[@]}"
+      fi
+      for prow in "${prows[@]}"; do IFS=$'\t' read -r psid ptitle pabout <<< "$prow"; [ "$psid" != "$prep_sid" ] || prep_title="$ptitle"; done
+    fi
+    [ -n "$prep_title" ] || die "--prep $prep_sid: the calendar records no meeting's prep out by that id (calendar/record.md); office week names the meetings"
+    for_whom="the prep for $prep_title"
+  fi
+
   # Which job. With no folder named (0.41.0): the one folder on the desk
   # that records a session open where probes run is the one, said; with
   # several, those folders alone are offered by key, sittings first; with
   # none, every folder, as before.
-  if [ -z "$want" ]; then
+  if [ "$prep" = 1 ]; then
+    :
+  elif [ -z "$want" ]; then
     local frows=() frow fvals=() fname fsid fwords flabel
     mapfile -t frows < <(reader probe-folders "$root" 2>/dev/null)
     for frow in "${frows[@]}"; do
@@ -10528,21 +10705,27 @@ cmd_probe() {
       ask_folder want "$root" desk probe
     fi
   fi
-  name="$(find_folder "$root" desk "$want")" || exit 1
-  md="$root/desk/$name/folder.md"
-  [ -f "$md" ] || die "desk/$name has no folder.md"
+  if [ "$prep" = 0 ]; then
+    name="$(find_folder "$root" desk "$want")" || exit 1
+    md="$root/desk/$name/folder.md"
+    [ -f "$md" ] || die "desk/$name has no folder.md"
+    for_whom="desk/$name"
+  fi
 
   # The block: a file, stdin, or the clipboard, read now when a folder was
   # named (the folder settled first, 0.41.0).
   if [ "$text_read" = 0 ]; then
     probe_read_text "$file" "$block_file" "$tmp"
     probe_split_standing "$block_file" "$tmp"
-    if probe_standing_only "$root" "$name" "$block_file"; then return 0; fi
+    if probe_standing_only "$root" "${name:-}" "$block_file" "$prep_sid"; then return 0; fi
   fi
   # The standing that rode with the probe is filed on the folder first,
   # said in one line; one that does not read is said, and the probe goes
-  # on as without it.
-  [ -z "$PROBE_STANDING" ] || file_standing "$root" "$name" "$PROBE_STANDING" "the probe's text" 0 || true
+  # on as without it. A prep's goes to the calendar (0.55.0).
+  if [ -n "$PROBE_STANDING" ]; then
+    if [ "$prep" = 1 ]; then file_prep_standing "$root" "$prep_sid" "$PROBE_STANDING" "the probe's text" 0 || true
+    else file_standing "$root" "$name" "$PROBE_STANDING" "the probe's text" 0 || true; fi
+  fi
   # A block the office does not run is refused by name before anything is
   # reached: no PROBE BEGIN line, no purpose header, or a header that
   # does not say it is read-only.
@@ -10557,6 +10740,24 @@ cmd_probe() {
       || die "the block calls office-on for $(printf '%s' "$reaches" | paste -sd, - | sed 's/,/, /g'), so it runs in the office root and reaches each of them through its shell; --project $project does not fit it (give --project office, or leave it out); nothing ran"
     project=office
     log "the block calls office-on for $(printf '%s' "$reaches" | paste -sd, - | sed 's/,/, /g'), so it runs in the office root and reaches each of them where it lives (--project is not needed)"
+  fi
+  # Where a prep's probe runs (0.55.0): --project, the run line's, or the
+  # one thing its meeting concerns; asked when it concerns several.
+  if [ -z "$project" ] && [ "$prep" = 1 ]; then
+    local pw pconcerns
+    out="$(probe_py prep-where "$root" --sid "$prep_sid")" || exit 1
+    pw="$(printf '%s\n' "$out" | sed -n 's/^where\t//p')"; pconcerns="$(printf '%s\n' "$out" | sed -n 's/^concerns\t//p')"
+    if [ "$pw" = office ]; then
+      project=office
+      log "from the calendar: the meeting concerns the office itself, so the probe runs in the office root (--project says otherwise)"
+    elif [ -n "$pw" ]; then
+      project="$pw"
+      log "from the calendar: the meeting concerns $pw, so the probe runs where $pw lives (--project says otherwise)"
+    else
+      names="$(helper project-names "$root/$MANIFEST_REL" 2>/dev/null)"
+      can_ask || die "say where the probe runs: --project NAME ($(printf '%s' "$names" | paste -sd, - | sed 's/,/, /g')), or --project office for the office itself; the meeting concerns several ($pconcerns), and piped input is never asked"
+      ask_probe_project project "$names"
+    fi
   fi
   # Where it runs: the folder's lane, --project, or asked.
   if [ -z "$project" ]; then
@@ -10578,7 +10779,11 @@ cmd_probe() {
   # one reach of a host.
   plan_file="$tmp/plan.json"
   while :; do
-    out="$(probe_py plan "$root" "desk/$name" --project "$project" --block "$block_file" ${sid:+--sid "$sid"} ${sid_soft[@]+"${sid_soft[@]}"})"; rc=$?
+    if [ "$prep" = 1 ]; then
+      out="$(probe_py plan "$root" --prep "$prep_sid" --project "$project" --block "$block_file")"; rc=$?
+    else
+      out="$(probe_py plan "$root" "desk/$name" --project "$project" --block "$block_file" ${sid:+--sid "$sid"} ${sid_soft[@]+"${sid_soft[@]}"})"; rc=$?
+    fi
     case "$rc" in
       0) printf '%s\n' "$out" > "$plan_file"; break ;;
       5) # One per line: the id, a tab, its words (a sitting says so).
@@ -10600,10 +10805,14 @@ print("\n".join(v) if isinstance(v, list) else ("" if v is None else v))' "$1" "
   local for_sitting=""
   [ "$(probe_field "$plan_file" sitting)" != True ] || for_sitting=", the read-only sitting open in the office"
 
+  # A call whose command is one word holding a space or `;` (0.55.0):
+  # said before the header, the sh -c form named; nothing refuses.
+  local pwarn
+  while IFS= read -r pwarn; do [ -z "$pwarn" ] || warn "$pwarn"; done < <(probe_field "$plan_file" warnings)
   # The header, and one question before anything runs.
   printf 'The probe block, as its purpose header says:\n' >&2
   probe_field "$plan_file" header | sed 's/^/  /' >&2
-  printf 'It runs %s, stdin closed, for %s (desk/%s%s).\n' "$where" "$sid" "$name" "$for_sitting" >&2
+  printf 'It runs %s, stdin closed, for %s (%s%s).\n' "$where" "$sid" "$for_whom" "$for_sitting" >&2
   if [ "$yes" = 0 ]; then
     can_ask || die "a probe runs only once its header has been seen and said yes to: --yes says it, and piped input is never asked; nothing ran"
     ask ans "Run it? y or N (--yes)" "N" 0 \
@@ -10639,9 +10848,16 @@ print("\n".join(v) if isinstance(v, list) else ("" if v is None else v))' "$1" "
 
   # One History line, so a sitting can count a session's probes. The
   # one-writer rule holds: an open session in the office's own registry
-  # whose forecast holds the folder keeps the line out, said.
+  # whose forecast holds the folder keeps the line out, said. A prep has
+  # no folder, and the calendar's record line keeps its own shape, so its
+  # probe is said and written nowhere (0.55.0).
   tz="$(office_tz "$root")"; day="$(office_date "$tz")"
   local line="$sid, $(probe_field "$result_file" count) lines"
+  if [ "$prep" = 1 ]; then
+    log "no folder records $for_whom, so no History line is written for this probe ($line)"
+    [ "$(probe_field "$result_file" closed)" = True ] || return 1
+    return 0
+  fi
   held="$(reader writers "$root" "desk/$name/folder.md" 2>/dev/null)"; rc=$?
   if [ "$rc" = 3 ]; then
     printf '%s\n' "$held" | sed 's/^/[office]   /' >&2

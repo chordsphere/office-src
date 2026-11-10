@@ -12,7 +12,10 @@
 3. office probe runs a block that spans the office and a project's host:
    a block that calls `office-on PROJECT COMMAND` runs in the office root
    with that helper on its PATH, and each call runs its command where the
-   project lives, through its shell on a host.
+   project lives, through its shell on a host. Since 0.55.0 those tests
+   live with the spanning probe's others, in tests/test_spanning_probe.py
+   (spanning_block, TestASpanningProbe, TestASpanningProbeOnAHost); this
+   module keeps the first two.
 
 The suite makes no network call and runs no real ssh: a bare repo on this
 machine is the audience, the fake ssh of tests/test_project_on_host.py
@@ -22,12 +25,9 @@ the rest of the suite:
     tests/run.sh test_three_gaps
 """
 
-import json
 import os
 import pathlib
-import re
 import shlex
-import subprocess
 import sys
 import unittest
 
@@ -38,12 +38,10 @@ from test_land import LandCase, bundle_file  # noqa: E402
 from test_audience_line import AudienceCase, SID, SID2, WORDS, git  # noqa: E402
 from test_out_trip_to_host import HostedStartCase  # noqa: E402
 from test_project_on_host import HOST  # noqa: E402
-from test_probe import ProbeCase, probe_block  # noqa: E402
 
 import office_bale as ob  # noqa: E402
 import office_deliver as odl  # noqa: E402
 import office_helper as oh  # noqa: E402
-import office_probe as op  # noqa: E402
 
 LIB = REPO / "lib"
 
@@ -326,128 +324,3 @@ class TestTheBundlesBranchOnAHost(HostedStartCase):
         self.assertEqual(len(checkout), 1, [c[-1][:80] for c in calls])
         self.assertTrue(opened and checkout[0] < opened[0], [c[-1][:80] for c in calls])
         self.assertEqual(self.ssh.left_on(HOST), [])
-
-
-# --- 3. a probe that spans the office and a project's host ----------------------------------------
-
-def spanning_block(project="alpha", slug="fix-login", writes=False):
-    """A probe block in the crafter's shape whose body calls office-on for
-    a project: where the block runs, where the call ran, and its code. A
-    shell line goes as `sh -c LINE`: since 0.45.0 the call's words reach
-    the project's shell as given (one quoted word is one command's name,
-    not a line)."""
-    lines = [f"  office-on {project} sh -c 'pwd -P; git rev-parse --is-inside-work-tree'",
-             '  echo "on exit: $?"',
-             f"  office-on {project} sh -c 'exit 3'",
-             '  echo "on exit: $?"',
-             '  echo "cwd: $(pwd -P)"',
-             '  if IFS= read -r x; then echo "stdin had: $x"; else echo "stdin closed"; fi']
-    if writes:
-        lines += ["  mkdir -p probe-output", "  echo '{}' > probe-output/meta.json"]
-    header = [f"# PROBE {slug}: the office and {project}, in one block.",
-              f"# Why: the session needs both; office-on PROJECT reaches the project (the helper is office probe's).",
-              ("# Read-only except ./probe-output/: it writes only under ./probe-output/." if writes
-               else "# Read-only: writes nothing anywhere; stdout is the only output."),
-              "# Bound: probe() gets 10 seconds of wall clock."]
-    out = ["#!/usr/bin/env bash", *header, "", "probe() {", *lines, "}", 'out="$(probe 2>&1)"',
-           f'echo "=== PROBE BEGIN {slug} ==="', 'printf "%s\\n" "$out"',
-           "printf -- '--- integrity: %s lines ---\\n' \"$(printf '%s\\n' \"$out\" | wc -l)\"",
-           f'echo "=== PROBE END {slug} ==="']
-    return "\n".join(out) + "\n"
-
-
-class TestASpanningProbe(ProbeCase):
-    def test_the_reaches_are_read_from_the_blocks_own_lines(self):
-        b = op.read_block(spanning_block())
-        self.assertEqual(b["reaches"], ["alpha"])
-        self.assertEqual(op.read_block(probe_block())["reaches"], [])
-        text = probe_block(header=["# PROBE x: uses office-on PROJECT to reach a project.", "# Read-only: yes."])
-        self.assertEqual(op.read_block(text)["reaches"], [])
-        self.assertEqual(op.reaches_of(["x=1; office-on a-b 'ls' ; office-on a-b 'ls'; office-on c_d ls",
-                                        "echo not-office-on z", "  # office-on comment"]), ["a-b", "c_d"])
-
-    def test_it_runs_in_the_office_root_and_each_call_where_the_project_lives(self):
-        self.block.write_text(spanning_block())
-        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=0)
-        self.assertIn("the block calls office-on for alpha, so it runs in the office root", proc.stderr)
-        self.assertIn(f"It runs in the office root, reaching alpha in {os.path.realpath(self.proj)} (alpha's repo) with "
-                      f"office-on alpha, stdin closed", proc.stderr)
-        self.assertIn("office-on is on the block's PATH for alpha", proc.stderr)
-        self.assertIn(f"cwd: {os.path.realpath(self.root)}", proc.stdout)
-        self.assertIn(f"{os.path.realpath(self.proj)}\ntrue\non exit: 0", proc.stdout)
-        self.assertIn("on exit: 3", proc.stdout)
-        self.assertIn("stdin closed", proc.stdout)
-        self.assertIn(f"for {self.sid} (desk/{self.name})", proc.stderr)
-        self.assertRegex(self.history()[0], r"^- \d{4}-\d{2}-\d{2} probe: " + re.escape(self.sid) + r", \d+ lines$")
-
-    def test_a_project_the_office_does_not_scope_is_refused_before_anything_runs(self):
-        self.block.write_text(spanning_block(project="nowhere"))
-        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", check=1)
-        self.assertIn("office-on nowhere: --project nowhere: no project named nowhere", proc.stderr)
-        self.assertIn("nothing ran", proc.stderr)
-        self.assertNotIn("PROBE BEGIN", proc.stdout)
-        self.assertEqual(self.history(), [])
-
-    def test_a_project_flag_does_not_fit_a_spanning_block(self):
-        self.block.write_text(spanning_block())
-        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", "--project", "alpha", check=1)
-        self.assertIn("so it runs in the office root and reaches each of them through its shell; --project alpha does "
-                      "not fit it (give --project office, or leave it out); nothing ran", proc.stderr)
-        proc = self.run_office("probe", "fix-login", str(self.block), "--yes", "--project", "office", check=0)
-        self.assertIn(f"cwd: {os.path.realpath(self.root)}", proc.stdout)
-
-    def test_a_sittings_spanning_probe_runs_under_the_sittings_id(self):
-        name = self.run_office("open", "plan-it", check=0).stdout.strip().split("/")[1]
-        out = self.run_office("start", name, "--in-office", "--read-only", "--goal", "Plan it", check=0).stdout
-        sit = re.search(r"^Packed (\S+) for ", out, re.M).group(1)
-        self.block.write_text(spanning_block(slug="plan-it", writes=True))
-        proc = self.run_office("probe", name, str(self.block), "--yes", check=0)
-        self.assertIn(f"for {sit} (desk/{name}, the read-only sitting open in the office)", proc.stderr)
-        self.assertIn(f"{os.path.realpath(self.proj)}\ntrue\non exit: 0", proc.stdout)
-        # The fallback's directory is the office root's, carried to the sitting's tray.
-        self.assertTrue((self.tray_root / sit / "probe-output" / "meta.json").is_file())
-        self.assertFalse((self.root / "probe-output").exists())
-        self.assertEqual(self.e.git(self.root, "status", "--porcelain"), "")
-
-    def test_the_helper_as_a_unit(self):
-        plan = self.e.tmp / "plan.json"
-        plan.write_text(json.dumps({"reaches": {"alpha": {"path": str(self.proj), "host": None, "shell": None,
-                                                           "connect": None, "name": "alpha"}}}))
-        d = op.write_on_helper(self.e.tmp / "bin", plan)
-        helper = d / "office-on"
-        self.assertTrue(os.access(helper, os.X_OK))
-        env = dict(self.e.env, PATH=f"{d}{os.pathsep}{self.e.env['PATH']}")
-        proc = subprocess.run(["office-on", "alpha", "git", "log", "--format=%s", "-n", "1"], env=env,
-                              capture_output=True, text=True)
-        self.assertEqual((proc.returncode, proc.stdout), (0, "init\n"), proc.stderr)
-        proc = subprocess.run(["office-on", "alpha", "sh", "-c", "exit 5"], env=env, capture_output=True, text=True)
-        self.assertEqual(proc.returncode, 5)
-        proc = subprocess.run(["office-on", "beta", "true"], env=env, capture_output=True, text=True)
-        self.assertEqual(proc.returncode, op.EXIT_ON_UNREACHED)
-        self.assertIn("office-on beta: not a project this probe reaches (its block names: alpha)", proc.stderr)
-        proc = subprocess.run(["office-on"], env=env, capture_output=True, text=True)
-        self.assertEqual(proc.returncode, 2)
-
-
-class TestASpanningProbeOnAHost(HostedStartCase):
-    def test_each_call_runs_through_the_projects_shell(self):
-        self.only_far()
-        host = self.ssh.host_dir(HOST)
-        (host / "path").write_text(f"{self.fake.dir}:/usr/bin:/bin\n")
-        sid = self.start(self.name, "--on", "far", "--goal", "Fix it there", "--write", "src")
-        block = self.e.tmp / "probe.sh"
-        block.write_text(spanning_block(project="far"))
-        tray_root = self.e.home / "out-tray"
-        proc = self.run_office("probe", self.name, str(block), "--yes")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn(f"reaching far in {self.proj} on {HOST} (through far's shell) with office-on far", proc.stderr)
-        self.assertIn(f"cwd: {os.path.realpath(self.root)}", proc.stdout)
-        self.assertIn(f"{os.path.realpath(self.proj)}\ntrue\non exit: 0", proc.stdout)
-        self.assertIn("on exit: 3", proc.stdout)
-        self.assertIn(f"for {sid} (desk/{self.name})", proc.stderr)
-        calls = self.ssh.connections()
-        self.assertTrue(all(c[0] == HOST for c in calls), calls)
-        self.assertTrue(all("-tt" not in c for c in calls), calls)
-        self.assertTrue(any("pwd -P" in c[-1] for c in calls), [c[-1][:80] for c in calls])
-        self.assertEqual(self.ssh.left_on(HOST), [])
-        self.assertFalse(tray_root.joinpath(sid, "probe-output").exists())
