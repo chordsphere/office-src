@@ -104,7 +104,9 @@ session (`Send the merge session for folder N, ...`, `office start N
 audience and is not delivered yet, newest landing first (`Deliver folder
 N, TITLE (PROJECT): SID landed DAY, not yet delivered`, `office deliver
 N`; 0.41.0), a planner's bundle in your downloads that no session has
-opened (bale's records say which were; when the downloads hold two
+opened (bale's records say which were, by the bundle's stem and, since
+0.57.0, its brief's hash, so a different bundle saved under a stem an
+earlier session was opened from is offered; when the downloads hold two
 copies of its stem the item says so, the newest offered), each unsorted
 drop and the sort, desk moves a sitting decided, an office out of step
 with the install, and a read-only sitting, which only you can say is
@@ -442,7 +444,13 @@ plain return goes on): the newest nine, and one line for the rest, `and
 N more, oldest first: office start --bundle STEM starts one by name,
 office withdraw --bundle STEM takes one out of the offer` (0.46.0). A
 bundle a paused project's session opened is read as opened too, and
-leaves the offer. Then it asks which job, by key, or a new one in your
+leaves the offer. A bundle is opened only when a session was opened from
+that bundle itself (0.57.0): bale records the stem and the hash of the
+brief, and a different brief saved under the same stem, or beside it as
+`STEM (1)`, is offered, while a true copy is not. Picked by its key, a
+bundle is sent with the same answers from its brief, and the same
+questions, as `office start --bundle STEM`, which takes the newest copy
+and says when the copies it left carry another brief. Then it asks which job, by key, or a new one in your
 words. Where the work lands is the folder's lane (asked by key only when
 the lane names no project, and your answer is then kept as the lane, so it
 is asked once; a lane `the office` sends it to the office), the goal is the folder's own or your words,
@@ -1473,9 +1481,13 @@ it wraps onto indented lines as a list item does (0.38.0; before, only
 its first line was filed), and a `####
 Front sheet` in place of the chapter's, whole (a chapter's `## Conventions`,
 0.56.0, between its front sheet and its facts, is the project's own rules
-for what leaves it, settled with its reviewer once and written by hand or
-through a session in the office; land never writes it, and a chapter
-without one reads as none); and its `## Structure`,
+for what leaves it, settled with its reviewer once and written by hand,
+through a session in the office, or by land: since 0.57.0 a session's
+`#### Conventions`, one `- ` line each, replaces the section whole, the
+lines that left named, and only from notes that record an answer of yours
+under `## Questions and answers`; without one it is said and left; a
+chapter without the section reads as none, and `office status` names each
+project with an audience whose chapter settles none, in a line); and its `## Structure`,
 the folder's title, size and goal as the session judged them, each filed
 over a field the folder marks provisional, the rest kept as they are, in
 one line saying what changed. The handbook arrives with

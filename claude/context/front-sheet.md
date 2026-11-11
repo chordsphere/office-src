@@ -240,6 +240,11 @@ where 0.29.0's 924 took 658 on the same sandbox; the fast tier
 
 ## Recent changes
 
+- 0.57.0 (session 2026-11-11-offer-and-conventions-001): a bundle told
+  from the one a session opened by its brief's hash, so either door offers
+  and answers it the same; office land files a session's settled
+  `#### Conventions` after the occupant's answer; office status names a
+  project with an audience and none settled; bare probe in one helper call.
 - 0.56.0 (session 2026-11-10-practice-rules-001): the practice written
   down: words to the occupant (house rule 5), a cleanup never named, a
   project's conventions in its handbook chapter, one pull request per

@@ -28,7 +28,9 @@ project writes one in the Handbook section of its notes.md, and office land
 replaces the chapter's front sheet with it, whole. The conventions are the
 project's own rules for what leaves it (the commit style, the review's
 shape, which repository), settled with its reviewer once and written here
-by hand or through a session in the office; where they speak they win over
+by hand, through a session in the office, or by office land, which files a
+session's Conventions after the occupant has answered it and replaces the
+section whole, naming any line that left; where they speak they win over
 the letterhead's voice page for the form, and the voice page keeps the
 words. A chapter with none settled reads as none. The facts are for
 sessions: each line is one thing a session learned about the project, or

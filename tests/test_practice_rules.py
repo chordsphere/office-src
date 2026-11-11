@@ -213,8 +213,12 @@ class TestTheConventionsPlace(unittest.TestCase):
         self.assertIn("the letterhead lifts one. The project's conventions, its handbook chapter's `## Conventions` "
                       "(0.56.0), win over the voice page for the form of what leaves; the voice page keeps the words.",
                       core)
-        self.assertIn("`office land` never writes them, and no migration does. Where they speak, they win over the "
-                      "voice page for the form of what leaves", past)
+        # 0.57.0: land files a session's set after the occupant's answer
+        # (tests/test_offer_and_conventions.py holds the rest of it).
+        self.assertIn("`office land` files a session's `#### Conventions` after the occupant's answer, and only "
+                      "then (0.57.0).", past)
+        self.assertIn("No migration writes them. Where they speak, they win over the voice page for the form of "
+                      "what leaves", past)
         self.assertIn("a project session follows what the repository's own CONTRIBUTING says where it speaks, as the "
                       "project's convention, never the voice page over it", past)
 
@@ -443,13 +447,14 @@ class TestAStartMintsOnTheFakeDay(PrepCase):
 
 class TestTheRelease(unittest.TestCase):
     def test_the_record_names_this_release(self):
-        version = (REPO / "VERSION").read_text().strip()
+        # The release is the one the front sheet names for this session,
+        # not VERSION's (0.57.0): VERSION moves on with every release.
+        sheet = (REPO / ("cla" + "ude") / "context" / "front-sheet.md").read_text()
+        version = re.search(r"^- (\d+\.\d+\.\d+) \(session 2026-11-10-practice-rules-001\)", sheet, re.M).group(1)
         releases = (REPO / "RELEASES.md").read_text()
         entry = releases.split(f"\n## {version}\n", 1)[1].split("\n## ", 1)[0]
         for words in ("Additive", "practice-rules", "--fake-day", "Conventions", "chat"):
             self.assertIn(words, entry)
-        sheet = REPO / ("cla" + "ude") / "context" / "front-sheet.md"
-        self.assertIn(f"- {version} (session", sheet.read_text())
 
 
 if __name__ == "__main__":

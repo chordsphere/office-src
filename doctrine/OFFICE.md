@@ -247,13 +247,13 @@ A session is packed where it lands.
   notes.md, and `office land` files it, so a project session never writes
   the office: each light block it sent and the occupant's answer under
   `## Questions and answers`, one `- DATE question? answer` line each;
-  each fact the occupant gave it, or that it learned about a project's
-  shape, under `## Handbook`, `### PROJECT`, as `- ` lines, each bare (no
-  date in front, no session id behind: `office land` adds both) and filed
-  whole when it wraps as a list item does, with a `#### Front sheet`
-  paragraph when what the occupant should know changed. It reads the
-  handbook chapter it carries before it asks anything, so nothing is asked
-  twice. A Sort's `tell:` lands on its folder's Next.
+  under `## Handbook`, `### PROJECT`, each fact it was given or learned as
+  a `- ` line, each bare (no date in front, no session id behind:
+  `office land` adds both) and filed whole when it wraps as a list item
+  does; a `#### Front sheet` when what the occupant should know changed;
+  and, only once he has answered a light block on them, `#### Conventions`:
+  the whole set, a `- ` line each (0.57.0). It reads its chapter before it
+  asks, so nothing is asked twice. A Sort's `tell:` lands on its folder's Next.
 - Every session that works a folder writes `## Structure` at the end of
   its notes.md (principle 6): the folder's title, size and goal as it
   judged them, three lines, each key on its own line, in this order and
@@ -952,8 +952,10 @@ first (0.38.0: a leading date and a trailing session id the session
 wrote are dropped and said, a fact filed already from that session is
 left as it is, and one given twice in a filing is filed once) and whole,
 a wrapped fact's indented continuation lines joined to it with one
-space (0.38.0); and a Front sheet in place of the chapter's, whole.
-The Structure: over the provisional
+space (0.38.0); a Front sheet in place of the chapter's, whole; and a
+`#### Conventions` in place of the chapter's `## Conventions`, whole
+(0.57.0), only from notes that record an answer of the occupant's (section
+5 says the rest). The Structure: over the provisional
 fields of the folder that records the session, when that folder is on the
 desk (a folder in the filing cabinet moves whole, and a session no folder
 records has none), as the bullet in section 4 pins it. Then, when a
@@ -1420,8 +1422,9 @@ The conventions (0.56.0) are the project's own answer for the form of
 what leaves it: the commit style, the review's shape, which repository
 and base a review goes to, and what the project's own CONTRIBUTING (or
 its like) says. They are settled with the project's reviewer once and
-written over the template's `None settled yet.` by hand or through a
-session in the office, one `- ` line each (values illustrative):
+written over the template's `None settled yet.`, one `- ` line each: by
+hand, through a session in the office, or by `office land` from a
+session's `#### Conventions` (0.57.0) (values illustrative):
 
   ```
   ## Conventions
@@ -1431,16 +1434,32 @@ session in the office, one `- ` line each (values illustrative):
   - repository: the clone's origin, never the one CONTRIBUTING.md clones
   ```
 
-`office land` never writes them, and no migration does. Where they
-speak, they win over the voice page for the form of what leaves (a
-commit's subject style, a review's sections); the voice page keeps the
-words, and the letterhead's check holds both. A chapter made before
-0.56.0 has no such section, and one that still reads `None settled yet.`
-has none settled; either way a project session follows what the
-repository's own CONTRIBUTING says where it speaks, as the project's
-convention, never the voice page over it, and says in its notes.md that
-the chapter settles none, so the occupant settles it once. `office
-status` finds nothing missing in a chapter without the section.
+`office land` files a session's `#### Conventions` after the occupant's
+answer, and only then (0.57.0). A session writes the part only once he
+has answered a light block about them, and writes the whole set, since
+it carries the chapter; land files it only from notes that record an
+answer of his (a line under `## Questions and answers`), and otherwise
+says so in a line and leaves the chapter as it is, filing the rest of the
+notes as ever. The set replaces the section whole, as a front sheet
+replaces its own: afterwards the section holds the session's lines and
+nothing else, each on one line and in ASCII, so a convention can be
+withdrawn as well as added, and land names each line the chapter held
+that the new set does not carry, so nothing settled leaves without a
+word. The same set filed again is said and left; a part with no `- `
+line is said and never empties a settled section. A chapter with no such
+section gains it between its front sheet and its facts. No migration
+writes them. Where they speak, they win over the voice page for the form
+of what leaves (a commit's subject style, a review's sections); the voice
+page keeps the words, and the letterhead's check holds both. A chapter
+made before 0.56.0 has no such section, and one that still reads `None
+settled yet.` has none settled; either way a project session follows
+what the repository's own CONTRIBUTING says where it speaks, as the
+project's convention, never the voice page over it, and says in its
+notes.md that the chapter settles none, or asks the occupant in a light
+block and writes the set he settles. `office status` finds nothing
+missing in a chapter without the section, and names in a line, never a
+problem, each project with an audience whose chapter settles none
+(0.57.0).
 
 The handbook arrives with the first fact `office land` files, as the
 in-tray arrives with the first drop: its front page from the install's

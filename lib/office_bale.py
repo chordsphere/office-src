@@ -639,14 +639,62 @@ def bundle_stems(rd, d):
     """The stems of the planner bundles a session was opened from, as its
     dossier records them on its attempts (attempts[].bundle.stem), so
     whether a bundle was opened is read, never guessed (0.22.0)."""
+    return [stem for stem, _ in bundle_records(rd, d)]
+
+
+SHA256_RE = oh.LazyPattern(r"[0-9a-f]{64}")
+
+
+def bundle_records(rd, d):
+    """[(stem, brief_sha256)] of the planner bundles a session was opened
+    from, as its dossier records them on its attempts
+    (attempts[].bundle.stem and .brief_sha256, 0.57.0): the stem as the
+    file was named, and the sha256 of the brief the bundle carried, the
+    one its bundle.json names (members.brief.sha256). The hash is None
+    when the record holds null (a bundle with no brief) or no such key
+    (a bale that did not record it), said under OFFICE_DEBUG; the
+    caller then has the stem alone, as before 0.57.0."""
     out = []
     for a in rd.key(d, "dossier", "attempts") or []:
         blk = rd.key(a, "dossier", "attempts[].bundle")
-        if blk:
-            stem = rd.key(blk, "dossier", "attempts[].bundle.stem")
-            if stem:
-                out.append(str(stem))
+        if not blk:
+            continue
+        stem = rd.key(blk, "dossier", "attempts[].bundle.stem")
+        if not stem:
+            continue
+        try:
+            sha = rd.key(blk, "dossier", "attempts[].bundle.brief_sha256")
+        except BaleError as exc:
+            if exc.kind != "key":
+                raise
+            debug(f"the record of the bundle {stem} holds no brief hash ({exc}); it is matched by its stem alone")
+            sha = None
+        out.append((str(stem), sha if isinstance(sha, str) and SHA256_RE.fullmatch(sha) else None))
     return out
+
+
+def bundle_brief_sha256(bundle):
+    """The sha256 a planner bundle's bundle.json names for its brief
+    (members.brief.sha256, 0.57.0), the hash bale records on the session
+    opened from it; None when the bundle is not a file here, carries no
+    brief, names no well-formed hash, or cannot be read (said under
+    OFFICE_DEBUG). bale's bundle format is bale's: the office reads the
+    hash bale wrote and never computes its own."""
+    import json
+    import tarfile
+    p = pathlib.Path(bundle) if bundle else None
+    if p is None or not p.is_file():
+        return None
+    try:
+        with tarfile.open(p) as t:
+            member = t.extractfile("bundle.json")
+            meta = json.loads(member.read().decode("utf-8")) if member else {}
+    except (OSError, KeyError, tarfile.TarError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        debug(f"could not read the brief hash of {p}: {exc}")
+        return None
+    brief = (meta.get("members") or {}).get("brief") if isinstance(meta, dict) else None
+    sha = brief.get("sha256") if isinstance(brief, dict) else None
+    return sha if isinstance(sha, str) and SHA256_RE.fullmatch(sha) else None
 
 
 def outcome_word(view):
@@ -5946,6 +5994,26 @@ def newest_copy(copies, name, error=None):
                           f"(left: {others})")
 
 
+def differing_bundle_copies(taken, copies):
+    """The names of the copies (browser_copies) of a planner bundle whose
+    brief differs from the one taken (0.57.0): two bundles saved under
+    one stem, which office start --bundle STEM says when it takes the
+    newest. Empty when the name is not a bundle's, or every copy carries
+    the taken one's brief (a true browser copy), or none says (no brief,
+    or unreadable: bundle_brief_sha256)."""
+    if not str(taken).endswith(".bale-bundle"):
+        return []
+    mine = bundle_brief_sha256(taken)
+    out = []
+    for p, _ in copies:
+        if p == taken:
+            continue
+        theirs = bundle_brief_sha256(p)
+        if theirs != mine and (theirs or mine):
+            out.append(p.name)
+    return out
+
+
 def find_in(directories, name, cwd=None):
     """A bare name, exactly as given, in the current directory and then
     each downloads directory in order (bale's own order for a search):
@@ -7410,6 +7478,10 @@ def main(argv=None):
             return 1
         if note:
             log(note)
+            other = differing_bundle_copies(path, browser_copies(a.dir, a.name))
+            if other:
+                log(f"not every copy is the same bundle: {', '.join(other)} {'carries' if len(other) == 1 else 'carry'} "
+                    "another brief than the one taken; office start --bundle PATH takes one by its path")
         print(path)
         return 0
     if a.cmd in ("check-project", "prepare-project", "clone-dirty", "clone-to", "git-facts", "install-guard"):

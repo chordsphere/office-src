@@ -75,7 +75,8 @@ class TestTheNotes(unittest.TestCase):
         self.assertEqual(n["qa_other"], 1)
         self.assertEqual(n["handbook"], [("alpha", ["one fact"], ["alpha is the app."])])
         self.assertEqual(osort.parse_notes("# Notes\n\n## Walkthrough\n\nx\n"),
-                         {"sorts": None, "qa": None, "qa_other": 0, "handbook": None, "structure": None})
+                         {"sorts": None, "qa": None, "qa_other": 0, "handbook": None, "conventions": None,
+                          "structure": None})
 
     def test_a_subsection_off_the_format_is_refused_with_why(self):
         def problems(block):

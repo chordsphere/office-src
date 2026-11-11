@@ -260,7 +260,44 @@ def status_lines(office_root):
             lines.append(f"guard:      {p['name']}: the clone could not be read: {exc}")
             continue
         lines.append(f"guard:      {guard_line(p, place, facts)[1]}")
+    lines += conventions_lines(root, audience)
     return lines
+
+
+def conventions_state(root, name):
+    """(settled, why) for a project's conventions in its handbook chapter
+    (0.57.0): settled is True once its `## Conventions` holds one `- `
+    line; why says what the chapter holds when it is not."""
+    import office_sort as osort
+    rel = osort.chapter_rel(name)
+    path = pathlib.Path(root) / rel
+    if not path.is_file():
+        return False, f"{rel} is not written yet"
+    body = osort.conventions_body(path)
+    if body is None:
+        return False, f"{rel} has no ## Conventions section"
+    if osort.settled_conventions(path):
+        return True, None
+    return False, f"{rel} reads {osort.NONE_SETTLED}" if body == [osort.NONE_SETTLED] else \
+        f"{rel}'s ## Conventions holds no `- ` line"
+
+
+def conventions_lines(root, audience):
+    """office status's line for each project with an audience whose
+    chapter settles no convention (0.57.0), with what settles them. A
+    line, never a problem, as the voice page's words are: with none
+    settled, every session decides the form of what leaves again from the
+    repository. None for a project with no audience, or one settled."""
+    import office_sort as osort
+    out = []
+    for p in audience:
+        settled, why = conventions_state(root, p["name"])
+        if settled:
+            continue
+        out.append(f"conventions: {p['name']} has none settled ({why}): a session asks you and office land files "
+                   f"your answer, or you write them in {osort.chapter_rel(p['name'])} under ## Conventions, one "
+                   "`- ` line each")
+    return out
 
 
 def refresh_guard(project, place=None, facts=None):

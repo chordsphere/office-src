@@ -10555,9 +10555,17 @@ probe_standing_only() {
 probe_bare_session() {
   local root="$1" frows=() prows=() row vals=() sittings=() others=() preps=() n i chosen=""
   local fname fsid fwords flabel psid ptitle pabout what="folders on the desk record a session open" head="Folders that record a session open"
+  local calls=() folders preps_out
   PROBE_BARE_FOLDER=""; PROBE_BARE_PREP=""
-  mapfile -t frows < <(reader probe-folders "$root" 2>/dev/null)
-  mapfile -t prows < <(probe_py preps-out "$root")
+  # The folders and the preps out, in one helper process (0.57.0; two
+  # since 0.56.0): neither read writes or waits on the other. As before, a
+  # read that fails reads as none: the folders' stderr is dropped, the
+  # preps' goes to the terminal.
+  batch_call calls -q bale:probe-folders "$root"
+  batch_call calls probe:preps-out "$root"
+  batch_run folders preps_out -- "${calls[@]}"
+  [ -z "$folders" ] || mapfile -t frows <<< "$folders"
+  [ -z "$preps_out" ] || mapfile -t prows <<< "$preps_out"
   for row in "${frows[@]}"; do
     [ -n "$row" ] || continue
     IFS=$'\t' read -r fname fsid fwords flabel <<< "$row"

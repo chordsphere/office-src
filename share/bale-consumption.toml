@@ -161,6 +161,7 @@ keys = [
   "attempts[].linkage.point",
   "attempts[].bundle",         # the planner bundle an attempt was opened from, or null (0.22.0)
   "attempts[].bundle.stem",    # its file name without .bale-bundle: whether a bundle was opened is read here
+  "attempts[].bundle.brief_sha256",  # the brief's hash, its bundle.json's members.brief.sha256; with the stem, which bundle it was (0.57.0)
   "lineage",
   "lineage.superseded_by",
 ]
