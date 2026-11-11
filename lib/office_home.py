@@ -414,11 +414,28 @@ def every_place(office_root):
     return [(label, cwd) for label, _, cwd in found]
 
 
+def same_bundle(b, stem, brief_sha256):
+    """Whether a dossier's bundle record (its stem and brief hash,
+    office_bale.bundle_records) is the bundle b, a file in the downloads
+    (0.57.0). The stems must agree once a browser's ` (N)` is off both;
+    then, when the record holds a brief hash, it must be the one b's own
+    bundle.json names, so a different bundle saved under a stem an earlier
+    session was opened from is not taken for it, and a true copy (the same
+    brief under NAME (1)) still is. A record with no hash (a bundle with no
+    brief, or a bale that did not record one) is matched by its stem alone,
+    as before 0.57.0: the cautious reading, which leaves the bundle out."""
+    if bundle_stem(stem) != b["stem"]:
+        return False
+    return brief_sha256 is None or brief_sha256 == b.get("brief_sha256")
+
+
 def opened_from(rd, office_root, bundles):
     """Each bundle dict gains opened (the sid of a session bale records as
-    opened from it, else None) and slug and goal (its pack line's, or None).
-    Only the sessions whose id carries the bundle's slug are read, each
-    through its dossier's attempts[].bundle.stem."""
+    opened from it, else None), slug and goal (its pack line's, or None) and
+    brief_sha256 (its bundle.json's, or None). Only the sessions whose id
+    carries the bundle's slug are read, each through its dossier's
+    attempts[].bundle: its stem, and since 0.57.0 its brief's hash
+    (same_bundle says how the two are matched)."""
     import office_bale as ob
     places = every_place(office_root) if bundles else []
     sids = {}
@@ -432,6 +449,7 @@ def opened_from(rd, office_root, bundles):
         b["opened"] = None
         if b["slug"] is None:
             continue
+        b["brief_sha256"] = ob.bundle_brief_sha256(b["path"])
         pattern = sid_for_slug(b["slug"])
         for label, (cwd, known) in sids.items():
             for sid in known:
@@ -442,9 +460,13 @@ def opened_from(rd, office_root, bundles):
                 except ob.BaleError as exc:
                     debug(f"{sid}: its dossier could not be read, so whether it opened {b['stem']} is unknown: {exc}")
                     continue
-                if d is not None and b["stem"] in [bundle_stem(x) for x in ob.bundle_stems(rd, d)]:
+                records = ob.bundle_records(rd, d) if d is not None else []
+                if any(same_bundle(b, stem, sha) for stem, sha in records):
                     b["opened"] = sid
                     break
+                if any(bundle_stem(stem) == b["stem"] for stem, _ in records):
+                    debug(f"{b['stem']}: {sid} was opened from a bundle of that stem with another brief, so this "
+                          "one is not the bundle it opened")
             if b["opened"]:
                 break
     return bundles

@@ -383,8 +383,11 @@ def main(cfg, argv):
         attempts = [dict(pack_a)]
         stem = L.get("stems", {}).get(sid)
         if stem is not None:
-            attempts[0]["bundle"] = {"stem": stem, "brief_sha256": None, "checkpoint_sha256": None,
-                                     "manifest_sha256": None}
+            # The brief's hash as bale records it (0.57.0): its bundle.json's
+            # members.brief.sha256, null for a bundle with no brief. The
+            # office reads neither other hash, so they stay null here.
+            attempts[0]["bundle"] = {"stem": stem, "brief_sha256": L.get("briefs", {}).get(sid),
+                                     "checkpoint_sha256": None, "manifest_sha256": None}
         for t in tries:
             a = dict(apply_a)
             a.update(command=t["command"], outcome=t["outcome"], change_paths=t["change_paths"],
@@ -659,7 +662,12 @@ def main(cfg, argv):
         s = load(); s["land"].setdefault("opened_from", {})[sid] = identity
         # The bundle's stem, as bale's records keep it on the pack attempt
         # (attempts[].bundle.stem; the home screen reads it, 0.22.0).
-        s["land"].setdefault("stems", {})[sid] = shown["stem"]; save(s)
+        s["land"].setdefault("stems", {})[sid] = shown["stem"]
+        # And the hash of the brief it carried (0.57.0), computed from the
+        # brief's bytes as bale checks them: the bundle.json's own hash when
+        # the bundle is sound, null when it carries no brief.
+        s["land"].setdefault("briefs", {})[sid] = members["brief"]
+        save(s)
         label = "open-brief" if brief is not None else "open-ro-bare"
         cap = fx(label)
         old_sid = "2026-10-03-probe-open-brief-001" if brief is not None else "2026-10-03-probe-open-ro-001"

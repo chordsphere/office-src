@@ -4,6 +4,63 @@ A release is breaking exactly when it ships a migration (migrations/).
 Each breaking release's migration carries the plain-language summary
 that office upgrade writes into the office's commit.
 
+## 0.57.0
+
+Additive: no migration, nothing stored changes, nothing to do in any
+office. A chapter gains `## Conventions` only when a session's answer is
+filed into it. The first session of the round after the plan's order,
+offer-and-conventions: the occupant's N8, and three of 0.56.0's
+proposals.
+
+A bundle offered by either door (N8). The office told a bundle a session
+was opened from by its stem alone, so a different bundle saved under that
+stem (the fifth sitting's, beside the fourth's as `STEM (1)`) read as
+opened: bare `office start` and the home screen left it out without a
+word, while `office start --bundle STEM` took it. Now a bundle is opened
+only when a session was opened from that bundle itself: the dossier's
+`attempts[].bundle.brief_sha256`, which bale records, is compared with the
+bundle file's own (bundle.json's `members.brief.sha256`) beside the stem
+(office_home same_bundle; office_bale bundle_records,
+bundle_brief_sha256). A true copy (the same brief under `NAME (1)`) is
+still left out; a record with no hash (a bundle with no brief, or a bale
+that did not record one) is read by its stem, as before. A key picked from
+the offer and `--bundle STEM` send the same bundle with the same answers
+from its brief; `--bundle STEM`, which takes the newest copy, now also says
+when the copies it left carry another brief. share/bale-consumption.toml
+declares the key, and the suite's fake bale records it as bale does.
+
+Land files a settled Conventions (C4's first follow-on). A session may
+write, under `## Handbook`, `### PROJECT`, a `#### Conventions` part, one
+`- ` line each, before or after its `#### Front sheet`; each part ends at
+the next part's heading, and the facts are the items above the first.
+`office land` writes the set as the chapter's `## Conventions`, whole, as
+it writes a front sheet, naming each line the chapter held that the new
+set does not carry; a chapter with no such section gains it between its
+front sheet and its facts. Only after the occupant's answer: the notes
+must record one under `## Questions and answers`, or the part is said and
+left unfiled while the rest is filed as ever. The same set again is said
+and left; a part with no `- ` line never empties a settled section
+(office_sort handbook_parts, parse_handbook_conventions,
+conventions_to_file, file_conventions). The doctrine's core bullet, its
+section 5 and the handbook's front page say so.
+
+Status names a project with none settled (C4's second follow-on). `office
+status` prints a `conventions:` line, after the audience's guard lines,
+for each project with an audience whose chapter settles no convention (no
+chapter, no section, or none of its lines a `- ` line), saying what
+settles them. A line, never a problem (office_deliver conventions_lines).
+
+Bare probe in one helper call. Bare `office probe` reads the folders and
+the preps out in one helper process (bin/office probe_bare_session,
+through batch_call), where 0.56.0 started two; every line it prints reads
+as before.
+
+Tests: tests/test_offer_and_conventions.py, a new module (28 tests,
+3 of them in the serial lane), and the pins that moved
+(tests/test_sort.py's parse_notes keys, tests/test_practice_rules.py's
+sentence past the core, and its release test, which now finds 0.56.0's
+entry through the front sheet's line for its session, not VERSION); the suite holds 1618.
+
 ## 0.56.0
 
 Additive: no migration, nothing stored changes, nothing to do in any

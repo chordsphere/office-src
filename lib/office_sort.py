@@ -273,17 +273,66 @@ def folder_ref(value):
     return int(m.group(1)) if m else None
 
 
+# The level-four parts a session may write under `### PROJECT` in its
+# Handbook section (doctrine section 4): a front sheet since 0.23.0, its
+# project's conventions since 0.57.0.
+HANDBOOK_PARTS = ("Front sheet", "Conventions")
+
+
+def handbook_parts(sub):
+    """(head, {part: body lines}) of one `### PROJECT` subsection (0.57.0):
+    the lines above the first `#### Front sheet` or `#### Conventions`
+    heading, where the facts are, and each part's own lines, which end at
+    the next part's heading (or the subsection's end), in either order. A
+    heading that names no part stays inside the part it falls in, as it
+    did inside the front sheet before 0.57.0; a part given twice is read
+    as one, its bodies in order."""
+    marks = [(i, t) for i, lv, t in headings(sub) if lv == 4 and t in HANDBOOK_PARTS]
+    head = sub[:marks[0][0]] if marks else sub
+    parts = {}
+    for n, (i, title) in enumerate(marks):
+        stop = marks[n + 1][0] if n + 1 < len(marks) else len(sub)
+        parts.setdefault(title, []).extend(sub[i + 1:stop])
+    return head, parts
+
+
 def parse_handbook(body):
     """[(project, facts, front lines or None)] from a Handbook section. A
     fact that wraps onto indented continuation lines is read whole
-    (list_items, 0.38.0)."""
+    (list_items, 0.38.0). Since 0.57.0 a `#### Conventions` part, before
+    or after the front sheet, is neither facts nor front sheet
+    (parse_handbook_conventions reads it)."""
     out = []
     for project, sub in subsections(body, 3):
-        front_at = next((i for i, lv, t in headings(sub) if lv == 4 and t == "Front sheet"), None)
-        head = sub[:front_at] if front_at is not None else sub
+        head, parts = handbook_parts(sub)
         facts = list_items(head)
-        front = trimmed(sub[front_at + 1:]) if front_at is not None else None
+        front = trimmed(parts["Front sheet"]) if "Front sheet" in parts else None
         out.append((project.strip(), [f for f in facts if f], front or None))
+    return out
+
+
+def parse_handbook_conventions(body):
+    """[(project, conventions, other)] for each `### PROJECT` of a Handbook
+    section that carries a `#### Conventions` part (0.57.0): its `- `
+    items, one convention each, a wrapped one read whole (list_items), and
+    the count of its other non-blank lines, which are not conventions and
+    are left out."""
+    out = []
+    for project, sub in subsections(body, 3):
+        _, parts = handbook_parts(sub)
+        if "Conventions" not in parts:
+            continue
+        lines = parts["Conventions"]
+        items = [c for c in list_items(lines) if c]
+        inside = fenced(lines)
+        open_, other = False, 0
+        for n, line in enumerate(lines):
+            if not inside[n] and (line.startswith("- ") or (open_ and is_continuation(line))):
+                open_ = True
+                continue
+            open_ = False
+            other += 1 if line.strip() else 0
+        out.append((project.strip(), items, other))
     return out
 
 
@@ -313,9 +362,10 @@ def parse_structure(body):
 
 def parse_notes(text):
     """What office land files from a notes.md: {sorts, qa, qa_other,
-    handbook, structure}, each None when the notes carry no such section."""
+    handbook, conventions, structure}, each None when the notes carry no
+    such section (conventions rides on the Handbook section, 0.57.0)."""
     lines = text.splitlines()
-    out = {"sorts": None, "qa": None, "qa_other": 0, "handbook": None, "structure": None}
+    out = {"sorts": None, "qa": None, "qa_other": 0, "handbook": None, "conventions": None, "structure": None}
     body = section(lines, "Sort")
     if body is not None:
         out["sorts"] = [parse_sort(name.strip(), sub) for name, sub in subsections(body, 3)]
@@ -328,6 +378,7 @@ def parse_notes(text):
     body = section(lines, "Handbook")
     if body is not None:
         out["handbook"] = parse_handbook(body)
+        out["conventions"] = parse_handbook_conventions(body)
     body = section(lines, "Structure")
     if body is not None:
         out["structure"] = parse_structure(body)
@@ -555,6 +606,83 @@ def set_front_sheet(path, front):
     pathlib.Path(path).write_text("\n".join(new) + "\n", encoding="ascii")
 
 
+CONVENTIONS = "Conventions"
+NONE_SETTLED = "None settled yet."   # the chapter template's place for them (0.56.0)
+
+
+def convention_line(item):
+    """One convention as the chapter keeps it (0.57.0): `- ` and its words
+    on one line, in ASCII, as a front sheet's are."""
+    return f"- {oh.one_line(item, 'a convention')}"
+
+
+def conventions_body(path):
+    """The chapter's `## Conventions` section's lines (the blank lines
+    around them dropped), or None when the chapter has no such section."""
+    lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
+    start, end = oh.section_bounds(lines, CONVENTIONS)
+    return None if start is None else trimmed(lines[start + 1:end])
+
+
+def settled_conventions(path):
+    """The `- ` lines a chapter's Conventions section holds (0.57.0): none
+    when there is no section, or it still reads None settled yet."""
+    body = conventions_body(path) or []
+    return [line for line in body if line.startswith("- ")]
+
+
+def set_conventions(path, entries):
+    """Replace the chapter's Conventions section whole with entries (each
+    a convention_line), as set_front_sheet replaces the front sheet
+    (0.57.0). A chapter with no such section (one made before 0.56.0)
+    gains it between its front sheet and its facts: before `## Facts`,
+    else after the front sheet, else at its end."""
+    path = pathlib.Path(path)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start, end = oh.section_bounds(lines, CONVENTIONS)
+    if start is not None:
+        tail = [""] + lines[end:] if end < len(lines) else []
+        new = lines[:start + 1] + [""] + list(entries) + tail
+    else:
+        block = [f"## {CONVENTIONS}", ""] + list(entries)
+        at, _ = oh.section_bounds(lines, "Facts")
+        if at is None:
+            _, at = oh.section_bounds(lines, "Front sheet")
+        if at is None or at >= len(lines):
+            new = trimmed(lines) + [""] + block
+        else:
+            new = trimmed(lines[:at]) + [""] + block + [""] + lines[at:]
+    path.write_text("\n".join(new) + "\n", encoding="ascii")
+
+
+def file_conventions(path, rel, conventions, sid):
+    """A session's settled conventions into a chapter's `## Conventions`,
+    whole (0.57.0). Returns (wrote, words): the set the chapter already
+    reads is said and left; otherwise the section is replaced by sid's, and
+    each line it held that the new set does not carry is named, so nothing
+    settled leaves without a word. The caller has checked the floor (an
+    answer of the occupant's in the notes) and that the set is not empty."""
+    entries, keys, twice = [], set(), 0
+    for item in conventions:
+        line = convention_line(item)
+        if line in keys:
+            twice += 1
+            continue
+        keys.add(line)
+        entries.append(line)
+    body = conventions_body(path)
+    if body == entries:
+        return False, [f"{rel}: the conventions already read as {sid}'s, left as they are"]
+    held = [" ".join(line.split()) for line in (body or []) if line.strip() and line.strip() != NONE_SETTLED]
+    gone = [line for line in held if line not in keys]
+    set_conventions(path, entries)
+    words = [f"{rel}: the conventions, replaced whole by {sid}'s ({len(entries)})"
+             + ("; the section is new in this chapter" if body is None else "")
+             + (f"; {twice} given twice, kept once" if twice else "")]
+    words += [f"{rel}: no longer settled, since {sid}'s set does not carry it: {line}" for line in gone]
+    return True, words
+
+
 def filed_facts(path):
     """{(fact, sid)} of the Facts lines a chapter holds, in the form
     office land writes, each fact read back bare (fact_key); the day each
@@ -578,14 +706,16 @@ def front_sheet_body(path):
     return None if start is None else trimmed(lines[start + 1:end])
 
 
-def file_handbook(root, project, facts, front, sid, day):
-    """One project's facts and front sheet into its chapter. Returns
-    (changed, words). Each fact is filed bare (0.38.0, bare_fact), and
-    keyed bare: filed twice (0.31.0), a fact the chapter already holds
-    from the same session is said and left, as is a fact the same filing
-    gives twice (a Handbook line and a Sort's facts: line, say), and a
-    front sheet the chapter already reads is not written again: the facts
-    grow at their end and nothing filed is rewritten."""
+def file_handbook(root, project, facts, front, sid, day, conventions=None):
+    """One project's facts and front sheet into its chapter, and since
+    0.57.0 its settled conventions (file_conventions; the caller checks
+    the floor). Returns (changed, words). Each fact is filed bare (0.38.0,
+    bare_fact), and keyed bare: filed twice (0.31.0), a fact the chapter
+    already holds from the same session is said and left, as is a fact
+    the same filing gives twice (a Handbook line and a Sort's facts: line,
+    say), and a front sheet or a set of conventions the chapter already
+    reads is not written again: the facts grow at their end and nothing
+    filed is rewritten."""
     rel, changed, words = ensure_chapter(root, project)
     path = pathlib.Path(root) / rel
     wrote = bool(changed)
@@ -632,6 +762,10 @@ def file_handbook(root, project, facts, front, sid, day):
             set_front_sheet(path, front)
             wrote = True
             words.append(f"{rel}: the front sheet, replaced whole by {sid}'s")
+    if conventions:
+        did, said = file_conventions(path, rel, conventions, sid)
+        wrote = wrote or did
+        words.extend(said)
     if wrote and rel not in changed:
         changed.append(rel)
     return changed, words
@@ -788,13 +922,15 @@ def file_notes(root, notes_text, sid, day, folder=None, project_names=()):
             facts_by.setdefault(proj, []).extend(facts)
             if front:
                 fronts[proj] = front
-    for proj in list(dict.fromkeys([*facts_by, *fronts])):
+    settled = conventions_to_file(notes, names, sid, said)
+    for proj in list(dict.fromkeys([*facts_by, *fronts, *settled])):
         facts, front = facts_by.get(proj, []), fronts.get(proj)
-        if not facts and not front:
+        if not facts and not front and not settled.get(proj):
             continue
-        paths, words = file_handbook(root, proj, facts, front, sid, day)
+        paths, words = file_handbook(root, proj, facts, front, sid, day, conventions=settled.get(proj))
         note(paths, [f"Handbook: {w}" for w in words])
-    if notes["handbook"] is not None and not any(facts_by.values()) and not fronts:
+    if notes["handbook"] is not None and not any(facts_by.values()) and not fronts and not settled \
+            and not notes["conventions"]:
         said.append("Handbook: nothing in it to file")
     structure = notes["structure"]
     if structure is not None:
@@ -810,6 +946,38 @@ def file_notes(root, notes_text, sid, day, folder=None, project_names=()):
                 note([f"{folder}/folder.md"], [])
             said.append(f"Structure: {folder}: " + "; ".join(words))
     return said, changed
+
+
+def conventions_to_file(notes, names, sid, said):
+    """{project: conventions} of a notes.md's `#### Conventions` parts that
+    office land files (0.57.0), each said in `said` when it is not: a part
+    under a project the office does not scope (its Handbook line says so
+    already), a part with no `- ` line (said, and never empties a settled
+    section), and every part when the notes record no answer of the
+    occupant's, the floor: a session writes its conventions only after he
+    has answered a light block about them, so without one line under `##
+    Questions and answers` they are said and left unfiled, and the rest of
+    the notes is filed as ever."""
+    import office_drop as odrop
+    out = {}
+    for project, items, other in notes["conventions"] or []:
+        proj = odrop.resolve_project(project, names)
+        if proj is None:
+            continue
+        if other:
+            said.append(f"Handbook: ### {project}'s #### Conventions: {other} line(s) that are not `- ` lines were "
+                        "left out (one convention a line)")
+        if not items:
+            said.append(f"Handbook: ### {project}'s #### Conventions holds no `- ` line, so nothing of it is "
+                        "filed and the chapter's conventions are left as they are")
+            continue
+        if not notes["qa"]:
+            said.append(f"Handbook: ### {project}'s #### Conventions is not filed: {sid}'s notes record no answer "
+                        "of the occupant's (no `- DATE question? answer` line under ## Questions and answers), and "
+                        "a session settles conventions only after he answers; the chapter is left as it is")
+            continue
+        out.setdefault(proj, []).extend(items)
+    return out
 
 
 def tell_on_next(folder_md, tell, page_rel):
