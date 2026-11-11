@@ -52,6 +52,11 @@ PATCH = later(0, 5)                # a synthetic additive release past this one
 FAKES = REPO / "tests" / "fakes"
 
 
+# The fake bales' default day for a whole run (0.56.0): tests/runner.py's
+# --fake-day sets it, Env hands it on, tests/fakes/pack_bale.py reads it.
+FAKE_DAY_VAR = "FAKE_BALE_DEFAULT_DAY"
+
+
 def fake_program(path, module, function="main", config=None):
     """Write path: a program that runs tests/fakes/MODULE.py's FUNCTION
     with this test's config (a dict of plain values) and its arguments,
@@ -177,6 +182,13 @@ class Env:
         # the machine's; under plain unittest there is none.
         if os.environ.get("PYTHONPYCACHEPREFIX") and os.environ.get("OFFICE_TESTS_UNDER_RUNNER"):
             self.env["PYTHONPYCACHEPREFIX"] = os.environ["PYTHONPYCACHEPREFIX"]
+        # The run's default day for the fake bales (0.56.0): tests/run.sh
+        # --fake-day DAY sets FAKE_BALE_DEFAULT_DAY for the run, and every
+        # Env hands it to the fakes it starts (tests/fakes/pack_bale.py
+        # minting_day), under the runner only. A test's own FAKE_BALE_DAY
+        # still stands over it.
+        if os.environ.get(FAKE_DAY_VAR) and os.environ.get("OFFICE_TESTS_UNDER_RUNNER"):
+            self.env[FAKE_DAY_VAR] = os.environ[FAKE_DAY_VAR]
         (self.home / ".gitconfig-empty").write_text("")
         self.office_bin = REPO / "bin" / "office"
 
@@ -1204,8 +1216,9 @@ class TestIncludeGroup(unittest.TestCase):
 
 # The kinds share/verbs.toml declares ahead of the command, as a registry
 # for the shell and for whoever spawns sessions. Blueprint section 6 of
-# the drafting-table declares them; the verbs session builds them.
-DECLARED_KINDS = ("sitting", "chat", "cleanup", "review", "check", "retry")
+# the drafting-table declares them; the verbs session builds them. The
+# chat kind is retired (0.56.0): the ask is the chat without a folder.
+DECLARED_KINDS = ("sitting", "cleanup", "review", "check", "retry")
 # The drafting table's scripts (blueprint session 4b), whose lands follow
 # the blueprint's section 3 table rather than the earlier verbs' lands =
 # writes: the verb that writes the drafting table first also brings its

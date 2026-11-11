@@ -9975,10 +9975,11 @@ lines`.
   FOLDER         the job whose session asked for the probe: its name, a
                  unique part of it, or folder N. Left out: the block is read
                  first, and its run line (below) names it (0.44.0); else the
-                 one folder on the desk that records a session open where
-                 probes run, said (0.41.0); with several, those folders by
-                 key on a terminal, sittings first; with none, asked from
-                 every folder on a terminal
+                 one session open where probes run, said: a folder on the
+                 desk that records one (0.41.0), or a meeting's prep out
+                 (0.56.0); with several, those folders and preps by key on
+                 a terminal, sittings first; with none, asked from every
+                 folder on a terminal
   FILE           the block as the worker returned it (a chat's code fence
                  around it is fine); - reads it from stdin, which then
                  cannot answer the question, so --yes goes with it
@@ -10542,6 +10543,66 @@ probe_standing_only() {
   return 0
 }
 
+# probe_bare_session ROOT: bare office probe's session, into
+# PROBE_BARE_FOLDER (a folder's name) or PROBE_BARE_PREP (a prep's id).
+# Offered: each folder on the desk that records a session open where
+# probes run (0.41.0, office_bale probe_folders, the sittings first) and,
+# since 0.56.0, each meeting's prep out (office_probe preps_out), after
+# the folders' sittings, a prep being a read-only sitting too. The one
+# row in all is taken and said; several are asked by key, piped refused
+# by name; none asks for any folder on the desk, as bare probe always has.
+# With no prep out every line reads as it did before 0.56.0.
+probe_bare_session() {
+  local root="$1" frows=() prows=() row vals=() sittings=() others=() preps=() n i chosen=""
+  local fname fsid fwords flabel psid ptitle pabout what="folders on the desk record a session open" head="Folders that record a session open"
+  PROBE_BARE_FOLDER=""; PROBE_BARE_PREP=""
+  mapfile -t frows < <(reader probe-folders "$root" 2>/dev/null)
+  mapfile -t prows < <(probe_py preps-out "$root")
+  for row in "${frows[@]}"; do
+    [ -n "$row" ] || continue
+    IFS=$'\t' read -r fname fsid fwords flabel <<< "$row"
+    if [ "$fwords" = "a sitting" ]; then sittings+=("$fname" "${flabel:-desk/$fname}: $fsid, $fwords")
+    else others+=("$fname" "${flabel:-desk/$fname}: $fsid, $fwords"); fi
+  done
+  for row in "${prows[@]}"; do
+    [ -n "$row" ] || continue
+    IFS=$'\t' read -r psid ptitle pabout <<< "$row"
+    preps+=("$psid" "the prep for $ptitle${pabout:+ (about: $pabout)}: $psid, a meeting's prep")
+  done
+  vals=("${sittings[@]}" "${preps[@]}" "${others[@]}")
+  n=$((${#vals[@]} / 2))
+  if [ "$n" -eq 0 ]; then
+    can_ask || { usage_probe >&2; die "name the folder: office probe FOLDER; piped input is never asked"; }
+    ask_folder PROBE_BARE_FOLDER "$root" desk probe
+    return 0
+  fi
+  if [ "$n" -eq 1 ] && [ "${#preps[@]}" -eq 2 ]; then
+    chosen="${preps[0]}"
+    log "the calendar records the one session open where probes run, ${preps[1]%: *}, $chosen: the probe is its (office probe FOLDER names a folder's)"
+  elif [ "$n" -eq 1 ]; then
+    chosen="${vals[0]}"
+    IFS=$'\t' read -r fname fsid fwords flabel <<< "${frows[0]}"
+    log "desk/$fname records the one session open, $fsid ($fwords), so the probe is its (office probe FOLDER names another)"
+  else
+    if [ "${#preps[@]}" -gt 0 ]; then what="sessions are open"; head="Sessions open"; fi
+    can_ask || die "$n $what where probes run ($(for ((i = 0; i < ${#vals[@]}; i += 2)); do printf '%s ' "${vals[$i]}"; done | sed 's/ $//; s/ /, /g')); name one: office probe FOLDER${preps:+, or office probe --prep SID}; piped input is never asked"
+    printf '%s where probes run:\n' "$head" >&2
+    if [ "${#preps[@]}" -gt 0 ]; then
+      pick chosen "Which session asked for this probe, by its key (office probe FOLDER, or --prep SID)" \
+        "Each is a session open now: a folder's read-only sitting, a meeting's prep (a sitting no folder records, the calendar's), or a session in the office or on a project. The probe is the session's whose worker returned the block; the sittings are first." \
+        "" 1 "${vals[@]}"
+    else
+      pick chosen "Which folder's session asked for this probe, by its key (office probe FOLDER)" \
+        "Each of these folders records a session that is open now: a read-only sitting in the office, or a session in the office or on a project. The probe is the session's whose worker returned the block; a sitting's are first." \
+        "" 1 "${vals[@]}"
+    fi
+  fi
+  for ((i = 0; i < ${#preps[@]}; i += 2)); do
+    if [ "${preps[$i]}" = "$chosen" ]; then PROBE_BARE_PREP="$chosen"; return 0; fi
+  done
+  PROBE_BARE_FOLDER="$chosen"
+}
+
 cmd_probe() {
   local want="" file="" project="" sid="" yes=0 root name md tmp block_file plan_file result_file out rc ans
   local names cands=() c tray_root tz day where block held
@@ -10647,6 +10708,15 @@ cmd_probe() {
     fi
   fi
 
+  # Nothing named (0.41.0; the preps beside the folders since 0.56.0): no
+  # folder, no --prep and no run line. The one session open where probes
+  # run is the probe's, said; several are offered by key, the sittings
+  # first; with none, every folder on the desk is, as before.
+  if [ "$prep" = 0 ] && [ -z "$want" ]; then
+    probe_bare_session "$root"
+    if [ -n "$PROBE_BARE_PREP" ]; then prep=1; prep_sid="$PROBE_BARE_PREP"; else want="$PROBE_BARE_FOLDER"; fi
+  fi
+
   # A meeting's prep (0.55.0): no folder records it, the calendar's record
   # line does. With no id: the one prep out, said; with several, by key.
   if [ "$prep" = 1 ]; then
@@ -10676,35 +10746,8 @@ cmd_probe() {
     for_whom="the prep for $prep_title"
   fi
 
-  # Which job. With no folder named (0.41.0): the one folder on the desk
-  # that records a session open where probes run is the one, said; with
-  # several, those folders alone are offered by key, sittings first; with
-  # none, every folder, as before.
-  if [ "$prep" = 1 ]; then
-    :
-  elif [ -z "$want" ]; then
-    local frows=() frow fvals=() fname fsid fwords flabel
-    mapfile -t frows < <(reader probe-folders "$root" 2>/dev/null)
-    for frow in "${frows[@]}"; do
-      [ -n "$frow" ] || continue
-      IFS=$'\t' read -r fname fsid fwords flabel <<< "$frow"
-      fvals+=("$fname" "${flabel:-desk/$fname}: $fsid, $fwords")
-    done
-    if [ "${#fvals[@]}" -eq 2 ]; then
-      want="${fvals[0]}"
-      IFS=$'\t' read -r fname fsid fwords flabel <<< "${frows[0]}"
-      log "desk/$fname records the one session open, $fsid ($fwords), so the probe is its (office probe FOLDER names another)"
-    elif [ "${#fvals[@]}" -gt 2 ]; then
-      can_ask || die "$((${#fvals[@]} / 2)) folders on the desk record a session open where probes run ($(for ((i = 0; i < ${#fvals[@]}; i += 2)); do printf '%s ' "${fvals[$i]}"; done | sed 's/ $//; s/ /, /g')); name one: office probe FOLDER; piped input is never asked"
-      printf 'Folders that record a session open where probes run:\n' >&2
-      pick want "Which folder's session asked for this probe, by its key (office probe FOLDER)" \
-        "Each of these folders records a session that is open now: a read-only sitting in the office, or a session in the office or on a project. The probe is the session's whose worker returned the block; a sitting's are first." \
-        "" 1 "${fvals[@]}"
-    else
-      can_ask || { usage_probe >&2; die "name the folder: office probe FOLDER; piped input is never asked"; }
-      ask_folder want "$root" desk probe
-    fi
-  fi
+  # Which job: with no folder named, settled above by probe_bare_session
+  # (a folder, or a prep); a prep by its own lines.
   if [ "$prep" = 0 ]; then
     name="$(find_folder "$root" desk "$want")" || exit 1
     md="$root/desk/$name/folder.md"

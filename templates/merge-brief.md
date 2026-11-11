@@ -57,7 +57,10 @@ workbench's, as it should read after the merge, and nothing else: no other
 file (the audience's other changes come in with git's merge), no refactor,
 no fix you noticed on the way (propose those in notes.md). A file that
 should not exist after the merge is a deleted change. Run the project's
-tests where the tree here lets you, on the files as you wrote them.
+tests where the tree here lets you, on the files as you wrote them. What
+you ship leaves with the folder's next delivery, so a change made in it
+only to keep the letterhead (punctuation, phrasing, naming) is shipped
+clean and never mentioned in what leaves, a comment in the file included.
 
 When the response lands, `office land` makes it a merge commit in the
 workbench: its parents are the landed session's commit and {{side}}'s tip,

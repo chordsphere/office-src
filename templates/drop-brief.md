@@ -66,3 +66,5 @@ is `new` and may be present otherwise.
 Fact lines follow an empty `- facts:` line, one `- ` line each, before
 the blank line above `#### Brief`. Write each fact bare: the fact alone,
 no date in front and no session id behind, since office land adds both.
+A fact may wrap onto indented lines, as a list item does, and is filed
+whole.

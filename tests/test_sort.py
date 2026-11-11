@@ -136,7 +136,7 @@ class TestThePinnedBlocks(unittest.TestCase):
         self.assertEqual((self.tmp / rel).read_text(), text)
 
     def test_the_chapter_is_one_block_and_the_code_writes_it(self):
-        core = fenced(self.doctrine, "in two parts (values illustrative)")
+        core = fenced(self.doctrine, "in three parts (values illustrative)")
         front = fenced((TEMPLATES / "handbook-README.md").read_text(), "in this shape (values illustrative)")
         self.assertEqual(core, front)
         path = self.tmp / "alpha.md"
@@ -209,7 +209,7 @@ class TestFiling(unittest.TestCase):
         nxt = md.split("## Next", 1)[1].split("\n## ", 1)[0]
         self.assertIn("- tell: the sender, in reply: fixed in the next release (drops/2026-10-14-login.md)\n", nxt)
         chapter = (self.root / "handbook/alpha.md").read_text()
-        self.assertIn("## Front sheet\n\nalpha is the app.\n\n## Facts\n\n"
+        self.assertIn("## Front sheet\n\nalpha is the app.\n\n## Conventions\n\nNone settled yet.\n\n## Facts\n\n"
                       "- 2026-10-15: the api serves the page (2026-10-14-job-001)\n"
                       "- 2026-10-15: port 8080 (2026-10-14-job-001)\n", chapter)
         self.assertEqual((self.root / "handbook/README.md").read_text(),
@@ -426,15 +426,17 @@ class TestAWrappedFactIsFiledWhole(unittest.TestCase):
 
 class TestTheSortBriefSaysWriteFactsBare(unittest.TestCase):
     """Item 3: the sort session's brief says to write each fact bare, beside
-    its Handbook words and outside the Sort format it pins."""
+    its Handbook words and outside the Sort format it pins; since 0.56.0
+    the clause that a fact may wrap and is filed whole follows it."""
 
     SENTENCE = ("Write each fact bare, there and in a Sort's `facts:` lines alike: the fact alone, no date in front "
                 "and no session id behind, since office land adds both.")
+    WRAPS = "A fact may wrap onto indented lines, as a list item does, and is filed whole."
 
     def test_the_template_and_the_brief_it_renders_carry_the_sentence(self):
         template = (TEMPLATES / "sort-brief.md").read_text()
         flat = " ".join(template.split())
-        self.assertIn("as `- ` lines. " + self.SENTENCE + " The handbook chapters you carry", flat)
+        self.assertIn("as `- ` lines. " + self.SENTENCE + " " + self.WRAPS + " The handbook chapters you carry", flat)
         fence_free = re.sub(r"^```.*?^```$", "", template, flags=re.M | re.S)
         self.assertIn(self.SENTENCE, " ".join(fence_free.split()))
         tmp = pathlib.Path(tempfile.mkdtemp())

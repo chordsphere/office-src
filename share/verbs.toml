@@ -497,7 +497,8 @@ trigger = ["manual"]
 # meeting's prep's probe runs too (--prep, or its run line # office: probe
 # --prep SID [--project NAME]): no History line, a standing beside it filed
 # as the prep's; and a call whose project is not a bare name refuses the
-# block before anything runs.
+# block before anything runs. Since 0.56.0 bare probe, with no folder, no
+# --prep and no run line, offers the preps out beside the folders.
 [verbs.probe]
 kind = "script"
 built = true
@@ -828,14 +829,13 @@ lands = ["notepad/{date}-{slug}.md"]
 attended = true
 trigger = ["manual"]
 
-[verbs.chat]
-kind = "office-session"
-built = false
-ships = ["desk/{folder}"]
-writes = ["desk/{folder}"]
-lands = ["desk/{folder}/transcript.md"]   # where it lands is Q-3, open
-attended = true
-trigger = ["manual"]
+# The chat kind declared here until 0.56.0 (an office session on a
+# folder, landing desk/{folder}/transcript.md, "where it lands is Q-3,
+# open") is retired. The ask (verbs.ask, 0.48.0) is the chat without a
+# folder, and a chat about a folder's job is that folder's work session,
+# which lands on the folder's own pages. Q-3 is answered: a chat lands as
+# the ask's LEARNED block, filed as a notepad page, the handbook's facts
+# and its questions and answers, never as a transcript.
 
 [verbs.cleanup]
 kind = "office-session"

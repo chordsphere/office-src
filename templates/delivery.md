@@ -14,6 +14,13 @@ sections, before anything leaves (this heading and this paragraph stay in
 the office, and are not read). When the office has a
 letterhead, they follow its voice page (letterhead/voice.md) and hold no
 em dash, en dash or ellipsis character unless the letterhead lifts one.
+A fix made only to keep the letterhead (punctuation, phrasing, naming) is
+shipped clean and never mentioned: no commit, review or message says it
+was made. The project's own conventions come first for the form of these
+words: its handbook chapter's `## Conventions` (the commit style, the
+review's shape, which repository and base), and where that settles none,
+the repository's own CONTRIBUTING where it speaks, said in notes.md. The
+voice page keeps the words.
 A Review that fills the repository's own pull-request template keeps the
 template's lines as the repository holds them: those lines are not held
 to the letterhead's phrasing rule, and every line written into or

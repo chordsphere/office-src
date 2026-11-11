@@ -31,6 +31,11 @@ profile, the handbook, the notepad and every other page of the office's
 stay in the office, even when you read them for the answer, and the
 profile's house rules hold before anything else.
 
+Every step you hand him is the exact command, or the exact thing to do, and
+one plain sentence on what it does and what he will see. A bale or office
+term gets its plain meaning the first time it appears; how the office or
+bale works is explained when he asks, not before.
+
 {{voice}}
 
 What leaves the office goes through its letterhead. When you write

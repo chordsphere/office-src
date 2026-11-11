@@ -112,10 +112,14 @@ id): `office probe` files it when it rides beside the probe block, and
 the home screen's key beside this prep, `office standing --prep`, files
 it from the clipboard; the home screen then says where the prep stands.
 
-Every line the sitting hands him to type is an office line (doctrine section
-10): `office land`, `office probe`, never bale's verbs. A probe block it
-returns carries, in its purpose header, the line `# office: probe --prep
-SID [--project NAME]`, kept to the byte (doctrine section 4, continued),
+Every step the sitting hands him is the exact command and one plain sentence
+on what it does and what he will see; a bale or office term gets its plain
+meaning the first time it appears, and how the machinery works is explained
+when he asks (doctrine section 9, rule 5). Every line the sitting hands him
+to type is an office line (doctrine section 10): `office land`, `office
+probe`, never bale's verbs. A probe block it returns carries, in its
+purpose header, the line `# office: probe --prep SID [--project NAME]`,
+kept to the byte (doctrine section 4, continued),
 SID this session's id, so bare `office probe` runs it from one copy, under
 this session, where NAME lives (a project, or `office` for the office
 root); with no `--project`, where the meeting's one concern lives, and he
